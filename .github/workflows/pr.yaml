@@ -1,0 +1,61 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: pr-${{ github.head_ref }}
+  cancel-in-progress: true
+
+env:
+  ATS_COMMIT: "66b10a29"  # Pin ATS-Postiats version; update deliberately
+
+jobs:
+  bridge-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+
+  build-wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache ATS2 toolchain
+        id: cache-ats
+        uses: actions/cache@v4
+        with:
+          path: ~/ats2
+          key: ats2-${{ env.ATS_COMMIT }}-${{ runner.os }}
+
+      - name: Build ATS2
+        if: steps.cache-ats.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update && sudo apt-get install -y libgmp-dev
+          git clone https://github.com/githwxi/ATS-Postiats.git ~/ats2
+          cd ~/ats2
+          git checkout ${{ env.ATS_COMMIT }}
+          ./configure
+          make -j$(nproc)
+
+      - name: Install WASM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld
+
+      - name: Build quire.wasm
+        env:
+          PATSHOME: ~/ats2
+          PATH: ~/ats2/bin:$PATH
+        run: |
+          make
+          test -f build/quire.wasm

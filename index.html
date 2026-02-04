@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quire</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="/reader.css">
+</head>
+<body>
+  <div id="loading" data-wasm data-node-id="1">Loading...</div>
+  <script type="module">
+    import { initBridge } from './bridge.js';
+    await initBridge('quire.wasm');
+  </script>
+</body>
+</html>
