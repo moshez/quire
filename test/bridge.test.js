@@ -22,7 +22,9 @@ import {
   OP_SET_INNER_HTML,
   EVENT_CLICK,
   EVENT_INPUT,
-  EVENT_KEYDOWN
+  EVENT_KEYDOWN,
+  EVENT_PUSH,
+  EVENT_NOTIFICATION_CLICK
 } from './mock-wasm.js';
 
 // Set up jsdom environment
@@ -270,5 +272,34 @@ describe('Event Type Constants', () => {
     expect(EVENT_CLICK).toBe(1);
     expect(EVENT_INPUT).toBe(2);
     expect(EVENT_KEYDOWN).toBe(4);
+  });
+});
+
+describe('Bridge Module Exports', () => {
+  it('should export initBridge function', async () => {
+    const bridge = await import('../bridge.js');
+    expect(typeof bridge.initBridge).toBe('function');
+  });
+
+  it('should export registerNode function', async () => {
+    const bridge = await import('../bridge.js');
+    expect(typeof bridge.registerNode).toBe('function');
+  });
+
+  it('should export getNode function', async () => {
+    const bridge = await import('../bridge.js');
+    expect(typeof bridge.getNode).toBe('function');
+  });
+
+  it('should NOT export initApp (renamed to initBridge)', async () => {
+    const bridge = await import('../bridge.js');
+    expect(bridge.initApp).toBeUndefined();
+  });
+});
+
+describe('Push Event Constants', () => {
+  it('should have push event types defined', () => {
+    expect(EVENT_PUSH).toBe(8);
+    expect(EVENT_NOTIFICATION_CLICK).toBe(9);
   });
 });

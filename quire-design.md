@@ -1578,7 +1578,7 @@ Each milestone is a single PR. Milestones are ordered by dependency.
 
 ### Phase 0: Foundation
 
-- [ ] **M1: Project scaffold + CLAUDE.md**
+- [x] **M1: Project scaffold + CLAUDE.md**
   - Create directory structure per §6
   - Write CLAUDE.md per §7
   - `index.html` with loading div and two-line script
@@ -1592,7 +1592,7 @@ Each milestone is a single PR. Milestones are ordered by dependency.
 
 Bridge test coverage expands incrementally: M2–M4 each add tests for the bridge changes made in that milestone.
 
-- [ ] **M2: Bridge refactoring — remove app-specific code**
+- [x] **M2: Bridge refactoring — remove app-specific code**
   - Remove all swiftlink-specific code (§2.3.1)
   - Remove push notifications, VAPID, contact templates
   - Remove `initApp`, export `initBridge`
@@ -1746,7 +1746,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ATS_COMMIT: "66b10a29"  # Pin ATS-Postiats version; update deliberately
+  ATS_COMMIT: "d12abf1da4476cbe33a448c28726cc350af3ce6d"  # Pin ATS-Postiats version; update deliberately
 
 jobs:
   bridge-tests:
@@ -1826,7 +1826,7 @@ on:
     branches: [main]
 
 env:
-  ATS_COMMIT: "66b10a29"
+  ATS_COMMIT: "d12abf1da4476cbe33a448c28726cc350af3ce6d"
 
 jobs:
   package:

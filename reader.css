@@ -1,0 +1,31 @@
+/**
+ * Quire Reader Styles
+ *
+ * Base styles for the e-reader interface. Full reader styling
+ * will be implemented in M10 (Single chapter rendering).
+ */
+
+/* Hidden utility class for bridge visibility toggling */
+.hidden {
+  display: none !important;
+}
+
+/* Base page setup */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Loading state */
+#loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 1.25rem;
+  color: #666;
+}
