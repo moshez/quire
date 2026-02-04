@@ -1604,7 +1604,7 @@ Bridge test coverage expands incrementally: M2–M4 each add tests for the bridg
   - Update op codes: SET_TRANSFORM, CREATE_ELEMENT, SET_INNER_HTML, simplified SET_TEXT (§2.3.2–§2.3.6)
   - Result: all op codes match new protocol spec
 
-- [ ] **M4: Bridge refactoring — auto-flush + new imports**
+- [x] **M4: Bridge refactoring — auto-flush + new imports**
   - Add `wrapExports` proxy (§2.3.12)
   - Move `applyDiffs` to private, remove all manual calls
   - `initBridge` calls `wasm.init()` (§2.3.13)

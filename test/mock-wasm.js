@@ -43,12 +43,7 @@ export function createMockWasm() {
     on_kv_get_complete: [],
     on_kv_get_blob_complete: [],
     on_clipboard_copy_complete: [],
-    on_visibility_hidden: [],
-    on_push_subscribe_complete: [],
-    on_push_subscription_result: [],
-    on_push_subscription_change: [],
-    on_pending_pushes_result: [],
-    on_pending_pushes_cleared: []
+    on_visibility_hidden: []
   };
 
   // Diff writer helper for tests
@@ -115,26 +110,6 @@ export function createMockWasm() {
 
     on_visibility_hidden() {
       callbacks.on_visibility_hidden.push({ timestamp: Date.now() });
-    },
-
-    on_push_subscribe_complete(len) {
-      callbacks.on_push_subscribe_complete.push({ len });
-    },
-
-    on_push_subscription_result(len) {
-      callbacks.on_push_subscription_result.push({ len });
-    },
-
-    on_push_subscription_change() {
-      callbacks.on_push_subscription_change.push({ timestamp: Date.now() });
-    },
-
-    on_pending_pushes_result(len) {
-      callbacks.on_pending_pushes_result.push({ len });
-    },
-
-    on_pending_pushes_cleared(success) {
-      callbacks.on_pending_pushes_cleared.push({ success });
     }
   };
 
@@ -274,5 +249,3 @@ export const EVENT_KEYDOWN = 4;
 export const EVENT_KEYUP = 5;
 export const EVENT_FOCUS = 6;
 export const EVENT_BLUR = 7;
-export const EVENT_PUSH = 8;
-export const EVENT_NOTIFICATION_CLICK = 9;
