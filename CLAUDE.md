@@ -8,6 +8,14 @@ PWA e-reader. All application logic in ATS2 → WASM. Generic JS bridge for DOM 
     npm test                # Bridge tests
     npx serve .             # Dev server
 
+## Milestone Workflow
+
+When completing a milestone from quire-design.md §8:
+1. Implement all items listed under the milestone
+2. Add/update tests as specified
+3. Mark the milestone checkbox as done: `- [ ]` → `- [x]`
+4. Commit and push
+
 ## Rules
 
 1. **No app code in index.html** — only loading div + `initBridge('quire.wasm')`
