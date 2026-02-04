@@ -10,24 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build ATS2
-        run: |
-          sudo apt-get update && sudo apt-get install -y libgmp-dev
-          git clone --depth 1 https://github.com/githwxi/ATS-Postiats.git ~/ats2
-          cd ~/ats2
-          ./configure
-          make -j$(nproc)
-
-      - name: Install WASM toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang lld
-
-      - name: Build quire.wasm
-        env:
-          PATSHOME: ~/ats2
-          PATH: ~/ats2/bin:$PATH
-        run: make
+      # WASM build will be added in M5 when ATS2 source files exist
 
       - name: Assemble PWA
         run: |
@@ -36,9 +19,8 @@ jobs:
           cp bridge.js dist/
           cp reader.css dist/
           cp manifest.json dist/
-          cp service-worker.js dist/
-          cp build/quire.wasm dist/
-          # Icons may not exist yet (M16); copy if present
+          cp service-worker.js dist/ 2>/dev/null || true
+          cp build/quire.wasm dist/ 2>/dev/null || true
           cp icon-192.png dist/ 2>/dev/null || true
           cp icon-512.png dist/ 2>/dev/null || true
 

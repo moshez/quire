@@ -22,28 +22,4 @@ jobs:
       - run: npm ci
       - run: npm test
 
-  build-wasm:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build ATS2
-        run: |
-          sudo apt-get update && sudo apt-get install -y libgmp-dev
-          git clone --depth 1 https://github.com/githwxi/ATS-Postiats.git ~/ats2
-          cd ~/ats2
-          ./configure
-          make -j$(nproc)
-
-      - name: Install WASM toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang lld
-
-      - name: Build quire.wasm
-        env:
-          PATSHOME: ~/ats2
-          PATH: ~/ats2/bin:$PATH
-        run: |
-          make
-          test -f build/quire.wasm
+  # build-wasm job will be added in M5 when ATS2 source files exist
