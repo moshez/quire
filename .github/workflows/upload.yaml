@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 env:
-  ATS_COMMIT: "66b10a29"
+  ATS_COMMIT: "d12abf1da4476cbe33a448c28726cc350af3ce6d"  # Pin ATS-Postiats version; update deliberately
 
 jobs:
   package:

@@ -1746,7 +1746,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ATS_COMMIT: "66b10a29"  # Pin ATS-Postiats version; update deliberately
+  ATS_COMMIT: "d12abf1da4476cbe33a448c28726cc350af3ce6d"  # Pin ATS-Postiats version; update deliberately
 
 jobs:
   bridge-tests:
@@ -1826,7 +1826,7 @@ on:
     branches: [main]
 
 env:
-  ATS_COMMIT: "66b10a29"
+  ATS_COMMIT: "d12abf1da4476cbe33a448c28726cc350af3ce6d"
 
 jobs:
   package:
