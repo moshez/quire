@@ -27,10 +27,10 @@ const EVENT_NOTIFICATION_CLICK = 9;
 
 const OP_SET_TEXT = 1;
 const OP_SET_ATTR = 2;
-const OP_SET_STYLE = 3;
-const OP_ADD_CHILD = 4;
+const OP_SET_TRANSFORM = 3;
+const OP_CREATE_ELEMENT = 4;
 const OP_REMOVE_CHILD = 5;
-const OP_NEED_FETCH = 6;
+const OP_SET_INNER_HTML = 6;
 
 let wasm = null;
 let memory = null;
@@ -411,65 +411,69 @@ function applyDiffs() {
   const numDiffs = view.getUint8(0);
 
   for (let i = 0; i < numDiffs; i++) {
-    const offset = 1 + i * 12;
-    const op = view.getUint8(offset);
-    const nodeId = view.getUint32(offset + 1, true);
-    const value1 = view.getUint32(offset + 5, true);
-    const value2 = view.getUint32(offset + 9, true);
+    // 16-byte stride with 4-byte aligned fields
+    // Header at byte 0, entries start at byte 4
+    const offset = 4 + i * 16;
+    const op = view.getUint32(offset, true);
+    const nodeId = view.getUint32(offset + 4, true);
+    const value1 = view.getUint32(offset + 8, true);
+    const value2 = view.getUint32(offset + 12, true);
 
     const node = getNode(nodeId);
 
     switch (op) {
       case OP_SET_TEXT:
+        // value1 = offset in fetch buffer, value2 = length
         if (node) {
-          if (value1 > 0 && value1 < 1000) {
-            const text = getStringFromFetchBuffer(0, value1);
-            if (text && text.length > 0) {
-              node.textContent = text;
-            } else {
-              node.textContent = String(value1);
-            }
-          } else if (value1 === 0) {
-            node.textContent = '';
+          node.textContent = value2 > 0 ? getStringFromFetchBuffer(value1, value2) : '';
+        }
+        break;
+      case OP_SET_ATTR: {
+        // value1 = name length, value2 = value length
+        // Name at stringBuffer[0..value1], value at stringBuffer[value1..value1+value2]
+        if (node && value1 > 0) {
+          const name = getStringFromBuffer(0, value1);
+          if (value2 > 0) {
+            const val = getStringFromBuffer(value1, value2);
+            node.setAttribute(name, val);
           } else {
-            node.textContent = String(value1);
+            node.removeAttribute(name);
           }
         }
         break;
-      case OP_SET_ATTR:
-        if (node && value2 > 0) {
-          const attrValue = getStringFromBuffer(value1, value2);
-          // PLACEHOLDER: reads value but does nothing with it
-        }
-        break;
-      case OP_SET_STYLE:
+      }
+      case OP_SET_TRANSFORM:
+        // value1 = x (int32), value2 = y (int32)
         if (node) {
-          if (value1 === 1) {
-            node.classList.remove('hidden');
-          } else {
-            node.classList.add('hidden');
-          }
+          const x = value1 | 0;  // reinterpret uint32 as int32
+          const y = value2 | 0;
+          node.style.transform = `translate(${x}px, ${y}px)`;
         }
         break;
-      case OP_ADD_CHILD:
-        // Generic child addition - creates a div element
-        // Note: This is a temporary implementation that will be replaced
-        // in M3 with CREATE_ELEMENT which takes a tag name
-        if (value1 > 0 && value2 > 0) {
-          const parent = getNode(value1);
-          if (parent) {
-            const child = document.createElement('div');
-            child.dataset.nodeId = value2;
-            child.dataset.wasm = '';
-            parent.appendChild(child);
-            registerNode(child);
-          }
+      case OP_CREATE_ELEMENT: {
+        // nodeId = ID to assign to new element
+        // value1 = parent node ID
+        // value2 = tag name length in string buffer (tag at stringBuffer[0..value2])
+        const parent = getNode(value1);
+        if (parent && value2 > 0) {
+          const tagName = getStringFromBuffer(0, value2);
+          const el = document.createElement(tagName);
+          el.dataset.nodeId = nodeId;
+          el.dataset.wasm = '';
+          nodeRegistry.set(nodeId, el);
+          if (nodeId >= nextNodeId) nextNodeId = nodeId + 1;
+          parent.appendChild(el);
         }
         break;
+      }
       case OP_REMOVE_CHILD:
         if (node && node.parentNode) node.parentNode.removeChild(node);
         break;
-      case OP_NEED_FETCH:
+      case OP_SET_INNER_HTML:
+        // value1 = offset in fetch buffer, value2 = length
+        if (node) {
+          node.innerHTML = getStringFromFetchBuffer(value1, value2);
+        }
         break;
     }
   }
@@ -515,6 +519,28 @@ export async function initBridge(wasmUrl) {
   applyDiffs();
 
   console.log('[Bridge] initialized');
+}
+
+// Test helper: initialize bridge with a provided mock module (bypasses fetch)
+export function _initForTest(mockModule) {
+  wasm = mockModule;
+  memory = mockModule.exports.memory;
+
+  eventBuffer = new Uint8Array(memory.buffer, mockModule.exports.get_event_buffer_ptr(), EVENT_BUFFER_SIZE);
+  diffBuffer = new Uint8Array(memory.buffer, mockModule.exports.get_diff_buffer_ptr(), DIFF_BUFFER_SIZE);
+  fetchBuffer = new Uint8Array(memory.buffer, mockModule.exports.get_fetch_buffer_ptr(), FETCH_BUFFER_SIZE);
+  stringBuffer = new Uint8Array(memory.buffer, mockModule.exports.get_string_buffer_ptr(), 4096);
+}
+
+// Test helper: apply diffs (for testing without full initialization)
+export function _applyDiffs() {
+  applyDiffs();
+}
+
+// Test helper: clear node registry (for test isolation)
+export function _clearNodeRegistry() {
+  nodeRegistry.clear();
+  nextNodeId = 1;
 }
 
 export { registerNode, getNode };

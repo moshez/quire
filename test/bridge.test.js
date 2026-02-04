@@ -303,3 +303,326 @@ describe('Push Event Constants', () => {
     expect(EVENT_NOTIFICATION_CLICK).toBe(9);
   });
 });
+
+describe('Diff Application', () => {
+  let mockWasm;
+  let bridge;
+
+  beforeEach(async () => {
+    // Reset DOM
+    document.body.innerHTML = '<div id="root" data-wasm data-node-id="1"></div>';
+
+    bridge = await import('../bridge.js');
+    mockWasm = createMockWasm();
+
+    // Initialize bridge with mock WASM
+    bridge._initForTest(mockWasm);
+    bridge._clearNodeRegistry();
+
+    // Register root node
+    const root = document.getElementById('root');
+    bridge.registerNode(root);
+  });
+
+  describe('OP_SET_TEXT', () => {
+    it('should set text content from fetch buffer', () => {
+      const { helpers } = mockWasm;
+      const root = document.getElementById('root');
+
+      // Write text to fetch buffer and create diff
+      const text = 'Hello, World!';
+      helpers.writeToFetchBuffer(text, 0);
+      helpers.writeDiff(OP_SET_TEXT, 1, 0, text.length);
+
+      bridge._applyDiffs();
+
+      expect(root.textContent).toBe('Hello, World!');
+    });
+
+    it('should clear text when length is 0', () => {
+      const { helpers } = mockWasm;
+      const root = document.getElementById('root');
+      root.textContent = 'existing text';
+
+      helpers.writeDiff(OP_SET_TEXT, 1, 0, 0);
+
+      bridge._applyDiffs();
+
+      expect(root.textContent).toBe('');
+    });
+
+    it('should read from offset in fetch buffer', () => {
+      const { helpers } = mockWasm;
+      const root = document.getElementById('root');
+
+      // Write text at offset 10
+      const text = 'Offset text';
+      helpers.writeToFetchBuffer(text, 10);
+      helpers.writeDiff(OP_SET_TEXT, 1, 10, text.length);
+
+      bridge._applyDiffs();
+
+      expect(root.textContent).toBe('Offset text');
+    });
+  });
+
+  describe('OP_SET_ATTR', () => {
+    it('should set attribute on node', () => {
+      const { helpers } = mockWasm;
+      const root = document.getElementById('root');
+
+      // Write attr name and value to string buffer
+      const name = 'class';
+      const value = 'my-class';
+      helpers.writeToStringBuffer(name, 0);
+      helpers.writeToStringBuffer(value, name.length);
+      helpers.writeDiff(OP_SET_ATTR, 1, name.length, value.length);
+
+      bridge._applyDiffs();
+
+      expect(root.getAttribute('class')).toBe('my-class');
+    });
+
+    it('should remove attribute when value length is 0', () => {
+      const { helpers } = mockWasm;
+      const root = document.getElementById('root');
+      root.setAttribute('data-test', 'value');
+
+      // Write attr name only
+      const name = 'data-test';
+      helpers.writeToStringBuffer(name, 0);
+      helpers.writeDiff(OP_SET_ATTR, 1, name.length, 0);
+
+      bridge._applyDiffs();
+
+      expect(root.hasAttribute('data-test')).toBe(false);
+    });
+
+    it('should handle multi-byte attribute values', () => {
+      const { helpers } = mockWasm;
+      const root = document.getElementById('root');
+
+      const name = 'title';
+      const value = '日本語テスト';  // Japanese text
+      helpers.writeToStringBuffer(name, 0);
+      helpers.writeToStringBuffer(value, name.length);
+      helpers.writeDiff(OP_SET_ATTR, 1, name.length, new TextEncoder().encode(value).length);
+
+      bridge._applyDiffs();
+
+      expect(root.getAttribute('title')).toBe('日本語テスト');
+    });
+  });
+
+  describe('OP_SET_TRANSFORM', () => {
+    it('should set CSS transform with positive values', () => {
+      const { helpers } = mockWasm;
+      const root = document.getElementById('root');
+
+      helpers.writeDiff(OP_SET_TRANSFORM, 1, 100, 200);
+
+      bridge._applyDiffs();
+
+      expect(root.style.transform).toBe('translate(100px, 200px)');
+    });
+
+    it('should handle negative values (int32 reinterpretation)', () => {
+      const { helpers } = mockWasm;
+      const root = document.getElementById('root');
+
+      // -100 as uint32 is 0xFFFFFF9C (4294967196)
+      const negX = (-100 >>> 0);
+      const negY = (-50 >>> 0);
+      helpers.writeDiff(OP_SET_TRANSFORM, 1, negX, negY);
+
+      bridge._applyDiffs();
+
+      expect(root.style.transform).toBe('translate(-100px, -50px)');
+    });
+
+    it('should set transform to origin (0, 0)', () => {
+      const { helpers } = mockWasm;
+      const root = document.getElementById('root');
+      root.style.transform = 'translate(100px, 100px)';
+
+      helpers.writeDiff(OP_SET_TRANSFORM, 1, 0, 0);
+
+      bridge._applyDiffs();
+
+      expect(root.style.transform).toBe('translate(0px, 0px)');
+    });
+  });
+
+  describe('OP_CREATE_ELEMENT', () => {
+    it('should create element with specified tag name', () => {
+      const { helpers } = mockWasm;
+      const root = document.getElementById('root');
+
+      const tagName = 'span';
+      helpers.writeToStringBuffer(tagName, 0);
+      // nodeId=10, parent=1, tagNameLen=4
+      helpers.writeDiff(OP_CREATE_ELEMENT, 10, 1, tagName.length);
+
+      bridge._applyDiffs();
+
+      expect(root.children.length).toBe(1);
+      expect(root.children[0].tagName.toLowerCase()).toBe('span');
+      expect(root.children[0].dataset.nodeId).toBe('10');
+      expect(root.children[0].dataset.wasm).toBe('');
+    });
+
+    it('should register created element in node registry', () => {
+      const { helpers } = mockWasm;
+
+      const tagName = 'div';
+      helpers.writeToStringBuffer(tagName, 0);
+      helpers.writeDiff(OP_CREATE_ELEMENT, 20, 1, tagName.length);
+
+      bridge._applyDiffs();
+
+      const createdNode = bridge.getNode(20);
+      expect(createdNode).toBeDefined();
+      expect(createdNode.tagName.toLowerCase()).toBe('div');
+    });
+
+    it('should create nested elements', () => {
+      const { helpers } = mockWasm;
+
+      // Create first child
+      helpers.writeToStringBuffer('section', 0);
+      helpers.writeDiff(OP_CREATE_ELEMENT, 10, 1, 7);
+      bridge._applyDiffs();
+      helpers.resetDiffs();
+
+      // Create grandchild inside first child
+      helpers.writeToStringBuffer('article', 0);
+      helpers.writeDiff(OP_CREATE_ELEMENT, 11, 10, 7);
+      bridge._applyDiffs();
+
+      const section = bridge.getNode(10);
+      const article = bridge.getNode(11);
+      expect(section.contains(article)).toBe(true);
+    });
+
+    it('should not create element if parent does not exist', () => {
+      const { helpers } = mockWasm;
+
+      const tagName = 'div';
+      helpers.writeToStringBuffer(tagName, 0);
+      // Parent ID 999 doesn't exist
+      helpers.writeDiff(OP_CREATE_ELEMENT, 10, 999, tagName.length);
+
+      bridge._applyDiffs();
+
+      expect(bridge.getNode(10)).toBeUndefined();
+    });
+  });
+
+  describe('OP_REMOVE_CHILD', () => {
+    it('should remove child from parent', () => {
+      const { helpers } = mockWasm;
+      const root = document.getElementById('root');
+
+      // First create a child
+      helpers.writeToStringBuffer('div', 0);
+      helpers.writeDiff(OP_CREATE_ELEMENT, 10, 1, 3);
+      bridge._applyDiffs();
+      helpers.resetDiffs();
+
+      expect(root.children.length).toBe(1);
+
+      // Now remove it
+      helpers.writeDiff(OP_REMOVE_CHILD, 10, 0, 0);
+      bridge._applyDiffs();
+
+      expect(root.children.length).toBe(0);
+    });
+
+    it('should handle removing non-existent node gracefully', () => {
+      const { helpers } = mockWasm;
+
+      // Try to remove a node that doesn't exist
+      helpers.writeDiff(OP_REMOVE_CHILD, 999, 0, 0);
+
+      // Should not throw
+      expect(() => bridge._applyDiffs()).not.toThrow();
+    });
+  });
+
+  describe('OP_SET_INNER_HTML', () => {
+    it('should set innerHTML from fetch buffer', () => {
+      const { helpers } = mockWasm;
+      const root = document.getElementById('root');
+
+      const html = '<p>Hello <strong>World</strong></p>';
+      helpers.writeToFetchBuffer(html, 0);
+      helpers.writeDiff(OP_SET_INNER_HTML, 1, 0, html.length);
+
+      bridge._applyDiffs();
+
+      expect(root.innerHTML).toBe('<p>Hello <strong>World</strong></p>');
+    });
+
+    it('should read from offset in fetch buffer', () => {
+      const { helpers } = mockWasm;
+      const root = document.getElementById('root');
+
+      const html = '<em>Emphasized</em>';
+      helpers.writeToFetchBuffer(html, 50);
+      helpers.writeDiff(OP_SET_INNER_HTML, 1, 50, html.length);
+
+      bridge._applyDiffs();
+
+      expect(root.innerHTML).toBe('<em>Emphasized</em>');
+    });
+
+    it('should clear innerHTML when length is 0', () => {
+      const { helpers } = mockWasm;
+      const root = document.getElementById('root');
+      root.innerHTML = '<div>existing content</div>';
+
+      helpers.writeDiff(OP_SET_INNER_HTML, 1, 0, 0);
+
+      bridge._applyDiffs();
+
+      expect(root.innerHTML).toBe('');
+    });
+  });
+
+  describe('Multiple Diffs', () => {
+    it('should apply multiple diffs in sequence', () => {
+      const { helpers } = mockWasm;
+      const root = document.getElementById('root');
+
+      // Create two children
+      helpers.writeToStringBuffer('span', 0);
+      helpers.writeDiff(OP_CREATE_ELEMENT, 10, 1, 4);
+
+      helpers.writeToStringBuffer('div', 0);
+      helpers.writeDiff(OP_CREATE_ELEMENT, 11, 1, 3);
+
+      bridge._applyDiffs();
+
+      expect(root.children.length).toBe(2);
+    });
+
+    it('should handle 16-byte stride correctly with many diffs', () => {
+      const { helpers } = mockWasm;
+
+      // Create 5 elements - tests that stride doesn't cause overlap
+      for (let i = 0; i < 5; i++) {
+        helpers.writeToStringBuffer('p', 0);
+        helpers.writeDiff(OP_CREATE_ELEMENT, 100 + i, 1, 1);
+      }
+
+      bridge._applyDiffs();
+
+      // All 5 should be created
+      for (let i = 0; i < 5; i++) {
+        const node = bridge.getNode(100 + i);
+        expect(node).toBeDefined();
+        expect(node.tagName.toLowerCase()).toBe('p');
+      }
+    });
+  });
+});

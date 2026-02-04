@@ -1598,7 +1598,7 @@ Bridge test coverage expands incrementally: M2–M4 each add tests for the bridg
   - Remove `initApp`, export `initBridge`
   - Result: bridge compiles and runs but has old op codes
 
-- [ ] **M3: Bridge refactoring — fix bugs + align protocol**
+- [x] **M3: Bridge refactoring — fix bugs + align protocol**
   - Fix diff entry stride overlap (§2.2, Bug 1): change to 16-byte stride
   - Fix OP_SET_ATTR placeholder (§2.2, Bug 2)
   - Update op codes: SET_TRANSFORM, CREATE_ELEMENT, SET_INNER_HTML, simplified SET_TEXT (§2.3.2–§2.3.6)
