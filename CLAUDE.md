@@ -30,6 +30,13 @@ When completing a milestone from quire-design.md §8:
 - `.dats`: implementations
 - `runtime.c`: minimal C runtime for WASM
 
+## ATS2 Toolchain (M5+)
+
+When adding the WASM build in M5:
+- ATS2 must be installed locally by the developer
+- CI builds from local source, no remote cloning or caching
+- Keep CI simple: if it's slow, that's fine
+
 ## Protocol
 
 See quire-design.md §2 for bridge protocol (diff buffer layout, op codes, exports).
