@@ -4,29 +4,17 @@ on:
   push:
     branches: [main]
 
-env:
-  ATS_COMMIT: "d12abf1da4476cbe33a448c28726cc350af3ce6d"  # Pin ATS-Postiats version; update deliberately
-
 jobs:
   package:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache ATS2 toolchain
-        id: cache-ats
-        uses: actions/cache@v4
-        with:
-          path: ~/ats2
-          key: ats2-${{ env.ATS_COMMIT }}-${{ runner.os }}
-
       - name: Build ATS2
-        if: steps.cache-ats.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update && sudo apt-get install -y libgmp-dev
-          git clone https://github.com/githwxi/ATS-Postiats.git ~/ats2
+          git clone --depth 1 https://github.com/githwxi/ATS-Postiats.git ~/ats2
           cd ~/ats2
-          git checkout ${{ env.ATS_COMMIT }}
           ./configure
           make -j$(nproc)
 
