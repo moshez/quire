@@ -508,7 +508,8 @@ extern int reader_get_total_pages(void);
 extern void reader_on_chapter_loaded(int len);
 extern void reader_on_chapter_blob_loaded(int handle, int size);
 
-/* M13: TOC and navigation functions */
+/* M13: TOC and navigation functions
+ * Proofs are managed internally by reader module - API is simple */
 extern void reader_toggle_toc(void);
 extern void reader_hide_toc(void);
 extern int reader_is_toc_visible(void);
@@ -674,13 +675,15 @@ void process_event_impl(void) {
         if (reader_is_active() && vw > 0) {
             /* M13: Check if TOC is visible and handle TOC clicks */
             if (reader_is_toc_visible()) {
-                /* Check if click is on a TOC entry by looking up node ID */
+                /* Check if click is on a TOC entry
+                 * reader_get_toc_index_for_node internally verifies TOC_MAPS */
                 int toc_index = reader_get_toc_index_for_node(node_id);
                 if (toc_index >= 0) {
                     reader_on_toc_click(node_id);
                     return;
                 }
-                /* Any click outside TOC entries closes TOC */
+                /* Any click outside TOC entries closes TOC
+                 * reader_hide_toc internally manages TOC_STATE transitions */
                 reader_hide_toc();
                 return;
             }
