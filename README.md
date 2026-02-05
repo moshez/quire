@@ -2,6 +2,8 @@
 
 PWA e-reader with all application logic in ATS2 compiled to WASM.
 
+**Live demo:** https://moshez.github.io/quire/
+
 ## Prerequisites
 
 ### ATS2 (ATS/Postiats)
