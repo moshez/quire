@@ -1661,7 +1661,7 @@ Bridge test coverage expands incrementally: M2–M4 each add tests for the bridg
 
 ### Phase 4: Polish
 
-- [ ] **M13: Navigation UI**
+- [x] **M13: Navigation UI**
   - Table of contents overlay (parsed from .opf/NCX)
   - Progress bar
   - Chapter title display
