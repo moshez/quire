@@ -58,6 +58,10 @@ const PUSH_DB_NAME = 'bridge-push';
 const PUSH_STORE_NAME = 'pending';
 const PUSH_DB_VERSION = 1;
 
+// IndexedDB key-value store (§2.3.9)
+let kvDB = null;
+const KV_DB_NAME_PREFIX = 'bridge-kv-';
+
 function registerNode(element) {
   if (element.dataset.nodeId) {
     const predefinedId = parseInt(element.dataset.nodeId);
@@ -478,6 +482,134 @@ const imports = {
       if (!node || !buffer) return 0;
       node.innerHTML = decoder.decode(new Uint8Array(buffer));
       return 1;
+    },
+
+    // IndexedDB key-value store imports (§2.3.9)
+    js_kv_open(namePtr, nameLen, version, storesPtr, storesLen) {
+      const name = readString(namePtr, nameLen);
+      const storeNames = storesLen > 0 ? readString(storesPtr, storesLen).split(',') : [];
+
+      const request = indexedDB.open(KV_DB_NAME_PREFIX + name, version);
+
+      request.onerror = () => {
+        wasm.on_kv_open_complete(0);
+      };
+
+      request.onsuccess = () => {
+        kvDB = request.result;
+        wasm.on_kv_open_complete(1);
+      };
+
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        for (const storeName of storeNames) {
+          const trimmed = storeName.trim();
+          if (trimmed && !db.objectStoreNames.contains(trimmed)) {
+            db.createObjectStore(trimmed);
+          }
+        }
+      };
+    },
+
+    js_kv_put(storePtr, storeLen, keyPtr, keyLen, dataOffset, dataLen) {
+      if (!kvDB) {
+        wasm.on_kv_complete(0);
+        return;
+      }
+      const store = readString(storePtr, storeLen);
+      const key = readString(keyPtr, keyLen);
+      const data = new Uint8Array(memory.buffer, fetchBuffer.byteOffset + dataOffset, dataLen).slice();
+
+      try {
+        const tx = kvDB.transaction(store, 'readwrite');
+        tx.objectStore(store).put(data, key);
+        tx.oncomplete = () => wasm.on_kv_complete(1);
+        tx.onerror = () => wasm.on_kv_complete(0);
+      } catch {
+        wasm.on_kv_complete(0);
+      }
+    },
+
+    js_kv_put_blob(storePtr, storeLen, keyPtr, keyLen, blobHandle) {
+      if (!kvDB) {
+        wasm.on_kv_complete(0);
+        return;
+      }
+      const store = readString(storePtr, storeLen);
+      const key = readString(keyPtr, keyLen);
+      const data = blobHandles.get(blobHandle);
+      if (!data) {
+        wasm.on_kv_complete(0);
+        return;
+      }
+
+      try {
+        const tx = kvDB.transaction(store, 'readwrite');
+        tx.objectStore(store).put(new Uint8Array(data), key);
+        tx.oncomplete = () => wasm.on_kv_complete(1);
+        tx.onerror = () => wasm.on_kv_complete(0);
+      } catch {
+        wasm.on_kv_complete(0);
+      }
+    },
+
+    js_kv_get(storePtr, storeLen, keyPtr, keyLen) {
+      if (!kvDB) {
+        wasm.on_kv_get_complete(0);
+        return;
+      }
+      const store = readString(storePtr, storeLen);
+      const key = readString(keyPtr, keyLen);
+
+      try {
+        const tx = kvDB.transaction(store, 'readonly');
+        const request = tx.objectStore(store).get(key);
+        request.onsuccess = () => {
+          if (!request.result) {
+            wasm.on_kv_get_complete(0);
+            return;
+          }
+          const data = new Uint8Array(request.result);
+          // For small data (< FETCH_BUFFER_SIZE), copy to fetch buffer
+          if (data.byteLength <= FETCH_BUFFER_SIZE) {
+            new Uint8Array(memory.buffer, fetchBuffer.byteOffset, data.byteLength).set(data);
+            wasm.on_kv_get_complete(data.byteLength);
+          } else {
+            // For large data, create a blob handle
+            const handle = nextBlobHandle++;
+            blobHandles.set(handle, data.buffer);
+            wasm.on_kv_get_blob_complete(handle, data.byteLength);
+          }
+        };
+        request.onerror = () => wasm.on_kv_get_complete(0);
+      } catch {
+        wasm.on_kv_get_complete(0);
+      }
+    },
+
+    js_kv_delete(storePtr, storeLen, keyPtr, keyLen) {
+      if (!kvDB) {
+        wasm.on_kv_complete(0);
+        return;
+      }
+      const store = readString(storePtr, storeLen);
+      const key = readString(keyPtr, keyLen);
+
+      try {
+        const tx = kvDB.transaction(store, 'readwrite');
+        tx.objectStore(store).delete(key);
+        tx.oncomplete = () => wasm.on_kv_complete(1);
+        tx.onerror = () => wasm.on_kv_complete(0);
+      } catch {
+        wasm.on_kv_complete(0);
+      }
+    },
+
+    js_kv_close() {
+      if (kvDB) {
+        kvDB.close();
+        kvDB = null;
+      }
     }
   }
 };
@@ -746,6 +878,68 @@ export function _clearHandles() {
   blobHandles.clear();
   nextFileHandle = 1;
   nextBlobHandle = 1;
+}
+
+// Test helper: expose IndexedDB imports for testing
+export function _kvOpen(namePtr, nameLen, version, storesPtr, storesLen) {
+  return imports.env.js_kv_open(namePtr, nameLen, version, storesPtr, storesLen);
+}
+
+export function _kvPut(storePtr, storeLen, keyPtr, keyLen, dataOffset, dataLen) {
+  return imports.env.js_kv_put(storePtr, storeLen, keyPtr, keyLen, dataOffset, dataLen);
+}
+
+export function _kvPutBlob(storePtr, storeLen, keyPtr, keyLen, blobHandle) {
+  return imports.env.js_kv_put_blob(storePtr, storeLen, keyPtr, keyLen, blobHandle);
+}
+
+export function _kvGet(storePtr, storeLen, keyPtr, keyLen) {
+  return imports.env.js_kv_get(storePtr, storeLen, keyPtr, keyLen);
+}
+
+export function _kvDelete(storePtr, storeLen, keyPtr, keyLen) {
+  return imports.env.js_kv_delete(storePtr, storeLen, keyPtr, keyLen);
+}
+
+export function _kvClose() {
+  return imports.env.js_kv_close();
+}
+
+// Test helper: check if KV DB is open
+export function _isKvDbOpen() {
+  return kvDB !== null;
+}
+
+// Test helper: close and clear KV DB (for test isolation)
+export function _clearKvDb() {
+  if (kvDB) {
+    kvDB.close();
+    kvDB = null;
+  }
+}
+
+// Test helper: write string to fetch buffer at offset (for kv tests)
+export function _writeToFetchBuffer(str, offset = 0) {
+  if (!fetchBuffer) return 0;
+  const bytes = encoder.encode(str);
+  new Uint8Array(memory.buffer, fetchBuffer.byteOffset + offset, bytes.length).set(bytes);
+  return bytes.length;
+}
+
+// Test helper: get memory pointer for a string (writes to string buffer and returns offset)
+export function _getStringPtr(str) {
+  if (!stringBuffer) return { ptr: 0, len: 0 };
+  const bytes = encoder.encode(str);
+  new Uint8Array(memory.buffer, stringBuffer.byteOffset, bytes.length).set(bytes);
+  return { ptr: stringBuffer.byteOffset, len: bytes.length };
+}
+
+// Test helper: write string at arbitrary memory location and return ptr
+export function _writeStringAt(str, offset) {
+  if (!memory) return 0;
+  const bytes = encoder.encode(str);
+  new Uint8Array(memory.buffer, offset, bytes.length).set(bytes);
+  return bytes.length;
 }
 
 export { registerNode, getNode };

@@ -39,6 +39,7 @@ export function createMockWasm() {
     on_timer_complete: [],
     on_file_open_complete: [],
     on_decompress_complete: [],
+    on_kv_open_complete: [],
     on_kv_complete: [],
     on_kv_get_complete: [],
     on_kv_get_blob_complete: [],
@@ -95,6 +96,10 @@ export function createMockWasm() {
 
     on_decompress_complete(handle, size) {
       callbacks.on_decompress_complete.push({ handle, size });
+    },
+
+    on_kv_open_complete(success) {
+      callbacks.on_kv_open_complete.push({ success });
     },
 
     on_kv_complete(success) {
