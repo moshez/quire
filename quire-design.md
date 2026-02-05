@@ -1594,7 +1594,6 @@ Bridge test coverage expands incrementally: M2–M4 each add tests for the bridg
 
 - [x] **M2: Bridge refactoring — remove app-specific code**
   - Remove all swiftlink-specific code (§2.3.1)
-  - Remove push notifications, VAPID, contact templates
   - Remove `initApp`, export `initBridge`
   - Result: bridge compiles and runs but has old op codes
 
