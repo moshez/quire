@@ -24,6 +24,7 @@ import {
   EVENT_CLICK,
   EVENT_INPUT,
   EVENT_KEYDOWN,
+  EVENT_KEYUP,
   EVENT_PUSH,
   EVENT_NOTIFICATION_CLICK
 } from './mock-wasm.js';
@@ -39,6 +40,9 @@ global.TextDecoder = TextDecoder;
 // Set up fake IndexedDB
 global.indexedDB = indexedDB;
 global.IDBKeyRange = IDBKeyRange;
+// Set up event constructors from jsdom
+global.MouseEvent = dom.window.MouseEvent;
+global.KeyboardEvent = dom.window.KeyboardEvent;
 
 describe('Mock WASM Module', () => {
   let mockWasm;
@@ -276,6 +280,72 @@ describe('Event Type Constants', () => {
     expect(EVENT_CLICK).toBe(1);
     expect(EVENT_INPUT).toBe(2);
     expect(EVENT_KEYDOWN).toBe(4);
+  });
+});
+
+describe('Event Data Encoding', () => {
+  let mockWasm;
+  let bridge;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '<div id="root" data-wasm data-node-id="1"></div>';
+    bridge = await import('../bridge.js');
+    mockWasm = createMockWasm();
+    bridge._initForTest(mockWasm, false);
+    bridge._clearNodeRegistry();
+    const root = document.getElementById('root');
+    bridge.registerNode(root);
+  });
+
+  it('should encode click coordinates in data1 and data2', () => {
+    const { helpers } = mockWasm;
+
+    // Use test helper to write event with click coordinates
+    bridge._writeEvent(EVENT_CLICK, 1, 150, 200);
+
+    // Read the event buffer to check if coordinates were encoded
+    const event = helpers.readEventBuffer();
+    expect(event.type).toBe(EVENT_CLICK);
+    expect(event.nodeId).toBe(1);
+    expect(event.data1).toBe(150);  // clientX
+    expect(event.data2).toBe(200);  // clientY
+  });
+
+  it('should encode key code in data1 for keydown events', () => {
+    const { helpers } = mockWasm;
+
+    // Use test helper to write keydown event with key code 39 (Right Arrow)
+    bridge._writeEvent(EVENT_KEYDOWN, 0, 39, 0);
+
+    // Read the event buffer to check if key code was encoded
+    const event = helpers.readEventBuffer();
+    expect(event.type).toBe(EVENT_KEYDOWN);
+    expect(event.data1).toBe(39);  // keyCode for Right Arrow
+  });
+
+  it('should encode key code in data1 for keyup events', () => {
+    const { helpers } = mockWasm;
+
+    // Use test helper to write keyup event with key code 32 (Space)
+    bridge._writeEvent(EVENT_KEYUP, 0, 32, 0);
+
+    // Read the event buffer to check if key code was encoded
+    const event = helpers.readEventBuffer();
+    expect(event.type).toBe(EVENT_KEYUP);
+    expect(event.data1).toBe(32);  // keyCode for Space
+  });
+
+  it('should support zero data values', () => {
+    const { helpers } = mockWasm;
+
+    // Write event with zero data values
+    bridge._writeEvent(EVENT_CLICK, 5, 0, 0);
+
+    const event = helpers.readEventBuffer();
+    expect(event.type).toBe(EVENT_CLICK);
+    expect(event.nodeId).toBe(5);
+    expect(event.data1).toBe(0);
+    expect(event.data2).toBe(0);
   });
 });
 

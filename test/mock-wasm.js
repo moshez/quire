@@ -281,3 +281,19 @@ export const EVENT_FOCUS = 6;
 export const EVENT_BLUR = 7;
 export const EVENT_PUSH = 8;
 export const EVENT_NOTIFICATION_CLICK = 9;
+
+/**
+ * Helper to write events directly to the event buffer.
+ * Mirrors bridge.js writeEvent function for testing.
+ * @param {DataView} view - DataView of WASM memory at event buffer
+ * @param {number} type - Event type
+ * @param {number} nodeId - Node ID
+ * @param {number} data1 - First data parameter
+ * @param {number} data2 - Second data parameter
+ */
+export function writeEventToBuffer(view, offset, type, nodeId, data1 = 0, data2 = 0) {
+  view.setUint8(offset, type);
+  view.setUint32(offset + 1, nodeId, true);
+  view.setUint32(offset + 5, data1, true);
+  view.setUint32(offset + 9, data2, true);
+}

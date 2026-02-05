@@ -721,7 +721,21 @@ function wrapExports(instance) {
 
 function handleEvent(event, type) {
   const nodeId = parseInt(event.target.dataset?.nodeId) || 0;
-  writeEvent(type, nodeId);
+  let data1 = 0;
+  let data2 = 0;
+
+  // For click events, pass coordinates
+  if (type === EVENT_CLICK && event.clientX !== undefined) {
+    data1 = Math.round(event.clientX);
+    data2 = Math.round(event.clientY);
+  }
+
+  // For keyboard events, pass key code
+  if (type === EVENT_KEYDOWN || type === EVENT_KEYUP) {
+    data1 = event.keyCode || 0;
+  }
+
+  writeEvent(type, nodeId, data1, data2);
   wasm.process_event();
 }
 
@@ -940,6 +954,11 @@ export function _writeStringAt(str, offset) {
   const bytes = encoder.encode(str);
   new Uint8Array(memory.buffer, offset, bytes.length).set(bytes);
   return bytes.length;
+}
+
+// Test helper: write event to buffer (for testing event encoding)
+export function _writeEvent(type, nodeId, data1 = 0, data2 = 0) {
+  writeEvent(type, nodeId, data1, data2);
 }
 
 export { registerNode, getNode };
