@@ -44,7 +44,7 @@ jobs:
           tar -xzf /tmp/ats2.tgz -C ~
           cd ~/ATS2-Postiats-int-${{ env.ATS_VERSION }}
           ./configure
-          make -j$(nproc)
+          make -j$(nproc) -C src/CBOOT patsopt
 
       - name: Install WASM toolchain
         run: |
@@ -55,6 +55,6 @@ jobs:
         env:
           PATSHOME: ~/ATS2-Postiats-int-${{ env.ATS_VERSION }}
         run: |
-          export PATH=$PATSHOME/bin:$PATH
+          export PATH=$PATSHOME/src/CBOOT:$PATH
           make
           test -f build/quire.wasm
