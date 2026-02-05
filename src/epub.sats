@@ -73,3 +73,30 @@ fun epub_on_db_put(success: int): void = "mac#"
 
 (* Cancel current import *)
 fun epub_cancel(): void = "mac#"
+
+(* M13: TOC (Table of Contents) support *)
+
+(* Get number of TOC entries *)
+fun epub_get_toc_count(): int = "mac#"
+
+(* Get TOC entry label into string buffer
+ * toc_index: 0-based index into TOC entries
+ * buf_offset: offset in string buffer to write label
+ * Returns label length, or 0 if index out of range *)
+fun epub_get_toc_label(toc_index: int, buf_offset: int): int = "mac#"
+
+(* Get chapter index for a TOC entry
+ * toc_index: 0-based index into TOC entries
+ * Returns spine chapter index, or -1 if not found *)
+fun epub_get_toc_chapter(toc_index: int): int = "mac#"
+
+(* Get nesting level for a TOC entry (0 = top level)
+ * toc_index: 0-based index into TOC entries
+ * Returns nesting level *)
+fun epub_get_toc_level(toc_index: int): int = "mac#"
+
+(* Get chapter title from TOC for a spine index
+ * spine_index: 0-based index into spine
+ * buf_offset: offset in string buffer to write title
+ * Returns title length, or 0 if no TOC entry found *)
+fun epub_get_chapter_title(spine_index: int, buf_offset: int): int = "mac#"

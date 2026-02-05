@@ -58,9 +58,38 @@ static const char str_page_of[] = " / ";
 static const char str_ch_prefix[] = "Ch ";
 static const char str_colon_space[] = ": ";
 
+/* M13: TOC overlay string constants */
+static const char str_toc_overlay[] = "toc-overlay";
+static const char str_toc_header[] = "toc-header";
+static const char str_toc_title[] = "Table of Contents";
+static const char str_toc_close[] = "toc-close";
+static const char str_toc_close_x[] = "\xc3\x97";  /* UTF-8 × */
+static const char str_toc_list[] = "toc-list";
+static const char str_toc_entry[] = "toc-entry";
+static const char str_toc_entry_nested[] = "toc-entry nested";
+static const char str_progress_bar[] = "progress-bar";
+static const char str_progress_fill[] = "progress-fill";
+static const char str_data_toc_idx[] = "data-toc-idx";
+static const char str_em_dash[] = " \xe2\x80\x94 ";  /* UTF-8 em-dash */
+
 /* External functions from epub module */
 extern int epub_get_chapter_count(void);
 extern int epub_get_chapter_key(int chapter_index, int buf_offset);
+/* M13: TOC functions */
+extern int epub_get_toc_count(void);
+extern int epub_get_toc_label(int toc_index, int buf_offset);
+extern int epub_get_toc_chapter(int toc_index);
+extern int epub_get_toc_level(int toc_index);
+extern int epub_get_chapter_title(int spine_index, int buf_offset);
+
+/* M13: TOC overlay state */
+static int toc_visible = 0;
+static int toc_overlay_id = 0;
+static int toc_close_id = 0;
+static int toc_list_id = 0;
+static int progress_bar_id = 0;
+static int progress_fill_id = 0;
+static int root_node_id = 1;  /* Save for TOC creation */
 
 /* External functions from bridge */
 extern unsigned char* get_fetch_buffer_ptr(void);
@@ -78,6 +107,7 @@ extern void* dom_set_text_offset(void*, int, int, int);
 extern void* dom_set_attr(void*, int, void*, int, void*, int);
 extern void* dom_set_transform(void*, int, int, int);
 extern void* dom_set_inner_html(void*, int, int, int);
+extern void dom_remove_child(void*, int);  /* M13: for TOC removal */
 extern int dom_next_id(void);
 extern void dom_drop_proof(void*);
 
@@ -108,11 +138,20 @@ void reader_init(void) {
         slots[i].status = 0;  /* SLOT_EMPTY */
         slots[i].blob_handle = 0;
     }
+
+    /* M13: Reset TOC state */
+    toc_visible = 0;
+    toc_overlay_id = 0;
+    toc_close_id = 0;
+    toc_list_id = 0;
+    progress_bar_id = 0;
+    progress_fill_id = 0;
 }
 
 /* Enter reader mode - creates viewport and three chapter containers */
 void reader_enter(int root_id, int container_hide_id) {
     unsigned char* buf = get_fetch_buffer_ptr();
+    root_node_id = root_id;  /* M13: Save for TOC creation */
     void* pf = dom_root_proof();
 
     /* Hide the import container */
@@ -178,6 +217,22 @@ void reader_enter(int root_id, int container_hide_id) {
     buf[len++] = '1';
     dom_set_text_offset(pf_indicator, pid, 0, len);
     dom_drop_proof(pf_indicator);
+
+    /* M13: Create progress bar */
+    int pb_id = dom_next_id();
+    progress_bar_id = pb_id;
+    void* pf_progress = dom_create_element(pf, root_id, pb_id, (void*)str_div, 3);
+    pf_progress = dom_set_attr(pf_progress, pb_id, (void*)str_class, 5,
+                               (void*)str_progress_bar, 12);
+
+    /* Create progress fill inside progress bar */
+    int pf_id = dom_next_id();
+    progress_fill_id = pf_id;
+    void* pf_fill = dom_create_element(pf_progress, pb_id, pf_id, (void*)str_div, 3);
+    pf_fill = dom_set_attr(pf_fill, pf_id, (void*)str_class, 5,
+                           (void*)str_progress_fill, 13);
+    dom_drop_proof(pf_fill);
+    dom_drop_proof(pf_progress);
 
     dom_drop_proof(pf);
 
@@ -628,72 +683,254 @@ int reader_get_page_indicator_id(void) {
     return reader_page_indicator_id;
 }
 
+/* M13: Helper to append integer to buffer */
+static int append_int(unsigned char* buf, int pos, int value) {
+    if (value >= 100) {
+        buf[pos++] = '0' + (value / 100);
+        buf[pos++] = '0' + ((value / 10) % 10);
+        buf[pos++] = '0' + (value % 10);
+    } else if (value >= 10) {
+        buf[pos++] = '0' + (value / 10);
+        buf[pos++] = '0' + (value % 10);
+    } else {
+        buf[pos++] = '0' + value;
+    }
+    return pos;
+}
+
 /* Update page display */
 void reader_update_page_display(void) {
     if (reader_page_indicator_id == 0) return;
 
     unsigned char* buf = get_fetch_buffer_ptr();
+    unsigned char* str_buf = get_string_buffer_ptr();
     int len = 0;
 
     chapter_slot_t* curr_slot = &slots[SLOT_CURR];
-    int chapter = curr_slot->chapter_index + 1;  /* 1-indexed display */
+    int chapter_idx = curr_slot->chapter_index;
+    int chapter = chapter_idx + 1;  /* 1-indexed display */
     int page = reader_current_page + 1;  /* 1-indexed display */
     int total = curr_slot->page_count > 0 ? curr_slot->page_count : 1;
 
-    /* "Ch N: P / T" format */
-    const char* ch = str_ch_prefix;
-    while (*ch && len < 16380) buf[len++] = *ch++;
-
-    /* Chapter number */
-    if (chapter >= 100) {
-        buf[len++] = '0' + (chapter / 100);
-        buf[len++] = '0' + ((chapter / 10) % 10);
-        buf[len++] = '0' + (chapter % 10);
-    } else if (chapter >= 10) {
-        buf[len++] = '0' + (chapter / 10);
-        buf[len++] = '0' + (chapter % 10);
+    /* M13: Try to get chapter title from TOC */
+    int title_len = epub_get_chapter_title(chapter_idx, 0);
+    if (title_len > 0 && title_len < 100) {
+        /* Show chapter title instead of "Ch N" */
+        for (int i = 0; i < title_len && len < 16300; i++) {
+            buf[len++] = str_buf[i];
+        }
     } else {
-        buf[len++] = '0' + chapter;
+        /* Fallback: "Ch N" format */
+        const char* ch = str_ch_prefix;
+        while (*ch && len < 16380) buf[len++] = *ch++;
+        len = append_int(buf, len, chapter);
     }
 
-    const char* col = str_colon_space;
-    while (*col && len < 16380) buf[len++] = *col++;
+    /* Add em-dash separator */
+    const char* dash = str_em_dash;
+    while (*dash && len < 16380) buf[len++] = *dash++;
 
     /* Page number */
-    if (page >= 100) {
-        buf[len++] = '0' + (page / 100);
-        buf[len++] = '0' + ((page / 10) % 10);
-        buf[len++] = '0' + (page % 10);
-    } else if (page >= 10) {
-        buf[len++] = '0' + (page / 10);
-        buf[len++] = '0' + (page % 10);
-    } else {
-        buf[len++] = '0' + page;
-    }
+    len = append_int(buf, len, page);
 
     const char* of = str_page_of;
     while (*of && len < 16380) buf[len++] = *of++;
 
     /* Total pages */
-    if (total >= 100) {
-        buf[len++] = '0' + (total / 100);
-        buf[len++] = '0' + ((total / 10) % 10);
-        buf[len++] = '0' + (total % 10);
-    } else if (total >= 10) {
-        buf[len++] = '0' + (total / 10);
-        buf[len++] = '0' + (total % 10);
-    } else {
-        buf[len++] = '0' + total;
-    }
+    len = append_int(buf, len, total);
 
     void* pf = dom_root_proof();
     dom_set_text_offset(pf, reader_page_indicator_id, 0, len);
+
+    /* M13: Update progress bar */
+    if (progress_fill_id > 0) {
+        int total_chapters = epub_get_chapter_count();
+        int progress_pct = 0;
+        if (total_chapters > 0) {
+            /* Calculate progress: (current chapter pages + current page) / total estimated pages */
+            /* Simplified: chapter index / total chapters, adjusted by page progress within chapter */
+            int base_progress = (chapter_idx * 100) / total_chapters;
+            int page_progress = (total > 1) ? ((page - 1) * 100) / (total * total_chapters) : 0;
+            progress_pct = base_progress + page_progress;
+            if (progress_pct > 100) progress_pct = 100;
+        }
+
+        /* Build style string: "width:XX%" */
+        static const char str_style[] = "style";
+        static const char str_width_prefix[] = "width:";
+        static const char str_pct[] = "%";
+
+        int style_len = 0;
+        const char* wp = str_width_prefix;
+        while (*wp && style_len < 20) str_buf[style_len++] = *wp++;
+        style_len = append_int(str_buf, style_len, progress_pct);
+        const char* pct = str_pct;
+        while (*pct && style_len < 25) str_buf[style_len++] = *pct++;
+
+        dom_set_attr(pf, progress_fill_id, (void*)str_style, 5, str_buf, style_len);
+    }
+
     dom_drop_proof(pf);
 }
 
 /* Check if any chapter is loading */
 int reader_is_loading(void) {
     return loading_slot >= 0 ? 1 : 0;
+}
+
+/* M13: Go to specific chapter */
+void reader_go_to_chapter(int chapter_index) {
+    if (!reader_active) return;
+    int total_chapters = epub_get_chapter_count();
+    if (chapter_index < 0 || chapter_index >= total_chapters) return;
+
+    /* Clear all slots */
+    for (int i = 0; i < 3; i++) {
+        slots[i].chapter_index = -1;
+        slots[i].status = 0;
+        slots[i].page_count = 0;
+    }
+
+    /* Reset current page */
+    reader_current_page = 0;
+    loading_slot = -1;
+
+    /* Load target chapter into current slot */
+    load_chapter_into_slot(SLOT_CURR, chapter_index);
+}
+
+/* M13: Show Table of Contents overlay */
+void reader_show_toc(void) {
+    if (!reader_active || toc_visible) return;
+
+    unsigned char* buf = get_fetch_buffer_ptr();
+    unsigned char* str_buf = get_string_buffer_ptr();
+    void* pf = dom_root_proof();
+
+    /* Create TOC overlay */
+    int overlay_id = dom_next_id();
+    toc_overlay_id = overlay_id;
+    void* pf_overlay = dom_create_element(pf, root_node_id, overlay_id, (void*)str_div, 3);
+    pf_overlay = dom_set_attr(pf_overlay, overlay_id, (void*)str_class, 5,
+                              (void*)str_toc_overlay, 11);
+
+    /* Create header with title and close button */
+    int header_id = dom_next_id();
+    void* pf_header = dom_create_element(pf_overlay, overlay_id, header_id, (void*)str_div, 3);
+    pf_header = dom_set_attr(pf_header, header_id, (void*)str_class, 5,
+                             (void*)str_toc_header, 10);
+
+    /* Title text */
+    int len = 0;
+    const char* title = str_toc_title;
+    while (*title && len < 100) buf[len++] = *title++;
+    dom_set_text_offset(pf_header, header_id, 0, len);
+
+    /* Close button */
+    int close_id = dom_next_id();
+    toc_close_id = close_id;
+    void* pf_close = dom_create_element(pf_header, header_id, close_id, (void*)str_div, 3);
+    pf_close = dom_set_attr(pf_close, close_id, (void*)str_class, 5,
+                            (void*)str_toc_close, 9);
+    len = 0;
+    const char* close_x = str_toc_close_x;
+    while (*close_x && len < 10) buf[len++] = *close_x++;
+    dom_set_text_offset(pf_close, close_id, 0, len);
+    dom_drop_proof(pf_close);
+    dom_drop_proof(pf_header);
+
+    /* Create TOC list */
+    int list_id = dom_next_id();
+    toc_list_id = list_id;
+    void* pf_list = dom_create_element(pf_overlay, overlay_id, list_id, (void*)str_div, 3);
+    pf_list = dom_set_attr(pf_list, list_id, (void*)str_class, 5,
+                           (void*)str_toc_list, 8);
+
+    /* Add TOC entries */
+    int toc_count = epub_get_toc_count();
+    for (int i = 0; i < toc_count && i < 100; i++) {
+        int entry_id = dom_next_id();
+        void* pf_entry = dom_create_element(pf_list, list_id, entry_id, (void*)str_div, 3);
+
+        /* Set class based on nesting level */
+        int level = epub_get_toc_level(i);
+        if (level > 0) {
+            pf_entry = dom_set_attr(pf_entry, entry_id, (void*)str_class, 5,
+                                    (void*)str_toc_entry_nested, 16);
+        } else {
+            pf_entry = dom_set_attr(pf_entry, entry_id, (void*)str_class, 5,
+                                    (void*)str_toc_entry, 9);
+        }
+
+        /* Store TOC index as data attribute for click handling */
+        len = append_int(str_buf, 0, i);
+        pf_entry = dom_set_attr(pf_entry, entry_id, (void*)str_data_toc_idx, 12, str_buf, len);
+
+        /* Set entry text */
+        int label_len = epub_get_toc_label(i, 0);
+        if (label_len > 0) {
+            for (int j = 0; j < label_len && j < 200; j++) {
+                buf[j] = str_buf[j];
+            }
+            dom_set_text_offset(pf_entry, entry_id, 0, label_len);
+        }
+        dom_drop_proof(pf_entry);
+    }
+
+    dom_drop_proof(pf_list);
+    dom_drop_proof(pf_overlay);
+    dom_drop_proof(pf);
+
+    toc_visible = 1;
+}
+
+/* M13: Hide Table of Contents overlay */
+void reader_hide_toc(void) {
+    if (!reader_active || !toc_visible || toc_overlay_id == 0) return;
+
+    void* pf = dom_root_proof();
+    dom_remove_child(pf, toc_overlay_id);
+    dom_drop_proof(pf);
+
+    toc_visible = 0;
+    toc_overlay_id = 0;
+    toc_close_id = 0;
+    toc_list_id = 0;
+}
+
+/* M13: Check if TOC is visible */
+int reader_is_toc_visible(void) {
+    return toc_visible;
+}
+
+/* M13: Toggle TOC visibility */
+void reader_toggle_toc(void) {
+    if (toc_visible) {
+        reader_hide_toc();
+    } else {
+        reader_show_toc();
+    }
+}
+
+/* M13: Get TOC overlay ID */
+int reader_get_toc_id(void) {
+    return toc_overlay_id;
+}
+
+/* M13: Get progress bar ID */
+int reader_get_progress_bar_id(void) {
+    return progress_bar_id;
+}
+
+/* M13: Handle TOC entry click */
+void reader_on_toc_click(int toc_index) {
+    if (!reader_active || toc_index < 0) return;
+
+    int chapter_index = epub_get_toc_chapter(toc_index);
+    if (chapter_index >= 0) {
+        reader_hide_toc();
+        reader_go_to_chapter(chapter_index);
+    }
 }
 %}
 

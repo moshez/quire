@@ -148,6 +148,26 @@ static void build_css(void) {
                "padding:0.5rem 1rem;background:rgba(0,0,0,0.6);color:#fff;border-radius:0.25rem;"
                "font-size:0.875rem;font-family:system-ui,-apple-system,sans-serif;z-index:100;"
                "pointer-events:none}");
+
+    /* M13: Progress bar styling */
+    css_append(".progress-bar{position:fixed;top:0;left:0;width:100%;height:4px;"
+               "background:rgba(0,0,0,0.1);z-index:100}");
+    css_append(".progress-fill{height:100%;background:#4a7c59;transition:width 0.3s ease}");
+
+    /* M13: TOC overlay styling */
+    css_append(".toc-overlay{position:fixed;top:0;left:0;width:100%;height:100%;"
+               "background:rgba(250,250,248,0.98);z-index:200;display:flex;flex-direction:column;"
+               "font-family:system-ui,-apple-system,sans-serif}");
+    css_append(".toc-header{display:flex;justify-content:space-between;align-items:center;"
+               "padding:1.5rem 2rem;border-bottom:1px solid #e0e0e0;font-size:1.25rem;font-weight:500}");
+    css_append(".toc-close{cursor:pointer;font-size:1.5rem;color:#666;padding:0.5rem;"
+               "border-radius:50%;transition:background 0.2s}");
+    css_append(".toc-close:hover{background:rgba(0,0,0,0.1)}");
+    css_append(".toc-list{flex:1;overflow-y:auto;padding:1rem 0}");
+    css_append(".toc-entry{padding:0.75rem 2rem;cursor:pointer;border-bottom:1px solid #f0f0f0;"
+               "transition:background 0.2s;color:#333}");
+    css_append(".toc-entry:hover{background:rgba(74,124,89,0.1)}");
+    css_append(".toc-entry.nested{padding-left:3.5rem;font-size:0.9rem;color:#666}");
 }
 
 /* Get CSS buffer pointer and length */
@@ -488,6 +508,13 @@ extern int reader_get_total_pages(void);
 extern void reader_on_chapter_loaded(int len);
 extern void reader_on_chapter_blob_loaded(int handle, int size);
 
+/* M13: TOC and navigation functions */
+extern void reader_toggle_toc(void);
+extern void reader_hide_toc(void);
+extern int reader_is_toc_visible(void);
+extern int reader_get_toc_id(void);
+extern void reader_on_toc_click(int toc_index);
+
 /* Show error message */
 void show_import_error(void) {
     unsigned char* buf = get_fetch_buffer_ptr();
@@ -645,6 +672,20 @@ void process_event_impl(void) {
         /* M12: Handle click zones in reader mode */
         int vw = reader_get_viewport_width();
         if (reader_is_active() && vw > 0) {
+            /* M13: Check if TOC is visible and handle TOC clicks */
+            if (reader_is_toc_visible()) {
+                int toc_id = reader_get_toc_id();
+                /* Check if click is on a TOC entry by checking data-toc-idx attribute */
+                /* data2 contains the TOC index if clicked element has it, or -1 */
+                if (data2 >= 0) {
+                    reader_on_toc_click(data2);
+                    return;
+                }
+                /* Any click outside TOC entries closes TOC */
+                reader_hide_toc();
+                return;
+            }
+
             int click_x = data1;  /* clientX */
             int zone_left = vw / 5;      /* 20% from left */
             int zone_right = vw - zone_left;  /* 20% from right */
@@ -655,8 +696,10 @@ void process_event_impl(void) {
             } else if (click_x > zone_right) {
                 /* Right zone - next page */
                 reader_next_page();
+            } else {
+                /* M13: Middle zone (60%) - toggle TOC */
+                reader_toggle_toc();
             }
-            /* Middle zone (60%) - reserved for menu (future) */
         }
     }
 
@@ -675,6 +718,7 @@ void process_event_impl(void) {
         int key_code = data1;
 
         /* Key codes:
+         * 27 = Escape
          * 37 = Left Arrow
          * 39 = Right Arrow
          * 32 = Space
@@ -682,22 +726,39 @@ void process_event_impl(void) {
          * 34 = Page Down
          * 36 = Home
          * 35 = End
+         * 84 = 't' (toggle TOC)
          */
         switch (key_code) {
+            case 27:  /* Escape - close TOC */
+                if (reader_is_toc_visible()) {
+                    reader_hide_toc();
+                }
+                break;
+            case 84:  /* 't' - toggle TOC */
+                reader_toggle_toc();
+                break;
             case 37:  /* Left Arrow */
             case 33:  /* Page Up */
-                reader_prev_page();
+                if (!reader_is_toc_visible()) {
+                    reader_prev_page();
+                }
                 break;
             case 39:  /* Right Arrow */
             case 34:  /* Page Down */
             case 32:  /* Space */
-                reader_next_page();
+                if (!reader_is_toc_visible()) {
+                    reader_next_page();
+                }
                 break;
             case 36:  /* Home - first page */
-                reader_go_to_page(0);
+                if (!reader_is_toc_visible()) {
+                    reader_go_to_page(0);
+                }
                 break;
             case 35:  /* End - last page */
-                reader_go_to_page(reader_get_total_pages() - 1);
+                if (!reader_is_toc_visible()) {
+                    reader_go_to_page(reader_get_total_pages() - 1);
+                }
                 break;
         }
     }

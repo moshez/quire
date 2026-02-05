@@ -62,3 +62,29 @@ fun reader_update_page_display(): void = "mac#"
 
 (* Check if any chapter is loading *)
 fun reader_is_loading(): int = "mac#"
+
+(* M13: Navigation UI functions *)
+
+(* Go to specific chapter *)
+fun reader_go_to_chapter(chapter_index: int): void = "mac#"
+
+(* Show Table of Contents overlay *)
+fun reader_show_toc(): void = "mac#"
+
+(* Hide Table of Contents overlay *)
+fun reader_hide_toc(): void = "mac#"
+
+(* Check if TOC is visible *)
+fun reader_is_toc_visible(): int = "mac#"
+
+(* Toggle TOC visibility *)
+fun reader_toggle_toc(): void = "mac#"
+
+(* Get TOC overlay ID (for click handling) *)
+fun reader_get_toc_id(): int = "mac#"
+
+(* Get progress bar ID *)
+fun reader_get_progress_bar_id(): int = "mac#"
+
+(* Handle TOC entry click (index into TOC list) *)
+fun reader_on_toc_click(toc_index: int): void = "mac#"

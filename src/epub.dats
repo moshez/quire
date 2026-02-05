@@ -98,6 +98,14 @@ static const char str_opf_suffix[] = ".opf";
 static const char str_ncx_suffix[] = ".ncx";
 static const char str_unknown[] = "Unknown";
 
+/* M13: NCX/TOC parsing string constants */
+static const char str_navMap[] = "navMap";
+static const char str_navPoint[] = "navPoint";
+static const char str_navLabel[] = "navLabel";
+static const char str_text[] = "text";
+static const char str_content[] = "content";
+static const char str_src[] = "src";
+
 /* Manifest item */
 typedef struct {
     int id_offset;          /* Offset in manifest_strings */
@@ -107,6 +115,19 @@ typedef struct {
     int media_type;         /* 0=other, 1=xhtml, 2=css, 3=image, 4=font */
     int zip_index;          /* Index in ZIP central directory */
 } manifest_item_t;
+
+/* M13: TOC entry */
+#define MAX_TOC_ENTRIES 256
+#define MAX_TOC_LABEL_LEN 128
+
+typedef struct {
+    int label_offset;       /* Offset in toc_strings */
+    int label_len;
+    int href_offset;        /* Offset in toc_strings */
+    int href_len;
+    int spine_index;        /* Index into spine (-1 if not found) */
+    int nesting_level;      /* 0 = top level, 1 = nested, etc. */
+} toc_entry_t;
 
 /* EPUB import state */
 static int epub_state = 0;  /* EPUB_STATE_IDLE */
@@ -135,6 +156,13 @@ static manifest_item_t manifest_items[MAX_MANIFEST_ITEMS];
 static int manifest_count = 0;
 static int spine_manifest_indices[MAX_SPINE_ITEMS];
 static int spine_count = 0;
+
+/* M13: TOC storage */
+static char toc_strings[8192] = {0};
+static int toc_strings_offset = 0;
+static toc_entry_t toc_entries[MAX_TOC_ENTRIES];
+static int toc_count = 0;
+static int ncx_zip_index = -1;  /* ZIP index of NCX file */
 
 /* Processing state */
 static int current_entry_index = 0;
@@ -195,6 +223,41 @@ static int find_manifest_by_id(const unsigned char* id, int id_len) {
             if (match) return i;
         }
     }
+    return -1;
+}
+
+/* M13: Helper: Find spine index from href (handles fragment identifiers) */
+static int find_spine_index_by_href(const unsigned char* href, int href_len) {
+    /* Extract path without fragment (e.g., "chapter1.xhtml" from "chapter1.xhtml#section1") */
+    int path_len = href_len;
+    for (int i = 0; i < href_len; i++) {
+        if (href[i] == '#') {
+            path_len = i;
+            break;
+        }
+    }
+
+    /* Try to find matching manifest item by href */
+    for (int i = 0; i < manifest_count; i++) {
+        manifest_item_t* item = &manifest_items[i];
+        if (item->href_len == path_len) {
+            int match = 1;
+            for (int j = 0; j < path_len && match; j++) {
+                if (manifest_strings[item->href_offset + j] != href[j]) {
+                    match = 0;
+                }
+            }
+            if (match) {
+                /* Found manifest item, now find in spine */
+                for (int s = 0; s < spine_count; s++) {
+                    if (spine_manifest_indices[s] == i) {
+                        return s;
+                    }
+                }
+            }
+        }
+    }
+
     return -1;
 }
 
@@ -464,7 +527,126 @@ static int parse_opf(void) {
 
     generate_book_id();
 
+    /* Find NCX file in manifest */
+    ncx_zip_index = -1;
+    for (int i = 0; i < zip_get_entry_count(); i++) {
+        if (zip_entry_name_ends_with(i, (void*)str_ncx_suffix, 4)) {
+            ncx_zip_index = i;
+            break;
+        }
+    }
+
     return 1;
+}
+
+/* M13: Parse NCX file for Table of Contents */
+static int parse_ncx(void) {
+    if (ncx_zip_index < 0) return 0;  /* No NCX file found */
+
+    unsigned char* buf = get_fetch_buffer_ptr();
+    unsigned char* str_buf = get_string_buffer_ptr();
+
+    /* Get NCX entry info */
+    int entry_data[7];
+    if (!zip_get_entry(ncx_zip_index, entry_data)) {
+        return 0;
+    }
+
+    int compression = entry_data[3];
+    int compressed_size = entry_data[4];
+    int data_offset = zip_get_data_offset(ncx_zip_index);
+
+    if (compression != 0) {
+        /* Compressed NCX not supported for now */
+        return 0;
+    }
+
+    /* Read NCX content */
+    int read_len = js_file_read_chunk(file_handle, data_offset, compressed_size);
+    if (read_len <= 0) {
+        return 0;
+    }
+
+    void* xml = xml_init(read_len);
+    if (!xml) {
+        return 0;
+    }
+
+    /* Reset TOC state */
+    toc_count = 0;
+    toc_strings_offset = 0;
+
+    int in_navMap = 0;
+    int current_level = 0;
+    int pending_label = 0;
+    int pending_label_offset = 0;
+    int pending_label_len = 0;
+    int navPoint_depth = 0;  /* Track nested navPoints */
+
+    while (xml_next_element(xml)) {
+        if (xml_is_closing(xml)) {
+            if (xml_element_is(xml, (void*)str_navMap, 6)) {
+                in_navMap = 0;
+            } else if (xml_element_is(xml, (void*)str_navPoint, 8)) {
+                if (navPoint_depth > 0) navPoint_depth--;
+            }
+            continue;
+        }
+
+        if (xml_element_is(xml, (void*)str_navMap, 6)) {
+            in_navMap = 1;
+            continue;
+        }
+
+        if (in_navMap) {
+            if (xml_element_is(xml, (void*)str_navPoint, 8)) {
+                /* Start of a new navPoint */
+                current_level = navPoint_depth;
+                navPoint_depth++;
+                pending_label = 0;
+            } else if (xml_element_is(xml, (void*)str_text, 4)) {
+                /* Get the label text */
+                if (!xml_is_self_closing(xml)) {
+                    int len = xml_get_text_content(xml, 0);
+                    if (len > 0 && toc_strings_offset + len < 8190) {
+                        pending_label_offset = toc_strings_offset;
+                        pending_label_len = len < MAX_TOC_LABEL_LEN ? len : MAX_TOC_LABEL_LEN;
+                        for (int i = 0; i < pending_label_len; i++) {
+                            toc_strings[toc_strings_offset++] = str_buf[i];
+                        }
+                        pending_label = 1;
+                    }
+                }
+            } else if (xml_element_is(xml, (void*)str_content, 7)) {
+                /* Get the content src and create TOC entry */
+                int src_len = xml_get_attr(xml, (void*)str_src, 3, 0);
+                if (src_len > 0 && pending_label && toc_count < MAX_TOC_ENTRIES) {
+                    toc_entry_t* entry = &toc_entries[toc_count];
+                    entry->label_offset = pending_label_offset;
+                    entry->label_len = pending_label_len;
+
+                    /* Store href */
+                    entry->href_offset = toc_strings_offset;
+                    entry->href_len = src_len < 256 ? src_len : 255;
+                    if (toc_strings_offset + entry->href_len < 8190) {
+                        for (int i = 0; i < entry->href_len; i++) {
+                            toc_strings[toc_strings_offset++] = str_buf[i];
+                        }
+                    }
+
+                    /* Find spine index */
+                    entry->spine_index = find_spine_index_by_href(str_buf, src_len);
+                    entry->nesting_level = current_level;
+
+                    toc_count++;
+                    pending_label = 0;
+                }
+            }
+        }
+    }
+
+    xml_free(xml);
+    return toc_count > 0 ? 1 : 0;
 }
 
 /* Start storing entries in IndexedDB */
@@ -602,6 +784,10 @@ void epub_init(void) {
     current_entry_index = 0;
     total_entries = 0;
     current_blob_handle = 0;
+    /* M13: Reset TOC state */
+    toc_count = 0;
+    toc_strings_offset = 0;
+    ncx_zip_index = -1;
 }
 
 int epub_start_import(int file_input_node_id) {
@@ -733,6 +919,9 @@ void epub_on_file_open(int handle, int size) {
         return;  /* Error already set */
     }
 
+    /* M13: Parse NCX for TOC (optional - don't fail if missing) */
+    parse_ncx();
+
     epub_state = 5;  /* EPUB_STATE_OPENING_DB */
 
     /* Open IndexedDB */
@@ -825,5 +1014,52 @@ void epub_cancel(void) {
     }
     zip_close();
     epub_state = 0;
+}
+
+/* M13: TOC API functions */
+
+int epub_get_toc_count(void) {
+    return toc_count;
+}
+
+int epub_get_toc_label(int toc_index, int buf_offset) {
+    if (toc_index < 0 || toc_index >= toc_count) return 0;
+
+    unsigned char* buf = get_string_buffer_ptr();
+    toc_entry_t* entry = &toc_entries[toc_index];
+
+    for (int i = 0; i < entry->label_len && buf_offset + i < 4096; i++) {
+        buf[buf_offset + i] = toc_strings[entry->label_offset + i];
+    }
+    return entry->label_len;
+}
+
+int epub_get_toc_chapter(int toc_index) {
+    if (toc_index < 0 || toc_index >= toc_count) return -1;
+    return toc_entries[toc_index].spine_index;
+}
+
+int epub_get_toc_level(int toc_index) {
+    if (toc_index < 0 || toc_index >= toc_count) return 0;
+    return toc_entries[toc_index].nesting_level;
+}
+
+int epub_get_chapter_title(int spine_index, int buf_offset) {
+    if (spine_index < 0 || spine_index >= spine_count) return 0;
+
+    unsigned char* buf = get_string_buffer_ptr();
+
+    /* Find first TOC entry that matches this spine index */
+    for (int i = 0; i < toc_count; i++) {
+        if (toc_entries[i].spine_index == spine_index) {
+            toc_entry_t* entry = &toc_entries[i];
+            for (int j = 0; j < entry->label_len && buf_offset + j < 4096; j++) {
+                buf[buf_offset + j] = toc_strings[entry->label_offset + j];
+            }
+            return entry->label_len;
+        }
+    }
+
+    return 0;  /* No TOC entry found for this chapter */
 }
 %}
