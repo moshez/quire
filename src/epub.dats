@@ -655,6 +655,41 @@ int epub_get_chapter_count(void) {
     return spine_count;
 }
 
+int epub_get_chapter_key(int chapter_index, int buf_offset) {
+    if (chapter_index < 0 || chapter_index >= spine_count) return 0;
+
+    unsigned char* buf = get_string_buffer_ptr();
+    int key_len = 0;
+
+    /* Add book_id prefix */
+    for (int i = 0; i < book_id_len && key_len + buf_offset < 4096; i++) {
+        buf[buf_offset + key_len++] = book_id[i];
+    }
+
+    /* Add separator */
+    if (key_len + buf_offset < 4096) {
+        buf[buf_offset + key_len++] = '/';
+    }
+
+    /* Get manifest item for this spine entry */
+    int manifest_idx = spine_manifest_indices[chapter_index];
+    if (manifest_idx < 0 || manifest_idx >= manifest_count) return 0;
+
+    manifest_item_t* item = &manifest_items[manifest_idx];
+
+    /* Add OPF directory prefix (chapters are stored with full path from ZIP root) */
+    for (int i = 0; i < opf_dir_len && key_len + buf_offset < 4096; i++) {
+        buf[buf_offset + key_len++] = opf_dir[i];
+    }
+
+    /* Add chapter href */
+    for (int i = 0; i < item->href_len && key_len + buf_offset < 4096; i++) {
+        buf[buf_offset + key_len++] = manifest_strings[item->href_offset + i];
+    }
+
+    return key_len;
+}
+
 void epub_continue(void) {
     switch (epub_state) {
         case 6:  /* EPUB_STATE_DECOMPRESSING */

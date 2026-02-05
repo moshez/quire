@@ -38,6 +38,127 @@ static const char str_error_prefix[] = "Error: ";
 static const char str_by[] = " by ";
 static const char str_chapters[] = " chapters";
 
+/* M10: Reader view strings */
+static const char str_reader_viewport[] = "reader-viewport";
+static const char str_chapter_container[] = "chapter-container";
+static const char str_read_btn[] = "read-btn";
+static const char str_read_text[] = "Read";
+static const char str_chapters_store[] = "chapters";
+static const char str_loading[] = "Loading...";
+static const char str_style[] = "style";
+
+/* CSS buffer for building stylesheet dynamically */
+static char css_buffer[8192];
+static int css_buffer_len = 0;
+
+/* Helper: append string to CSS buffer */
+static void css_append(const char* str) {
+    while (*str && css_buffer_len < 8191) {
+        css_buffer[css_buffer_len++] = *str++;
+    }
+    css_buffer[css_buffer_len] = 0;
+}
+
+/* Helper: append a class rule - uses same class name constants as DOM ops */
+static void css_class_rule(const char* class_name, const char* properties) {
+    css_append(".");
+    css_append(class_name);
+    css_append("{");
+    css_append(properties);
+    css_append("}");
+}
+
+/* Helper: append a rule with selector */
+static void css_rule(const char* selector, const char* properties) {
+    css_append(selector);
+    css_append("{");
+    css_append(properties);
+    css_append("}");
+}
+
+/* Build the complete stylesheet - references class name constants to ensure consistency */
+static void build_css(void) {
+    css_buffer_len = 0;
+
+    /* Base page setup */
+    css_rule("html,body", "margin:0;padding:0;height:100%;width:100%;overflow:hidden;"
+             "font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"
+             "background:#fafaf8;color:#2a2a2a");
+
+    /* Loading state */
+    css_rule("#loading", "display:flex;flex-direction:column;align-items:center;justify-content:center;"
+             "height:100vh;font-size:1.25rem;color:#666");
+
+    /* Hidden utility - uses str_hidden constant */
+    css_class_rule(str_hidden, "display:none!important");
+
+    /* Main container - uses str_container constant */
+    css_class_rule(str_container, "display:flex;flex-direction:column;align-items:center;justify-content:center;"
+                   "min-height:100vh;padding:2rem;box-sizing:border-box");
+
+    /* Title heading */
+    css_rule(".container h1", "font-size:2.5rem;font-weight:300;color:#333;margin:0 0 2rem 0");
+
+    /* Hidden file input */
+    css_rule("input[type=file].hidden", "position:absolute;width:1px;height:1px;padding:0;margin:-1px;"
+             "overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0");
+
+    /* Import button - uses str_import_btn constant */
+    css_class_rule(str_import_btn, "display:inline-block;padding:0.875rem 2rem;font-size:1rem;font-weight:500;"
+                   "color:#fff;background:#4a7c59;border:none;border-radius:0.5rem;cursor:pointer;"
+                   "transition:background 0.2s,transform 0.1s;user-select:none");
+    css_append("."); css_append(str_import_btn); css_append(":hover{background:#3d6b4a}");
+    css_append("."); css_append(str_import_btn); css_append(":active{transform:scale(0.98)}");
+
+    /* Progress display - uses str_progress_div constant */
+    css_class_rule(str_progress_div, "margin-top:1.5rem;font-size:0.875rem;color:#666;min-height:1.25rem");
+
+    /* Title/book info display - uses str_title_div constant */
+    css_class_rule(str_title_div, "margin-top:1rem;font-size:1.125rem;color:#333;text-align:center;"
+                   "max-width:80%;word-wrap:break-word");
+
+    /* Read button - uses str_read_btn constant */
+    css_class_rule(str_read_btn, "display:inline-block;padding:0.75rem 1.5rem;font-size:0.9rem;font-weight:500;"
+                   "color:#fff;background:#3b6ea5;border:none;border-radius:0.5rem;cursor:pointer;"
+                   "transition:background 0.2s,transform 0.1s;user-select:none;margin-top:1rem");
+    css_append("."); css_append(str_read_btn); css_append(":hover{background:#2d5a8a}");
+    css_append("."); css_append(str_read_btn); css_append(":active{transform:scale(0.98)}");
+
+    /* Reader viewport - uses str_reader_viewport constant */
+    css_class_rule(str_reader_viewport, "position:fixed;top:0;left:0;width:100vw;height:100vh;"
+                   "overflow:hidden;background:#fafaf8");
+
+    /* Chapter container with CSS columns - uses str_chapter_container constant */
+    css_class_rule(str_chapter_container, "column-width:100vw;column-gap:0;column-fill:auto;"
+                   "height:calc(100vh - 4rem);padding:2rem;box-sizing:border-box;overflow:visible;"
+                   "font-family:Georgia,serif;font-size:18px;line-height:1.6;color:#2a2a2a");
+
+    /* Chapter content styling */
+    css_append("."); css_append(str_chapter_container);
+    css_append(" h1,."); css_append(str_chapter_container);
+    css_append(" h2,."); css_append(str_chapter_container);
+    css_append(" h3,."); css_append(str_chapter_container);
+    css_append(" h4,."); css_append(str_chapter_container);
+    css_append(" h5,."); css_append(str_chapter_container);
+    css_append(" h6{margin-top:1em;margin-bottom:0.5em;line-height:1.3}");
+
+    css_append("."); css_append(str_chapter_container);
+    css_append(" p{margin:0 0 1em 0;text-align:justify;hyphens:auto}");
+
+    css_append("."); css_append(str_chapter_container);
+    css_append(" img{max-width:100%;height:auto;display:block;margin:1em auto}");
+
+    css_append("."); css_append(str_chapter_container);
+    css_append(" a{color:#4a7c59;text-decoration:none}");
+
+    css_append("."); css_append(str_chapter_container);
+    css_append(" a:hover{text-decoration:underline}");
+}
+
+/* Get CSS buffer pointer and length */
+static void* get_css_buffer(void) { return css_buffer; }
+static int get_css_len(void) { return css_buffer_len; }
+
 extern unsigned char* get_fetch_buffer_ptr(void);
 extern unsigned char* get_string_buffer_ptr(void);
 extern unsigned char* get_event_buffer_ptr(void);
@@ -51,10 +172,20 @@ extern int epub_get_error(int buf_offset);
 extern int epub_get_title(int buf_offset);
 extern int epub_get_author(int buf_offset);
 extern int epub_get_chapter_count(void);
+extern int epub_get_chapter_key(int chapter_index, int buf_offset);
 extern void epub_on_file_open(int handle, int size);
 extern void epub_on_decompress(int blob_handle, int size);
 extern void epub_on_db_open(int success);
 extern void epub_on_db_put(int success);
+
+/* Bridge imports for reading from IndexedDB */
+extern void js_kv_get(void* store_ptr, int store_len, void* key_ptr, int key_len);
+extern void js_set_inner_html_from_blob(int node_id, int blob_handle);
+extern void js_blob_free(int handle);
+
+/* Forward declarations for M10 functions */
+static void load_chapter(int chapter_idx);
+static void inject_chapter_html(void);
 
 /* DOM functions */
 extern void dom_init(void);
@@ -95,9 +226,20 @@ static int import_btn_id = 0;
 static int progress_id = 0;
 static int title_id = 0;
 
+/* M10: Reader view node IDs */
+static int read_btn_id = 0;
+static int reader_viewport_id = 0;
+static int chapter_container_id = 0;
+
 /* Import state tracking */
 static int import_in_progress = 0;
 static int last_progress = -1;
+
+/* M10: Reader state */
+static int reader_mode = 0;           /* 0=import view, 1=reader view */
+static int current_chapter = 0;       /* Current chapter index */
+static int chapter_loading = 0;       /* 1 if chapter is being loaded */
+static int current_blob_handle = 0;   /* Blob handle for loaded chapter */
 %}
 
 (* External declarations for C functions and strings *)
@@ -126,6 +268,17 @@ extern fun get_str_done(): ptr = "mac#"
 extern fun get_str_error_prefix(): ptr = "mac#"
 extern fun get_str_by(): ptr = "mac#"
 extern fun get_str_chapters(): ptr = "mac#"
+extern fun get_str_reader_viewport(): ptr = "mac#"
+extern fun get_str_chapter_container(): ptr = "mac#"
+extern fun get_str_read_btn(): ptr = "mac#"
+extern fun get_str_read_text(): ptr = "mac#"
+extern fun get_str_chapters_store(): ptr = "mac#"
+extern fun get_str_loading(): ptr = "mac#"
+extern fun get_str_style(): ptr = "mac#"
+extern fun get_css_buffer(): ptr = "mac#"
+extern fun get_css_len(): int = "mac#"
+extern fun build_css(): void = "mac#"
+extern fun inject_styles(): void = "mac#"
 extern fun copy_text_to_fetch(text: ptr, len: int): int = "mac#"
 extern fun get_event_type(): int = "mac#"
 extern fun get_event_node_id(): int = "mac#"
@@ -141,9 +294,26 @@ extern fun set_progress_id(id: int): void = "mac#"
 extern fun set_title_id(id: int): void = "mac#"
 extern fun get_import_in_progress(): int = "mac#"
 extern fun set_import_in_progress(v: int): void = "mac#"
+extern fun get_read_btn_id(): int = "mac#"
+extern fun get_reader_viewport_id(): int = "mac#"
+extern fun get_chapter_container_id(): int = "mac#"
+extern fun set_read_btn_id(id: int): void = "mac#"
+extern fun set_reader_viewport_id(id: int): void = "mac#"
+extern fun set_chapter_container_id(id: int): void = "mac#"
+extern fun get_reader_mode(): int = "mac#"
+extern fun set_reader_mode(v: int): void = "mac#"
+extern fun get_chapter_loading(): int = "mac#"
+extern fun set_chapter_loading(v: int): void = "mac#"
+extern fun get_current_chapter(): int = "mac#"
+extern fun set_current_chapter(v: int): void = "mac#"
+extern fun get_current_blob_handle(): int = "mac#"
+extern fun set_current_blob_handle(v: int): void = "mac#"
 extern fun update_progress_display(): void = "mac#"
 extern fun show_import_complete(): void = "mac#"
 extern fun show_import_error(): void = "mac#"
+extern fun enter_reader_mode(): void = "mac#"
+extern fun load_chapter(chapter_idx: int): void = "mac#"
+extern fun inject_chapter_html(): void = "mac#"
 
 %{
 /* String getters */
@@ -172,6 +342,39 @@ void* get_str_done(void) { return (void*)str_done; }
 void* get_str_error_prefix(void) { return (void*)str_error_prefix; }
 void* get_str_by(void) { return (void*)str_by; }
 void* get_str_chapters(void) { return (void*)str_chapters; }
+void* get_str_reader_viewport(void) { return (void*)str_reader_viewport; }
+void* get_str_chapter_container(void) { return (void*)str_chapter_container; }
+void* get_str_read_btn(void) { return (void*)str_read_btn; }
+void* get_str_read_text(void) { return (void*)str_read_text; }
+void* get_str_chapters_store(void) { return (void*)str_chapters_store; }
+void* get_str_loading(void) { return (void*)str_loading; }
+void* get_str_style(void) { return (void*)str_style; }
+
+/* Inject styles into document head by creating <style> element */
+void inject_styles(void) {
+    unsigned char* fetch_buf = get_fetch_buffer_ptr();
+
+    /* Build CSS if not already built */
+    if (css_buffer_len == 0) {
+        build_css();
+    }
+
+    /* Copy CSS to fetch buffer */
+    for (int i = 0; i < css_buffer_len && i < 16384; i++) {
+        fetch_buf[i] = css_buffer[i];
+    }
+
+    /* Create style element as child of root (body) */
+    void* pf = dom_root_proof();
+    int style_id = dom_next_id();
+    void* pf_style = dom_create_element(pf, root_id, style_id, (void*)str_style, 5);
+
+    /* Set innerHTML with CSS content */
+    dom_set_inner_html(pf_style, style_id, 0, css_buffer_len);
+
+    dom_drop_proof(pf_style);
+    dom_drop_proof(pf);
+}
 
 /* Node ID getters/setters */
 int get_container_id(void) { return container_id; }
@@ -179,13 +382,27 @@ int get_file_input_id(void) { return file_input_id; }
 int get_import_btn_id(void) { return import_btn_id; }
 int get_progress_id(void) { return progress_id; }
 int get_title_id(void) { return title_id; }
+int get_read_btn_id(void) { return read_btn_id; }
+int get_reader_viewport_id(void) { return reader_viewport_id; }
+int get_chapter_container_id(void) { return chapter_container_id; }
 void set_container_id(int id) { container_id = id; }
 void set_file_input_id(int id) { file_input_id = id; }
 void set_import_btn_id(int id) { import_btn_id = id; }
 void set_progress_id(int id) { progress_id = id; }
 void set_title_id(int id) { title_id = id; }
+void set_read_btn_id(int id) { read_btn_id = id; }
+void set_reader_viewport_id(int id) { reader_viewport_id = id; }
+void set_chapter_container_id(int id) { chapter_container_id = id; }
 int get_import_in_progress(void) { return import_in_progress; }
 void set_import_in_progress(int v) { import_in_progress = v; }
+int get_reader_mode(void) { return reader_mode; }
+void set_reader_mode(int v) { reader_mode = v; }
+int get_chapter_loading(void) { return chapter_loading; }
+void set_chapter_loading(int v) { chapter_loading = v; }
+int get_current_chapter(void) { return current_chapter; }
+void set_current_chapter(int v) { current_chapter = v; }
+int get_current_blob_handle(void) { return current_blob_handle; }
+void set_current_blob_handle(int v) { current_blob_handle = v; }
 
 /* Update progress display */
 void update_progress_display(void) {
@@ -222,7 +439,7 @@ void update_progress_display(void) {
     dom_drop_proof(pf);
 }
 
-/* Show import complete message with book info */
+/* Show import complete message with book info and Read button */
 void show_import_complete(void) {
     unsigned char* buf = get_fetch_buffer_ptr();
     unsigned char* str_buf = get_string_buffer_ptr();
@@ -272,7 +489,90 @@ void show_import_complete(void) {
     }
 
     dom_set_text_offset(pf, progress_id, 0, len);
+
+    /* Create Read button */
+    int rid = dom_next_id();
+    read_btn_id = rid;
+    void* pf_btn = dom_create_element(pf, container_id, rid, (void*)str_label, 5);
+    pf_btn = dom_set_attr(pf_btn, rid, (void*)str_class, 5, (void*)str_read_btn, 8);
+
+    /* Set button text "Read" */
+    len = 0;
+    const char* read_txt = str_read_text;
+    while (*read_txt && len < 16380) {
+        buf[len++] = *read_txt++;
+    }
+    dom_set_text_offset(pf_btn, rid, 0, len);
+    dom_drop_proof(pf_btn);
+
     dom_drop_proof(pf);
+}
+
+/* Enter reader mode - create viewport and load first chapter */
+void enter_reader_mode(void) {
+    reader_mode = 1;
+    current_chapter = 0;
+
+    unsigned char* buf = get_fetch_buffer_ptr();
+    void* pf = dom_root_proof();
+
+    /* Hide the import container */
+    pf = dom_set_attr(pf, container_id, (void*)str_class, 5, (void*)str_hidden, 6);
+
+    /* Create reader viewport */
+    int vid = dom_next_id();
+    reader_viewport_id = vid;
+    void* pf_viewport = dom_create_element(pf, root_id, vid, (void*)str_div, 3);
+    pf_viewport = dom_set_attr(pf_viewport, vid, (void*)str_class, 5, (void*)str_reader_viewport, 15);
+
+    /* Create chapter container inside viewport */
+    int cid = dom_next_id();
+    chapter_container_id = cid;
+    void* pf_chapter = dom_create_element(pf_viewport, vid, cid, (void*)str_div, 3);
+    pf_chapter = dom_set_attr(pf_chapter, cid, (void*)str_class, 5, (void*)str_chapter_container, 17);
+
+    /* Set loading text */
+    int len = 0;
+    const char* loading = str_loading;
+    while (*loading && len < 16380) {
+        buf[len++] = *loading++;
+    }
+    dom_set_text_offset(pf_chapter, cid, 0, len);
+
+    dom_drop_proof(pf_chapter);
+    dom_drop_proof(pf_viewport);
+    dom_drop_proof(pf);
+
+    /* Load first chapter */
+    load_chapter(0);
+}
+
+/* Load a chapter from IndexedDB */
+static void load_chapter(int chapter_idx) {
+    if (chapter_loading) return;  /* Already loading */
+
+    unsigned char* str_buf = get_string_buffer_ptr();
+
+    /* Get chapter key */
+    int key_len = epub_get_chapter_key(chapter_idx, 0);
+    if (key_len == 0) return;  /* Invalid chapter index */
+
+    chapter_loading = 1;
+    current_chapter = chapter_idx;
+
+    /* Request chapter from IndexedDB */
+    js_kv_get((void*)str_chapters_store, 8, str_buf, key_len);
+}
+
+/* Inject loaded chapter HTML into chapter container */
+static void inject_chapter_html(void) {
+    if (current_blob_handle > 0) {
+        /* Use js_set_inner_html_from_blob for large chapters */
+        js_set_inner_html_from_blob(chapter_container_id, current_blob_handle);
+        js_blob_free(current_blob_handle);
+        current_blob_handle = 0;
+    }
+    chapter_loading = 0;
 }
 
 /* Show error message */
@@ -304,6 +604,9 @@ void show_import_error(void) {
 implement init() = let
     val () = dom_init()
     val () = epub_init()
+
+    (* Inject CSS styles into document *)
+    val () = inject_styles()
 
     (* Get root proof *)
     val pf_root = dom_root_proof()
@@ -390,6 +693,8 @@ extern fun on_file_open_impl(handle: int, size: int): void = "mac#"
 extern fun on_decompress_impl(handle: int, size: int): void = "mac#"
 extern fun on_kv_complete_impl(success: int): void = "mac#"
 extern fun on_kv_open_impl(success: int): void = "mac#"
+extern fun on_kv_get_complete_impl(len: int): void = "mac#"
+extern fun on_kv_get_blob_complete_impl(handle: int, size: int): void = "mac#"
 
 (* Handle events - implemented in C to avoid prelude dependency *)
 implement process_event() = process_event_impl()
@@ -400,8 +705,8 @@ implement on_timer_complete(callback_id) = ()
 implement on_file_open_complete(handle, size) = on_file_open_impl(handle, size)
 implement on_decompress_complete(handle, size) = on_decompress_impl(handle, size)
 implement on_kv_complete(success) = on_kv_complete_impl(success)
-implement on_kv_get_complete(len) = ()
-implement on_kv_get_blob_complete(handle, size) = ()
+implement on_kv_get_complete(len) = on_kv_get_complete_impl(len)
+implement on_kv_get_blob_complete(handle, size) = on_kv_get_blob_complete_impl(handle, size)
 implement on_clipboard_copy_complete(success) = ()
 implement on_kv_open_complete(success) = on_kv_open_impl(success)
 
@@ -409,6 +714,14 @@ implement on_kv_open_complete(success) = on_kv_open_impl(success)
 void process_event_impl(void) {
     int event_type = get_event_type();
     int node_id = get_event_node_id();
+
+    /* Event type 1 = click */
+    if (event_type == 1) {
+        /* Click on Read button -> enter reader mode */
+        if (node_id == read_btn_id && read_btn_id > 0 && !reader_mode) {
+            enter_reader_mode();
+        }
+    }
 
     /* Event type 2 = input (file selected) */
     if (event_type == 2) {
@@ -461,5 +774,37 @@ void on_kv_open_impl(int success) {
         show_import_error();
         import_in_progress = 0;
     }
+}
+
+/* Handle chapter data loaded from IndexedDB (small chapter, fits in fetch buffer) */
+void on_kv_get_complete_impl(int len) {
+    if (!chapter_loading || !reader_mode) return;
+
+    if (len == 0) {
+        /* Chapter not found - show error or empty */
+        chapter_loading = 0;
+        return;
+    }
+
+    /* Chapter data is in fetch buffer, inject it via SET_INNER_HTML */
+    void* pf = dom_root_proof();
+    dom_set_inner_html(pf, chapter_container_id, 0, len);
+    dom_drop_proof(pf);
+
+    chapter_loading = 0;
+}
+
+/* Handle chapter data loaded from IndexedDB (large chapter, returned as blob) */
+void on_kv_get_blob_complete_impl(int handle, int size) {
+    if (!chapter_loading || !reader_mode) return;
+
+    if (handle == 0 || size == 0) {
+        /* Chapter not found */
+        chapter_loading = 0;
+        return;
+    }
+
+    current_blob_handle = handle;
+    inject_chapter_html();
 }
 %}

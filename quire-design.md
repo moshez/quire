@@ -1636,11 +1636,11 @@ Bridge test coverage expands incrementally: M2–M4 each add tests for the bridg
 
 ### Phase 3: Rendering
 
-- [ ] **M10: Single chapter rendering**
+- [x] **M10: Single chapter rendering**
   - Load chapter XHTML from IndexedDB
   - Rewrite resource URLs to blob URLs
   - Inject via `SET_INNER_HTML` (or `js_set_inner_html_from_blob`)
-  - `reader.css` with CSS column layout
+  - CSS styles built and injected from WASM (CSS column layout)
   - Verify: chapter text appears, flows into columns
 
 - [ ] **M11: Pagination**
