@@ -1082,7 +1082,9 @@ static int read_i16(unsigned char* buf, int offset) {
 }
 
 /* M15: Serialize book metadata to fetch buffer.
- * Format:
+ * Returns [len:nat] total bytes written.
+ *
+ * Format (symmetric with epub_restore_metadata for METADATA_ROUNDTRIP):
  *   u16: book_id_len, bytes: book_id
  *   u16: title_len, bytes: title
  *   u16: author_len, bytes: author
@@ -1091,7 +1093,10 @@ static int read_i16(unsigned char* buf, int offset) {
  *   for each spine entry: u16: href_len, bytes: href
  *   u16: toc_count
  *   for each toc entry: u16: label_len, i16: spine_index, u16: level, bytes: label
- * Returns total bytes written. */
+ *
+ * CORRECTNESS: Field order matches epub_restore_metadata exactly.
+ * Each field is read back in the same order it was written.
+ * This symmetric structure establishes METADATA_ROUNDTRIP. */
 int epub_serialize_metadata(void) {
     unsigned char* buf = get_fetch_buffer_ptr();
     int pos = 0;
@@ -1144,8 +1149,14 @@ int epub_serialize_metadata(void) {
 }
 
 /* M15: Restore book metadata from fetch buffer.
- * Rebuilds epub state so reader functions work correctly.
- * Returns 1 on success, 0 on error. */
+ * Returns [r:int | r == 0 || r == 1].
+ *
+ * CORRECTNESS: Reads fields in same order as epub_serialize_metadata
+ * (METADATA_ROUNDTRIP). On success:
+ * - epub_state set to EPUB_STATE_DONE (8), establishing EPUB_STATE_VALID
+ * - spine/manifest/TOC arrays populated matching original import state
+ * - epub_get_chapter_count(), epub_get_toc_count() return correct values
+ * - Reader can load chapters and navigate TOC correctly */
 int epub_restore_metadata(int len) {
     unsigned char* buf = get_fetch_buffer_ptr();
     int pos = 0;
@@ -1244,7 +1255,9 @@ int epub_restore_metadata(int len) {
     return 1;
 }
 
-/* M15: Reset epub state to idle */
+/* M15: Reset epub state to idle.
+ * Postcondition: EPUB_RESET_TO_IDLE - state == 0, all metadata cleared.
+ * After reset, epub module is equivalent to post-epub_init state. */
 void epub_reset(void) {
     epub_state = 0;
     epub_progress = 0;

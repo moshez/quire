@@ -73,6 +73,30 @@ Functional correctness proofs often imply safety, but safety alone is insufficie
 
 If C code is unavoidable, document why dataprops couldn't be used and what runtime checks substitute for compile-time proofs.
 
+### UI and Application Logic Proofs
+
+UI code (state machines, event routing, async callback dispatch) must also be proven correct:
+
+- **App state machines**: Define `dataprop` or `absprop` for valid app states and transitions.  Prove that state changes only follow valid paths (e.g., `INIT → LOADING_DB → LOADING_LIB → LIBRARY`).
+- **Node ID mappings**: When DOM node IDs map to app-level indices (e.g., book card buttons → book indices), prove the mapping is correct using `dataprop`.
+- **Async callback dispatch**: Prove that callback routing delivers to the correct handler based on pending operation state.
+- **Serialization roundtrips**: When data is serialized for storage and later deserialized, prove the roundtrip preserves the data using `absprop`.
+
+```ats
+(* App state machine: prove only valid transitions *)
+dataprop APP_STATE_VALID(state: int) =
+  | APP_INIT(0) | APP_LOADING_DB(1) | APP_LOADING_LIB(2)
+  | APP_LIBRARY(3) | APP_IMPORTING(4) | APP_LOADING_BOOK(5)
+  | APP_READING(6)
+
+(* Book card mapping: prove button node_id maps to correct book index *)
+dataprop BOOK_CARD_MAPS(node_id: int, book_index: int, count: int) =
+  | {n:int} {i,c:nat | i < c} CARD_FOR_BOOK(n, i, c)
+
+(* Serialization roundtrip: prove restore undoes serialize *)
+absprop SERIALIZE_ROUNDTRIP(serialize_len: int, restore_ok: int)
+```
+
 ## Bridge Policy
 
 **Be extremely careful about changes to bridge.js.** Most PRs should not touch it.
