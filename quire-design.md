@@ -1643,7 +1643,7 @@ Bridge test coverage expands incrementally: M2–M4 each add tests for the bridg
   - CSS styles built and injected from WASM (CSS column layout)
   - Verify: chapter text appears, flows into columns
 
-- [ ] **M11: Pagination**
+- [x] **M11: Pagination**
   - Use `js_measure_node` to get scrollWidth
   - Compute page count
   - `SET_TRANSFORM` for page navigation
