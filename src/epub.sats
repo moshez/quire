@@ -176,3 +176,17 @@ fun epub_get_toc_level(toc_index: int): [level:nat] int(level) = "mac#"
  * buf_offset: offset in string buffer to write title
  * Returns title length, or 0 if no TOC entry found *)
 fun epub_get_chapter_title(spine_index: int, buf_offset: int): int = "mac#"
+
+(* M15: Serialize book metadata to fetch buffer for library storage.
+ * Writes book_id, title, author, opf_dir, spine hrefs, and TOC data.
+ * Returns total bytes written, or 0 on error. *)
+fun epub_serialize_metadata(): int = "mac#"
+
+(* M15: Restore book metadata from fetch buffer.
+ * Reconstructs epub module state so reader can function.
+ * len: number of bytes to read from fetch buffer.
+ * Returns 1 on success, 0 on error. *)
+fun epub_restore_metadata(len: int): int = "mac#"
+
+(* M15: Reset epub state to idle (for switching between books) *)
+fun epub_reset(): void = "mac#"

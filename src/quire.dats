@@ -3,6 +3,7 @@
  * EPUB import pipeline with type-checked DOM operations.
  * M9: File input, import progress, book title display.
  * M14: Reader settings integration.
+ * M15: Book library - list, delete, resume position.
  *)
 
 #define ATS_DYNLOADFLAG 0
@@ -12,6 +13,7 @@ staload "dom.sats"
 staload "epub.sats"
 staload "reader.sats"
 staload "settings.sats"
+staload "library.sats"
 
 %{^
 /* String literals for DOM operations */
@@ -21,6 +23,7 @@ static const char str_input[] = "input";
 static const char str_label[] = "label";
 static const char str_for[] = "for";
 static const char str_h1[] = "h1";
+static const char str_h2[] = "h2";
 static const char str_p[] = "p";
 static const char str_class[] = "class";
 static const char str_type[] = "type";
@@ -36,29 +39,50 @@ static const char str_progress_div[] = "progress-div";
 static const char str_title_div[] = "title-div";
 static const char str_import_text[] = "Import EPUB";
 static const char str_importing[] = "Importing...";
-static const char str_done[] = "Import complete!";
 static const char str_error_prefix[] = "Error: ";
 static const char str_by[] = " by ";
-static const char str_chapters[] = " chapters";
-
-/* M10: Reader view strings */
-static const char str_read_btn[] = "read-btn";
-static const char str_read_text[] = "Read";
+static const char str_chapters_suffix[] = " chapters";
 static const char str_style[] = "style";
 
+/* M15: Library view strings */
+static const char str_library_list[] = "library-list";
+static const char str_book_card[] = "book-card";
+static const char str_book_title[] = "book-title";
+static const char str_book_author[] = "book-author";
+static const char str_book_position[] = "book-position";
+static const char str_book_actions[] = "book-actions";
+static const char str_read_btn[] = "read-btn";
+static const char str_delete_btn[] = "delete-btn";
+static const char str_read_text[] = "Read";
+static const char str_delete_text[] = "Delete";
+static const char str_not_started[] = "Not started";
+static const char str_ch_space[] = "Ch ";
+static const char str_comma_pg[] = ", page ";
+static const char str_of_space[] = " of ";
+static const char str_empty_lib[] = "No books yet. Import an EPUB to get started.";
+
+/* M15: App states */
+#define APP_STATE_INIT          0
+#define APP_STATE_LOADING_DB    1
+#define APP_STATE_LOADING_LIB   2
+#define APP_STATE_LIBRARY       3
+#define APP_STATE_IMPORTING     4
+#define APP_STATE_LOADING_BOOK  5
+#define APP_STATE_READING       6
+
 /* CSS buffer for building stylesheet dynamically */
-static char css_buffer[8192];
+static char css_buffer[12288];
 static int css_buffer_len = 0;
 
 /* Helper: append string to CSS buffer */
 static void css_append(const char* str) {
-    while (*str && css_buffer_len < 8191) {
+    while (*str && css_buffer_len < 12287) {
         css_buffer[css_buffer_len++] = *str++;
     }
     css_buffer[css_buffer_len] = 0;
 }
 
-/* Helper: append a class rule - uses same class name constants as DOM ops */
+/* Helper: append a class rule */
 static void css_class_rule(const char* class_name, const char* properties) {
     css_append(".");
     css_append(class_name);
@@ -75,7 +99,7 @@ static void css_rule(const char* selector, const char* properties) {
     css_append("}");
 }
 
-/* Build the complete stylesheet - references class name constants to ensure consistency */
+/* Build the complete stylesheet */
 static void build_css(void) {
     css_buffer_len = 0;
 
@@ -88,50 +112,78 @@ static void build_css(void) {
     css_rule("#loading", "display:flex;flex-direction:column;align-items:center;justify-content:center;"
              "height:100vh;font-size:1.25rem;color:#666");
 
-    /* Hidden utility - uses str_hidden constant */
+    /* Hidden utility */
     css_class_rule(str_hidden, "display:none!important");
 
-    /* Main container - uses str_container constant */
-    css_class_rule(str_container, "display:flex;flex-direction:column;align-items:center;justify-content:center;"
-                   "min-height:100vh;padding:2rem;box-sizing:border-box");
+    /* Main container */
+    css_class_rule(str_container, "display:flex;flex-direction:column;align-items:center;"
+                   "min-height:100vh;padding:2rem;box-sizing:border-box;overflow-y:auto");
 
     /* Title heading */
-    css_rule(".container h1", "font-size:2.5rem;font-weight:300;color:#333;margin:0 0 2rem 0");
+    css_rule(".container h1", "font-size:2.5rem;font-weight:300;color:#333;margin:0 0 1.5rem 0");
 
     /* Hidden file input */
     css_rule("input[type=file].hidden", "position:absolute;width:1px;height:1px;padding:0;margin:-1px;"
              "overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0");
 
-    /* Import button - uses str_import_btn constant */
+    /* Import button */
     css_class_rule(str_import_btn, "display:inline-block;padding:0.875rem 2rem;font-size:1rem;font-weight:500;"
                    "color:#fff;background:#4a7c59;border:none;border-radius:0.5rem;cursor:pointer;"
-                   "transition:background 0.2s,transform 0.1s;user-select:none");
+                   "transition:background 0.2s,transform 0.1s;user-select:none;margin-bottom:1.5rem");
     css_append("."); css_append(str_import_btn); css_append(":hover{background:#3d6b4a}");
     css_append("."); css_append(str_import_btn); css_append(":active{transform:scale(0.98)}");
 
-    /* Progress display - uses str_progress_div constant */
-    css_class_rule(str_progress_div, "margin-top:1.5rem;font-size:0.875rem;color:#666;min-height:1.25rem");
+    /* Progress display */
+    css_class_rule(str_progress_div, "margin-top:0.5rem;margin-bottom:1rem;font-size:0.875rem;color:#666;min-height:1.25rem");
 
-    /* Title/book info display - uses str_title_div constant */
+    /* Title/book info display */
     css_class_rule(str_title_div, "margin-top:1rem;font-size:1.125rem;color:#333;text-align:center;"
                    "max-width:80%;word-wrap:break-word");
 
-    /* Read button - uses str_read_btn constant */
-    css_class_rule(str_read_btn, "display:inline-block;padding:0.75rem 1.5rem;font-size:0.9rem;font-weight:500;"
-                   "color:#fff;background:#3b6ea5;border:none;border-radius:0.5rem;cursor:pointer;"
-                   "transition:background 0.2s,transform 0.1s;user-select:none;margin-top:1rem");
+    /* M15: Library list */
+    css_class_rule(str_library_list, "width:100%;max-width:600px;margin:0 auto");
+
+    /* M15: Book card */
+    css_class_rule(str_book_card, "background:#fff;border:1px solid #e0e0e0;border-radius:0.5rem;"
+                   "padding:1rem 1.25rem;margin-bottom:0.75rem;display:flex;flex-direction:column;gap:0.25rem");
+
+    /* M15: Book title in card */
+    css_class_rule(str_book_title, "font-size:1.1rem;font-weight:500;color:#333");
+
+    /* M15: Book author in card */
+    css_class_rule(str_book_author, "font-size:0.875rem;color:#666");
+
+    /* M15: Book position in card */
+    css_class_rule(str_book_position, "font-size:0.8rem;color:#999;margin-top:0.125rem");
+
+    /* M15: Book actions row */
+    css_class_rule(str_book_actions, "display:flex;gap:0.5rem;margin-top:0.5rem;justify-content:flex-end");
+
+    /* Read button */
+    css_class_rule(str_read_btn, "display:inline-block;padding:0.5rem 1.25rem;font-size:0.875rem;font-weight:500;"
+                   "color:#fff;background:#3b6ea5;border:none;border-radius:0.375rem;cursor:pointer;"
+                   "transition:background 0.2s,transform 0.1s;user-select:none");
     css_append("."); css_append(str_read_btn); css_append(":hover{background:#2d5a8a}");
     css_append("."); css_append(str_read_btn); css_append(":active{transform:scale(0.98)}");
+
+    /* M15: Delete button */
+    css_class_rule(str_delete_btn, "display:inline-block;padding:0.5rem 1rem;font-size:0.875rem;font-weight:400;"
+                   "color:#c0392b;background:transparent;border:1px solid #e0e0e0;border-radius:0.375rem;"
+                   "cursor:pointer;transition:background 0.2s,border-color 0.2s;user-select:none");
+    css_append("."); css_append(str_delete_btn); css_append(":hover{background:#fef0ef;border-color:#c0392b}");
+
+    /* M15: Empty library message */
+    css_append(".empty-lib{color:#999;font-size:0.95rem;text-align:center;padding:2rem 0}");
 
     /* M14: CSS variables for reader settings */
     css_rule(":root", "--font-size:18px;--font-family:Georgia,serif;--line-height:1.6;"
              "--margin:2rem;--bg-color:#fafaf8;--text-color:#2a2a2a");
 
-    /* Reader viewport - uses CSS variable for background */
+    /* Reader viewport */
     css_append(".reader-viewport{position:fixed;top:0;left:0;width:100vw;height:100vh;"
                "overflow:hidden;background:var(--bg-color)}");
 
-    /* Chapter container with CSS columns - uses CSS variables for customization */
+    /* Chapter container with CSS columns */
     css_append(".chapter-container{column-width:100vw;column-gap:0;column-fill:auto;"
                "height:calc(100vh - calc(var(--margin) * 2));padding:var(--margin);box-sizing:border-box;"
                "overflow:visible;font-family:var(--font-family);font-size:var(--font-size);"
@@ -143,25 +195,22 @@ static void build_css(void) {
                "{margin-top:1em;margin-bottom:0.5em;line-height:1.3}");
 
     css_append(".chapter-container p{margin:0 0 1em 0;text-align:justify;hyphens:auto}");
-
     css_append(".chapter-container img{max-width:100%;height:auto;display:block;margin:1em auto}");
-
     css_append(".chapter-container a{color:#4a7c59;text-decoration:none}");
-
     css_append(".chapter-container a:hover{text-decoration:underline}");
 
-    /* M11: Page indicator styling */
+    /* Page indicator styling */
     css_append(".page-indicator{position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);"
                "padding:0.5rem 1rem;background:rgba(0,0,0,0.6);color:#fff;border-radius:0.25rem;"
                "font-size:0.875rem;font-family:system-ui,-apple-system,sans-serif;z-index:100;"
                "pointer-events:none}");
 
-    /* M13: Progress bar styling */
+    /* Progress bar styling */
     css_append(".progress-bar{position:fixed;top:0;left:0;width:100%;height:4px;"
                "background:rgba(0,0,0,0.1);z-index:100}");
     css_append(".progress-fill{height:100%;background:#4a7c59;transition:width 0.3s ease}");
 
-    /* M13: TOC overlay styling */
+    /* TOC overlay styling */
     css_append(".toc-overlay{position:fixed;top:0;left:0;width:100%;height:100%;"
                "background:rgba(250,250,248,0.98);z-index:200;display:flex;flex-direction:column;"
                "font-family:system-ui,-apple-system,sans-serif}");
@@ -176,7 +225,7 @@ static void build_css(void) {
     css_append(".toc-entry:hover{background:rgba(74,124,89,0.1)}");
     css_append(".toc-entry.nested{padding-left:3.5rem;font-size:0.9rem;color:#666}");
 
-    /* M14: Settings overlay styling */
+    /* Settings overlay styling */
     css_append(".settings-overlay{position:fixed;top:0;left:0;width:100%;height:100%;"
                "background:rgba(0,0,0,0.5);z-index:300;display:flex;align-items:center;"
                "justify-content:center;font-family:system-ui,-apple-system,sans-serif}");
@@ -200,11 +249,15 @@ static void build_css(void) {
     css_append(".settings-btn.active{background:#4a7c59;color:#fff}");
     css_append(".settings-btn.active:hover{background:#3d6b4a}");
     css_append(".settings-value{min-width:3.5rem;text-align:center;font-size:0.9rem;color:#333}");
-}
 
-/* Get CSS buffer pointer and length */
-static void* get_css_buffer(void) { return css_buffer; }
-static int get_css_len(void) { return css_buffer_len; }
+    /* M15: Back button styling */
+    css_append(".back-btn{position:fixed;top:1rem;left:1rem;width:2.5rem;height:2.5rem;"
+               "display:flex;align-items:center;justify-content:center;"
+               "background:rgba(0,0,0,0.5);color:#fff;border-radius:50%;cursor:pointer;"
+               "font-size:1.25rem;z-index:150;transition:background 0.2s;user-select:none;"
+               "font-family:system-ui,-apple-system,sans-serif}");
+    css_append(".back-btn:hover{background:rgba(0,0,0,0.7)}");
+}
 
 extern unsigned char* get_fetch_buffer_ptr(void);
 extern unsigned char* get_string_buffer_ptr(void);
@@ -218,24 +271,21 @@ extern int epub_get_progress(void);
 extern int epub_get_error(int buf_offset);
 extern int epub_get_title(int buf_offset);
 extern int epub_get_author(int buf_offset);
+extern int epub_get_book_id(int buf_offset);
 extern int epub_get_chapter_count(void);
 extern int epub_get_chapter_key(int chapter_index, int buf_offset);
 extern void epub_on_file_open(int handle, int size);
 extern void epub_on_decompress(int blob_handle, int size);
 extern void epub_on_db_open(int success);
 extern void epub_on_db_put(int success);
+extern void epub_reset(void);
 
-/* Bridge imports for reading from IndexedDB */
+/* Bridge imports */
 extern void js_kv_get(void* store_ptr, int store_len, void* key_ptr, int key_len);
+extern void js_kv_open(void* name_ptr, int name_len, int version, void* stores_ptr, int stores_len);
 extern void js_set_inner_html_from_blob(int node_id, int blob_handle);
 extern void js_blob_free(int handle);
-
-/* Bridge import for measuring nodes (M11: Pagination) */
 extern int js_measure_node(int node_id);
-
-/* Forward declarations for M10 functions */
-static void load_chapter(int chapter_idx);
-static void inject_chapter_html(void);
 
 /* DOM functions */
 extern void dom_init(void);
@@ -244,19 +294,91 @@ extern void* dom_create_element(void*, int, int, void*, int);
 extern void* dom_set_text(void*, int, void*, int);
 extern void* dom_set_text_offset(void*, int, int, int);
 extern void* dom_set_attr(void*, int, void*, int, void*, int);
+extern void* dom_set_inner_html(void*, int, int, int);
+extern void dom_remove_child(void*, int);
 extern int dom_next_id(void);
 extern void dom_drop_proof(void*);
 
-/* Read event type from event buffer */
+/* Reader module functions */
+extern void reader_init(void);
+extern void reader_enter(int root_id, int container_hide_id);
+extern void reader_enter_at(int root_id, int container_hide_id, int chapter, int page);
+extern void reader_exit(void);
+extern int reader_is_active(void);
+extern int reader_get_viewport_width(void);
+extern void reader_next_page(void);
+extern void reader_prev_page(void);
+extern void reader_go_to_page(int page);
+extern int reader_get_total_pages(void);
+extern int reader_get_current_chapter(void);
+extern int reader_get_current_page(void);
+extern void reader_on_chapter_loaded(int len);
+extern void reader_on_chapter_blob_loaded(int handle, int size);
+extern int reader_get_back_btn_id(void);
+extern void reader_toggle_toc(void);
+extern void reader_hide_toc(void);
+extern int reader_is_toc_visible(void);
+extern int reader_get_toc_index_for_node(int node_id);
+extern void reader_on_toc_click(int node_id);
+
+/* Settings module functions */
+extern void settings_init(void);
+extern void settings_set_root_id(int id);
+extern int settings_is_visible(void);
+extern void settings_show(void);
+extern void settings_hide(void);
+extern void settings_toggle(void);
+extern int settings_handle_click(int node_id);
+extern void settings_load(void);
+extern void settings_on_load_complete(int len);
+extern void settings_on_save_complete(int success);
+extern int settings_is_save_pending(void);
+extern int settings_is_load_pending(void);
+
+/* Library module functions */
+extern void library_init(void);
+extern int library_get_count(void);
+extern int library_get_title(int index, int buf_offset);
+extern int library_get_author(int index, int buf_offset);
+extern int library_get_book_id(int index, int buf_offset);
+extern int library_get_chapter(int index);
+extern int library_get_page(int index);
+extern int library_get_spine_count(int index);
+extern int library_add_book(void);
+extern void library_remove_book(int index);
+extern void library_update_position(int index, int chapter, int page);
+extern int library_find_book_by_id(void);
+extern void library_save(void);
+extern void library_load(void);
+extern void library_on_load_complete(int len);
+extern void library_on_save_complete(int success);
+extern void library_save_book_metadata(void);
+extern void library_load_book_metadata(int index);
+extern void library_on_metadata_load_complete(int len);
+extern void library_on_metadata_save_complete(int success);
+extern int library_is_save_pending(void);
+extern int library_is_load_pending(void);
+extern int library_is_metadata_pending(void);
+
+/* Read event from event buffer */
 static int get_event_type(void) {
     unsigned char* buf = get_event_buffer_ptr();
     return buf[0];
 }
 
-/* Read node ID from event buffer */
 static int get_event_node_id(void) {
     unsigned char* buf = get_event_buffer_ptr();
     return buf[1] | (buf[2] << 8) | (buf[3] << 16) | (buf[4] << 24);
+}
+
+static int get_event_data1(void) {
+    unsigned char* buf = get_event_buffer_ptr();
+    return buf[5] | (buf[6] << 8) | (buf[7] << 16) | (buf[8] << 24);
+}
+
+static int get_event_data2(void) {
+    unsigned char* buf = get_event_buffer_ptr();
+    return buf[9] | (buf[10] << 8) | (buf[11] << 16) | (buf[12] << 24);
 }
 
 /* Helper to copy text to fetch buffer */
@@ -268,77 +390,54 @@ static int copy_text_to_fetch(const char* text, int len) {
     return len;
 }
 
-/* Node IDs for UI elements */
+/* Helper to append integer to buffer */
+static int append_int(unsigned char* buf, int pos, int value) {
+    if (value >= 100) {
+        buf[pos++] = '0' + (value / 100);
+        buf[pos++] = '0' + ((value / 10) % 10);
+        buf[pos++] = '0' + (value % 10);
+    } else if (value >= 10) {
+        buf[pos++] = '0' + (value / 10);
+        buf[pos++] = '0' + (value % 10);
+    } else {
+        buf[pos++] = '0' + value;
+    }
+    return pos;
+}
+
+/* Node IDs */
 static int root_id = 1;
 static int container_id = 0;
 static int file_input_id = 0;
 static int import_btn_id = 0;
 static int progress_id = 0;
 static int title_id = 0;
+static int library_list_id = 0;
 
-/* M10: Reader view node IDs */
-static int read_btn_id = 0;
+/* M15: Per-book card node IDs (read and delete buttons) */
+#define MAX_BOOK_READ_IDS 32
+#define MAX_BOOK_DELETE_IDS 32
+static int book_read_ids[MAX_BOOK_READ_IDS];
+static int book_delete_ids[MAX_BOOK_DELETE_IDS];
+static int book_card_count = 0;
 
-/* Import state tracking */
+/* App state */
+static int app_state = 0;  /* APP_STATE_INIT */
 static int import_in_progress = 0;
 static int last_progress = -1;
-%}
+static int current_book_index = -1;  /* Index of book being read */
 
-(* External declarations for C functions and strings *)
-extern fun get_str_quire(): ptr = "mac#"
-extern fun get_str_div(): ptr = "mac#"
-extern fun get_str_input(): ptr = "mac#"
-extern fun get_str_label(): ptr = "mac#"
-extern fun get_str_for(): ptr = "mac#"
-extern fun get_str_h1(): ptr = "mac#"
-extern fun get_str_p(): ptr = "mac#"
-extern fun get_str_class(): ptr = "mac#"
-extern fun get_str_type(): ptr = "mac#"
-extern fun get_str_file(): ptr = "mac#"
-extern fun get_str_accept(): ptr = "mac#"
-extern fun get_str_epub_accept(): ptr = "mac#"
-extern fun get_str_id_attr(): ptr = "mac#"
-extern fun get_str_hidden(): ptr = "mac#"
-extern fun get_str_container(): ptr = "mac#"
-extern fun get_str_import_btn(): ptr = "mac#"
-extern fun get_str_file_input(): ptr = "mac#"
-extern fun get_str_progress_div(): ptr = "mac#"
-extern fun get_str_title_div(): ptr = "mac#"
-extern fun get_str_import_text(): ptr = "mac#"
-extern fun get_str_importing(): ptr = "mac#"
-extern fun get_str_done(): ptr = "mac#"
-extern fun get_str_error_prefix(): ptr = "mac#"
-extern fun get_str_by(): ptr = "mac#"
-extern fun get_str_chapters(): ptr = "mac#"
-extern fun get_str_read_btn(): ptr = "mac#"
-extern fun get_str_read_text(): ptr = "mac#"
-extern fun get_str_style(): ptr = "mac#"
-extern fun get_css_buffer(): ptr = "mac#"
-extern fun get_css_len(): int = "mac#"
-extern fun build_css(): void = "mac#"
-extern fun inject_styles(): void = "mac#"
-extern fun copy_text_to_fetch(text: ptr, len: int): int = "mac#"
-extern fun get_event_type(): int = "mac#"
-extern fun get_event_node_id(): int = "mac#"
-extern fun get_container_id(): int = "mac#"
-extern fun get_file_input_id(): int = "mac#"
-extern fun get_import_btn_id(): int = "mac#"
-extern fun get_progress_id(): int = "mac#"
-extern fun get_title_id(): int = "mac#"
-extern fun set_container_id(id: int): void = "mac#"
-extern fun set_file_input_id(id: int): void = "mac#"
-extern fun set_import_btn_id(id: int): void = "mac#"
-extern fun set_progress_id(id: int): void = "mac#"
-extern fun set_title_id(id: int): void = "mac#"
-extern fun get_import_in_progress(): int = "mac#"
-extern fun set_import_in_progress(v: int): void = "mac#"
-extern fun get_read_btn_id(): int = "mac#"
-extern fun set_read_btn_id(id: int): void = "mac#"
-extern fun update_progress_display(): void = "mac#"
-extern fun show_import_complete(): void = "mac#"
-extern fun show_import_error(): void = "mac#"
+/* Forward declarations */
+static void show_library(void);
+static void rebuild_library_list(void);
+static void enter_reader_for_book(int book_index);
+static void exit_reader_to_library(void);
+static void handle_import_complete(void);
 
-%{
+/* Get CSS buffer pointer and length */
+static void* get_css_buffer(void) { return css_buffer; }
+static int get_css_len(void) { return css_buffer_len; }
+
 /* String getters */
 void* get_str_quire(void) { return (void*)str_quire; }
 void* get_str_div(void) { return (void*)str_div; }
@@ -360,69 +459,41 @@ void* get_str_file_input(void) { return (void*)str_file_input; }
 void* get_str_progress_div(void) { return (void*)str_progress_div; }
 void* get_str_title_div(void) { return (void*)str_title_div; }
 void* get_str_import_text(void) { return (void*)str_import_text; }
-void* get_str_importing(void) { return (void*)str_importing; }
-void* get_str_done(void) { return (void*)str_done; }
-void* get_str_error_prefix(void) { return (void*)str_error_prefix; }
-void* get_str_by(void) { return (void*)str_by; }
-void* get_str_chapters(void) { return (void*)str_chapters; }
-void* get_str_read_btn(void) { return (void*)str_read_btn; }
-void* get_str_read_text(void) { return (void*)str_read_text; }
 void* get_str_style(void) { return (void*)str_style; }
-
-/* Inject styles into document head by creating <style> element */
-void inject_styles(void) {
-    unsigned char* fetch_buf = get_fetch_buffer_ptr();
-
-    /* Build CSS if not already built */
-    if (css_buffer_len == 0) {
-        build_css();
-    }
-
-    /* Copy CSS to fetch buffer */
-    for (int i = 0; i < css_buffer_len && i < 16384; i++) {
-        fetch_buf[i] = css_buffer[i];
-    }
-
-    /* Create style element as child of root (body) */
-    void* pf = dom_root_proof();
-    int style_id = dom_next_id();
-    void* pf_style = dom_create_element(pf, root_id, style_id, (void*)str_style, 5);
-
-    /* Set innerHTML with CSS content */
-    dom_set_inner_html(pf_style, style_id, 0, css_buffer_len);
-
-    dom_drop_proof(pf_style);
-    dom_drop_proof(pf);
-}
-
-/* Node ID getters/setters */
 int get_container_id(void) { return container_id; }
 int get_file_input_id(void) { return file_input_id; }
 int get_import_btn_id(void) { return import_btn_id; }
 int get_progress_id(void) { return progress_id; }
 int get_title_id(void) { return title_id; }
-int get_read_btn_id(void) { return read_btn_id; }
 void set_container_id(int id) { container_id = id; }
 void set_file_input_id(int id) { file_input_id = id; }
 void set_import_btn_id(int id) { import_btn_id = id; }
 void set_progress_id(int id) { progress_id = id; }
 void set_title_id(int id) { title_id = id; }
-void set_read_btn_id(int id) { read_btn_id = id; }
 int get_import_in_progress(void) { return import_in_progress; }
 void set_import_in_progress(int v) { import_in_progress = v; }
 
-/* Read event data from event buffer */
-static int get_event_data1(void) {
-    unsigned char* buf = get_event_buffer_ptr();
-    return buf[5] | (buf[6] << 8) | (buf[7] << 16) | (buf[8] << 24);
+/* Inject styles into document */
+void inject_styles(void) {
+    unsigned char* fetch_buf = get_fetch_buffer_ptr();
+
+    if (css_buffer_len == 0) {
+        build_css();
+    }
+
+    for (int i = 0; i < css_buffer_len && i < 16384; i++) {
+        fetch_buf[i] = css_buffer[i];
+    }
+
+    void* pf = dom_root_proof();
+    int style_id = dom_next_id();
+    void* pf_style = dom_create_element(pf, root_id, style_id, (void*)str_style, 5);
+    dom_set_inner_html(pf_style, style_id, 0, css_buffer_len);
+    dom_drop_proof(pf_style);
+    dom_drop_proof(pf);
 }
 
-static int get_event_data2(void) {
-    unsigned char* buf = get_event_buffer_ptr();
-    return buf[9] | (buf[10] << 8) | (buf[11] << 16) | (buf[12] << 24);
-}
-
-/* Update progress display */
+/* Update progress display during import */
 void update_progress_display(void) {
     int progress = epub_get_progress();
     if (progress == last_progress) return;
@@ -431,161 +502,566 @@ void update_progress_display(void) {
     unsigned char* buf = get_fetch_buffer_ptr();
     int len = 0;
 
-    /* "Importing... XX%" */
     const char* importing = str_importing;
     while (*importing && len < 16380) {
         buf[len++] = *importing++;
     }
     buf[len++] = ' ';
 
-    /* Convert progress to string */
-    if (progress >= 100) {
-        buf[len++] = '1';
-        buf[len++] = '0';
-        buf[len++] = '0';
-    } else if (progress >= 10) {
-        buf[len++] = '0' + (progress / 10);
-        buf[len++] = '0' + (progress % 10);
-    } else {
-        buf[len++] = '0' + progress;
-    }
+    len = append_int(buf, len, progress);
     buf[len++] = '%';
 
-    /* Update progress text */
     void* pf = dom_root_proof();
     dom_set_text_offset(pf, progress_id, 0, len);
     dom_drop_proof(pf);
 }
 
-/* Show import complete message with book info and Read button */
-void show_import_complete(void) {
-    unsigned char* buf = get_fetch_buffer_ptr();
-    unsigned char* str_buf = get_string_buffer_ptr();
-    int len = 0;
-
-    /* Get title */
-    int title_len = epub_get_title(0);
-    for (int i = 0; i < title_len && len < 16380; i++) {
-        buf[len++] = str_buf[i];
-    }
-
-    /* " by " */
-    const char* by = str_by;
-    while (*by && len < 16380) {
-        buf[len++] = *by++;
-    }
-
-    /* Get author */
-    int author_len = epub_get_author(0);
-    for (int i = 0; i < author_len && len < 16380; i++) {
-        buf[len++] = str_buf[i];
-    }
-
-    /* Update title display */
-    void* pf = dom_root_proof();
-    dom_set_text_offset(pf, title_id, 0, len);
-
-    /* Update progress to show chapter count */
-    len = 0;
-    int chapter_count = epub_get_chapter_count();
-
-    /* Convert chapter count */
-    if (chapter_count >= 100) {
-        buf[len++] = '0' + (chapter_count / 100);
-        buf[len++] = '0' + ((chapter_count / 10) % 10);
-        buf[len++] = '0' + (chapter_count % 10);
-    } else if (chapter_count >= 10) {
-        buf[len++] = '0' + (chapter_count / 10);
-        buf[len++] = '0' + (chapter_count % 10);
-    } else {
-        buf[len++] = '0' + chapter_count;
-    }
-
-    const char* chapters = str_chapters;
-    while (*chapters && len < 16380) {
-        buf[len++] = *chapters++;
-    }
-
-    dom_set_text_offset(pf, progress_id, 0, len);
-
-    /* Create Read button */
-    int rid = dom_next_id();
-    read_btn_id = rid;
-    void* pf_btn = dom_create_element(pf, container_id, rid, (void*)str_label, 5);
-    pf_btn = dom_set_attr(pf_btn, rid, (void*)str_class, 5, (void*)str_read_btn, 8);
-
-    /* Set button text "Read" */
-    len = 0;
-    const char* read_txt = str_read_text;
-    while (*read_txt && len < 16380) {
-        buf[len++] = *read_txt++;
-    }
-    dom_set_text_offset(pf_btn, rid, 0, len);
-    dom_drop_proof(pf_btn);
-
-    dom_drop_proof(pf);
-}
-
-/* M12: Reader functions are now in reader.dats */
-
-/* M12: Reader module functions */
-extern void reader_init(void);
-extern void reader_enter(int root_id, int container_hide_id);
-extern int reader_is_active(void);
-extern int reader_get_viewport_width(void);
-extern void reader_next_page(void);
-extern void reader_prev_page(void);
-extern void reader_go_to_page(int page);
-extern int reader_get_total_pages(void);
-extern void reader_on_chapter_loaded(int len);
-extern void reader_on_chapter_blob_loaded(int handle, int size);
-
-/* M13: TOC and navigation functions
- * Proofs are managed internally by reader module - API is simple */
-extern void reader_toggle_toc(void);
-extern void reader_hide_toc(void);
-extern int reader_is_toc_visible(void);
-extern int reader_get_toc_index_for_node(int node_id);
-extern void reader_on_toc_click(int node_id);
-
-/* M14: Settings module functions */
-extern void settings_init(void);
-extern void settings_set_root_id(int id);
-extern int settings_is_visible(void);
-extern void settings_show(void);
-extern void settings_hide(void);
-extern void settings_toggle(void);
-extern int settings_handle_click(int node_id);
-extern void settings_load(void);
-extern void settings_on_load_complete(int len);
-extern void settings_on_save_complete(int success);
-extern int settings_is_save_pending(void);
-extern int settings_is_load_pending(void);
-
-/* Show error message */
+/* Show import error */
 void show_import_error(void) {
     unsigned char* buf = get_fetch_buffer_ptr();
     unsigned char* str_buf = get_string_buffer_ptr();
     int len = 0;
 
-    /* "Error: " prefix */
     const char* prefix = str_error_prefix;
     while (*prefix && len < 16380) {
         buf[len++] = *prefix++;
     }
 
-    /* Get error message */
     int error_len = epub_get_error(0);
     for (int i = 0; i < error_len && len < 16380; i++) {
         buf[len++] = str_buf[i];
     }
 
-    /* Update progress display */
     void* pf = dom_root_proof();
     dom_set_text_offset(pf, progress_id, 0, len);
     dom_drop_proof(pf);
 }
+
+/* M15: Build and display the library list */
+static void rebuild_library_list(void) {
+    unsigned char* buf = get_fetch_buffer_ptr();
+    unsigned char* str_buf = get_string_buffer_ptr();
+    void* pf = dom_root_proof();
+
+    /* Remove old library list if exists */
+    if (library_list_id > 0) {
+        dom_remove_child(pf, library_list_id);
+        library_list_id = 0;
+    }
+
+    /* Create library list container */
+    int list_id = dom_next_id();
+    library_list_id = list_id;
+    void* pf_list = dom_create_element(pf, container_id, list_id, (void*)str_div, 3);
+    pf_list = dom_set_attr(pf_list, list_id, (void*)str_class, 5,
+                           (void*)str_library_list, 12);
+
+    int count = library_get_count();
+    book_card_count = 0;
+
+    if (count == 0) {
+        /* Show empty library message */
+        int empty_id = dom_next_id();
+        void* pf_empty = dom_create_element(pf_list, list_id, empty_id, (void*)str_p, 1);
+        pf_empty = dom_set_attr(pf_empty, empty_id, (void*)str_class, 5,
+                                (void*)"empty-lib", 9);
+        int len = 0;
+        const char* msg = str_empty_lib;
+        while (*msg && len < 200) buf[len++] = *msg++;
+        dom_set_text_offset(pf_empty, empty_id, 0, len);
+        dom_drop_proof(pf_empty);
+    } else {
+        for (int i = 0; i < count && i < MAX_BOOK_READ_IDS; i++) {
+            /* Create book card */
+            int card_id = dom_next_id();
+            void* pf_card = dom_create_element(pf_list, list_id, card_id, (void*)str_div, 3);
+            pf_card = dom_set_attr(pf_card, card_id, (void*)str_class, 5,
+                                   (void*)str_book_card, 9);
+
+            /* Title */
+            int title_nid = dom_next_id();
+            void* pf_title = dom_create_element(pf_card, card_id, title_nid, (void*)str_div, 3);
+            pf_title = dom_set_attr(pf_title, title_nid, (void*)str_class, 5,
+                                    (void*)str_book_title, 10);
+            int tlen = library_get_title(i, 0);
+            if (tlen > 0) {
+                for (int j = 0; j < tlen && j < 200; j++) buf[j] = str_buf[j];
+                dom_set_text_offset(pf_title, title_nid, 0, tlen);
+            }
+            dom_drop_proof(pf_title);
+
+            /* Author */
+            int author_nid = dom_next_id();
+            void* pf_author = dom_create_element(pf_card, card_id, author_nid, (void*)str_div, 3);
+            pf_author = dom_set_attr(pf_author, author_nid, (void*)str_class, 5,
+                                     (void*)str_book_author, 11);
+            int alen = library_get_author(i, 0);
+            if (alen > 0) {
+                int len = 0;
+                const char* by = str_by;
+                /* skip leading space in " by " */
+                by++;
+                while (*by && len < 200) buf[len++] = *by++;
+                for (int j = 0; j < alen && len < 400; j++) buf[len++] = str_buf[j];
+                dom_set_text_offset(pf_author, author_nid, 0, len);
+            }
+            dom_drop_proof(pf_author);
+
+            /* Position */
+            int pos_nid = dom_next_id();
+            void* pf_pos = dom_create_element(pf_card, card_id, pos_nid, (void*)str_div, 3);
+            pf_pos = dom_set_attr(pf_pos, pos_nid, (void*)str_class, 5,
+                                  (void*)str_book_position, 13);
+            {
+                int ch = library_get_chapter(i);
+                int pg = library_get_page(i);
+                int sc = library_get_spine_count(i);
+                int len = 0;
+
+                if (ch == 0 && pg == 0) {
+                    const char* ns = str_not_started;
+                    while (*ns && len < 200) buf[len++] = *ns++;
+                } else {
+                    const char* ch_s = str_ch_space;
+                    while (*ch_s && len < 200) buf[len++] = *ch_s++;
+                    len = append_int(buf, len, ch + 1);
+                    const char* of_s = str_of_space;
+                    while (*of_s && len < 200) buf[len++] = *of_s++;
+                    len = append_int(buf, len, sc);
+                    const char* pg_s = str_comma_pg;
+                    while (*pg_s && len < 200) buf[len++] = *pg_s++;
+                    len = append_int(buf, len, pg + 1);
+                }
+                dom_set_text_offset(pf_pos, pos_nid, 0, len);
+            }
+            dom_drop_proof(pf_pos);
+
+            /* Actions row */
+            int acts_nid = dom_next_id();
+            void* pf_acts = dom_create_element(pf_card, card_id, acts_nid, (void*)str_div, 3);
+            pf_acts = dom_set_attr(pf_acts, acts_nid, (void*)str_class, 5,
+                                   (void*)str_book_actions, 12);
+
+            /* Read button */
+            int read_nid = dom_next_id();
+            book_read_ids[i] = read_nid;
+            void* pf_read = dom_create_element(pf_acts, acts_nid, read_nid, (void*)str_label, 5);
+            pf_read = dom_set_attr(pf_read, read_nid, (void*)str_class, 5,
+                                   (void*)str_read_btn, 8);
+            {
+                int len = 0;
+                const char* txt = str_read_text;
+                while (*txt && len < 20) buf[len++] = *txt++;
+                dom_set_text_offset(pf_read, read_nid, 0, len);
+            }
+            dom_drop_proof(pf_read);
+
+            /* Delete button */
+            int del_nid = dom_next_id();
+            book_delete_ids[i] = del_nid;
+            void* pf_del = dom_create_element(pf_acts, acts_nid, del_nid, (void*)str_label, 5);
+            pf_del = dom_set_attr(pf_del, del_nid, (void*)str_class, 5,
+                                  (void*)str_delete_btn, 10);
+            {
+                int len = 0;
+                const char* txt = str_delete_text;
+                while (*txt && len < 20) buf[len++] = *txt++;
+                dom_set_text_offset(pf_del, del_nid, 0, len);
+            }
+            dom_drop_proof(pf_del);
+
+            dom_drop_proof(pf_acts);
+            dom_drop_proof(pf_card);
+            book_card_count++;
+        }
+    }
+
+    dom_drop_proof(pf_list);
+    dom_drop_proof(pf);
+}
+
+/* M15: Show library view (creates full UI) */
+static void show_library(void) {
+    unsigned char* buf = get_fetch_buffer_ptr();
+    void* pf = dom_root_proof();
+
+    /* Unhide container if hidden */
+    pf = dom_set_attr(pf, container_id, (void*)str_class, 5, (void*)str_container, 9);
+
+    /* Clear progress and title text */
+    dom_set_text_offset(pf, progress_id, 0, 0);
+    dom_set_text_offset(pf, title_id, 0, 0);
+
+    dom_drop_proof(pf);
+
+    /* Build library list */
+    rebuild_library_list();
+
+    app_state = APP_STATE_LIBRARY;
+}
+
+/* M15: Enter reader for a specific book */
+static void enter_reader_for_book(int book_index) {
+    if (book_index < 0 || book_index >= library_get_count()) return;
+
+    current_book_index = book_index;
+    app_state = APP_STATE_LOADING_BOOK;
+
+    /* Load book metadata from IndexedDB */
+    library_load_book_metadata(book_index);
+}
+
+/* M15: Exit reader back to library */
+static void exit_reader_to_library(void) {
+    /* Save current reading position */
+    if (current_book_index >= 0) {
+        int ch = reader_get_current_chapter();
+        int pg = reader_get_current_page();
+        library_update_position(current_book_index, ch, pg);
+
+        /* Save library index (async) */
+        library_save();
+    }
+
+    /* Remove reader DOM elements */
+    void* pf = dom_root_proof();
+
+    /* Remove viewport, page indicator, progress bar, back button */
+    int back_id = reader_get_back_btn_id();
+    if (back_id > 0) dom_remove_child(pf, back_id);
+
+    dom_drop_proof(pf);
+
+    reader_exit();
+    current_book_index = -1;
+    app_state = APP_STATE_LIBRARY;
+
+    /* Show library view */
+    show_library();
+}
+
+/* M15: Handle import completion - add to library and save */
+static void handle_import_complete(void) {
+    import_in_progress = 0;
+
+    /* Add book to library */
+    int idx = library_add_book();
+
+    /* Save book metadata to IDB */
+    library_save_book_metadata();
+
+    /* We need to wait for metadata save, then save library index */
+    /* Metadata save is async; we handle it in on_kv_complete */
+}
+
+/* M15: Handle state transitions after async EPUB operations */
+static void handle_state_after_op(void) {
+    int state = epub_get_state();
+    if (state == 99) {  /* Error */
+        show_import_error();
+        import_in_progress = 0;
+        app_state = APP_STATE_LIBRARY;
+    } else if (state == 6 || state == 7) {  /* Still processing */
+        update_progress_display();
+    } else if (state == 8) {  /* Done */
+        handle_import_complete();
+    }
+}
+
+/* M15: String constants for IDB */
+static const char str_quire_db[] = "quire";
+static const char str_stores[] = "books,chapters,resources,settings";
+
+/* process_event implementation */
+void process_event_impl(void) {
+    int event_type = get_event_type();
+    int node_id = get_event_node_id();
+    int data1 = get_event_data1();
+    int data2 = get_event_data2();
+
+    /* Click events */
+    if (event_type == 1) {
+        /* Settings modal takes priority */
+        if (settings_is_visible()) {
+            if (settings_handle_click(node_id)) return;
+            settings_hide();
+            return;
+        }
+
+        /* M15: Back button in reader mode */
+        if (reader_is_active() && node_id == reader_get_back_btn_id()) {
+            exit_reader_to_library();
+            return;
+        }
+
+        /* M15: Book read buttons in library view */
+        if (app_state == APP_STATE_LIBRARY) {
+            for (int i = 0; i < book_card_count; i++) {
+                if (node_id == book_read_ids[i]) {
+                    enter_reader_for_book(i);
+                    return;
+                }
+                if (node_id == book_delete_ids[i]) {
+                    library_remove_book(i);
+                    library_save();
+                    rebuild_library_list();
+                    return;
+                }
+            }
+        }
+
+        /* Reader click zones */
+        int vw = reader_get_viewport_width();
+        if (reader_is_active() && vw > 0) {
+            if (reader_is_toc_visible()) {
+                int toc_index = reader_get_toc_index_for_node(node_id);
+                if (toc_index >= 0) {
+                    reader_on_toc_click(node_id);
+                    return;
+                }
+                reader_hide_toc();
+                return;
+            }
+
+            int click_x = data1;
+            int zone_left = vw / 5;
+            int zone_right = vw - zone_left;
+
+            if (click_x < zone_left) {
+                reader_prev_page();
+            } else if (click_x > zone_right) {
+                reader_next_page();
+            } else {
+                reader_toggle_toc();
+            }
+        }
+    }
+
+    /* Input events (file selected) */
+    if (event_type == 2) {
+        if (node_id == file_input_id && !import_in_progress) {
+            import_in_progress = 1;
+            app_state = APP_STATE_IMPORTING;
+
+            /* Show import progress */
+            unsigned char* buf = get_fetch_buffer_ptr();
+            int len = 0;
+            const char* importing = str_importing;
+            while (*importing && len < 100) buf[len++] = *importing++;
+            void* pf = dom_root_proof();
+            dom_set_text_offset(pf, progress_id, 0, len);
+            dom_drop_proof(pf);
+
+            epub_start_import(node_id);
+        }
+    }
+
+    /* Keyboard events in reader mode */
+    if (event_type == 4 && reader_is_active()) {
+        int key_code = data1;
+
+        if (key_code == 27 && settings_is_visible()) {
+            settings_hide();
+            return;
+        }
+
+        /* M15: Escape exits reader if nothing else is open */
+        if (key_code == 27 && !reader_is_toc_visible() && !settings_is_visible()) {
+            exit_reader_to_library();
+            return;
+        }
+
+        if (key_code == 83 && !reader_is_toc_visible()) {
+            settings_toggle();
+            return;
+        }
+
+        if (settings_is_visible()) return;
+
+        switch (key_code) {
+            case 27:
+                if (reader_is_toc_visible()) reader_hide_toc();
+                break;
+            case 84:
+                reader_toggle_toc();
+                break;
+            case 37: case 33:
+                if (!reader_is_toc_visible()) reader_prev_page();
+                break;
+            case 39: case 34: case 32:
+                if (!reader_is_toc_visible()) reader_next_page();
+                break;
+            case 36:
+                if (!reader_is_toc_visible()) reader_go_to_page(0);
+                break;
+            case 35:
+                if (!reader_is_toc_visible()) reader_go_to_page(reader_get_total_pages() - 1);
+                break;
+        }
+    }
+}
+
+/* Async callback: file open */
+void on_file_open_impl(int handle, int size) {
+    epub_on_file_open(handle, size);
+    int state = epub_get_state();
+    if (state == 99) {
+        show_import_error();
+        import_in_progress = 0;
+        app_state = APP_STATE_LIBRARY;
+    }
+}
+
+/* Async callback: decompress */
+void on_decompress_impl(int handle, int size) {
+    epub_on_decompress(handle, size);
+    handle_state_after_op();
+}
+
+/* Async callback: kv put complete */
+void on_kv_complete_impl(int success) {
+    /* Settings save takes priority */
+    if (settings_is_save_pending()) {
+        settings_on_save_complete(success);
+        return;
+    }
+    /* Library metadata save */
+    if (library_is_metadata_pending()) {
+        library_on_metadata_save_complete(success);
+        /* After metadata save, save library index */
+        library_save();
+        return;
+    }
+    /* Library index save */
+    if (library_is_save_pending()) {
+        library_on_save_complete(success);
+        /* If we just finished import+save, show library */
+        if (app_state == APP_STATE_IMPORTING) {
+            app_state = APP_STATE_LIBRARY;
+            show_library();
+        }
+        return;
+    }
+    /* EPUB import put */
+    epub_on_db_put(success);
+    handle_state_after_op();
+}
+
+/* Async callback: kv open complete */
+void on_kv_open_impl(int success) {
+    if (app_state == APP_STATE_LOADING_DB) {
+        if (success) {
+            /* DB opened, now load library index */
+            app_state = APP_STATE_LOADING_LIB;
+            library_load();
+        } else {
+            /* DB failed to open, show empty library */
+            app_state = APP_STATE_LIBRARY;
+            show_library();
+        }
+        return;
+    }
+    /* During import, forward to epub */
+    epub_on_db_open(success);
+    int state = epub_get_state();
+    if (state == 99) {
+        show_import_error();
+        import_in_progress = 0;
+        app_state = APP_STATE_LIBRARY;
+    }
+}
+
+/* Async callback: kv get complete */
+void on_kv_get_complete_impl(int len) {
+    /* Settings load */
+    if (settings_is_load_pending()) {
+        settings_on_load_complete(len);
+        return;
+    }
+    /* Library index load */
+    if (library_is_load_pending()) {
+        library_on_load_complete(len);
+        if (app_state == APP_STATE_LOADING_LIB) {
+            /* Library loaded, show it */
+            show_library();
+            /* Load settings */
+            settings_load();
+        }
+        return;
+    }
+    /* Library metadata load */
+    if (library_is_metadata_pending()) {
+        library_on_metadata_load_complete(len);
+        if (app_state == APP_STATE_LOADING_BOOK && current_book_index >= 0) {
+            /* Metadata restored, enter reader */
+            int ch = library_get_chapter(current_book_index);
+            int pg = library_get_page(current_book_index);
+            app_state = APP_STATE_READING;
+            if (ch > 0 || pg > 0) {
+                reader_enter_at(root_id, container_id, ch, pg);
+            } else {
+                reader_enter(root_id, container_id);
+            }
+        }
+        return;
+    }
+    /* Reader chapter load */
+    if (reader_is_active()) {
+        reader_on_chapter_loaded(len);
+    }
+}
+
+/* Async callback: kv get blob complete */
+void on_kv_get_blob_complete_impl(int handle, int size) {
+    if (reader_is_active()) {
+        reader_on_chapter_blob_loaded(handle, size);
+    }
+}
 %}
+
+(* External ATS function declarations *)
+extern fun get_str_quire(): ptr = "mac#"
+extern fun get_str_div(): ptr = "mac#"
+extern fun get_str_input(): ptr = "mac#"
+extern fun get_str_label(): ptr = "mac#"
+extern fun get_str_for(): ptr = "mac#"
+extern fun get_str_h1(): ptr = "mac#"
+extern fun get_str_p(): ptr = "mac#"
+extern fun get_str_class(): ptr = "mac#"
+extern fun get_str_type(): ptr = "mac#"
+extern fun get_str_file(): ptr = "mac#"
+extern fun get_str_accept(): ptr = "mac#"
+extern fun get_str_epub_accept(): ptr = "mac#"
+extern fun get_str_id_attr(): ptr = "mac#"
+extern fun get_str_hidden(): ptr = "mac#"
+extern fun get_str_container(): ptr = "mac#"
+extern fun get_str_import_btn(): ptr = "mac#"
+extern fun get_str_file_input(): ptr = "mac#"
+extern fun get_str_progress_div(): ptr = "mac#"
+extern fun get_str_title_div(): ptr = "mac#"
+extern fun get_str_import_text(): ptr = "mac#"
+extern fun get_str_style(): ptr = "mac#"
+extern fun get_css_buffer(): ptr = "mac#"
+extern fun get_css_len(): int = "mac#"
+extern fun build_css(): void = "mac#"
+extern fun inject_styles(): void = "mac#"
+extern fun copy_text_to_fetch(text: ptr, len: int): int = "mac#"
+extern fun get_event_type(): int = "mac#"
+extern fun get_event_node_id(): int = "mac#"
+extern fun get_container_id(): int = "mac#"
+extern fun get_file_input_id(): int = "mac#"
+extern fun get_import_btn_id(): int = "mac#"
+extern fun get_progress_id(): int = "mac#"
+extern fun get_title_id(): int = "mac#"
+extern fun set_container_id(id: int): void = "mac#"
+extern fun set_file_input_id(id: int): void = "mac#"
+extern fun set_import_btn_id(id: int): void = "mac#"
+extern fun set_progress_id(id: int): void = "mac#"
+extern fun set_title_id(id: int): void = "mac#"
+extern fun get_import_in_progress(): int = "mac#"
+extern fun set_import_in_progress(v: int): void = "mac#"
+extern fun update_progress_display(): void = "mac#"
+extern fun show_import_error(): void = "mac#"
 
 (* M12: ATS extern for reader_init *)
 extern fun reader_init_ats(): void = "mac#reader_init"
@@ -594,6 +1070,19 @@ extern fun reader_init_ats(): void = "mac#reader_init"
 extern fun settings_init_ats(): void = "mac#settings_init"
 extern fun settings_set_root_id_ats(id: int): void = "mac#settings_set_root_id"
 
+(* M15: ATS extern for library_init *)
+extern fun library_init_ats(): void = "mac#library_init"
+
+(* Open the IDB so library and reader can use it *)
+extern fun open_db(): void = "mac#"
+
+%{
+/* Open IndexedDB for library and book data */
+void open_db(void) {
+    js_kv_open((void*)str_quire_db, 5, 1, (void*)str_stores, 33);
+}
+%}
+
 (* Initialize the application UI *)
 implement init() = let
     val () = dom_init()
@@ -601,6 +1090,7 @@ implement init() = let
     val () = reader_init_ats()
     val () = settings_init_ats()
     val () = settings_set_root_id_ats(1)
+    val () = library_init_ats()
 
     (* Inject CSS styles into document *)
     val () = inject_styles()
@@ -609,7 +1099,6 @@ implement init() = let
     val pf_root = dom_root_proof()
 
     (* Clear loading text *)
-    val _len = copy_text_to_fetch(get_str_quire(), 5)
     val pf_root = dom_set_text_offset(pf_root, 1, 0, 0)
 
     (* Create container div *)
@@ -668,7 +1157,7 @@ implement init() = let
                                 get_str_progress_div(), 12)
     val () = dom_drop_proof(pf_prog)
 
-    (* Create title display area *)
+    (* Create title display area (reused for import status) *)
     val did = dom_next_id()
     val () = set_title_id(did)
     val pf_tdiv = dom_create_element(pf_container, cid, did, get_str_p(), 1)
@@ -681,10 +1170,11 @@ implement init() = let
     val () = dom_drop_proof(pf_container)
     val () = dom_drop_proof(pf_root)
   in
-    ()
+    (* M15: Open database and load library *)
+    open_db()
   end
 
-(* C implementations for callbacks - extern declarations must come before use *)
+(* C implementations for callbacks *)
 extern fun process_event_impl(): void = "mac#"
 extern fun on_file_open_impl(handle: int, size: int): void = "mac#"
 extern fun on_decompress_impl(handle: int, size: int): void = "mac#"
@@ -693,10 +1183,7 @@ extern fun on_kv_open_impl(success: int): void = "mac#"
 extern fun on_kv_get_complete_impl(len: int): void = "mac#"
 extern fun on_kv_get_blob_complete_impl(handle: int, size: int): void = "mac#"
 
-(* Handle events - implemented in C to avoid prelude dependency *)
 implement process_event() = process_event_impl()
-
-(* Callback handlers - implemented in C to avoid prelude dependency *)
 implement on_fetch_complete(status, len) = ()
 implement on_timer_complete(callback_id) = ()
 implement on_file_open_complete(handle, size) = on_file_open_impl(handle, size)
@@ -706,212 +1193,3 @@ implement on_kv_get_complete(len) = on_kv_get_complete_impl(len)
 implement on_kv_get_blob_complete(handle, size) = on_kv_get_blob_complete_impl(handle, size)
 implement on_clipboard_copy_complete(success) = ()
 implement on_kv_open_complete(success) = on_kv_open_impl(success)
-
-%{
-void process_event_impl(void) {
-    int event_type = get_event_type();
-    int node_id = get_event_node_id();
-    int data1 = get_event_data1();
-    int data2 = get_event_data2();
-
-    /* Event type 1 = click */
-    if (event_type == 1) {
-        /* M14: Check if settings modal is visible and handle clicks */
-        if (settings_is_visible()) {
-            if (settings_handle_click(node_id)) {
-                return;
-            }
-            /* Click outside settings modal closes it */
-            settings_hide();
-            return;
-        }
-
-        /* Click on Read button -> enter reader mode */
-        if (node_id == read_btn_id && read_btn_id > 0 && !reader_is_active()) {
-            reader_enter(root_id, container_id);
-            return;
-        }
-
-        /* M12: Handle click zones in reader mode */
-        int vw = reader_get_viewport_width();
-        if (reader_is_active() && vw > 0) {
-            /* M13: Check if TOC is visible and handle TOC clicks */
-            if (reader_is_toc_visible()) {
-                /* Check if click is on a TOC entry
-                 * reader_get_toc_index_for_node internally verifies TOC_MAPS */
-                int toc_index = reader_get_toc_index_for_node(node_id);
-                if (toc_index >= 0) {
-                    reader_on_toc_click(node_id);
-                    return;
-                }
-                /* Any click outside TOC entries closes TOC
-                 * reader_hide_toc internally manages TOC_STATE transitions */
-                reader_hide_toc();
-                return;
-            }
-
-            int click_x = data1;  /* clientX */
-            int zone_left = vw / 5;      /* 20% from left */
-            int zone_right = vw - zone_left;  /* 20% from right */
-
-            if (click_x < zone_left) {
-                /* Left zone - previous page */
-                reader_prev_page();
-            } else if (click_x > zone_right) {
-                /* Right zone - next page */
-                reader_next_page();
-            } else {
-                /* M13: Middle zone (60%) - toggle TOC */
-                reader_toggle_toc();
-            }
-        }
-    }
-
-    /* Event type 2 = input (file selected) */
-    if (event_type == 2) {
-        if (node_id == file_input_id) {
-            if (!import_in_progress) {
-                import_in_progress = 1;
-                epub_start_import(node_id);
-            }
-        }
-    }
-
-    /* M12: Event type 4 = keydown - handle keyboard navigation */
-    if (event_type == 4 && reader_is_active()) {
-        int key_code = data1;
-
-        /* Key codes:
-         * 27 = Escape
-         * 37 = Left Arrow
-         * 39 = Right Arrow
-         * 32 = Space
-         * 33 = Page Up
-         * 34 = Page Down
-         * 36 = Home
-         * 35 = End
-         * 84 = 't' (toggle TOC)
-         * 83 = 's' (toggle settings)
-         */
-
-        /* M14: Escape closes settings if open */
-        if (key_code == 27 && settings_is_visible()) {
-            settings_hide();
-            return;
-        }
-
-        /* M14: 's' toggles settings (only when TOC not visible) */
-        if (key_code == 83 && !reader_is_toc_visible()) {
-            settings_toggle();
-            return;
-        }
-
-        /* Don't process other keys if settings modal is visible */
-        if (settings_is_visible()) {
-            return;
-        }
-
-        switch (key_code) {
-            case 27:  /* Escape - close TOC */
-                if (reader_is_toc_visible()) {
-                    reader_hide_toc();
-                }
-                break;
-            case 84:  /* 't' - toggle TOC */
-                reader_toggle_toc();
-                break;
-            case 37:  /* Left Arrow */
-            case 33:  /* Page Up */
-                if (!reader_is_toc_visible()) {
-                    reader_prev_page();
-                }
-                break;
-            case 39:  /* Right Arrow */
-            case 34:  /* Page Down */
-            case 32:  /* Space */
-                if (!reader_is_toc_visible()) {
-                    reader_next_page();
-                }
-                break;
-            case 36:  /* Home - first page */
-                if (!reader_is_toc_visible()) {
-                    reader_go_to_page(0);
-                }
-                break;
-            case 35:  /* End - last page */
-                if (!reader_is_toc_visible()) {
-                    reader_go_to_page(reader_get_total_pages() - 1);
-                }
-                break;
-        }
-    }
-}
-
-/* Handle state transitions after async operations */
-static void handle_state_after_op(void) {
-    int state = epub_get_state();
-    if (state == 99) {  /* Error */
-        show_import_error();
-        import_in_progress = 0;
-    } else if (state == 6 || state == 7) {  /* Still processing */
-        update_progress_display();
-    } else if (state == 8) {  /* Done */
-        show_import_complete();
-        import_in_progress = 0;
-    }
-}
-
-void on_file_open_impl(int handle, int size) {
-    epub_on_file_open(handle, size);
-    int state = epub_get_state();
-    if (state == 99) {
-        show_import_error();
-        import_in_progress = 0;
-    }
-}
-
-void on_decompress_impl(int handle, int size) {
-    epub_on_decompress(handle, size);
-    handle_state_after_op();
-}
-
-void on_kv_complete_impl(int success) {
-    /* M14: Check if settings save is pending */
-    if (settings_is_save_pending()) {
-        settings_on_save_complete(success);
-        return;
-    }
-    epub_on_db_put(success);
-    handle_state_after_op();
-}
-
-void on_kv_open_impl(int success) {
-    epub_on_db_open(success);
-    int state = epub_get_state();
-    if (state == 99) {
-        show_import_error();
-        import_in_progress = 0;
-    }
-}
-
-/* M12: Handle chapter data loaded from IndexedDB (small chapter, fits in fetch buffer) */
-void on_kv_get_complete_impl(int len) {
-    /* M14: Check if settings load is pending */
-    if (settings_is_load_pending()) {
-        settings_on_load_complete(len);
-        return;
-    }
-    /* Forward to reader module if reader is active */
-    if (reader_is_active()) {
-        reader_on_chapter_loaded(len);
-    }
-}
-
-/* M12: Handle chapter data loaded from IndexedDB (large chapter, returned as blob) */
-void on_kv_get_blob_complete_impl(int handle, int size) {
-    /* Forward to reader module if reader is active */
-    if (reader_is_active()) {
-        reader_on_chapter_blob_loaded(handle, size);
-    }
-}
-%}

@@ -194,3 +194,9 @@ fun reader_get_toc_index_for_node(node_id: int): int = "mac#"
 
 (* Handle TOC entry click - internally verifies correct chapter navigation *)
 fun reader_on_toc_click(node_id: int): void = "mac#"
+
+(* M15: Enter reader at specific chapter and page for resume *)
+fun reader_enter_at(root_id: int, container_hide_id: int, chapter: int, page: int): void = "mac#"
+
+(* M15: Get back button node ID *)
+fun reader_get_back_btn_id(): int = "mac#"
