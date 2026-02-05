@@ -1,139 +1,299 @@
 (* reader.dats - Three-chapter sliding window implementation
  *
- * M12: Implements seamless reading across chapter boundaries.
- * Maintains three chapter containers that rotate as the user navigates.
+ * M12: Manages prev/curr/next chapter slots for seamless reading.
+ * Each slot tracks: chapter index, container node ID, page count, status.
  *)
 
 #define ATS_DYNLOADFLAG 0
 
 staload "reader.sats"
 staload "dom.sats"
-staload "epub.sats"
 
 %{^
-/* Slot and loading state constants (must match reader.sats) */
+/* Chapter slot structure */
+typedef struct {
+    int chapter_index;     /* -1 if empty */
+    int container_id;      /* DOM node ID for this slot's container */
+    int page_count;        /* Number of pages in this chapter */
+    int status;            /* SLOT_EMPTY, SLOT_LOADING, SLOT_READY */
+    int blob_handle;       /* Pending blob handle during load */
+} chapter_slot_t;
+
+/* Slot constants */
 #define SLOT_PREV 0
 #define SLOT_CURR 1
 #define SLOT_NEXT 2
-#define LOAD_EMPTY    0
-#define LOAD_PENDING  1
-#define LOAD_READY    2
 
-/* String constants for reader DOM elements */
+/* Reader state */
+static int reader_active = 0;
+static int reader_viewport_id = 0;
+static int reader_page_indicator_id = 0;
+static int reader_viewport_width = 0;
+static int reader_page_stride = 0;
+
+/* Current reading position */
+static int reader_current_page = 0;
+
+/* Three chapter slots */
+static chapter_slot_t slots[3] = {
+    { -1, 0, 0, 0, 0 },
+    { -1, 0, 0, 0, 0 },
+    { -1, 0, 0, 0, 0 }
+};
+
+/* Which slot is currently being loaded (for async completion) */
+static int loading_slot = -1;
+
+/* String constants */
 static const char str_div[] = "div";
 static const char str_class[] = "class";
+static const char str_hidden[] = "hidden";
 static const char str_reader_viewport[] = "reader-viewport";
 static const char str_chapter_container[] = "chapter-container";
+static const char str_chapter_prev[] = "chapter-prev";
+static const char str_chapter_curr[] = "chapter-curr";
+static const char str_chapter_next[] = "chapter-next";
 static const char str_page_indicator[] = "page-indicator";
 static const char str_page_of[] = " / ";
+static const char str_ch_prefix[] = "Ch ";
+static const char str_colon_space[] = ": ";
 
-/* External functions */
+/* External functions from epub module */
+extern int epub_get_chapter_count(void);
+extern int epub_get_chapter_key(int chapter_index, int buf_offset);
+
+/* External functions from bridge */
 extern unsigned char* get_fetch_buffer_ptr(void);
 extern unsigned char* get_string_buffer_ptr(void);
-extern void* dom_root_proof(void);
-extern void* dom_create_element(void*, int, int, void*, int);
-extern void* dom_set_attr(void*, int, void*, int, void*, int);
-extern void* dom_set_text_offset(void*, int, int, int);
-extern void* dom_set_transform(void*, int, int, int);
-extern void* dom_set_inner_html(void*, int, int, int);
-extern void dom_drop_proof(void*);
-extern int dom_next_id(void);
-extern int js_measure_node(int);
 extern void js_kv_get(void* store_ptr, int store_len, void* key_ptr, int key_len);
 extern void js_set_inner_html_from_blob(int node_id, int blob_handle);
 extern void js_blob_free(int handle);
-extern int epub_get_chapter_key(int chapter_index, int buf_offset);
-extern int epub_get_chapter_count(void);
+extern int js_measure_node(int node_id);
 
-/* Chapter store name */
-static const char str_chapters_store[] = "chapters";
+/* DOM functions */
+extern void dom_init(void);
+extern void* dom_root_proof(void);
+extern void* dom_create_element(void*, int, int, void*, int);
+extern void* dom_set_text_offset(void*, int, int, int);
+extern void* dom_set_attr(void*, int, void*, int, void*, int);
+extern void* dom_set_transform(void*, int, int, int);
+extern void* dom_set_inner_html(void*, int, int, int);
+extern int dom_next_id(void);
+extern void dom_drop_proof(void*);
 
-/* Sliding window state */
-static int reader_active = 0;
-static int total_chapters = 0;
-static int viewport_width = 0;
-static int page_stride = 0;
+/* Forward declarations */
+static void load_chapter_into_slot(int slot_index, int chapter_index);
+static void inject_slot_html(int slot_index);
+static void measure_slot_pages(int slot_index);
+static void position_all_slots(void);
+static void preload_adjacent_chapters(void);
+static void rotate_to_next_chapter(void);
+static void rotate_to_prev_chapter(void);
+void reader_update_page_display(void);
 
-/* Current position */
-static int current_chapter = 0;
-static int current_page = 0;
+/* Initialize reader module */
+void reader_init(void) {
+    reader_active = 0;
+    reader_viewport_id = 0;
+    reader_page_indicator_id = 0;
+    reader_viewport_width = 0;
+    reader_page_stride = 0;
+    reader_current_page = 0;
+    loading_slot = -1;
 
-/* DOM node IDs */
-static int root_id = 1;
-static int viewport_id = 0;
-static int page_indicator_id = 0;
+    for (int i = 0; i < 3; i++) {
+        slots[i].chapter_index = -1;
+        slots[i].container_id = 0;
+        slots[i].page_count = 0;
+        slots[i].status = 0;  /* SLOT_EMPTY */
+        slots[i].blob_handle = 0;
+    }
+}
 
-/* Slot state: chapter indices (-1 = no chapter assigned) */
-static int slot_chapter[3] = {-1, -1, -1};
+/* Enter reader mode - creates viewport and three chapter containers */
+void reader_enter(int root_id, int container_hide_id) {
+    unsigned char* buf = get_fetch_buffer_ptr();
+    void* pf = dom_root_proof();
 
-/* Slot state: loading status */
-static int slot_loading[3] = {0, 0, 0};
+    /* Hide the import container */
+    pf = dom_set_attr(pf, container_hide_id, (void*)str_class, 5, (void*)str_hidden, 6);
 
-/* Slot state: page counts (valid when loading == LOAD_READY) */
-static int slot_pages[3] = {1, 1, 1};
+    /* Create reader viewport */
+    int vid = dom_next_id();
+    reader_viewport_id = vid;
+    void* pf_viewport = dom_create_element(pf, root_id, vid, (void*)str_div, 3);
+    pf_viewport = dom_set_attr(pf_viewport, vid, (void*)str_class, 5,
+                               (void*)str_reader_viewport, 15);
 
-/* Slot state: DOM container node IDs */
-static int slot_node_id[3] = {0, 0, 0};
+    /* Create three chapter containers inside viewport */
+    /* Prev chapter container */
+    int prev_id = dom_next_id();
+    slots[SLOT_PREV].container_id = prev_id;
+    slots[SLOT_PREV].chapter_index = -1;
+    slots[SLOT_PREV].status = 0;  /* SLOT_EMPTY */
+    void* pf_prev = dom_create_element(pf_viewport, vid, prev_id, (void*)str_div, 3);
+    pf_prev = dom_set_attr(pf_prev, prev_id, (void*)str_class, 5,
+                           (void*)str_chapter_container, 17);
+    dom_drop_proof(pf_prev);
 
-/* Which slot is currently being loaded (for callback routing) */
-static int loading_slot = -1;
+    /* Current chapter container */
+    int curr_id = dom_next_id();
+    slots[SLOT_CURR].container_id = curr_id;
+    slots[SLOT_CURR].chapter_index = -1;
+    slots[SLOT_CURR].status = 0;
+    void* pf_curr = dom_create_element(pf_viewport, vid, curr_id, (void*)str_div, 3);
+    pf_curr = dom_set_attr(pf_curr, curr_id, (void*)str_class, 5,
+                           (void*)str_chapter_container, 17);
+    dom_drop_proof(pf_curr);
 
-/* Blob handle for pending chapter injection */
-static int pending_blob_handle = 0;
+    /* Next chapter container */
+    int next_id = dom_next_id();
+    slots[SLOT_NEXT].container_id = next_id;
+    slots[SLOT_NEXT].chapter_index = -1;
+    slots[SLOT_NEXT].status = 0;
+    void* pf_next = dom_create_element(pf_viewport, vid, next_id, (void*)str_div, 3);
+    pf_next = dom_set_attr(pf_next, next_id, (void*)str_class, 5,
+                           (void*)str_chapter_container, 17);
+    dom_drop_proof(pf_next);
 
-/* Get slot's chapter container node ID */
-int reader_get_slot_node_id_impl(int slot) {
-    if (slot < 0 || slot > 2) return 0;
-    return slot_node_id[slot];
+    dom_drop_proof(pf_viewport);
+
+    /* Create page indicator */
+    int pid = dom_next_id();
+    reader_page_indicator_id = pid;
+    void* pf_indicator = dom_create_element(pf, root_id, pid, (void*)str_div, 3);
+    pf_indicator = dom_set_attr(pf_indicator, pid, (void*)str_class, 5,
+                                (void*)str_page_indicator, 14);
+
+    /* Initial page display "Ch 1: 1 / 1" */
+    int len = 0;
+    const char* ch = str_ch_prefix;
+    while (*ch && len < 16380) buf[len++] = *ch++;
+    buf[len++] = '1';
+    const char* col = str_colon_space;
+    while (*col && len < 16380) buf[len++] = *col++;
+    buf[len++] = '1';
+    const char* of = str_page_of;
+    while (*of && len < 16380) buf[len++] = *of++;
+    buf[len++] = '1';
+    dom_set_text_offset(pf_indicator, pid, 0, len);
+    dom_drop_proof(pf_indicator);
+
+    dom_drop_proof(pf);
+
+    reader_active = 1;
+    reader_current_page = 0;
+
+    /* Load first chapter into current slot */
+    load_chapter_into_slot(SLOT_CURR, 0);
+}
+
+/* Exit reader mode */
+void reader_exit(void) {
+    reader_active = 0;
+    reader_init();  /* Reset all state */
 }
 
 /* Check if reader is active */
-int reader_is_active_impl(void) {
+int reader_is_active(void) {
     return reader_active;
 }
 
 /* Get current chapter index */
-int reader_get_chapter_impl(void) {
-    return current_chapter;
+int reader_get_current_chapter(void) {
+    if (!reader_active) return -1;
+    return slots[SLOT_CURR].chapter_index;
 }
 
-/* Get current page */
-int reader_get_page_impl(void) {
-    return current_page;
+/* Get current page within chapter */
+int reader_get_current_page(void) {
+    return reader_current_page;
 }
 
 /* Get total pages in current chapter */
-int reader_get_total_pages_impl(void) {
-    return slot_pages[SLOT_CURR];
+int reader_get_total_pages(void) {
+    if (!reader_active || slots[SLOT_CURR].status != 2) return 1;
+    return slots[SLOT_CURR].page_count > 0 ? slots[SLOT_CURR].page_count : 1;
 }
 
-/* Get loading slot for callback routing */
-int reader_get_loading_slot_impl(void) {
-    return loading_slot;
+/* Get total chapter count */
+int reader_get_chapter_count(void) {
+    return epub_get_chapter_count();
 }
 
-/* Get viewport width for click zones */
-int reader_get_viewport_width_impl(void) {
-    return viewport_width;
+/* Load a chapter into a specific slot */
+static void load_chapter_into_slot(int slot_index, int chapter_index) {
+    if (slot_index < 0 || slot_index > 2) return;
+    if (chapter_index < 0 || chapter_index >= epub_get_chapter_count()) {
+        /* Mark slot as empty */
+        slots[slot_index].chapter_index = -1;
+        slots[slot_index].status = 0;  /* SLOT_EMPTY */
+        slots[slot_index].page_count = 0;
+        return;
+    }
+
+    /* Already loading something */
+    if (loading_slot >= 0) return;
+
+    /* Already have this chapter in this slot */
+    if (slots[slot_index].chapter_index == chapter_index &&
+        slots[slot_index].status == 2) {  /* SLOT_READY */
+        return;
+    }
+
+    unsigned char* str_buf = get_string_buffer_ptr();
+
+    /* Get chapter key */
+    int key_len = epub_get_chapter_key(chapter_index, 0);
+    if (key_len == 0) {
+        slots[slot_index].chapter_index = -1;
+        slots[slot_index].status = 0;
+        return;
+    }
+
+    slots[slot_index].chapter_index = chapter_index;
+    slots[slot_index].status = 1;  /* SLOT_LOADING */
+    slots[slot_index].page_count = 0;
+    loading_slot = slot_index;
+
+    /* Request chapter from IndexedDB */
+    static const char str_chapters[] = "chapters";
+    js_kv_get((void*)str_chapters, 8, str_buf, key_len);
 }
 
-/* Measure a slot's container and get page count */
-static int measure_slot(int slot) {
-    int node_id = slot_node_id[slot];
-    if (node_id == 0) return 1;
+/* Inject HTML into a slot's container */
+static void inject_slot_html(int slot_index) {
+    if (slot_index < 0 || slot_index > 2) return;
+    chapter_slot_t* slot = &slots[slot_index];
 
-    if (!js_measure_node(node_id)) return 1;
+    if (slot->blob_handle > 0) {
+        js_set_inner_html_from_blob(slot->container_id, slot->blob_handle);
+        js_blob_free(slot->blob_handle);
+        slot->blob_handle = 0;
+    }
 
-    /* Read measurements from fetch buffer (float64 values) */
+    slot->status = 2;  /* SLOT_READY */
+}
+
+/* Measure pages in a slot's container */
+static void measure_slot_pages(int slot_index) {
+    if (slot_index < 0 || slot_index > 2) return;
+    chapter_slot_t* slot = &slots[slot_index];
+
+    if (slot->container_id == 0) return;
+    if (!js_measure_node(slot->container_id)) return;
+
     unsigned char* buf = get_fetch_buffer_ptr();
-    double scroll_width_d;
-    double width_d;
 
-    /* Read float64 values manually */
+    /* Read float64 values from fetch buffer */
+    double scroll_width_d, width_d;
+    unsigned char* sw_ptr = buf + 32;  /* scrollWidth at offset 32 */
+    unsigned char* w_ptr = buf + 16;   /* width at offset 16 */
+
     unsigned char sw_bytes[8], w_bytes[8];
     for (int i = 0; i < 8; i++) {
-        sw_bytes[i] = buf[32 + i];  /* scrollWidth at offset 32 */
-        w_bytes[i] = buf[16 + i];   /* width at offset 16 */
+        sw_bytes[i] = sw_ptr[i];
+        w_bytes[i] = w_ptr[i];
     }
 
     scroll_width_d = *(double*)sw_bytes;
@@ -144,58 +304,375 @@ static int measure_slot(int slot) {
 
     if (width <= 0) width = 1;
 
-    /* Update global viewport measurements if not set */
-    if (viewport_width == 0) {
-        viewport_width = width;
-        page_stride = width;  /* column-gap is 0 */
-    }
+    reader_viewport_width = width;
+    reader_page_stride = width;
 
-    /* Compute page count */
-    int pages = (scroll_width + width - 1) / width;
-    if (pages < 1) pages = 1;
-
-    return pages;
+    slot->page_count = (scroll_width + width - 1) / width;
+    if (slot->page_count < 1) slot->page_count = 1;
 }
 
-/* Apply transform to position a slot at a given page offset */
-static void position_slot(int slot, int page_offset) {
-    int node_id = slot_node_id[slot];
-    if (node_id == 0) return;
-
-    int offset_x = -(page_offset * page_stride);
+/* Position all slots based on current reading position */
+static void position_all_slots(void) {
     void* pf = dom_root_proof();
-    dom_set_transform(pf, node_id, offset_x, 0);
+
+    chapter_slot_t* curr_slot = &slots[SLOT_CURR];
+    chapter_slot_t* prev_slot = &slots[SLOT_PREV];
+    chapter_slot_t* next_slot = &slots[SLOT_NEXT];
+
+    /* Current slot: positioned at -(currentPage * stride) */
+    int curr_offset_x = -(reader_current_page * reader_page_stride);
+    if (curr_slot->container_id > 0) {
+        dom_set_transform(pf, curr_slot->container_id, curr_offset_x, 0);
+    }
+
+    /* Prev slot: positioned to the left of current, showing its last page
+     * When transitioning back, we want to see prev's last page */
+    if (prev_slot->container_id > 0 && prev_slot->chapter_index >= 0) {
+        int prev_pages = prev_slot->page_count > 0 ? prev_slot->page_count : 1;
+        /* Position so that scrolling left from curr page 0 shows prev last page */
+        int prev_offset_x = -((prev_pages - 1) * reader_page_stride) - reader_page_stride;
+        dom_set_transform(pf, prev_slot->container_id, prev_offset_x, 0);
+    } else if (prev_slot->container_id > 0) {
+        /* Empty prev slot - move way off screen */
+        dom_set_transform(pf, prev_slot->container_id, -100000, 0);
+    }
+
+    /* Next slot: positioned to the right of current's last page */
+    if (next_slot->container_id > 0 && next_slot->chapter_index >= 0) {
+        int curr_pages = curr_slot->page_count > 0 ? curr_slot->page_count : 1;
+        /* Position so that scrolling right from curr last page shows next page 0 */
+        int next_offset_x = (curr_pages - reader_current_page) * reader_page_stride;
+        dom_set_transform(pf, next_slot->container_id, next_offset_x, 0);
+    } else if (next_slot->container_id > 0) {
+        /* Empty next slot - move way off screen */
+        dom_set_transform(pf, next_slot->container_id, 100000, 0);
+    }
+
     dom_drop_proof(pf);
 }
 
-/* Update page indicator text */
-void reader_update_display_impl(void) {
-    if (page_indicator_id == 0) return;
+/* Preload adjacent chapters */
+static void preload_adjacent_chapters(void) {
+    int curr_chapter = slots[SLOT_CURR].chapter_index;
+    if (curr_chapter < 0) return;
+
+    int total_chapters = epub_get_chapter_count();
+
+    /* Load previous chapter if not already loaded */
+    if (curr_chapter > 0) {
+        int prev_chapter = curr_chapter - 1;
+        if (slots[SLOT_PREV].chapter_index != prev_chapter) {
+            load_chapter_into_slot(SLOT_PREV, prev_chapter);
+            return;  /* One load at a time */
+        }
+    } else {
+        /* No previous chapter - mark slot empty */
+        slots[SLOT_PREV].chapter_index = -1;
+        slots[SLOT_PREV].status = 0;
+    }
+
+    /* Load next chapter if not already loaded */
+    if (curr_chapter < total_chapters - 1) {
+        int next_chapter = curr_chapter + 1;
+        if (slots[SLOT_NEXT].chapter_index != next_chapter) {
+            load_chapter_into_slot(SLOT_NEXT, next_chapter);
+            return;
+        }
+    } else {
+        /* No next chapter - mark slot empty */
+        slots[SLOT_NEXT].chapter_index = -1;
+        slots[SLOT_NEXT].status = 0;
+    }
+}
+
+/* Rotate slots to show next chapter */
+static void rotate_to_next_chapter(void) {
+    int curr_chapter = slots[SLOT_CURR].chapter_index;
+    int total_chapters = epub_get_chapter_count();
+
+    if (curr_chapter < 0 || curr_chapter >= total_chapters - 1) return;
+
+    /* Rotate: prev <- curr <- next */
+    /* The prev slot content becomes stale, curr becomes prev, next becomes curr */
+
+    /* Save container IDs (they don't change, just the assignment) */
+    int prev_container = slots[SLOT_PREV].container_id;
+    int curr_container = slots[SLOT_CURR].container_id;
+    int next_container = slots[SLOT_NEXT].container_id;
+
+    /* Copy next -> curr */
+    slots[SLOT_PREV].chapter_index = slots[SLOT_CURR].chapter_index;
+    slots[SLOT_PREV].page_count = slots[SLOT_CURR].page_count;
+    slots[SLOT_PREV].status = slots[SLOT_CURR].status;
+    slots[SLOT_PREV].container_id = curr_container;
+
+    slots[SLOT_CURR].chapter_index = slots[SLOT_NEXT].chapter_index;
+    slots[SLOT_CURR].page_count = slots[SLOT_NEXT].page_count;
+    slots[SLOT_CURR].status = slots[SLOT_NEXT].status;
+    slots[SLOT_CURR].container_id = next_container;
+
+    /* Reuse old prev container for new next */
+    slots[SLOT_NEXT].container_id = prev_container;
+    slots[SLOT_NEXT].chapter_index = -1;
+    slots[SLOT_NEXT].page_count = 0;
+    slots[SLOT_NEXT].status = 0;  /* SLOT_EMPTY */
+
+    /* Reset to first page of new current chapter */
+    reader_current_page = 0;
+
+    /* Position all slots */
+    position_all_slots();
+
+    /* Start loading next chapter */
+    preload_adjacent_chapters();
+}
+
+/* Rotate slots to show previous chapter */
+static void rotate_to_prev_chapter(void) {
+    int curr_chapter = slots[SLOT_CURR].chapter_index;
+
+    if (curr_chapter <= 0) return;
+
+    /* Rotate: next <- curr <- prev */
+
+    int prev_container = slots[SLOT_PREV].container_id;
+    int curr_container = slots[SLOT_CURR].container_id;
+    int next_container = slots[SLOT_NEXT].container_id;
+
+    /* Copy prev -> curr */
+    slots[SLOT_NEXT].chapter_index = slots[SLOT_CURR].chapter_index;
+    slots[SLOT_NEXT].page_count = slots[SLOT_CURR].page_count;
+    slots[SLOT_NEXT].status = slots[SLOT_CURR].status;
+    slots[SLOT_NEXT].container_id = curr_container;
+
+    slots[SLOT_CURR].chapter_index = slots[SLOT_PREV].chapter_index;
+    slots[SLOT_CURR].page_count = slots[SLOT_PREV].page_count;
+    slots[SLOT_CURR].status = slots[SLOT_PREV].status;
+    slots[SLOT_CURR].container_id = prev_container;
+
+    /* Reuse old next container for new prev */
+    slots[SLOT_PREV].container_id = next_container;
+    slots[SLOT_PREV].chapter_index = -1;
+    slots[SLOT_PREV].page_count = 0;
+    slots[SLOT_PREV].status = 0;
+
+    /* Go to last page of previous chapter */
+    reader_current_page = slots[SLOT_CURR].page_count > 0 ?
+                          slots[SLOT_CURR].page_count - 1 : 0;
+
+    position_all_slots();
+    preload_adjacent_chapters();
+}
+
+/* Navigate to next page */
+void reader_next_page(void) {
+    if (!reader_active) return;
+
+    chapter_slot_t* curr_slot = &slots[SLOT_CURR];
+    if (curr_slot->status != 2) return;  /* Not ready */
+
+    int total_pages = curr_slot->page_count > 0 ? curr_slot->page_count : 1;
+
+    if (reader_current_page < total_pages - 1) {
+        /* Normal page turn within chapter */
+        reader_current_page++;
+
+        /* Just update current slot transform */
+        void* pf = dom_root_proof();
+        int offset_x = -(reader_current_page * reader_page_stride);
+        dom_set_transform(pf, curr_slot->container_id, offset_x, 0);
+        dom_drop_proof(pf);
+    } else {
+        /* At last page - try to go to next chapter */
+        chapter_slot_t* next_slot = &slots[SLOT_NEXT];
+        if (next_slot->chapter_index >= 0 && next_slot->status == 2) {
+            rotate_to_next_chapter();
+        }
+        /* Else: at end of book, do nothing */
+    }
+
+    reader_update_page_display();
+}
+
+/* Navigate to previous page */
+void reader_prev_page(void) {
+    if (!reader_active) return;
+
+    chapter_slot_t* curr_slot = &slots[SLOT_CURR];
+    if (curr_slot->status != 2) return;
+
+    if (reader_current_page > 0) {
+        /* Normal page turn within chapter */
+        reader_current_page--;
+
+        void* pf = dom_root_proof();
+        int offset_x = -(reader_current_page * reader_page_stride);
+        dom_set_transform(pf, curr_slot->container_id, offset_x, 0);
+        dom_drop_proof(pf);
+    } else {
+        /* At first page - try to go to previous chapter */
+        chapter_slot_t* prev_slot = &slots[SLOT_PREV];
+        if (prev_slot->chapter_index >= 0 && prev_slot->status == 2) {
+            rotate_to_prev_chapter();
+        }
+        /* Else: at start of book, do nothing */
+    }
+
+    reader_update_page_display();
+}
+
+/* Navigate to specific page in current chapter */
+void reader_go_to_page(int page) {
+    if (!reader_active) return;
+
+    chapter_slot_t* curr_slot = &slots[SLOT_CURR];
+    if (curr_slot->status != 2) return;
+
+    int total_pages = curr_slot->page_count > 0 ? curr_slot->page_count : 1;
+
+    if (page < 0) page = 0;
+    if (page >= total_pages) page = total_pages - 1;
+    if (page == reader_current_page) return;
+
+    reader_current_page = page;
+
+    void* pf = dom_root_proof();
+    int offset_x = -(reader_current_page * reader_page_stride);
+    dom_set_transform(pf, curr_slot->container_id, offset_x, 0);
+    dom_drop_proof(pf);
+
+    reader_update_page_display();
+}
+
+/* Handle chapter data loaded (small, in fetch buffer) */
+void reader_on_chapter_loaded(int len) {
+    if (!reader_active || loading_slot < 0) return;
+
+    int slot_index = loading_slot;
+    loading_slot = -1;
+
+    if (len == 0) {
+        slots[slot_index].status = 0;  /* SLOT_EMPTY */
+        return;
+    }
+
+    /* Inject HTML via SET_INNER_HTML */
+    void* pf = dom_root_proof();
+    dom_set_inner_html(pf, slots[slot_index].container_id, 0, len);
+    dom_drop_proof(pf);
+
+    slots[slot_index].status = 2;  /* SLOT_READY */
+
+    /* Measure pages */
+    measure_slot_pages(slot_index);
+
+    /* If this was the current slot, update display and position */
+    if (slot_index == SLOT_CURR) {
+        reader_current_page = 0;
+        position_all_slots();
+        reader_update_page_display();
+
+        /* Preload adjacent chapters */
+        preload_adjacent_chapters();
+    } else {
+        /* Adjacent chapter loaded - reposition */
+        position_all_slots();
+
+        /* Continue preloading if needed */
+        preload_adjacent_chapters();
+    }
+}
+
+/* Handle chapter data loaded (large, as blob) */
+void reader_on_chapter_blob_loaded(int handle, int size) {
+    if (!reader_active || loading_slot < 0) return;
+
+    int slot_index = loading_slot;
+    loading_slot = -1;
+
+    if (handle == 0 || size == 0) {
+        slots[slot_index].status = 0;
+        return;
+    }
+
+    /* Store blob handle and inject */
+    slots[slot_index].blob_handle = handle;
+    inject_slot_html(slot_index);
+
+    /* Measure pages */
+    measure_slot_pages(slot_index);
+
+    if (slot_index == SLOT_CURR) {
+        reader_current_page = 0;
+        position_all_slots();
+        reader_update_page_display();
+        preload_adjacent_chapters();
+    } else {
+        position_all_slots();
+        preload_adjacent_chapters();
+    }
+}
+
+/* Get viewport ID */
+int reader_get_viewport_id(void) {
+    return reader_viewport_id;
+}
+
+/* Get viewport width */
+int reader_get_viewport_width(void) {
+    return reader_viewport_width;
+}
+
+/* Get page indicator ID */
+int reader_get_page_indicator_id(void) {
+    return reader_page_indicator_id;
+}
+
+/* Update page display */
+void reader_update_page_display(void) {
+    if (reader_page_indicator_id == 0) return;
 
     unsigned char* buf = get_fetch_buffer_ptr();
     int len = 0;
 
-    /* Calculate total page number across all chapters */
-    /* For now, just show current page / total in chapter */
-    int display_page = current_page + 1;
-    int total = slot_pages[SLOT_CURR];
+    chapter_slot_t* curr_slot = &slots[SLOT_CURR];
+    int chapter = curr_slot->chapter_index + 1;  /* 1-indexed display */
+    int page = reader_current_page + 1;  /* 1-indexed display */
+    int total = curr_slot->page_count > 0 ? curr_slot->page_count : 1;
 
-    /* Format: "page / total (ch X)" */
-    if (display_page >= 100) {
-        buf[len++] = '0' + (display_page / 100);
-        buf[len++] = '0' + ((display_page / 10) % 10);
-        buf[len++] = '0' + (display_page % 10);
-    } else if (display_page >= 10) {
-        buf[len++] = '0' + (display_page / 10);
-        buf[len++] = '0' + (display_page % 10);
+    /* "Ch N: P / T" format */
+    const char* ch = str_ch_prefix;
+    while (*ch && len < 16380) buf[len++] = *ch++;
+
+    /* Chapter number */
+    if (chapter >= 100) {
+        buf[len++] = '0' + (chapter / 100);
+        buf[len++] = '0' + ((chapter / 10) % 10);
+        buf[len++] = '0' + (chapter % 10);
+    } else if (chapter >= 10) {
+        buf[len++] = '0' + (chapter / 10);
+        buf[len++] = '0' + (chapter % 10);
     } else {
-        buf[len++] = '0' + display_page;
+        buf[len++] = '0' + chapter;
     }
 
-    /* " / " */
-    buf[len++] = ' ';
-    buf[len++] = '/';
-    buf[len++] = ' ';
+    const char* col = str_colon_space;
+    while (*col && len < 16380) buf[len++] = *col++;
+
+    /* Page number */
+    if (page >= 100) {
+        buf[len++] = '0' + (page / 100);
+        buf[len++] = '0' + ((page / 10) % 10);
+        buf[len++] = '0' + (page % 10);
+    } else if (page >= 10) {
+        buf[len++] = '0' + (page / 10);
+        buf[len++] = '0' + (page % 10);
+    } else {
+        buf[len++] = '0' + page;
+    }
+
+    const char* of = str_page_of;
+    while (*of && len < 16380) buf[len++] = *of++;
 
     /* Total pages */
     if (total >= 100) {
@@ -209,394 +686,15 @@ void reader_update_display_impl(void) {
         buf[len++] = '0' + total;
     }
 
-    /* Update text */
     void* pf = dom_root_proof();
-    dom_set_text_offset(pf, page_indicator_id, 0, len);
+    dom_set_text_offset(pf, reader_page_indicator_id, 0, len);
     dom_drop_proof(pf);
 }
 
-/* Request a chapter to be loaded into a slot */
-void reader_request_chapter_impl(int slot, int chapter_idx) {
-    if (slot < 0 || slot > 2) return;
-    if (chapter_idx < 0 || chapter_idx >= total_chapters) {
-        /* Invalid chapter - mark slot as empty */
-        slot_chapter[slot] = -1;
-        slot_loading[slot] = LOAD_EMPTY;
-        return;
-    }
-
-    /* Mark slot as pending load */
-    slot_chapter[slot] = chapter_idx;
-    slot_loading[slot] = LOAD_PENDING;
-    loading_slot = slot;
-
-    /* Get chapter key and request from IndexedDB */
-    unsigned char* str_buf = get_string_buffer_ptr();
-    int key_len = epub_get_chapter_key(chapter_idx, 0);
-    if (key_len == 0) {
-        slot_loading[slot] = LOAD_EMPTY;
-        loading_slot = -1;
-        return;
-    }
-
-    js_kv_get((void*)str_chapters_store, 8, str_buf, key_len);
-}
-
-/* Handle chapter loaded (small, in fetch buffer) */
-void reader_on_chapter_loaded_impl(int slot, int len) {
-    if (slot < 0 || slot > 2) return;
-
-    int node_id = slot_node_id[slot];
-    if (node_id == 0) {
-        slot_loading[slot] = LOAD_EMPTY;
-        loading_slot = -1;
-        return;
-    }
-
-    if (len == 0) {
-        /* Empty chapter - still mark as ready */
-        slot_loading[slot] = LOAD_READY;
-        slot_pages[slot] = 1;
-        loading_slot = -1;
-        return;
-    }
-
-    /* Inject HTML via SET_INNER_HTML */
-    void* pf = dom_root_proof();
-    dom_set_inner_html(pf, node_id, 0, len);
-    dom_drop_proof(pf);
-
-    /* Measure and update state */
-    slot_pages[slot] = measure_slot(slot);
-    slot_loading[slot] = LOAD_READY;
-    loading_slot = -1;
-
-    /* If this was the current slot, update display */
-    if (slot == SLOT_CURR) {
-        position_slot(SLOT_CURR, current_page);
-        reader_update_display_impl();
-    }
-}
-
-/* Handle chapter loaded (large, as blob) */
-void reader_on_chapter_blob_loaded_impl(int slot, int handle, int size) {
-    if (slot < 0 || slot > 2) return;
-
-    int node_id = slot_node_id[slot];
-    if (node_id == 0 || handle == 0 || size == 0) {
-        slot_loading[slot] = LOAD_EMPTY;
-        loading_slot = -1;
-        if (handle > 0) js_blob_free(handle);
-        return;
-    }
-
-    /* Inject HTML from blob */
-    js_set_inner_html_from_blob(node_id, handle);
-    js_blob_free(handle);
-
-    /* Measure and update state */
-    slot_pages[slot] = measure_slot(slot);
-    slot_loading[slot] = LOAD_READY;
-    loading_slot = -1;
-
-    /* If this was the current slot, update display */
-    if (slot == SLOT_CURR) {
-        position_slot(SLOT_CURR, current_page);
-        reader_update_display_impl();
-    }
-}
-
-/* Rotate slots forward: curr->prev, next->curr, load new next */
-static void rotate_forward(void) {
-    /* Save old slot states */
-    int old_prev_chapter = slot_chapter[SLOT_PREV];
-    int old_prev_pages = slot_pages[SLOT_PREV];
-    int old_prev_node = slot_node_id[SLOT_PREV];
-
-    /* Rotate chapter assignments */
-    slot_chapter[SLOT_PREV] = slot_chapter[SLOT_CURR];
-    slot_pages[SLOT_PREV] = slot_pages[SLOT_CURR];
-    slot_loading[SLOT_PREV] = slot_loading[SLOT_CURR];
-
-    slot_chapter[SLOT_CURR] = slot_chapter[SLOT_NEXT];
-    slot_pages[SLOT_CURR] = slot_pages[SLOT_NEXT];
-    slot_loading[SLOT_CURR] = slot_loading[SLOT_NEXT];
-
-    /* Old prev slot becomes new next (to be loaded) */
-    slot_chapter[SLOT_NEXT] = -1;
-    slot_pages[SLOT_NEXT] = 1;
-    slot_loading[SLOT_NEXT] = LOAD_EMPTY;
-
-    /* Rotate DOM node IDs to match */
-    slot_node_id[SLOT_PREV] = slot_node_id[SLOT_CURR];
-    slot_node_id[SLOT_CURR] = slot_node_id[SLOT_NEXT];
-    slot_node_id[SLOT_NEXT] = old_prev_node;
-
-    /* Clear old prev container content (now NEXT) */
-    if (slot_node_id[SLOT_NEXT] > 0) {
-        void* pf = dom_root_proof();
-        unsigned char* buf = get_fetch_buffer_ptr();
-        buf[0] = 0;  /* Empty string */
-        dom_set_inner_html(pf, slot_node_id[SLOT_NEXT], 0, 0);
-        dom_drop_proof(pf);
-    }
-
-    /* Update current chapter index */
-    current_chapter++;
-    current_page = 0;
-
-    /* Position current slot at page 0 */
-    position_slot(SLOT_CURR, 0);
-
-    /* Request next chapter if available */
-    if (current_chapter + 1 < total_chapters) {
-        reader_request_chapter_impl(SLOT_NEXT, current_chapter + 1);
-    }
-
-    reader_update_display_impl();
-}
-
-/* Rotate slots backward: curr->next, prev->curr, load new prev */
-static void rotate_backward(void) {
-    /* Save old slot states */
-    int old_next_chapter = slot_chapter[SLOT_NEXT];
-    int old_next_pages = slot_pages[SLOT_NEXT];
-    int old_next_node = slot_node_id[SLOT_NEXT];
-
-    /* Rotate chapter assignments */
-    slot_chapter[SLOT_NEXT] = slot_chapter[SLOT_CURR];
-    slot_pages[SLOT_NEXT] = slot_pages[SLOT_CURR];
-    slot_loading[SLOT_NEXT] = slot_loading[SLOT_CURR];
-
-    slot_chapter[SLOT_CURR] = slot_chapter[SLOT_PREV];
-    slot_pages[SLOT_CURR] = slot_pages[SLOT_PREV];
-    slot_loading[SLOT_CURR] = slot_loading[SLOT_PREV];
-
-    /* Old next slot becomes new prev (to be loaded) */
-    slot_chapter[SLOT_PREV] = -1;
-    slot_pages[SLOT_PREV] = 1;
-    slot_loading[SLOT_PREV] = LOAD_EMPTY;
-
-    /* Rotate DOM node IDs to match */
-    slot_node_id[SLOT_NEXT] = slot_node_id[SLOT_CURR];
-    slot_node_id[SLOT_CURR] = slot_node_id[SLOT_PREV];
-    slot_node_id[SLOT_PREV] = old_next_node;
-
-    /* Clear old next container content (now PREV) */
-    if (slot_node_id[SLOT_PREV] > 0) {
-        void* pf = dom_root_proof();
-        dom_set_inner_html(pf, slot_node_id[SLOT_PREV], 0, 0);
-        dom_drop_proof(pf);
-    }
-
-    /* Update current chapter index */
-    current_chapter--;
-    current_page = slot_pages[SLOT_CURR] - 1;  /* Go to last page of prev chapter */
-    if (current_page < 0) current_page = 0;
-
-    /* Position current slot at last page */
-    position_slot(SLOT_CURR, current_page);
-
-    /* Request previous chapter if available */
-    if (current_chapter > 0) {
-        reader_request_chapter_impl(SLOT_PREV, current_chapter - 1);
-    }
-
-    reader_update_display_impl();
-}
-
-/* Navigate to next page */
-void reader_next_page_impl(void) {
-    if (!reader_active) return;
-
-    int total = slot_pages[SLOT_CURR];
-
-    if (current_page < total - 1) {
-        /* Still pages left in current chapter */
-        current_page++;
-        position_slot(SLOT_CURR, current_page);
-        reader_update_display_impl();
-    } else if (current_chapter < total_chapters - 1) {
-        /* At last page of chapter - go to next chapter */
-        /* Check if next chapter is loaded */
-        if (slot_loading[SLOT_NEXT] == LOAD_READY) {
-            rotate_forward();
-        }
-        /* If not ready, do nothing - user must wait */
-    }
-    /* At last page of last chapter - do nothing */
-}
-
-/* Navigate to previous page */
-void reader_prev_page_impl(void) {
-    if (!reader_active) return;
-
-    if (current_page > 0) {
-        /* Still pages before in current chapter */
-        current_page--;
-        position_slot(SLOT_CURR, current_page);
-        reader_update_display_impl();
-    } else if (current_chapter > 0) {
-        /* At first page of chapter - go to previous chapter */
-        /* Check if prev chapter is loaded */
-        if (slot_loading[SLOT_PREV] == LOAD_READY) {
-            rotate_backward();
-        }
-        /* If not ready, do nothing - user must wait */
-    }
-    /* At first page of first chapter - do nothing */
-}
-
-/* Navigate to specific page in current chapter */
-void reader_go_to_page_impl(int page) {
-    if (!reader_active) return;
-
-    int total = slot_pages[SLOT_CURR];
-    if (page < 0) page = 0;
-    if (page >= total) page = total - 1;
-
-    if (page == current_page) return;
-
-    current_page = page;
-    position_slot(SLOT_CURR, current_page);
-    reader_update_display_impl();
-}
-
-/* Create the three chapter containers */
-static void create_containers(void* pf_viewport, int vid) {
-    /* Create three chapter containers */
-    for (int i = 0; i < 3; i++) {
-        int cid = dom_next_id();
-        slot_node_id[i] = cid;
-        void* pf_container = dom_create_element(pf_viewport, vid, cid, (void*)str_div, 3);
-        pf_container = dom_set_attr(pf_container, cid, (void*)str_class, 5,
-                                    (void*)str_chapter_container, 17);
-        dom_drop_proof(pf_container);
-    }
-}
-
-/* Enter reader mode */
-void reader_enter_impl(int chapters) {
-    if (reader_active) return;
-
-    reader_active = 1;
-    total_chapters = chapters;
-    current_chapter = 0;
-    current_page = 0;
-    viewport_width = 0;
-    page_stride = 0;
-
-    /* Reset slot states */
-    for (int i = 0; i < 3; i++) {
-        slot_chapter[i] = -1;
-        slot_loading[i] = LOAD_EMPTY;
-        slot_pages[i] = 1;
-    }
-    loading_slot = -1;
-
-    unsigned char* buf = get_fetch_buffer_ptr();
-    void* pf = dom_root_proof();
-
-    /* Create reader viewport */
-    int vid = dom_next_id();
-    viewport_id = vid;
-    void* pf_viewport = dom_create_element(pf, root_id, vid, (void*)str_div, 3);
-    pf_viewport = dom_set_attr(pf_viewport, vid, (void*)str_class, 5,
-                               (void*)str_reader_viewport, 15);
-
-    /* Create three chapter containers */
-    create_containers(pf_viewport, vid);
-
-    dom_drop_proof(pf_viewport);
-
-    /* Create page indicator */
-    int pid = dom_next_id();
-    page_indicator_id = pid;
-    void* pf_indicator = dom_create_element(pf, root_id, pid, (void*)str_div, 3);
-    pf_indicator = dom_set_attr(pf_indicator, pid, (void*)str_class, 5,
-                                (void*)str_page_indicator, 14);
-
-    /* Initial display "1 / 1" */
-    buf[0] = '1';
-    buf[1] = ' ';
-    buf[2] = '/';
-    buf[3] = ' ';
-    buf[4] = '1';
-    dom_set_text_offset(pf_indicator, pid, 0, 5);
-    dom_drop_proof(pf_indicator);
-
-    dom_drop_proof(pf);
-
-    /* Load initial chapters:
-     * SLOT_CURR = chapter 0
-     * SLOT_NEXT = chapter 1 (if exists)
-     * SLOT_PREV = empty (we're at first chapter)
-     */
-    reader_request_chapter_impl(SLOT_CURR, 0);
-
-    /* Next chapter will be requested after current finishes loading */
-}
-
-/* Exit reader mode */
-void reader_exit_impl(void) {
-    reader_active = 0;
-    /* DOM cleanup would go here if needed */
-}
-
-/* Initialize reader module */
-void reader_init_impl(void) {
-    reader_active = 0;
-    total_chapters = 0;
-    current_chapter = 0;
-    current_page = 0;
-    viewport_width = 0;
-    page_stride = 0;
-    viewport_id = 0;
-    page_indicator_id = 0;
-    loading_slot = -1;
-
-    for (int i = 0; i < 3; i++) {
-        slot_chapter[i] = -1;
-        slot_loading[i] = LOAD_EMPTY;
-        slot_pages[i] = 1;
-        slot_node_id[i] = 0;
-    }
+/* Check if any chapter is loading */
+int reader_is_loading(void) {
+    return loading_slot >= 0 ? 1 : 0;
 }
 %}
 
-(* ATS wrapper functions *)
-extern fun reader_init_impl(): void = "mac#"
-extern fun reader_enter_impl(chapters: int): void = "mac#"
-extern fun reader_exit_impl(): void = "mac#"
-extern fun reader_is_active_impl(): int = "mac#"
-extern fun reader_get_chapter_impl(): int = "mac#"
-extern fun reader_get_page_impl(): int = "mac#"
-extern fun reader_get_total_pages_impl(): int = "mac#"
-extern fun reader_next_page_impl(): void = "mac#"
-extern fun reader_prev_page_impl(): void = "mac#"
-extern fun reader_go_to_page_impl(page: int): void = "mac#"
-extern fun reader_on_chapter_loaded_impl(slot: int, len: int): void = "mac#"
-extern fun reader_on_chapter_blob_loaded_impl(slot: int, handle: int, size: int): void = "mac#"
-extern fun reader_get_loading_slot_impl(): int = "mac#"
-extern fun reader_get_viewport_width_impl(): int = "mac#"
-extern fun reader_update_display_impl(): void = "mac#"
-extern fun reader_request_chapter_impl(slot: int, chapter_idx: int): void = "mac#"
-extern fun reader_get_slot_node_id_impl(slot: int): int = "mac#"
-
-implement reader_init() = reader_init_impl()
-implement reader_enter(chapters) = reader_enter_impl(chapters)
-implement reader_exit() = reader_exit_impl()
-implement reader_is_active() = reader_is_active_impl()
-implement reader_get_chapter() = reader_get_chapter_impl()
-implement reader_get_page() = reader_get_page_impl()
-implement reader_get_total_pages() = reader_get_total_pages_impl()
-implement reader_next_page() = reader_next_page_impl()
-implement reader_prev_page() = reader_prev_page_impl()
-implement reader_go_to_page(page) = reader_go_to_page_impl(page)
-implement reader_on_chapter_loaded(slot, len) = reader_on_chapter_loaded_impl(slot, len)
-implement reader_on_chapter_blob_loaded(slot, handle, size) = reader_on_chapter_blob_loaded_impl(slot, handle, size)
-implement reader_get_loading_slot() = reader_get_loading_slot_impl()
-implement reader_get_viewport_width() = reader_get_viewport_width_impl()
-implement reader_update_display() = reader_update_display_impl()
-implement reader_request_chapter(slot, chapter_idx) = reader_request_chapter_impl(slot, chapter_idx)
-implement reader_get_slot_node_id(slot) = reader_get_slot_node_id_impl(slot)
+(* All implementations are in the C block above via "mac#" linkage *)

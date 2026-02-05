@@ -44,11 +44,6 @@ static const char str_read_btn[] = "read-btn";
 static const char str_read_text[] = "Read";
 static const char str_style[] = "style";
 
-/* M10/M12: Reader CSS class names (must match reader.dats for consistency) */
-static const char str_reader_viewport[] = "reader-viewport";
-static const char str_chapter_container[] = "chapter-container";
-static const char str_page_indicator[] = "page-indicator";
-
 /* CSS buffer for building stylesheet dynamically */
 static char css_buffer[8192];
 static int css_buffer_len = 0;
@@ -126,41 +121,33 @@ static void build_css(void) {
     css_append("."); css_append(str_read_btn); css_append(":hover{background:#2d5a8a}");
     css_append("."); css_append(str_read_btn); css_append(":active{transform:scale(0.98)}");
 
-    /* Reader viewport - uses str_reader_viewport constant */
-    css_class_rule(str_reader_viewport, "position:fixed;top:0;left:0;width:100vw;height:100vh;"
-                   "overflow:hidden;background:#fafaf8");
+    /* Reader viewport */
+    css_append(".reader-viewport{position:fixed;top:0;left:0;width:100vw;height:100vh;"
+               "overflow:hidden;background:#fafaf8}");
 
-    /* Chapter container with CSS columns - uses str_chapter_container constant */
-    css_class_rule(str_chapter_container, "column-width:100vw;column-gap:0;column-fill:auto;"
-                   "height:calc(100vh - 4rem);padding:2rem;box-sizing:border-box;overflow:visible;"
-                   "font-family:Georgia,serif;font-size:18px;line-height:1.6;color:#2a2a2a");
+    /* Chapter container with CSS columns */
+    css_append(".chapter-container{column-width:100vw;column-gap:0;column-fill:auto;"
+               "height:calc(100vh - 4rem);padding:2rem;box-sizing:border-box;overflow:visible;"
+               "font-family:Georgia,serif;font-size:18px;line-height:1.6;color:#2a2a2a}");
 
     /* Chapter content styling */
-    css_append("."); css_append(str_chapter_container);
-    css_append(" h1,."); css_append(str_chapter_container);
-    css_append(" h2,."); css_append(str_chapter_container);
-    css_append(" h3,."); css_append(str_chapter_container);
-    css_append(" h4,."); css_append(str_chapter_container);
-    css_append(" h5,."); css_append(str_chapter_container);
-    css_append(" h6{margin-top:1em;margin-bottom:0.5em;line-height:1.3}");
+    css_append(".chapter-container h1,.chapter-container h2,.chapter-container h3,"
+               ".chapter-container h4,.chapter-container h5,.chapter-container h6"
+               "{margin-top:1em;margin-bottom:0.5em;line-height:1.3}");
 
-    css_append("."); css_append(str_chapter_container);
-    css_append(" p{margin:0 0 1em 0;text-align:justify;hyphens:auto}");
+    css_append(".chapter-container p{margin:0 0 1em 0;text-align:justify;hyphens:auto}");
 
-    css_append("."); css_append(str_chapter_container);
-    css_append(" img{max-width:100%;height:auto;display:block;margin:1em auto}");
+    css_append(".chapter-container img{max-width:100%;height:auto;display:block;margin:1em auto}");
 
-    css_append("."); css_append(str_chapter_container);
-    css_append(" a{color:#4a7c59;text-decoration:none}");
+    css_append(".chapter-container a{color:#4a7c59;text-decoration:none}");
 
-    css_append("."); css_append(str_chapter_container);
-    css_append(" a:hover{text-decoration:underline}");
+    css_append(".chapter-container a:hover{text-decoration:underline}");
 
     /* M11: Page indicator styling */
-    css_class_rule(str_page_indicator, "position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);"
-                   "padding:0.5rem 1rem;background:rgba(0,0,0,0.6);color:#fff;border-radius:0.25rem;"
-                   "font-size:0.875rem;font-family:system-ui,-apple-system,sans-serif;z-index:100;"
-                   "pointer-events:none");
+    css_append(".page-indicator{position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);"
+               "padding:0.5rem 1rem;background:rgba(0,0,0,0.6);color:#fff;border-radius:0.25rem;"
+               "font-size:0.875rem;font-family:system-ui,-apple-system,sans-serif;z-index:100;"
+               "pointer-events:none}");
 }
 
 /* Get CSS buffer pointer and length */
@@ -298,7 +285,6 @@ extern fun set_read_btn_id(id: int): void = "mac#"
 extern fun update_progress_display(): void = "mac#"
 extern fun show_import_complete(): void = "mac#"
 extern fun show_import_error(): void = "mac#"
-extern fun enter_reader_mode(): void = "mac#"
 
 %{
 /* String getters */
@@ -488,32 +474,19 @@ void show_import_complete(void) {
     dom_drop_proof(pf);
 }
 
-/* M12: Reader module integration - forward declarations */
+/* M12: Reader functions are now in reader.dats */
+
+/* M12: Reader module functions */
 extern void reader_init(void);
-extern void reader_enter(int total_chapters);
+extern void reader_enter(int root_id, int container_hide_id);
 extern int reader_is_active(void);
+extern int reader_get_viewport_width(void);
 extern void reader_next_page(void);
 extern void reader_prev_page(void);
 extern void reader_go_to_page(int page);
-extern int reader_get_viewport_width(void);
-extern int reader_get_loading_slot(void);
 extern int reader_get_total_pages(void);
-extern void reader_on_chapter_loaded(int slot, int len);
-extern void reader_on_chapter_blob_loaded(int slot, int handle, int size);
-extern void reader_request_chapter(int slot, int chapter_idx);
-
-/* M12: Enter reader mode - hide import UI and start reader */
-void enter_reader_mode(void) {
-    void* pf = dom_root_proof();
-
-    /* Hide the import container */
-    pf = dom_set_attr(pf, container_id, (void*)str_class, 5, (void*)str_hidden, 6);
-    dom_drop_proof(pf);
-
-    /* Initialize and enter reader with chapter count */
-    int chapter_count = epub_get_chapter_count();
-    reader_enter(chapter_count);
-}
+extern void reader_on_chapter_loaded(int len);
+extern void reader_on_chapter_blob_loaded(int handle, int size);
 
 /* Show error message */
 void show_import_error(void) {
@@ -540,11 +513,14 @@ void show_import_error(void) {
 }
 %}
 
+(* M12: ATS extern for reader_init *)
+extern fun reader_init_ats(): void = "mac#reader_init"
+
 (* Initialize the application UI *)
 implement init() = let
     val () = dom_init()
     val () = epub_init()
-    val () = reader_init()  (* M12: Initialize reader module *)
+    val () = reader_init_ats()
 
     (* Inject CSS styles into document *)
     val () = inject_styles()
@@ -662,7 +638,7 @@ void process_event_impl(void) {
     if (event_type == 1) {
         /* Click on Read button -> enter reader mode */
         if (node_id == read_btn_id && read_btn_id > 0 && !reader_is_active()) {
-            enter_reader_mode();
+            reader_enter(root_id, container_id);
             return;
         }
 
@@ -674,10 +650,10 @@ void process_event_impl(void) {
             int zone_right = vw - zone_left;  /* 20% from right */
 
             if (click_x < zone_left) {
-                /* Left zone - previous page (may cross chapter boundary) */
+                /* Left zone - previous page */
                 reader_prev_page();
             } else if (click_x > zone_right) {
-                /* Right zone - next page (may cross chapter boundary) */
+                /* Right zone - next page */
                 reader_next_page();
             }
             /* Middle zone (60%) - reserved for menu (future) */
@@ -771,23 +747,17 @@ void on_kv_open_impl(int success) {
 
 /* M12: Handle chapter data loaded from IndexedDB (small chapter, fits in fetch buffer) */
 void on_kv_get_complete_impl(int len) {
-    /* Route to reader module if in reader mode */
-    int slot = reader_get_loading_slot();
-    if (slot >= 0 && reader_is_active()) {
-        reader_on_chapter_loaded(slot, len);
-        return;
+    /* Forward to reader module if reader is active */
+    if (reader_is_active()) {
+        reader_on_chapter_loaded(len);
     }
-    /* Otherwise this is not a reader callback - ignore for now */
 }
 
 /* M12: Handle chapter data loaded from IndexedDB (large chapter, returned as blob) */
 void on_kv_get_blob_complete_impl(int handle, int size) {
-    /* Route to reader module if in reader mode */
-    int slot = reader_get_loading_slot();
-    if (slot >= 0 && reader_is_active()) {
-        reader_on_chapter_blob_loaded(slot, handle, size);
-        return;
+    /* Forward to reader module if reader is active */
+    if (reader_is_active()) {
+        reader_on_chapter_blob_loaded(handle, size);
     }
-    /* Otherwise this is not a reader callback - ignore for now */
 }
 %}
