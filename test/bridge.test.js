@@ -297,6 +297,104 @@ describe('Bridge Module Exports', () => {
   });
 });
 
+describe('wrapExports Proxy', () => {
+  let mockWasm;
+  let bridge;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '<div id="root" data-wasm data-node-id="1"></div>';
+    bridge = await import('../bridge.js');
+    mockWasm = createMockWasm();
+    bridge._clearNodeRegistry();
+    const root = document.getElementById('root');
+    bridge.registerNode(root);
+  });
+
+  it('should auto-flush diffs when WASM export is called through wrapped module', () => {
+    const { helpers } = mockWasm;
+    const root = document.getElementById('root');
+
+    // Initialize with wrap=true to use auto-flush proxy
+    bridge._initForTest(mockWasm, true);
+
+    // Write a diff and text to buffers
+    const text = 'Auto-flushed text';
+    helpers.writeToFetchBuffer(text, 0);
+    helpers.writeDiff(OP_SET_TEXT, 1, 0, text.length);
+
+    // Call process_event through the wrapped wasm - should auto-flush
+    const wrappedWasm = bridge._getWasm();
+    wrappedWasm.process_event();
+
+    // Diff should have been applied
+    expect(root.textContent).toBe('Auto-flushed text');
+  });
+
+  it('should NOT auto-flush diffs when using unwrapped module', () => {
+    const { helpers } = mockWasm;
+    const root = document.getElementById('root');
+
+    // Initialize without wrap (useWrap=false)
+    bridge._initForTest(mockWasm, false);
+
+    // Write a diff
+    const text = 'Should not appear yet';
+    helpers.writeToFetchBuffer(text, 0);
+    helpers.writeDiff(OP_SET_TEXT, 1, 0, text.length);
+
+    // Call process_event - should NOT auto-flush
+    mockWasm.exports.process_event();
+
+    // Diff should NOT have been applied (text should still be empty)
+    expect(root.textContent).toBe('');
+
+    // Manual applyDiffs should apply it
+    bridge._applyDiffs();
+    expect(root.textContent).toBe('Should not appear yet');
+  });
+
+  it('should not wrap buffer pointer getters', () => {
+    bridge._initForTest(mockWasm, true);
+    const wrappedWasm = bridge._getWasm();
+
+    // Buffer pointer getters should return numbers directly
+    expect(typeof wrappedWasm.get_event_buffer_ptr()).toBe('number');
+    expect(typeof wrappedWasm.get_diff_buffer_ptr()).toBe('number');
+    expect(typeof wrappedWasm.get_fetch_buffer_ptr()).toBe('number');
+    expect(typeof wrappedWasm.get_string_buffer_ptr()).toBe('number');
+  });
+
+  it('should not wrap memory export', () => {
+    bridge._initForTest(mockWasm, true);
+    const wrappedWasm = bridge._getWasm();
+
+    // Memory should be accessible
+    expect(wrappedWasm.memory).toBeDefined();
+    expect(wrappedWasm.memory.buffer).toBeInstanceOf(ArrayBuffer);
+  });
+
+  it('should clear diff count after applying diffs', () => {
+    const { helpers, exports } = mockWasm;
+    const diffPtr = exports.get_diff_buffer_ptr();
+
+    bridge._initForTest(mockWasm, true);
+    const wrappedWasm = bridge._getWasm();
+
+    // Write a diff
+    helpers.writeDiff(OP_SET_TEXT, 1, 0, 5);
+
+    // Verify diff count is 1
+    const view = new DataView(exports.memory.buffer);
+    expect(view.getUint8(diffPtr)).toBe(1);
+
+    // Call any function through wrapped wasm
+    wrappedWasm.init();
+
+    // Diff count should be cleared to 0
+    expect(view.getUint8(diffPtr)).toBe(0);
+  });
+});
+
 describe('Push Event Constants', () => {
   it('should have push event types defined', () => {
     expect(EVENT_PUSH).toBe(8);
@@ -624,5 +722,57 @@ describe('Diff Application', () => {
         expect(node.tagName.toLowerCase()).toBe('p');
       }
     });
+  });
+});
+
+describe('js_measure_node', () => {
+  let mockWasm;
+  let bridge;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '<div id="root" data-wasm data-node-id="1" style="width: 100px; height: 50px;"></div>';
+    bridge = await import('../bridge.js');
+    mockWasm = createMockWasm();
+    bridge._initForTest(mockWasm, false);
+    bridge._clearNodeRegistry();
+    const root = document.getElementById('root');
+    bridge.registerNode(root);
+  });
+
+  it('should return 0 for non-existent node', () => {
+    const result = bridge._measureNode(999);
+    expect(result).toBe(0);
+  });
+
+  it('should return 1 for existing node', () => {
+    const result = bridge._measureNode(1);
+    expect(result).toBe(1);
+  });
+
+  it('should write measurements to fetch buffer', () => {
+    const result = bridge._measureNode(1);
+    expect(result).toBe(1);
+
+    const measurements = bridge._getMeasurements();
+    expect(measurements).not.toBeNull();
+    // jsdom provides basic bounding rect support
+    expect(typeof measurements.left).toBe('number');
+    expect(typeof measurements.top).toBe('number');
+    expect(typeof measurements.width).toBe('number');
+    expect(typeof measurements.height).toBe('number');
+    expect(typeof measurements.scrollWidth).toBe('number');
+    expect(typeof measurements.scrollHeight).toBe('number');
+  });
+
+  it('should measure created elements', () => {
+    const { helpers } = mockWasm;
+
+    // Create a new element
+    helpers.writeToStringBuffer('div', 0);
+    helpers.writeDiff(OP_CREATE_ELEMENT, 10, 1, 3);
+    bridge._applyDiffs();
+
+    const result = bridge._measureNode(10);
+    expect(result).toBe(1);
   });
 });

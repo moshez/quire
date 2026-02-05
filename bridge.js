@@ -126,17 +126,14 @@ function handleSwMessage(event) {
         writeString(fetchBuffer.byteOffset, data, FETCH_BUFFER_SIZE);
       }
       writeEvent(EVENT_PUSH, 0);
-      wasm.exports.process_event();
-      applyDiffs();
+      wasm.process_event();
       break;
     case 'notificationclick':
       writeEvent(EVENT_NOTIFICATION_CLICK, 0, action === 'dismiss' ? 1 : 0);
-      wasm.exports.process_event();
-      applyDiffs();
+      wasm.process_event();
       break;
     case 'pushsubscriptionchange':
-      wasm.exports.on_push_subscription_change();
-      applyDiffs();
+      wasm.on_push_subscription_change();
       break;
   }
 }
@@ -158,12 +155,10 @@ const imports = {
           const view = new DataView(fetchBuffer.buffer, fetchBuffer.byteOffset);
           view.setUint32(0, data.byteLength, true);
           new Uint8Array(fetchBuffer.buffer, fetchBuffer.byteOffset + 4).set(new Uint8Array(data));
-          wasm.exports.on_fetch_complete(response.status, data.byteLength);
-          applyDiffs();
+          wasm.on_fetch_complete(response.status, data.byteLength);
         })
         .catch(() => {
-          wasm.exports.on_fetch_complete(0, 0);
-          applyDiffs();
+          wasm.on_fetch_complete(0, 0);
         });
     },
 
@@ -182,12 +177,10 @@ const imports = {
           const view = new DataView(fetchBuffer.buffer, fetchBuffer.byteOffset);
           view.setUint32(0, data.byteLength, true);
           new Uint8Array(fetchBuffer.buffer, fetchBuffer.byteOffset + 4).set(new Uint8Array(data));
-          wasm.exports.on_fetch_complete(response.status, data.byteLength);
-          applyDiffs();
+          wasm.on_fetch_complete(response.status, data.byteLength);
         })
         .catch(() => {
-          wasm.exports.on_fetch_complete(0, 0);
-          applyDiffs();
+          wasm.on_fetch_complete(0, 0);
         });
     },
 
@@ -220,8 +213,7 @@ const imports = {
 
     js_set_timer(delay, callbackId) {
       setTimeout(() => {
-        wasm.exports.on_timer_complete(callbackId);
-        applyDiffs();
+        wasm.on_timer_complete(callbackId);
       }, delay);
     },
 
@@ -235,8 +227,7 @@ const imports = {
           if (!subscription) {
             const permission = await Notification.requestPermission();
             if (permission !== 'granted') {
-              wasm.exports.on_push_subscribe_complete(-1);
-              applyDiffs();
+              wasm.on_push_subscribe_complete(-1);
               return;
             }
             const reg = await navigator.serviceWorker.ready;
@@ -248,12 +239,10 @@ const imports = {
           }
           const json = JSON.stringify(subscription.toJSON());
           const len = writeString(fetchBuffer.byteOffset, json, FETCH_BUFFER_SIZE);
-          wasm.exports.on_push_subscribe_complete(len);
-          applyDiffs();
+          wasm.on_push_subscribe_complete(len);
         })
         .catch(() => {
-          wasm.exports.on_push_subscribe_complete(0);
-          applyDiffs();
+          wasm.on_push_subscribe_complete(0);
         });
     },
 
@@ -265,18 +254,15 @@ const imports = {
         .then(registration => registration.pushManager.getSubscription())
         .then((subscription) => {
           if (!subscription) {
-            wasm.exports.on_push_subscription_result(0);
-            applyDiffs();
+            wasm.on_push_subscription_result(0);
             return;
           }
           const json = JSON.stringify(subscription.toJSON());
           const len = writeString(fetchBuffer.byteOffset, json, FETCH_BUFFER_SIZE);
-          wasm.exports.on_push_subscription_result(len);
-          applyDiffs();
+          wasm.on_push_subscription_result(len);
         })
         .catch(() => {
-          wasm.exports.on_push_subscription_result(0);
-          applyDiffs();
+          wasm.on_push_subscription_result(0);
         });
     },
 
@@ -331,12 +317,10 @@ const imports = {
         .then((entries) => {
           const json = JSON.stringify(entries);
           const len = writeString(fetchBuffer.byteOffset, json, FETCH_BUFFER_SIZE);
-          wasm.exports.on_pending_pushes_result(len);
-          applyDiffs();
+          wasm.on_pending_pushes_result(len);
         })
         .catch(() => {
-          wasm.exports.on_pending_pushes_result(0);
-          applyDiffs();
+          wasm.on_pending_pushes_result(0);
         });
     },
 
@@ -353,13 +337,25 @@ const imports = {
           });
         })
         .then(() => {
-          wasm.exports.on_pending_pushes_cleared(1);
-          applyDiffs();
+          wasm.on_pending_pushes_cleared(1);
         })
         .catch(() => {
-          wasm.exports.on_pending_pushes_cleared(0);
-          applyDiffs();
+          wasm.on_pending_pushes_cleared(0);
         });
+    },
+
+    js_measure_node(nodeId) {
+      const node = getNode(nodeId);
+      if (!node) return 0;
+      const rect = node.getBoundingClientRect();
+      const view = new DataView(memory.buffer, fetchBuffer.byteOffset);
+      view.setFloat64(0, rect.left, true);
+      view.setFloat64(8, rect.top, true);
+      view.setFloat64(16, rect.width, true);
+      view.setFloat64(24, rect.height, true);
+      view.setFloat64(32, node.scrollWidth, true);
+      view.setFloat64(40, node.scrollHeight, true);
+      return 1;
     },
 
     js_get_url_origin() {
@@ -387,12 +383,10 @@ const imports = {
       const text = readString(textPtr, textLen);
       navigator.clipboard.writeText(text)
         .then(() => {
-          wasm.exports.on_clipboard_copy_complete(1);
-          applyDiffs();
+          wasm.on_clipboard_copy_complete(1);
         })
         .catch(() => {
-          wasm.exports.on_clipboard_copy_complete(0);
-          applyDiffs();
+          wasm.on_clipboard_copy_complete(0);
         });
     }
   }
@@ -477,13 +471,36 @@ function applyDiffs() {
         break;
     }
   }
+
+  // Clear diff count after applying
+  view.setUint8(0, 0);
+}
+
+/**
+ * Wraps WASM exports with a proxy that auto-flushes diffs after every call.
+ * This eliminates the need for manual applyDiffs() calls throughout the bridge.
+ */
+function wrapExports(instance) {
+  return new Proxy(instance.exports, {
+    get(target, prop) {
+      const val = target[prop];
+      if (typeof val !== 'function') return val;
+      // Don't wrap buffer pointer getters or memory
+      if (prop.startsWith('get_') && prop.endsWith('_ptr')) return val;
+      if (prop === 'memory') return val;
+      return (...args) => {
+        const result = val.apply(target, args);
+        applyDiffs();
+        return result;
+      };
+    }
+  });
 }
 
 function handleEvent(event, type) {
   const nodeId = parseInt(event.target.dataset?.nodeId) || 0;
   writeEvent(type, nodeId);
-  wasm.exports.process_event();
-  applyDiffs();
+  wasm.process_event();
 }
 
 export async function initBridge(wasmUrl) {
@@ -491,13 +508,15 @@ export async function initBridge(wasmUrl) {
   const bytes = await response.arrayBuffer();
   const module = await WebAssembly.instantiate(bytes, imports);
 
-  wasm = module.instance;
-  memory = wasm.exports.memory;
+  const instance = module.instance;
+  memory = instance.exports.memory;
 
-  eventBuffer = new Uint8Array(memory.buffer, wasm.exports.get_event_buffer_ptr(), EVENT_BUFFER_SIZE);
-  diffBuffer = new Uint8Array(memory.buffer, wasm.exports.get_diff_buffer_ptr(), DIFF_BUFFER_SIZE);
-  fetchBuffer = new Uint8Array(memory.buffer, wasm.exports.get_fetch_buffer_ptr(), FETCH_BUFFER_SIZE);
-  stringBuffer = new Uint8Array(memory.buffer, wasm.exports.get_string_buffer_ptr(), 4096);
+  eventBuffer = new Uint8Array(memory.buffer, instance.exports.get_event_buffer_ptr(), EVENT_BUFFER_SIZE);
+  diffBuffer = new Uint8Array(memory.buffer, instance.exports.get_diff_buffer_ptr(), DIFF_BUFFER_SIZE);
+  fetchBuffer = new Uint8Array(memory.buffer, instance.exports.get_fetch_buffer_ptr(), FETCH_BUFFER_SIZE);
+  stringBuffer = new Uint8Array(memory.buffer, instance.exports.get_string_buffer_ptr(), 4096);
+
+  wasm = wrapExports(instance);
 
   document.querySelectorAll('[data-wasm]').forEach(el => registerNode(el));
 
@@ -510,26 +529,31 @@ export async function initBridge(wasmUrl) {
   document.addEventListener('blur', e => handleEvent(e, EVENT_BLUR), true);
 
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      // Trigger state save in WASM
+    if (document.visibilityState === 'hidden' && wasm.on_visibility_hidden) {
+      wasm.on_visibility_hidden();
     }
   });
 
-  wasm.exports.init();
-  applyDiffs();
+  wasm.init();
 
   console.log('[Bridge] initialized');
 }
 
 // Test helper: initialize bridge with a provided mock module (bypasses fetch)
-export function _initForTest(mockModule) {
-  wasm = mockModule;
+// When useWrap is true, the module is wrapped with auto-flush proxy
+export function _initForTest(mockModule, useWrap = false) {
   memory = mockModule.exports.memory;
 
   eventBuffer = new Uint8Array(memory.buffer, mockModule.exports.get_event_buffer_ptr(), EVENT_BUFFER_SIZE);
   diffBuffer = new Uint8Array(memory.buffer, mockModule.exports.get_diff_buffer_ptr(), DIFF_BUFFER_SIZE);
   fetchBuffer = new Uint8Array(memory.buffer, mockModule.exports.get_fetch_buffer_ptr(), FETCH_BUFFER_SIZE);
   stringBuffer = new Uint8Array(memory.buffer, mockModule.exports.get_string_buffer_ptr(), 4096);
+
+  if (useWrap) {
+    wasm = wrapExports(mockModule);
+  } else {
+    wasm = mockModule.exports;
+  }
 }
 
 // Test helper: apply diffs (for testing without full initialization)
@@ -541,6 +565,30 @@ export function _applyDiffs() {
 export function _clearNodeRegistry() {
   nodeRegistry.clear();
   nextNodeId = 1;
+}
+
+// Test helper: get current wasm reference (for verifying wrapped vs unwrapped)
+export function _getWasm() {
+  return wasm;
+}
+
+// Test helper: expose js_measure_node for testing
+export function _measureNode(nodeId) {
+  return imports.env.js_measure_node(nodeId);
+}
+
+// Test helper: read measurement results from fetch buffer
+export function _getMeasurements() {
+  if (!fetchBuffer) return null;
+  const view = new DataView(memory.buffer, fetchBuffer.byteOffset);
+  return {
+    left: view.getFloat64(0, true),
+    top: view.getFloat64(8, true),
+    width: view.getFloat64(16, true),
+    height: view.getFloat64(24, true),
+    scrollWidth: view.getFloat64(32, true),
+    scrollHeight: view.getFloat64(40, true)
+  };
 }
 
 export { registerNode, getNode };
