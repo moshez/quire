@@ -4,31 +4,9 @@
  * - Bump allocator (malloc/free/calloc)
  * - Memory operations (memcpy/memset/memmove/memcmp)
  * - Shared buffers for bridge communication
- * - Minimal ATS2 runtime macros
  */
 
 typedef __SIZE_TYPE__ size_t;
-
-/* Minimal ATS2 runtime macros for freestanding builds */
-#ifdef _ATS_CCOMP_HEADER_NONE_
-#define ATSextern() extern
-#define ATSextcode_beg()
-#define ATSextcode_end()
-#define ATSfunbody_beg()
-#define ATSfunbody_end()
-#define ATSreturn(x) return(x)
-#define ATSreturn_void(x) return
-#define ATSif(x) if(x)
-#define ATSthen()
-#define ATSendif
-#define ATSdynload()
-#define ATSdynloadflag_ext(flag) extern int flag
-#define ATSdynloadset(flag) flag = 1
-#define ATSCKiseqz(x) ((x)==0)
-typedef void atsvoid_t0ype;
-typedef void* atstype_exnconptr;
-typedef char* atstype_string;
-#endif
 
 #define HEAP_SIZE (1 << 20)  /* 1 MB initial heap */
 

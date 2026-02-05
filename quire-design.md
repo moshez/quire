@@ -1608,7 +1608,7 @@ Bridge test coverage expands incrementally: M2–M4 each add tests for the bridg
   - Minimal `quire.sats`/`quire.dats`: exports `init` that emits one `SET_TEXT` diff to replace "Loading…"
   - Verify: `make` produces `quire.wasm`, page shows text from WASM
 
-- [ ] **M6: DOM type model**
+- [x] **M6: DOM type model**
   - `dom.sats` with proofs per §3.4
   - `dom.dats` with diff emission functions
   - Extend hello world: create elements, set attributes, remove elements — all type-checked
