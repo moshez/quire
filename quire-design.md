@@ -1601,7 +1601,7 @@ Bridge test coverage expands incrementally: M2–M4 each add tests for the bridg
 
 ### Phase 1: Build Pipeline
 
-- [ ] **M5: ATS2 → WASM build pipeline**
+- [x] **M5: ATS2 → WASM build pipeline**
   - Install ATS2, document in README
   - `Makefile` per §3.2
   - `runtime.c` per §3.3
