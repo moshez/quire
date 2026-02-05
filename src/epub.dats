@@ -58,6 +58,10 @@ extern int xml_is_self_closing(void* ctx);
 extern int xml_get_text_content(void* ctx, int buf_offset);
 extern void xml_skip_element(void* ctx);
 
+/* Forward declarations */
+static void process_next_entry(void);
+void epub_continue(void);
+
 /* Constants */
 #define MAX_TITLE_LEN 256
 #define MAX_AUTHOR_LEN 256

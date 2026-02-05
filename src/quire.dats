@@ -384,98 +384,82 @@ implement init() = let
     ()
   end
 
-(* Handle events *)
-implement process_event() = let
-    val event_type = get_event_type()
-    val node_id = get_event_node_id()
-  in
-    (* Event type 1 = click *)
-    if event_type = 1 then
-      (* Check if import button clicked *)
-      if node_id = get_import_btn_id() then
-        if get_import_in_progress() = 0 then let
-            (* Trigger file input click by setting a special attribute *)
-            (* Actually, we need JS to click the file input *)
-            (* For now, we use a workaround: the file input change event *)
-            val () = ()
-          in () end
-        else ()
-      else ()
-    (* Event type 2 = input (file selected) *)
-    else if event_type = 2 then
-      if node_id = get_file_input_id() then
-        if get_import_in_progress() = 0 then let
-            val () = set_import_in_progress(1)
-            val _ok = epub_start_import(node_id)
-          in () end
-        else ()
-      else ()
-    else ()
-  end
+(* C implementations for callbacks - extern declarations must come before use *)
+extern fun process_event_impl(): void = "mac#"
+extern fun on_file_open_impl(handle: int, size: int): void = "mac#"
+extern fun on_decompress_impl(handle: int, size: int): void = "mac#"
+extern fun on_kv_complete_impl(success: int): void = "mac#"
+extern fun on_kv_open_impl(success: int): void = "mac#"
 
-(* Callback handlers *)
+(* Handle events - implemented in C to avoid prelude dependency *)
+implement process_event() = process_event_impl()
+
+(* Callback handlers - implemented in C to avoid prelude dependency *)
 implement on_fetch_complete(status, len) = ()
-
 implement on_timer_complete(callback_id) = ()
-
-implement on_file_open_complete(handle, size) = let
-    val () = epub_on_file_open(handle, size)
-    val state = epub_get_state()
-  in
-    if state = 99 then let  (* Error *)
-        val () = show_import_error()
-        val () = set_import_in_progress(0)
-      in () end
-    else ()
-  end
-
-implement on_decompress_complete(handle, size) = let
-    val () = epub_on_decompress(handle, size)
-    val state = epub_get_state()
-  in
-    if state = 99 then let  (* Error *)
-        val () = show_import_error()
-        val () = set_import_in_progress(0)
-      in () end
-    else if state = 6 orelse state = 7 then  (* Still processing *)
-        update_progress_display()
-    else if state = 8 then let  (* Done *)
-        val () = show_import_complete()
-        val () = set_import_in_progress(0)
-      in () end
-    else ()
-  end
-
-implement on_kv_complete(success) = let
-    val () = epub_on_db_put(success)
-    val state = epub_get_state()
-  in
-    if state = 99 then let  (* Error *)
-        val () = show_import_error()
-        val () = set_import_in_progress(0)
-      in () end
-    else if state = 6 orelse state = 7 then  (* Still processing *)
-        update_progress_display()
-    else if state = 8 then let  (* Done *)
-        val () = show_import_complete()
-        val () = set_import_in_progress(0)
-      in () end
-    else ()
-  end
-
+implement on_file_open_complete(handle, size) = on_file_open_impl(handle, size)
+implement on_decompress_complete(handle, size) = on_decompress_impl(handle, size)
+implement on_kv_complete(success) = on_kv_complete_impl(success)
 implement on_kv_get_complete(len) = ()
-
 implement on_kv_get_blob_complete(handle, size) = ()
-
 implement on_clipboard_copy_complete(success) = ()
+implement on_kv_open_complete(success) = on_kv_open_impl(success)
 
-implement on_kv_open_complete(success) = let
-    val () = epub_on_db_open(success)
-    val state = epub_get_state()
-  in
-    if state = 99 then let  (* Error *)
-        val () = show_import_error()
-        val () = set_import_in_progress(0)
-      in () end
-    else ()
-  end
+%{
+void process_event_impl(void) {
+    int event_type = get_event_type();
+    int node_id = get_event_node_id();
+
+    /* Event type 2 = input (file selected) */
+    if (event_type == 2) {
+        if (node_id == file_input_id) {
+            if (!import_in_progress) {
+                import_in_progress = 1;
+                epub_start_import(node_id);
+            }
+        }
+    }
+}
+
+/* Handle state transitions after async operations */
+static void handle_state_after_op(void) {
+    int state = epub_get_state();
+    if (state == 99) {  /* Error */
+        show_import_error();
+        import_in_progress = 0;
+    } else if (state == 6 || state == 7) {  /* Still processing */
+        update_progress_display();
+    } else if (state == 8) {  /* Done */
+        show_import_complete();
+        import_in_progress = 0;
+    }
+}
+
+void on_file_open_impl(int handle, int size) {
+    epub_on_file_open(handle, size);
+    int state = epub_get_state();
+    if (state == 99) {
+        show_import_error();
+        import_in_progress = 0;
+    }
+}
+
+void on_decompress_impl(int handle, int size) {
+    epub_on_decompress(handle, size);
+    handle_state_after_op();
+}
+
+void on_kv_complete_impl(int success) {
+    epub_on_db_put(success);
+    handle_state_after_op();
+}
+
+void on_kv_open_impl(int success) {
+    epub_on_db_open(success);
+    int state = epub_get_state();
+    if (state == 99) {
+        show_import_error();
+        import_in_progress = 0;
+    }
+}
+%}

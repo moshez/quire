@@ -23,8 +23,9 @@ fun zip_init(): void = "mac#"
 fun zip_open(file_handle: int, file_size: int): int = "mac#"
 
 (* Get entry info by index (0-based)
- * Returns 1 on success, 0 if index out of range *)
-fun zip_get_entry(index: int, entry: &zip_entry? >> opt(zip_entry, b)): #[b:bool] int b = "mac#"
+ * Returns 1 on success, 0 if index out of range
+ * entry is filled if successful *)
+fun zip_get_entry(index: int, entry: &zip_entry? >> _): int = "mac#"
 
 (* Get entry name into string buffer at given offset
  * Returns name length *)
