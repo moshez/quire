@@ -8,6 +8,9 @@ concurrency:
   group: pr-${{ github.head_ref }}
   cancel-in-progress: true
 
+env:
+  ATS_VERSION: "0.4.2"  # Pin ATS-Postiats version
+
 jobs:
   bridge-tests:
     runs-on: ubuntu-latest
@@ -22,4 +25,36 @@ jobs:
       - run: npm ci
       - run: npm test
 
-  # build-wasm job will be added in M5 when ATS2 source files exist
+  build-wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache ATS2 toolchain
+        id: cache-ats
+        uses: actions/cache@v4
+        with:
+          path: ~/ATS2-Postiats-int-${{ env.ATS_VERSION }}
+          key: ats2-int-${{ env.ATS_VERSION }}-${{ runner.os }}
+
+      - name: Download and build ATS2
+        if: steps.cache-ats.outputs.cache-hit != 'true'
+        run: |
+          curl -sL "https://raw.githubusercontent.com/ats-lang/ats-lang.github.io/master/FROZEN000/ATS-Postiats/ATS2-Postiats-int-${{ env.ATS_VERSION }}.tgz" -o /tmp/ats2.tgz
+          tar -xzf /tmp/ats2.tgz -C ~
+          cd ~/ATS2-Postiats-int-${{ env.ATS_VERSION }}
+          ./configure
+          make -j$(nproc)
+
+      - name: Install WASM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld
+
+      - name: Build quire.wasm
+        env:
+          PATSHOME: ~/ATS2-Postiats-int-${{ env.ATS_VERSION }}
+        run: |
+          export PATH=$PATSHOME/bin:$PATH
+          make
+          test -f build/quire.wasm

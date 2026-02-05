@@ -30,12 +30,44 @@ When completing a milestone from quire-design.md §8:
 - `.dats`: implementations
 - `runtime.c`: minimal C runtime for WASM
 
-## ATS2 Toolchain (M5+)
+## ATS2 Toolchain
 
-When adding the WASM build in M5:
-- ATS2 must be installed locally by the developer
-- CI builds from local source, no remote cloning or caching
-- Keep CI simple: if it's slow, that's fine
+### Installation
+
+Download and build ATS2 (integer-only version, no GMP dependency):
+
+```bash
+# Download from GitHub Pages mirror
+curl -sL "https://raw.githubusercontent.com/ats-lang/ats-lang.github.io/master/FROZEN000/ATS-Postiats/ATS2-Postiats-int-0.4.2.tgz" -o /tmp/ats2.tgz
+
+# Extract
+tar -xzf /tmp/ats2.tgz -C ~
+
+# Build
+cd ~/ATS2-Postiats-int-0.4.2
+./configure
+make
+
+# Set environment (add to ~/.bashrc or ~/.zshrc)
+export PATSHOME=~/ATS2-Postiats-int-0.4.2
+export PATH=$PATSHOME/bin:$PATH
+```
+
+### WASM Toolchain
+
+Requires clang with wasm32 target and wasm-ld:
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install -y clang lld
+```
+
+### Build Notes
+
+- Uses freestanding WASM (no WASI, no libc)
+- ATS2 prelude is disabled (-D_ATS_CCOMP_PRELUDE_NONE_)
+- Minimal runtime macros defined in src/runtime.c
+- CI builds ATS2 from source with caching
 
 ## Protocol
 
