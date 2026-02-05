@@ -1877,6 +1877,6 @@ jobs:
 
 **Why pin the ATS-Postiats commit?** ATS2 development is active and occasionally introduces breaking changes in codegen. Pinning to a known-good commit prevents mysterious CI failures unrelated to Quire changes. Bumping the pin is a one-line change in both workflow files (via the shared `ATS_COMMIT` env var).
 
-**Why not deploy to Pages?** The `upload.yaml` workflow deliberately stops at artifact upload rather than deploying to GitHub Pages. Deployment target is a separate decision — could be Pages, Cloudflare, Netlify, or a custom server. The artifact is the universal intermediate: download it and put it wherever you want. A deployment step can be added later as a third workflow or appended to this one.
+**GitHub Pages deployment:** The `upload.yaml` workflow both uploads an artifact and deploys to GitHub Pages. The artifact remains available as a universal intermediate for alternative deployment targets (Cloudflare, Netlify, custom servers).
 
 **Artifact retention** is set to 90 days. Older builds can always be regenerated from the corresponding commit.
