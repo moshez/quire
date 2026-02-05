@@ -6,12 +6,14 @@ PWA e-reader. All application logic in ATS2 → WASM. Generic JS bridge for DOM 
 
 **Prerequisites:** ATS2 toolchain must be installed first (see ATS2 Toolchain section below).
 
+**IMPORTANT:** You MUST run `make` locally and verify the build succeeds before committing any changes to `.sats` or `.dats` files. NEVER COUNT ON CI TO VERIFY ATS2 BUILD. If the ATS2 toolchain is not available, install it first before making any code changes.
+
 ```bash
 # Set environment (required before make)
 export PATSHOME=~/ATS2-Postiats-int-0.4.2
 export PATH=$PATSHOME/bin:$PATH
 
-make                    # Build quire.wasm
+make                    # Build quire.wasm - REQUIRED before commit
 npm test                # Bridge tests
 npx serve .             # Dev server
 ```

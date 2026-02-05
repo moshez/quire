@@ -790,6 +790,34 @@ int reader_is_loading(void) {
     return loading_slot >= 0 ? 1 : 0;
 }
 
+/* M14: Re-measure all chapter slots after settings change
+ * Called when font size, line height, or margin changes affect pagination */
+void reader_remeasure_all(void) {
+    if (!reader_active) return;
+
+    /* Re-measure each ready slot */
+    for (int i = 0; i < 3; i++) {
+        if (slots[i].status == 2) {  /* SLOT_READY */
+            measure_slot_pages(i);
+        }
+    }
+
+    /* Ensure current page is still valid */
+    chapter_slot_t* curr_slot = &slots[SLOT_CURR];
+    if (curr_slot->status == 2) {
+        int max_page = curr_slot->page_count > 0 ? curr_slot->page_count - 1 : 0;
+        if (reader_current_page > max_page) {
+            reader_current_page = max_page;
+        }
+    }
+
+    /* Reposition all slots */
+    position_all_slots();
+
+    /* Update page display */
+    reader_update_page_display();
+}
+
 /* M13: Go to specific chapter
  * The dependent type {ch,t:nat | ch < t} in reader.sats guarantees
  * chapter_index < total_chapters at compile time.
