@@ -1652,7 +1652,7 @@ Bridge test coverage expands incrementally: M2–M4 each add tests for the bridg
   - Page number display
   - Verify: can read through an entire chapter page by page
 
-- [ ] **M12: Three-chapter sliding window**
+- [x] **M12: Three-chapter sliding window**
   - `reader.sats`/`reader.dats` with sliding window state machine
   - Preload next/previous chapters
   - Chapter boundary transitions (§4.3)
