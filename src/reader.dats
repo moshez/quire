@@ -69,7 +69,6 @@ static const char str_toc_entry[] = "toc-entry";
 static const char str_toc_entry_nested[] = "toc-entry nested";
 static const char str_progress_bar[] = "progress-bar";
 static const char str_progress_fill[] = "progress-fill";
-static const char str_data_toc_idx[] = "data-toc-idx";
 static const char str_em_dash[] = " \xe2\x80\x94 ";  /* UTF-8 em-dash */
 
 /* External functions from epub module */
@@ -90,6 +89,11 @@ static int toc_list_id = 0;
 static int progress_bar_id = 0;
 static int progress_fill_id = 0;
 static int root_node_id = 1;  /* Save for TOC creation */
+
+/* M13: TOC entry node ID to index mapping */
+#define MAX_TOC_ENTRY_IDS 256
+static int toc_entry_ids[MAX_TOC_ENTRY_IDS];
+static int toc_entry_count = 0;
 
 /* External functions from bridge */
 extern unsigned char* get_fetch_buffer_ptr(void);
@@ -146,6 +150,7 @@ void reader_init(void) {
     toc_list_id = 0;
     progress_bar_id = 0;
     progress_fill_id = 0;
+    toc_entry_count = 0;
 }
 
 /* Enter reader mode - creates viewport and three chapter containers */
@@ -847,10 +852,14 @@ void reader_show_toc(void) {
                            (void*)str_toc_list, 8);
 
     /* Add TOC entries */
+    toc_entry_count = 0;
     int toc_count = epub_get_toc_count();
-    for (int i = 0; i < toc_count && i < 100; i++) {
+    for (int i = 0; i < toc_count && i < MAX_TOC_ENTRY_IDS; i++) {
         int entry_id = dom_next_id();
         void* pf_entry = dom_create_element(pf_list, list_id, entry_id, (void*)str_div, 3);
+
+        /* Store node ID for click lookup - index in array equals TOC index */
+        toc_entry_ids[toc_entry_count++] = entry_id;
 
         /* Set class based on nesting level */
         int level = epub_get_toc_level(i);
@@ -861,10 +870,6 @@ void reader_show_toc(void) {
             pf_entry = dom_set_attr(pf_entry, entry_id, (void*)str_class, 5,
                                     (void*)str_toc_entry, 9);
         }
-
-        /* Store TOC index as data attribute for click handling */
-        len = append_int(str_buf, 0, i);
-        pf_entry = dom_set_attr(pf_entry, entry_id, (void*)str_data_toc_idx, 12, str_buf, len);
 
         /* Set entry text */
         int label_len = epub_get_toc_label(i, 0);
@@ -896,6 +901,7 @@ void reader_hide_toc(void) {
     toc_overlay_id = 0;
     toc_close_id = 0;
     toc_list_id = 0;
+    toc_entry_count = 0;
 }
 
 /* M13: Check if TOC is visible */
@@ -922,9 +928,22 @@ int reader_get_progress_bar_id(void) {
     return progress_bar_id;
 }
 
-/* M13: Handle TOC entry click */
-void reader_on_toc_click(int toc_index) {
-    if (!reader_active || toc_index < 0) return;
+/* M13: Look up TOC index from node ID, returns -1 if not found */
+int reader_get_toc_index_for_node(int node_id) {
+    for (int i = 0; i < toc_entry_count; i++) {
+        if (toc_entry_ids[i] == node_id) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* M13: Handle TOC entry click by node ID */
+void reader_on_toc_click(int node_id) {
+    if (!reader_active) return;
+
+    int toc_index = reader_get_toc_index_for_node(node_id);
+    if (toc_index < 0) return;
 
     int chapter_index = epub_get_toc_chapter(toc_index);
     if (chapter_index >= 0) {

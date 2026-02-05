@@ -86,5 +86,8 @@ fun reader_get_toc_id(): int = "mac#"
 (* Get progress bar ID *)
 fun reader_get_progress_bar_id(): int = "mac#"
 
-(* Handle TOC entry click (index into TOC list) *)
-fun reader_on_toc_click(toc_index: int): void = "mac#"
+(* Look up TOC index from node ID, returns -1 if not found *)
+fun reader_get_toc_index_for_node(node_id: int): int = "mac#"
+
+(* Handle TOC entry click by node ID *)
+fun reader_on_toc_click(node_id: int): void = "mac#"

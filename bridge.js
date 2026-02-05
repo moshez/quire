@@ -724,20 +724,10 @@ function handleEvent(event, type) {
   let data1 = 0;
   let data2 = 0;
 
-  // For click events, pass coordinates and check for data-toc-idx
+  // For click events, pass coordinates
   if (type === EVENT_CLICK && event.clientX !== undefined) {
     data1 = Math.round(event.clientX);
-    // M13: Check for data-toc-idx attribute on clicked element or parents
-    let el = event.target;
-    let tocIdx = -1;
-    while (el && el !== document.body) {
-      if (el.dataset?.tocIdx !== undefined) {
-        tocIdx = parseInt(el.dataset.tocIdx, 10);
-        break;
-      }
-      el = el.parentElement;
-    }
-    data2 = tocIdx;
+    data2 = Math.round(event.clientY);
   }
 
   // For keyboard events, pass key code
