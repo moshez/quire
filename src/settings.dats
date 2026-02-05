@@ -128,6 +128,8 @@ extern void reader_remeasure_all(void);
 /* Forward declarations */
 static void update_display_values(void);
 static void apply_theme_to_body(void);
+void settings_apply(void);
+void settings_save(void);
 
 /* Helper: clamp value to range */
 static int clamp(int val, int min, int max) {
