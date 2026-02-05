@@ -49,6 +49,12 @@ fun epub_get_book_id(buf_offset: int): int = "mac#"
 (* Get total number of chapters in spine *)
 fun epub_get_chapter_count(): int = "mac#"
 
+(* Get chapter key for IndexedDB lookup (book_id/chapter_href)
+ * chapter_index: 0-based index into spine
+ * buf_offset: offset in string buffer to write key
+ * Returns key length, or 0 if index out of range *)
+fun epub_get_chapter_key(chapter_index: int, buf_offset: int): int = "mac#"
+
 (* Continue processing (called from async callbacks)
  * Called after file open, decompress, or IDB operations complete *)
 fun epub_continue(): void = "mac#"
