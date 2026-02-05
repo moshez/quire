@@ -46,6 +46,14 @@ const swEventListeners = new Set();
 const nodeRegistry = new Map();
 let nextNodeId = 1;
 
+// File handles for large file access (EPUB files, etc.)
+const fileHandles = new Map();
+let nextFileHandle = 1;
+
+// Blob handles for decompressed data
+const blobHandles = new Map();
+let nextBlobHandle = 1;
+
 const PUSH_DB_NAME = 'bridge-push';
 const PUSH_STORE_NAME = 'pending';
 const PUSH_DB_VERSION = 1;
@@ -388,6 +396,88 @@ const imports = {
         .catch(() => {
           wasm.on_clipboard_copy_complete(0);
         });
+    },
+
+    // File handling imports (§2.3.7)
+    js_file_open(nodeId) {
+      const node = getNode(nodeId);
+      if (!node || !node.files || !node.files[0]) {
+        wasm.on_file_open_complete(0, 0);
+        return;
+      }
+      const file = node.files[0];
+      const handle = nextFileHandle++;
+      file.arrayBuffer().then(buffer => {
+        fileHandles.set(handle, buffer);
+        wasm.on_file_open_complete(handle, buffer.byteLength);
+      }).catch(() => {
+        wasm.on_file_open_complete(0, 0);
+      });
+    },
+
+    js_file_read_chunk(handle, offset, length) {
+      const buffer = fileHandles.get(handle);
+      if (!buffer) return 0;
+      const chunkLen = Math.min(length, FETCH_BUFFER_SIZE, buffer.byteLength - offset);
+      if (chunkLen <= 0) return 0;
+      const chunk = new Uint8Array(buffer, offset, chunkLen);
+      new Uint8Array(memory.buffer, fetchBuffer.byteOffset, chunkLen).set(chunk);
+      return chunkLen;
+    },
+
+    js_file_close(handle) {
+      fileHandles.delete(handle);
+    },
+
+    // Decompression imports (§2.3.8)
+    js_decompress(fileHandle, offset, compressedSize, method) {
+      // method: 0 = deflate-raw, 1 = deflate, 2 = gzip
+      const methods = ['deflate-raw', 'deflate', 'gzip'];
+      const buffer = fileHandles.get(fileHandle);
+      if (!buffer) {
+        wasm.on_decompress_complete(0, 0);
+        return;
+      }
+      const compressed = new Uint8Array(buffer, offset, compressedSize);
+      const ds = new DecompressionStream(methods[method] || 'deflate-raw');
+      const writer = ds.writable.getWriter();
+      writer.write(compressed);
+      writer.close();
+      new Response(ds.readable).arrayBuffer().then(decompressed => {
+        const handle = nextBlobHandle++;
+        blobHandles.set(handle, decompressed);
+        wasm.on_decompress_complete(handle, decompressed.byteLength);
+      }).catch(() => {
+        wasm.on_decompress_complete(0, 0);
+      });
+    },
+
+    js_blob_read_chunk(handle, offset, length) {
+      const buffer = blobHandles.get(handle);
+      if (!buffer) return 0;
+      const chunkLen = Math.min(length, FETCH_BUFFER_SIZE, buffer.byteLength - offset);
+      if (chunkLen <= 0) return 0;
+      const chunk = new Uint8Array(buffer, offset, chunkLen);
+      new Uint8Array(memory.buffer, fetchBuffer.byteOffset, chunkLen).set(chunk);
+      return chunkLen;
+    },
+
+    js_blob_size(handle) {
+      const buffer = blobHandles.get(handle);
+      return buffer ? buffer.byteLength : 0;
+    },
+
+    js_blob_free(handle) {
+      blobHandles.delete(handle);
+    },
+
+    // Direct blob to innerHTML (§2.3.10)
+    js_set_inner_html_from_blob(nodeId, blobHandle) {
+      const node = getNode(nodeId);
+      const buffer = blobHandles.get(blobHandle);
+      if (!node || !buffer) return 0;
+      node.innerHTML = decoder.decode(new Uint8Array(buffer));
+      return 1;
     }
   }
 };
@@ -589,6 +679,73 @@ export function _getMeasurements() {
     scrollWidth: view.getFloat64(32, true),
     scrollHeight: view.getFloat64(40, true)
   };
+}
+
+// Test helper: expose file imports for testing
+export function _fileOpen(nodeId) {
+  return imports.env.js_file_open(nodeId);
+}
+
+export function _fileReadChunk(handle, offset, length) {
+  return imports.env.js_file_read_chunk(handle, offset, length);
+}
+
+export function _fileClose(handle) {
+  return imports.env.js_file_close(handle);
+}
+
+// Test helper: directly add a file handle (for testing without DOM file input)
+export function _addFileHandle(handle, buffer) {
+  fileHandles.set(handle, buffer);
+  if (handle >= nextFileHandle) nextFileHandle = handle + 1;
+}
+
+// Test helper: check if file handle exists
+export function _hasFileHandle(handle) {
+  return fileHandles.has(handle);
+}
+
+// Test helper: expose blob imports for testing
+export function _blobReadChunk(handle, offset, length) {
+  return imports.env.js_blob_read_chunk(handle, offset, length);
+}
+
+export function _blobSize(handle) {
+  return imports.env.js_blob_size(handle);
+}
+
+export function _blobFree(handle) {
+  return imports.env.js_blob_free(handle);
+}
+
+// Test helper: directly add a blob handle (for testing decompression results)
+export function _addBlobHandle(handle, buffer) {
+  blobHandles.set(handle, buffer);
+  if (handle >= nextBlobHandle) nextBlobHandle = handle + 1;
+}
+
+// Test helper: check if blob handle exists
+export function _hasBlobHandle(handle) {
+  return blobHandles.has(handle);
+}
+
+// Test helper: expose js_set_inner_html_from_blob for testing
+export function _setInnerHtmlFromBlob(nodeId, blobHandle) {
+  return imports.env.js_set_inner_html_from_blob(nodeId, blobHandle);
+}
+
+// Test helper: read data from fetch buffer (for verifying chunk reads)
+export function _readFetchBuffer(offset, length) {
+  if (!fetchBuffer) return null;
+  return new Uint8Array(memory.buffer, fetchBuffer.byteOffset + offset, length);
+}
+
+// Test helper: clear file and blob handles (for test isolation)
+export function _clearHandles() {
+  fileHandles.clear();
+  blobHandles.clear();
+  nextFileHandle = 1;
+  nextBlobHandle = 1;
 }
 
 export { registerNode, getNode };

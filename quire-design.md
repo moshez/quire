@@ -1616,7 +1616,7 @@ Bridge test coverage expands incrementally: M2–M4 each add tests for the bridg
 
 ### Phase 2: File Handling
 
-- [ ] **M7: Bridge file + blob + decompression imports**
+- [x] **M7: Bridge file + blob + decompression imports**
   - Add `js_file_open`, `js_file_read_chunk`, `js_file_close` (§2.3.7)
   - Add `js_decompress`, `js_blob_read_chunk`, `js_blob_size`, `js_blob_free` (§2.3.8)
   - Add `js_set_inner_html_from_blob` (§2.3.10)
