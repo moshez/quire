@@ -1626,7 +1626,7 @@ Bridge test coverage expands incrementally: M2–M4 each add tests for the bridg
   - Add `js_kv_open`, `js_kv_put`, `js_kv_put_blob`, `js_kv_get`, `js_kv_delete` (§2.3.9)
   - Bridge-only PR
 
-- [ ] **M9: EPUB import pipeline**
+- [x] **M9: EPUB import pipeline**
   - ZIP header parsing in ATS2 (read end-of-central-directory, iterate entries)
   - container.xml parsing → find .opf path
   - .opf parsing → extract metadata, spine, manifest
