@@ -32,6 +32,27 @@ When completing a milestone from quire-design.md §8:
 4. **WASM owns node IDs** — assigned via CREATE_ELEMENT diffs
 5. **Dependent types enforce correctness** — if it compiles, diffs are valid
 
+## Type Safety Requirements
+
+**All new functionality must be proven correct using ATS2's type system.** Avoid writing plain C in `%{` blocks when dataprops can enforce invariants at compile time.
+
+Use dataprops and dependent types to prove:
+- **Array bounds**: Index access is within valid range (e.g., `toc_index < toc_count`)
+- **State machine transitions**: Operations only valid in certain states (e.g., `hide_toc` requires `toc_visible = true`)
+- **Resource linearity**: DOM proof tokens consumed exactly once
+- **Non-null guarantees**: Pointers/IDs are valid before use
+
+Example pattern for bounded array access:
+```ats
+dataprop BOUNDS(int, int) =
+  | {i,n:nat | i < n} INBOUNDS(i, n)
+
+fun get_toc_entry {i,n:nat | i < n}
+  (pf: BOUNDS(i,n) | idx: int(i)): toc_entry
+```
+
+If C code is unavoidable, document why dataprops couldn't be used and what runtime checks substitute for compile-time proofs.
+
 ## Bridge Policy
 
 **Be extremely careful about changes to bridge.js.** Most PRs should not touch it.
