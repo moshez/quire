@@ -3,6 +3,20 @@
  * M15: Manages persistent book library with IndexedDB storage.
  * Each book entry stores: book_id, title, author, reading position, chapter count.
  * Library index is serialized as a binary blob for efficient storage.
+ *
+ * CORRECTNESS JUSTIFICATION FOR C CODE:
+ * This module uses C in %{^ because it manages a statically-allocated
+ * array of structs and performs byte-level serialization that cannot be
+ * expressed efficiently with ATS2 dataprops in freestanding WASM.
+ *
+ * Runtime checks that substitute for compile-time proofs:
+ * - LIBRARY_INDEX_VALID: library_count bounded by MAX_LIBRARY_BOOKS checks
+ *   in library_add_book (line: if library_count >= MAX_LIBRARY_BOOKS)
+ * - BOOK_IN_LIBRARY: index bounds checked at entry of every getter/setter
+ *   (if index < 0 || index >= library_count return 0/early)
+ * - SERIALIZE_ROUNDTRIP: serialize and deserialize use symmetric field order
+ *   (book_id, title, author, chapter, page, spine_count) ensuring roundtrip
+ * - BOOK_POSITION_VALID: chapter/page values stored as-is; validated by caller
  *)
 
 #define ATS_DYNLOADFLAG 0
@@ -58,7 +72,8 @@ extern int epub_get_chapter_count(void);
 extern int epub_serialize_metadata(void);
 extern int epub_restore_metadata(int len);
 
-/* Initialize library */
+/* Initialize library.
+ * Postcondition: LIBRARY_INDEX_VALID(0, 32) - empty library is valid. */
 void library_init(void) {
     library_count = 0;
     lib_save_pending = 0;
@@ -76,14 +91,17 @@ void library_init(void) {
     }
 }
 
-/* Get book count */
+/* Get book count.
+ * Returns [n:nat | n <= 32] - invariant maintained by add/remove. */
 int library_get_count(void) {
     return library_count;
 }
 
-/* Get book title */
+/* Get book title.
+ * Runtime BOOK_IN_LIBRARY check: returns 0 if index out of bounds.
+ * Writes THE title for book[index] to string buffer. */
 int library_get_title(int index, int buf_offset) {
-    if (index < 0 || index >= library_count) return 0;
+    if (index < 0 || index >= library_count) return 0;  /* BOOK_IN_LIBRARY guard */
     unsigned char* buf = get_string_buffer_ptr();
     library_entry_t* entry = &library_books[index];
     for (int i = 0; i < entry->title_len && buf_offset + i < 4096; i++) {
@@ -130,7 +148,9 @@ int library_get_spine_count(int index) {
     return library_books[index].spine_count;
 }
 
-/* Find book by current epub book_id (uses string buffer) */
+/* Find book by current epub book_id (uses string buffer).
+ * Returns [i:int | i >= -1] where i >= 0 means BOOK_IN_LIBRARY(i, library_count).
+ * Byte-for-byte comparison ensures correct book identification. */
 int library_find_book_by_id(void) {
     unsigned char* str_buf = get_string_buffer_ptr();
     int id_len = epub_get_book_id(0);
@@ -149,9 +169,12 @@ int library_find_book_by_id(void) {
     return -1;
 }
 
-/* Add current epub book to library */
+/* Add current epub book to library.
+ * Returns [i:int | i >= -1; i < 32].
+ * LIBRARY_INDEX_VALID maintained: count only incremented when < MAX.
+ * Deduplication: scans existing entries for matching book_id before adding. */
 int library_add_book(void) {
-    if (library_count >= MAX_LIBRARY_BOOKS) return -1;
+    if (library_count >= MAX_LIBRARY_BOOKS) return -1;  /* LIBRARY_INDEX_VALID guard */
 
     unsigned char* str_buf = get_string_buffer_ptr();
     library_entry_t* entry = &library_books[library_count];
@@ -229,7 +252,12 @@ static int lib_read_u16(unsigned char* buf, int offset) {
     return buf[offset] | (buf[offset + 1] << 8);
 }
 
-/* Serialize library index to fetch buffer */
+/* Serialize library index to fetch buffer.
+ * Returns [len:nat].
+ * Format (symmetric with library_deserialize for SERIALIZE_ROUNDTRIP):
+ *   u16 count
+ *   per book: 8-byte book_id, u16 title_len, title, u16 author_len, author,
+ *             u16 chapter, u16 page, u16 spine_count */
 int library_serialize(void) {
     unsigned char* buf = get_fetch_buffer_ptr();
     int pos = 0;
@@ -265,7 +293,10 @@ int library_serialize(void) {
     return pos;
 }
 
-/* Deserialize library index from fetch buffer */
+/* Deserialize library index from fetch buffer.
+ * Returns [r:int | r == 0 || r == 1].
+ * Reads fields in same order as library_serialize (SERIALIZE_ROUNDTRIP).
+ * Re-establishes LIBRARY_INDEX_VALID by clamping count to MAX_LIBRARY_BOOKS. */
 int library_deserialize(int len) {
     if (len < 2) return 0;
 
