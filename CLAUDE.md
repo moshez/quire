@@ -27,10 +27,27 @@ When completing a milestone from quire-design.md §8:
 ## Rules
 
 1. **No app code in index.html** — only loading div + `initBridge('quire.wasm')`
-2. **bridge.js is generic** — no app-specific logic, publishable as npm package
+2. **bridge.js is generic** — no app-specific logic, publishable as npm package (see Bridge Policy below)
 3. **All UI logic in WASM** — bridge forwards events and applies diffs
 4. **WASM owns node IDs** — assigned via CREATE_ELEMENT diffs
 5. **Dependent types enforce correctness** — if it compiles, diffs are valid
+
+## Bridge Policy
+
+**Be extremely careful about changes to bridge.js.** Most PRs should not touch it.
+
+The bridge is intentionally minimal and generic—it could be published as a standalone npm package for any WASM app needing DOM access. It must remain:
+- **App-agnostic**: No knowledge of EPUB, readers, TOC, or any domain concepts
+- **Protocol-only**: Just applies diffs and forwards events with raw data (node ID, coordinates)
+
+If you think you need to modify bridge.js, first ask: can this be done in WASM instead?
+
+Examples of what belongs in WASM, not bridge:
+- Mapping node IDs to app-specific indices (e.g., TOC entries)
+- Custom attribute handling or data extraction
+- Any logic that references app concepts
+
+If your change truly requires bridge modification (rare), document the justification in your commit message explaining why WASM couldn't handle it.
 
 ## Files
 
