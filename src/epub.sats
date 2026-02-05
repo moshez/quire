@@ -55,13 +55,13 @@ dataprop SPINE_ORDERED(ch: int, total: int) =
  * TOC_TO_SPINE(toc_idx, spine_idx, spine_total) proves:
  * - When spine_idx >= 0: spine_idx < spine_total AND is THE correct chapter
  *   for TOC entry toc_idx (not some other chapter)
- * - When spine_idx == -1: TOC entry has no corresponding chapter (valid: TOC
+ * - When spine_idx < 0: TOC entry has no corresponding chapter (valid: TOC
  *   entries can reference fragments, external links, etc.)
  *
  * Ensures clicking TOC entry navigates to THE RIGHT chapter. *)
 dataprop TOC_TO_SPINE(toc_idx: int, spine_idx: int, spine_total: int) =
   | {t,s,total:nat | s < total} VALID_TOC_MAPPING(t, s, total)
-  | {t,total:nat} NO_TOC_MAPPING(t, ~1, total)
+  | {t,s,total:int} NO_TOC_MAPPING(t, s, total)
 
 (* Chapter key correctness proof.
  * CHAPTER_KEY_CORRECT(ch, key_offset, key_len) proves that the key written
