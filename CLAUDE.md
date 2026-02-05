@@ -36,20 +36,38 @@ When completing a milestone from quire-design.md §8:
 
 **All new functionality must be proven correct using ATS2's type system.** Avoid writing plain C in `%{` blocks when dataprops can enforce invariants at compile time.
 
-Use dataprops and dependent types to prove:
-- **Array bounds**: Index access is within valid range (e.g., `toc_index < toc_count`)
-- **State machine transitions**: Operations only valid in certain states (e.g., `hide_toc` requires `toc_visible = true`)
-- **Resource linearity**: DOM proof tokens consumed exactly once
-- **Non-null guarantees**: Pointers/IDs are valid before use
+The goal is **functional correctness**, not just safety. Prove that code *does the right thing*, not merely that it *doesn't crash*.
 
-Example pattern for bounded array access:
+### Functional Correctness Examples
+
+Use dataprops to encode relationships that guarantee correct behavior:
+
 ```ats
-dataprop BOUNDS(int, int) =
-  | {i,n:nat | i < n} INBOUNDS(i, n)
+(* TOC lookup: prove the returned entry corresponds to the queried node *)
+dataprop TOC_MAPS(node_id: int, toc_idx: int) =
+  | {n,i:nat} TOC_ENTRY_FOR(n, i)  (* node n maps to TOC index i *)
 
-fun get_toc_entry {i,n:nat | i < n}
-  (pf: BOUNDS(i,n) | idx: int(i)): toc_entry
+fun toc_lookup {n:int}
+  (node_id: int(n)): [i:int] (TOC_MAPS(n, i) | int(i))
+
+(* Navigation: prove we land on the requested chapter *)
+dataprop AT_CHAPTER(int) =
+  | {c:nat} VIEWING(c)
+
+fun go_to_chapter {target:nat}
+  (ch: int(target)): (AT_CHAPTER(target) | void)
+
+(* Progress calculation: prove percentage reflects actual position *)
+dataprop PROGRESS(chapter: int, page: int, total_chapters: int, pct: int) =
+  | {c,p,t,x:nat | x == (c * 100) / t} CORRECT_PCT(c, p, t, x)
 ```
+
+### Safety as a Byproduct
+
+Functional correctness proofs often imply safety, but safety alone is insufficient:
+- Bounded array access proves you read *the correct element*, not just *some valid element*
+- State machine proofs ensure operations happen *in the right order*, not just *without crashing*
+- Linear resource tracking proves DOM nodes are *correctly parented*, not just *not leaked*
 
 If C code is unavoidable, document why dataprops couldn't be used and what runtime checks substitute for compile-time proofs.
 
