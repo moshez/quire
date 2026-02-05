@@ -22,7 +22,9 @@ import {
   OP_SET_INNER_HTML,
   EVENT_CLICK,
   EVENT_INPUT,
-  EVENT_KEYDOWN
+  EVENT_KEYDOWN,
+  EVENT_PUSH,
+  EVENT_NOTIFICATION_CLICK
 } from './mock-wasm.js';
 
 // Set up jsdom environment
@@ -390,6 +392,13 @@ describe('wrapExports Proxy', () => {
 
     // Diff count should be cleared to 0
     expect(view.getUint8(diffPtr)).toBe(0);
+  });
+});
+
+describe('Push Event Constants', () => {
+  it('should have push event types defined', () => {
+    expect(EVENT_PUSH).toBe(8);
+    expect(EVENT_NOTIFICATION_CLICK).toBe(9);
   });
 });
 

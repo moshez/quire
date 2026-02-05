@@ -5,6 +5,7 @@
  * - Event forwarding from DOM to WASM
  * - Diff-based DOM updates from WASM
  * - Async I/O primitives (fetch, storage, timers)
+ * - Push notification support
  *
  * The bridge is generic and contains no application-specific logic.
  * All UI decisions are made by the WASM module.
@@ -21,6 +22,8 @@ const EVENT_KEYDOWN = 4;
 const EVENT_KEYUP = 5;
 const EVENT_FOCUS = 6;
 const EVENT_BLUR = 7;
+const EVENT_PUSH = 8;
+const EVENT_NOTIFICATION_CLICK = 9;
 
 const OP_SET_TEXT = 1;
 const OP_SET_ATTR = 2;
@@ -36,8 +39,16 @@ let diffBuffer = null;
 let fetchBuffer = null;
 let stringBuffer = null;
 
+let vapidPublicKey = null;
+
+const swEventListeners = new Set();
+
 const nodeRegistry = new Map();
 let nextNodeId = 1;
+
+const PUSH_DB_NAME = 'bridge-push';
+const PUSH_STORE_NAME = 'pending';
+const PUSH_DB_VERSION = 1;
 
 function registerNode(element) {
   if (element.dataset.nodeId) {
@@ -82,6 +93,49 @@ function writeString(ptr, str, maxLen) {
   const len = Math.min(bytes.length, maxLen);
   new Uint8Array(memory.buffer, ptr, len).set(bytes.subarray(0, len));
   return len;
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from(rawData, char => char.charCodeAt(0));
+}
+
+function openPushDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(PUSH_DB_NAME, PUSH_DB_VERSION);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(PUSH_STORE_NAME)) {
+        db.createObjectStore(PUSH_STORE_NAME, { keyPath: 'id', autoIncrement: true });
+      }
+    };
+  });
+}
+
+function handleSwMessage(event) {
+  if (!wasm) return;
+  const { type, data, action } = event.data;
+  if (!swEventListeners.has(type)) return;
+  switch (type) {
+    case 'push':
+      if (data) {
+        writeString(fetchBuffer.byteOffset, data, FETCH_BUFFER_SIZE);
+      }
+      writeEvent(EVENT_PUSH, 0);
+      wasm.process_event();
+      break;
+    case 'notificationclick':
+      writeEvent(EVENT_NOTIFICATION_CLICK, 0, action === 'dismiss' ? 1 : 0);
+      wasm.process_event();
+      break;
+    case 'pushsubscriptionchange':
+      wasm.on_push_subscription_change();
+      break;
+  }
 }
 
 const imports = {
@@ -161,6 +215,133 @@ const imports = {
       setTimeout(() => {
         wasm.on_timer_complete(callbackId);
       }, delay);
+    },
+
+    js_push_subscribe() {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        return 0;
+      }
+      navigator.serviceWorker.ready
+        .then(registration => registration.pushManager.getSubscription())
+        .then(async (subscription) => {
+          if (!subscription) {
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') {
+              wasm.on_push_subscribe_complete(-1);
+              return;
+            }
+            const reg = await navigator.serviceWorker.ready;
+            const options = { userVisibleOnly: true };
+            if (vapidPublicKey) {
+              options.applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
+            }
+            subscription = await reg.pushManager.subscribe(options);
+          }
+          const json = JSON.stringify(subscription.toJSON());
+          const len = writeString(fetchBuffer.byteOffset, json, FETCH_BUFFER_SIZE);
+          wasm.on_push_subscribe_complete(len);
+        })
+        .catch(() => {
+          wasm.on_push_subscribe_complete(0);
+        });
+    },
+
+    js_push_get_subscription() {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        return 0;
+      }
+      navigator.serviceWorker.ready
+        .then(registration => registration.pushManager.getSubscription())
+        .then((subscription) => {
+          if (!subscription) {
+            wasm.on_push_subscription_result(0);
+            return;
+          }
+          const json = JSON.stringify(subscription.toJSON());
+          const len = writeString(fetchBuffer.byteOffset, json, FETCH_BUFFER_SIZE);
+          wasm.on_push_subscription_result(len);
+        })
+        .catch(() => {
+          wasm.on_push_subscription_result(0);
+        });
+    },
+
+    js_notification_show(titlePtr, titleLen, bodyPtr, bodyLen, tagPtr, tagLen) {
+      const title = readString(titlePtr, titleLen);
+      const body = readString(bodyPtr, bodyLen);
+      const tag = tagLen > 0 ? readString(tagPtr, tagLen) : 'bridge';
+      if (!('Notification' in window) || Notification.permission !== 'granted') {
+        return 0;
+      }
+      new Notification(title, { body, tag });
+      return 1;
+    },
+
+    js_window_focus() {
+      window.focus();
+    },
+
+    js_set_vapid_key(keyPtr, keyLen) {
+      vapidPublicKey = readString(keyPtr, keyLen);
+    },
+
+    js_sw_add_listener(typePtr, typeLen) {
+      const eventType = readString(typePtr, typeLen);
+      const wasEmpty = swEventListeners.size === 0;
+      swEventListeners.add(eventType);
+      if (wasEmpty && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', handleSwMessage);
+      }
+    },
+
+    js_sw_remove_listener(typePtr, typeLen) {
+      const eventType = readString(typePtr, typeLen);
+      swEventListeners.delete(eventType);
+      if (swEventListeners.size === 0 && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+      }
+    },
+
+    js_get_pending_pushes() {
+      openPushDB()
+        .then((db) => {
+          return new Promise((resolve, reject) => {
+            const tx = db.transaction(PUSH_STORE_NAME, 'readonly');
+            const store = tx.objectStore(PUSH_STORE_NAME);
+            const request = store.getAll();
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result);
+            tx.oncomplete = () => db.close();
+          });
+        })
+        .then((entries) => {
+          const json = JSON.stringify(entries);
+          const len = writeString(fetchBuffer.byteOffset, json, FETCH_BUFFER_SIZE);
+          wasm.on_pending_pushes_result(len);
+        })
+        .catch(() => {
+          wasm.on_pending_pushes_result(0);
+        });
+    },
+
+    js_clear_pending_pushes() {
+      openPushDB()
+        .then((db) => {
+          return new Promise((resolve, reject) => {
+            const tx = db.transaction(PUSH_STORE_NAME, 'readwrite');
+            const store = tx.objectStore(PUSH_STORE_NAME);
+            const request = store.clear();
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve();
+            tx.oncomplete = () => db.close();
+          });
+        })
+        .then(() => {
+          wasm.on_pending_pushes_cleared(1);
+        })
+        .catch(() => {
+          wasm.on_pending_pushes_cleared(0);
+        });
     },
 
     js_measure_node(nodeId) {
