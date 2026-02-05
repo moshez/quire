@@ -2,6 +2,7 @@
  *
  * EPUB import pipeline with type-checked DOM operations.
  * M9: File input, import progress, book title display.
+ * M14: Reader settings integration.
  *)
 
 #define ATS_DYNLOADFLAG 0
@@ -10,6 +11,7 @@ staload "quire.sats"
 staload "dom.sats"
 staload "epub.sats"
 staload "reader.sats"
+staload "settings.sats"
 
 %{^
 /* String literals for DOM operations */
@@ -121,14 +123,19 @@ static void build_css(void) {
     css_append("."); css_append(str_read_btn); css_append(":hover{background:#2d5a8a}");
     css_append("."); css_append(str_read_btn); css_append(":active{transform:scale(0.98)}");
 
-    /* Reader viewport */
-    css_append(".reader-viewport{position:fixed;top:0;left:0;width:100vw;height:100vh;"
-               "overflow:hidden;background:#fafaf8}");
+    /* M14: CSS variables for reader settings */
+    css_rule(":root", "--font-size:18px;--font-family:Georgia,serif;--line-height:1.6;"
+             "--margin:2rem;--bg-color:#fafaf8;--text-color:#2a2a2a");
 
-    /* Chapter container with CSS columns */
+    /* Reader viewport - uses CSS variable for background */
+    css_append(".reader-viewport{position:fixed;top:0;left:0;width:100vw;height:100vh;"
+               "overflow:hidden;background:var(--bg-color)}");
+
+    /* Chapter container with CSS columns - uses CSS variables for customization */
     css_append(".chapter-container{column-width:100vw;column-gap:0;column-fill:auto;"
-               "height:calc(100vh - 4rem);padding:2rem;box-sizing:border-box;overflow:visible;"
-               "font-family:Georgia,serif;font-size:18px;line-height:1.6;color:#2a2a2a}");
+               "height:calc(100vh - calc(var(--margin) * 2));padding:var(--margin);box-sizing:border-box;"
+               "overflow:visible;font-family:var(--font-family);font-size:var(--font-size);"
+               "line-height:var(--line-height);color:var(--text-color);background:var(--bg-color)}");
 
     /* Chapter content styling */
     css_append(".chapter-container h1,.chapter-container h2,.chapter-container h3,"
@@ -168,6 +175,31 @@ static void build_css(void) {
                "transition:background 0.2s;color:#333}");
     css_append(".toc-entry:hover{background:rgba(74,124,89,0.1)}");
     css_append(".toc-entry.nested{padding-left:3.5rem;font-size:0.9rem;color:#666}");
+
+    /* M14: Settings overlay styling */
+    css_append(".settings-overlay{position:fixed;top:0;left:0;width:100%;height:100%;"
+               "background:rgba(0,0,0,0.5);z-index:300;display:flex;align-items:center;"
+               "justify-content:center;font-family:system-ui,-apple-system,sans-serif}");
+    css_append(".settings-modal{background:#fff;border-radius:0.75rem;width:90%;max-width:400px;"
+               "box-shadow:0 4px 20px rgba(0,0,0,0.15);overflow:hidden}");
+    css_append(".settings-header{display:flex;justify-content:space-between;align-items:center;"
+               "padding:1.25rem 1.5rem;border-bottom:1px solid #e0e0e0;font-size:1.125rem;font-weight:600}");
+    css_append(".settings-close{cursor:pointer;font-size:1.5rem;color:#666;padding:0.25rem 0.5rem;"
+               "border-radius:4px;transition:background 0.2s}");
+    css_append(".settings-close:hover{background:rgba(0,0,0,0.1)}");
+    css_append(".settings-body{padding:1rem 1.5rem}");
+    css_append(".settings-row{display:flex;justify-content:space-between;align-items:center;"
+               "padding:0.75rem 0;border-bottom:1px solid #f0f0f0}");
+    css_append(".settings-row:last-child{border-bottom:none}");
+    css_append(".settings-label{font-size:0.9rem;color:#333}");
+    css_append(".settings-controls{display:flex;align-items:center;gap:0.5rem}");
+    css_append(".settings-btn{padding:0.5rem 0.75rem;background:#f0f0f0;border:none;border-radius:4px;"
+               "cursor:pointer;font-size:0.875rem;color:#333;transition:background 0.2s;min-width:2.5rem;"
+               "text-align:center;user-select:none}");
+    css_append(".settings-btn:hover{background:#e0e0e0}");
+    css_append(".settings-btn.active{background:#4a7c59;color:#fff}");
+    css_append(".settings-btn.active:hover{background:#3d6b4a}");
+    css_append(".settings-value{min-width:3.5rem;text-align:center;font-size:0.9rem;color:#333}");
 }
 
 /* Get CSS buffer pointer and length */
@@ -516,6 +548,20 @@ extern int reader_is_toc_visible(void);
 extern int reader_get_toc_index_for_node(int node_id);
 extern void reader_on_toc_click(int node_id);
 
+/* M14: Settings module functions */
+extern void settings_init(void);
+extern void settings_set_root_id(int id);
+extern int settings_is_visible(void);
+extern void settings_show(void);
+extern void settings_hide(void);
+extern void settings_toggle(void);
+extern int settings_handle_click(int node_id);
+extern void settings_load(void);
+extern void settings_on_load_complete(int len);
+extern void settings_on_save_complete(int success);
+extern int settings_is_save_pending(void);
+extern int settings_is_load_pending(void);
+
 /* Show error message */
 void show_import_error(void) {
     unsigned char* buf = get_fetch_buffer_ptr();
@@ -544,11 +590,17 @@ void show_import_error(void) {
 (* M12: ATS extern for reader_init *)
 extern fun reader_init_ats(): void = "mac#reader_init"
 
+(* M14: ATS extern for settings_init *)
+extern fun settings_init_ats(): void = "mac#settings_init"
+extern fun settings_set_root_id_ats(id: int): void = "mac#settings_set_root_id"
+
 (* Initialize the application UI *)
 implement init() = let
     val () = dom_init()
     val () = epub_init()
     val () = reader_init_ats()
+    val () = settings_init_ats()
+    val () = settings_set_root_id_ats(1)
 
     (* Inject CSS styles into document *)
     val () = inject_styles()
@@ -664,6 +716,16 @@ void process_event_impl(void) {
 
     /* Event type 1 = click */
     if (event_type == 1) {
+        /* M14: Check if settings modal is visible and handle clicks */
+        if (settings_is_visible()) {
+            if (settings_handle_click(node_id)) {
+                return;
+            }
+            /* Click outside settings modal closes it */
+            settings_hide();
+            return;
+        }
+
         /* Click on Read button -> enter reader mode */
         if (node_id == read_btn_id && read_btn_id > 0 && !reader_is_active()) {
             reader_enter(root_id, container_id);
@@ -729,7 +791,26 @@ void process_event_impl(void) {
          * 36 = Home
          * 35 = End
          * 84 = 't' (toggle TOC)
+         * 83 = 's' (toggle settings)
          */
+
+        /* M14: Escape closes settings if open */
+        if (key_code == 27 && settings_is_visible()) {
+            settings_hide();
+            return;
+        }
+
+        /* M14: 's' toggles settings (only when TOC not visible) */
+        if (key_code == 83 && !reader_is_toc_visible()) {
+            settings_toggle();
+            return;
+        }
+
+        /* Don't process other keys if settings modal is visible */
+        if (settings_is_visible()) {
+            return;
+        }
+
         switch (key_code) {
             case 27:  /* Escape - close TOC */
                 if (reader_is_toc_visible()) {
@@ -795,6 +876,11 @@ void on_decompress_impl(int handle, int size) {
 }
 
 void on_kv_complete_impl(int success) {
+    /* M14: Check if settings save is pending */
+    if (settings_is_save_pending()) {
+        settings_on_save_complete(success);
+        return;
+    }
     epub_on_db_put(success);
     handle_state_after_op();
 }
@@ -810,6 +896,11 @@ void on_kv_open_impl(int success) {
 
 /* M12: Handle chapter data loaded from IndexedDB (small chapter, fits in fetch buffer) */
 void on_kv_get_complete_impl(int len) {
+    /* M14: Check if settings load is pending */
+    if (settings_is_load_pending()) {
+        settings_on_load_complete(len);
+        return;
+    }
     /* Forward to reader module if reader is active */
     if (reader_is_active()) {
         reader_on_chapter_loaded(len);

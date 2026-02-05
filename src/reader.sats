@@ -100,6 +100,9 @@ fun reader_update_page_display(): void = "mac#"
 (* Check if any chapter is loading *)
 fun reader_is_loading(): int = "mac#"
 
+(* M14: Re-measure all chapter slots after settings change *)
+fun reader_remeasure_all(): void = "mac#"
+
 (* ========== M13: Navigation UI with Functional Correctness ========== *)
 (*
  * Proof architecture:

@@ -1667,7 +1667,7 @@ Bridge test coverage expands incrementally: M2–M4 each add tests for the bridg
   - Chapter title display
   - Jump to chapter
 
-- [ ] **M14: Reader settings**
+- [x] **M14: Reader settings**
   - Font size, font family
   - Theme (light, dark, sepia)
   - Line height, margins

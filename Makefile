@@ -27,7 +27,7 @@ EXPORTS  = -Wl,--export=init \
            -Wl,--export=memory
 
 # Source files (order matters: dependencies first)
-ATS_SRC  = src/dom.dats src/zip.dats src/xml.dats src/epub.dats src/reader.dats src/quire.dats
+ATS_SRC  = src/dom.dats src/zip.dats src/xml.dats src/epub.dats src/settings.dats src/reader.dats src/quire.dats
 C_GEN    = $(patsubst src/%.dats,build/%_dats.c,$(ATS_SRC))
 
 # Default target
