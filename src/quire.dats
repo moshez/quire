@@ -9,6 +9,7 @@
 staload "quire.sats"
 staload "dom.sats"
 staload "epub.sats"
+staload "reader.sats"
 
 %{^
 /* String literals for DOM operations */
@@ -39,17 +40,14 @@ static const char str_by[] = " by ";
 static const char str_chapters[] = " chapters";
 
 /* M10: Reader view strings */
-static const char str_reader_viewport[] = "reader-viewport";
-static const char str_chapter_container[] = "chapter-container";
 static const char str_read_btn[] = "read-btn";
 static const char str_read_text[] = "Read";
-static const char str_chapters_store[] = "chapters";
-static const char str_loading[] = "Loading...";
 static const char str_style[] = "style";
 
-/* M11: Page indicator strings */
+/* M10/M12: Reader CSS class names (must match reader.dats for consistency) */
+static const char str_reader_viewport[] = "reader-viewport";
+static const char str_chapter_container[] = "chapter-container";
 static const char str_page_indicator[] = "page-indicator";
-static const char str_page_of[] = " / ";
 
 /* CSS buffer for building stylesheet dynamically */
 static char css_buffer[8192];
@@ -241,25 +239,10 @@ static int title_id = 0;
 
 /* M10: Reader view node IDs */
 static int read_btn_id = 0;
-static int reader_viewport_id = 0;
-static int chapter_container_id = 0;
 
 /* Import state tracking */
 static int import_in_progress = 0;
 static int last_progress = -1;
-
-/* M10: Reader state */
-static int reader_mode = 0;           /* 0=import view, 1=reader view */
-static int current_chapter = 0;       /* Current chapter index */
-static int chapter_loading = 0;       /* 1 if chapter is being loaded */
-static int current_blob_handle = 0;   /* Blob handle for loaded chapter */
-
-/* M11: Pagination state */
-static int current_page = 0;          /* Current page within chapter (0-indexed) */
-static int total_pages = 1;           /* Total pages in current chapter */
-static int viewport_width = 0;        /* Viewport width in pixels */
-static int page_stride = 0;           /* Page width + gap in pixels */
-static int page_indicator_id = 0;     /* Node ID for page number display */
 %}
 
 (* External declarations for C functions and strings *)
@@ -288,15 +271,9 @@ extern fun get_str_done(): ptr = "mac#"
 extern fun get_str_error_prefix(): ptr = "mac#"
 extern fun get_str_by(): ptr = "mac#"
 extern fun get_str_chapters(): ptr = "mac#"
-extern fun get_str_reader_viewport(): ptr = "mac#"
-extern fun get_str_chapter_container(): ptr = "mac#"
 extern fun get_str_read_btn(): ptr = "mac#"
 extern fun get_str_read_text(): ptr = "mac#"
-extern fun get_str_chapters_store(): ptr = "mac#"
-extern fun get_str_loading(): ptr = "mac#"
 extern fun get_str_style(): ptr = "mac#"
-extern fun get_str_page_indicator(): ptr = "mac#"
-extern fun get_str_page_of(): ptr = "mac#"
 extern fun get_css_buffer(): ptr = "mac#"
 extern fun get_css_len(): int = "mac#"
 extern fun build_css(): void = "mac#"
@@ -317,40 +294,11 @@ extern fun set_title_id(id: int): void = "mac#"
 extern fun get_import_in_progress(): int = "mac#"
 extern fun set_import_in_progress(v: int): void = "mac#"
 extern fun get_read_btn_id(): int = "mac#"
-extern fun get_reader_viewport_id(): int = "mac#"
-extern fun get_chapter_container_id(): int = "mac#"
 extern fun set_read_btn_id(id: int): void = "mac#"
-extern fun set_reader_viewport_id(id: int): void = "mac#"
-extern fun set_chapter_container_id(id: int): void = "mac#"
-extern fun get_reader_mode(): int = "mac#"
-extern fun set_reader_mode(v: int): void = "mac#"
-extern fun get_chapter_loading(): int = "mac#"
-extern fun set_chapter_loading(v: int): void = "mac#"
-extern fun get_current_chapter(): int = "mac#"
-extern fun set_current_chapter(v: int): void = "mac#"
-extern fun get_current_blob_handle(): int = "mac#"
-extern fun set_current_blob_handle(v: int): void = "mac#"
 extern fun update_progress_display(): void = "mac#"
 extern fun show_import_complete(): void = "mac#"
 extern fun show_import_error(): void = "mac#"
 extern fun enter_reader_mode(): void = "mac#"
-extern fun load_chapter(chapter_idx: int): void = "mac#"
-extern fun inject_chapter_html(): void = "mac#"
-extern fun get_page_indicator_id(): int = "mac#"
-extern fun set_page_indicator_id(id: int): void = "mac#"
-extern fun get_current_page(): int = "mac#"
-extern fun set_current_page(v: int): void = "mac#"
-extern fun get_total_pages(): int = "mac#"
-extern fun set_total_pages(v: int): void = "mac#"
-extern fun get_viewport_width(): int = "mac#"
-extern fun set_viewport_width(v: int): void = "mac#"
-extern fun get_page_stride(): int = "mac#"
-extern fun set_page_stride(v: int): void = "mac#"
-extern fun measure_chapter_pages(): void = "mac#"
-extern fun update_page_display(): void = "mac#"
-extern fun go_to_page(page: int): void = "mac#"
-extern fun go_prev_page(): void = "mac#"
-extern fun go_next_page(): void = "mac#"
 
 %{
 /* String getters */
@@ -379,15 +327,9 @@ void* get_str_done(void) { return (void*)str_done; }
 void* get_str_error_prefix(void) { return (void*)str_error_prefix; }
 void* get_str_by(void) { return (void*)str_by; }
 void* get_str_chapters(void) { return (void*)str_chapters; }
-void* get_str_reader_viewport(void) { return (void*)str_reader_viewport; }
-void* get_str_chapter_container(void) { return (void*)str_chapter_container; }
 void* get_str_read_btn(void) { return (void*)str_read_btn; }
 void* get_str_read_text(void) { return (void*)str_read_text; }
-void* get_str_chapters_store(void) { return (void*)str_chapters_store; }
-void* get_str_loading(void) { return (void*)str_loading; }
 void* get_str_style(void) { return (void*)str_style; }
-void* get_str_page_indicator(void) { return (void*)str_page_indicator; }
-void* get_str_page_of(void) { return (void*)str_page_of; }
 
 /* Inject styles into document head by creating <style> element */
 void inject_styles(void) {
@@ -422,36 +364,14 @@ int get_import_btn_id(void) { return import_btn_id; }
 int get_progress_id(void) { return progress_id; }
 int get_title_id(void) { return title_id; }
 int get_read_btn_id(void) { return read_btn_id; }
-int get_reader_viewport_id(void) { return reader_viewport_id; }
-int get_chapter_container_id(void) { return chapter_container_id; }
 void set_container_id(int id) { container_id = id; }
 void set_file_input_id(int id) { file_input_id = id; }
 void set_import_btn_id(int id) { import_btn_id = id; }
 void set_progress_id(int id) { progress_id = id; }
 void set_title_id(int id) { title_id = id; }
 void set_read_btn_id(int id) { read_btn_id = id; }
-void set_reader_viewport_id(int id) { reader_viewport_id = id; }
-void set_chapter_container_id(int id) { chapter_container_id = id; }
 int get_import_in_progress(void) { return import_in_progress; }
 void set_import_in_progress(int v) { import_in_progress = v; }
-int get_reader_mode(void) { return reader_mode; }
-void set_reader_mode(int v) { reader_mode = v; }
-int get_chapter_loading(void) { return chapter_loading; }
-void set_chapter_loading(int v) { chapter_loading = v; }
-int get_current_chapter(void) { return current_chapter; }
-void set_current_chapter(int v) { current_chapter = v; }
-int get_current_blob_handle(void) { return current_blob_handle; }
-void set_current_blob_handle(int v) { current_blob_handle = v; }
-int get_page_indicator_id(void) { return page_indicator_id; }
-void set_page_indicator_id(int id) { page_indicator_id = id; }
-int get_current_page(void) { return current_page; }
-void set_current_page(int v) { current_page = v; }
-int get_total_pages(void) { return total_pages; }
-void set_total_pages(int v) { total_pages = v; }
-int get_viewport_width(void) { return viewport_width; }
-void set_viewport_width(int v) { viewport_width = v; }
-int get_page_stride(void) { return page_stride; }
-void set_page_stride(int v) { page_stride = v; }
 
 /* Read event data from event buffer */
 static int get_event_data1(void) {
@@ -568,222 +488,31 @@ void show_import_complete(void) {
     dom_drop_proof(pf);
 }
 
-/* M11: Measure chapter and compute page count */
-void measure_chapter_pages(void) {
-    if (chapter_container_id == 0) return;
+/* M12: Reader module integration - forward declarations */
+extern void reader_init(void);
+extern void reader_enter(int total_chapters);
+extern int reader_is_active(void);
+extern void reader_next_page(void);
+extern void reader_prev_page(void);
+extern void reader_go_to_page(int page);
+extern int reader_get_viewport_width(void);
+extern int reader_get_loading_slot(void);
+extern int reader_get_total_pages(void);
+extern void reader_on_chapter_loaded(int slot, int len);
+extern void reader_on_chapter_blob_loaded(int slot, int handle, int size);
+extern void reader_request_chapter(int slot, int chapter_idx);
 
-    /* Call js_measure_node to get scrollWidth */
-    if (!js_measure_node(chapter_container_id)) return;
-
-    /* Read measurements from fetch buffer (float64 values) */
-    unsigned char* buf = get_fetch_buffer_ptr();
-
-    /* Read width at offset 16 (float64) - simplified int read */
-    /* We need to read these as doubles, but for now approximate with viewport */
-    /* js_measure_node writes: left(0), top(8), width(16), height(24), scrollWidth(32), scrollHeight(40) */
-
-    /* Use a simpler approach: read scrollWidth as the 5th float64 at offset 32 */
-    /* For freestanding WASM we'll compute from the raw bytes */
-    double scroll_width_d;
-    double width_d;
-
-    /* Copy bytes to doubles (assuming little-endian) */
-    unsigned char* sw_ptr = buf + 32;
-    unsigned char* w_ptr = buf + 16;
-
-    /* Manual byte copy to avoid union/memcpy issues */
-    unsigned char sw_bytes[8], w_bytes[8];
-    for (int i = 0; i < 8; i++) {
-        sw_bytes[i] = sw_ptr[i];
-        w_bytes[i] = w_ptr[i];
-    }
-
-    /* Cast to double through char array */
-    scroll_width_d = *(double*)sw_bytes;
-    width_d = *(double*)w_bytes;
-
-    int scroll_width = (int)scroll_width_d;
-    int width = (int)width_d;
-
-    if (width <= 0) width = 1;  /* Prevent division by zero */
-
-    /* Set viewport width (no gap in our CSS) */
-    viewport_width = width;
-    page_stride = width;  /* column-gap is 0 */
-
-    /* Compute page count: ceil(scrollWidth / width) */
-    total_pages = (scroll_width + width - 1) / width;
-    if (total_pages < 1) total_pages = 1;
-
-    /* Reset to first page */
-    current_page = 0;
-}
-
-/* M11: Update page number display */
-void update_page_display(void) {
-    if (page_indicator_id == 0) return;
-
-    unsigned char* buf = get_fetch_buffer_ptr();
-    int len = 0;
-
-    /* Convert current_page + 1 to string (1-indexed for display) */
-    int display_page = current_page + 1;
-    if (display_page >= 100) {
-        buf[len++] = '0' + (display_page / 100);
-        buf[len++] = '0' + ((display_page / 10) % 10);
-        buf[len++] = '0' + (display_page % 10);
-    } else if (display_page >= 10) {
-        buf[len++] = '0' + (display_page / 10);
-        buf[len++] = '0' + (display_page % 10);
-    } else {
-        buf[len++] = '0' + display_page;
-    }
-
-    /* " / " */
-    const char* page_of = str_page_of;
-    while (*page_of && len < 16380) {
-        buf[len++] = *page_of++;
-    }
-
-    /* Total pages */
-    if (total_pages >= 100) {
-        buf[len++] = '0' + (total_pages / 100);
-        buf[len++] = '0' + ((total_pages / 10) % 10);
-        buf[len++] = '0' + (total_pages % 10);
-    } else if (total_pages >= 10) {
-        buf[len++] = '0' + (total_pages / 10);
-        buf[len++] = '0' + (total_pages % 10);
-    } else {
-        buf[len++] = '0' + total_pages;
-    }
-
-    /* Update the page indicator text */
-    void* pf = dom_root_proof();
-    dom_set_text_offset(pf, page_indicator_id, 0, len);
-    dom_drop_proof(pf);
-}
-
-/* M11: Navigate to specific page */
-void go_to_page(int page) {
-    if (page < 0) page = 0;
-    if (page >= total_pages) page = total_pages - 1;
-    if (page == current_page) return;
-
-    current_page = page;
-
-    /* Calculate transform offset (negative to scroll right) */
-    int offset_x = -(current_page * page_stride);
-
-    /* Apply transform to chapter container */
-    void* pf = dom_root_proof();
-    dom_set_transform(pf, chapter_container_id, offset_x, 0);
-    dom_drop_proof(pf);
-
-    /* Update page display */
-    update_page_display();
-}
-
-/* M11: Go to previous page */
-void go_prev_page(void) {
-    if (current_page > 0) {
-        go_to_page(current_page - 1);
-    }
-}
-
-/* M11: Go to next page */
-void go_next_page(void) {
-    if (current_page < total_pages - 1) {
-        go_to_page(current_page + 1);
-    }
-}
-
-/* Enter reader mode - create viewport and load first chapter */
+/* M12: Enter reader mode - hide import UI and start reader */
 void enter_reader_mode(void) {
-    reader_mode = 1;
-    current_chapter = 0;
-
-    unsigned char* buf = get_fetch_buffer_ptr();
     void* pf = dom_root_proof();
 
     /* Hide the import container */
     pf = dom_set_attr(pf, container_id, (void*)str_class, 5, (void*)str_hidden, 6);
-
-    /* Create reader viewport */
-    int vid = dom_next_id();
-    reader_viewport_id = vid;
-    void* pf_viewport = dom_create_element(pf, root_id, vid, (void*)str_div, 3);
-    pf_viewport = dom_set_attr(pf_viewport, vid, (void*)str_class, 5, (void*)str_reader_viewport, 15);
-
-    /* Create chapter container inside viewport */
-    int cid = dom_next_id();
-    chapter_container_id = cid;
-    void* pf_chapter = dom_create_element(pf_viewport, vid, cid, (void*)str_div, 3);
-    pf_chapter = dom_set_attr(pf_chapter, cid, (void*)str_class, 5, (void*)str_chapter_container, 17);
-
-    /* Set loading text */
-    int len = 0;
-    const char* loading = str_loading;
-    while (*loading && len < 16380) {
-        buf[len++] = *loading++;
-    }
-    dom_set_text_offset(pf_chapter, cid, 0, len);
-
-    dom_drop_proof(pf_chapter);
-    dom_drop_proof(pf_viewport);
-
-    /* M11: Create page indicator */
-    int pid = dom_next_id();
-    page_indicator_id = pid;
-    void* pf_indicator = dom_create_element(pf, root_id, pid, (void*)str_div, 3);
-    pf_indicator = dom_set_attr(pf_indicator, pid, (void*)str_class, 5, (void*)str_page_indicator, 14);
-
-    /* Initial page display "1 / 1" */
-    len = 0;
-    buf[len++] = '1';
-    const char* page_of = str_page_of;
-    while (*page_of && len < 16380) {
-        buf[len++] = *page_of++;
-    }
-    buf[len++] = '1';
-    dom_set_text_offset(pf_indicator, pid, 0, len);
-    dom_drop_proof(pf_indicator);
-
     dom_drop_proof(pf);
 
-    /* Load first chapter */
-    load_chapter(0);
-}
-
-/* Load a chapter from IndexedDB */
-static void load_chapter(int chapter_idx) {
-    if (chapter_loading) return;  /* Already loading */
-
-    unsigned char* str_buf = get_string_buffer_ptr();
-
-    /* Get chapter key */
-    int key_len = epub_get_chapter_key(chapter_idx, 0);
-    if (key_len == 0) return;  /* Invalid chapter index */
-
-    chapter_loading = 1;
-    current_chapter = chapter_idx;
-
-    /* Request chapter from IndexedDB */
-    js_kv_get((void*)str_chapters_store, 8, str_buf, key_len);
-}
-
-/* Inject loaded chapter HTML into chapter container */
-static void inject_chapter_html(void) {
-    if (current_blob_handle > 0) {
-        /* Use js_set_inner_html_from_blob for large chapters */
-        js_set_inner_html_from_blob(chapter_container_id, current_blob_handle);
-        js_blob_free(current_blob_handle);
-        current_blob_handle = 0;
-    }
-    chapter_loading = 0;
-
-    /* M11: Measure pages and update display after chapter loads */
-    measure_chapter_pages();
-    update_page_display();
+    /* Initialize and enter reader with chapter count */
+    int chapter_count = epub_get_chapter_count();
+    reader_enter(chapter_count);
 }
 
 /* Show error message */
@@ -815,6 +544,7 @@ void show_import_error(void) {
 implement init() = let
     val () = dom_init()
     val () = epub_init()
+    val () = reader_init()  (* M12: Initialize reader module *)
 
     (* Inject CSS styles into document *)
     val () = inject_styles()
@@ -931,23 +661,24 @@ void process_event_impl(void) {
     /* Event type 1 = click */
     if (event_type == 1) {
         /* Click on Read button -> enter reader mode */
-        if (node_id == read_btn_id && read_btn_id > 0 && !reader_mode) {
+        if (node_id == read_btn_id && read_btn_id > 0 && !reader_is_active()) {
             enter_reader_mode();
             return;
         }
 
-        /* M11: Handle click zones in reader mode */
-        if (reader_mode && viewport_width > 0) {
+        /* M12: Handle click zones in reader mode */
+        int vw = reader_get_viewport_width();
+        if (reader_is_active() && vw > 0) {
             int click_x = data1;  /* clientX */
-            int zone_left = viewport_width / 5;      /* 20% from left */
-            int zone_right = viewport_width - zone_left;  /* 20% from right */
+            int zone_left = vw / 5;      /* 20% from left */
+            int zone_right = vw - zone_left;  /* 20% from right */
 
             if (click_x < zone_left) {
-                /* Left zone - previous page */
-                go_prev_page();
+                /* Left zone - previous page (may cross chapter boundary) */
+                reader_prev_page();
             } else if (click_x > zone_right) {
-                /* Right zone - next page */
-                go_next_page();
+                /* Right zone - next page (may cross chapter boundary) */
+                reader_next_page();
             }
             /* Middle zone (60%) - reserved for menu (future) */
         }
@@ -963,8 +694,8 @@ void process_event_impl(void) {
         }
     }
 
-    /* M11: Event type 4 = keydown - handle keyboard navigation */
-    if (event_type == 4 && reader_mode) {
+    /* M12: Event type 4 = keydown - handle keyboard navigation */
+    if (event_type == 4 && reader_is_active()) {
         int key_code = data1;
 
         /* Key codes:
@@ -979,18 +710,18 @@ void process_event_impl(void) {
         switch (key_code) {
             case 37:  /* Left Arrow */
             case 33:  /* Page Up */
-                go_prev_page();
+                reader_prev_page();
                 break;
             case 39:  /* Right Arrow */
             case 34:  /* Page Down */
             case 32:  /* Space */
-                go_next_page();
+                reader_next_page();
                 break;
             case 36:  /* Home - first page */
-                go_to_page(0);
+                reader_go_to_page(0);
                 break;
             case 35:  /* End - last page */
-                go_to_page(total_pages - 1);
+                reader_go_to_page(reader_get_total_pages() - 1);
                 break;
         }
     }
@@ -1038,39 +769,25 @@ void on_kv_open_impl(int success) {
     }
 }
 
-/* Handle chapter data loaded from IndexedDB (small chapter, fits in fetch buffer) */
+/* M12: Handle chapter data loaded from IndexedDB (small chapter, fits in fetch buffer) */
 void on_kv_get_complete_impl(int len) {
-    if (!chapter_loading || !reader_mode) return;
-
-    if (len == 0) {
-        /* Chapter not found - show error or empty */
-        chapter_loading = 0;
+    /* Route to reader module if in reader mode */
+    int slot = reader_get_loading_slot();
+    if (slot >= 0 && reader_is_active()) {
+        reader_on_chapter_loaded(slot, len);
         return;
     }
-
-    /* Chapter data is in fetch buffer, inject it via SET_INNER_HTML */
-    void* pf = dom_root_proof();
-    dom_set_inner_html(pf, chapter_container_id, 0, len);
-    dom_drop_proof(pf);
-
-    chapter_loading = 0;
-
-    /* M11: Measure pages and update display after chapter loads */
-    measure_chapter_pages();
-    update_page_display();
+    /* Otherwise this is not a reader callback - ignore for now */
 }
 
-/* Handle chapter data loaded from IndexedDB (large chapter, returned as blob) */
+/* M12: Handle chapter data loaded from IndexedDB (large chapter, returned as blob) */
 void on_kv_get_blob_complete_impl(int handle, int size) {
-    if (!chapter_loading || !reader_mode) return;
-
-    if (handle == 0 || size == 0) {
-        /* Chapter not found */
-        chapter_loading = 0;
+    /* Route to reader module if in reader mode */
+    int slot = reader_get_loading_slot();
+    if (slot >= 0 && reader_is_active()) {
+        reader_on_chapter_blob_loaded(slot, handle, size);
         return;
     }
-
-    current_blob_handle = handle;
-    inject_chapter_html();
+    /* Otherwise this is not a reader callback - ignore for now */
 }
 %}
