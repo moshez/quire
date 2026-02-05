@@ -10,8 +10,9 @@
  * - String buffer operations
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
+import { indexedDB, IDBKeyRange } from 'fake-indexeddb';
 import {
   createMockWasm,
   OP_SET_TEXT,
@@ -35,6 +36,9 @@ global.document = dom.window.document;
 global.window = dom.window;
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder;
+// Set up fake IndexedDB
+global.indexedDB = indexedDB;
+global.IDBKeyRange = IDBKeyRange;
 
 describe('Mock WASM Module', () => {
   let mockWasm;
@@ -1073,5 +1077,350 @@ describe('Handle Isolation', () => {
     bridge._blobFree(1);
     expect(bridge._hasFileHandle(1)).toBe(true);
     expect(bridge._hasBlobHandle(1)).toBe(false);
+  });
+});
+
+describe('IndexedDB Key-Value Store', () => {
+  let mockWasm;
+  let bridge;
+  let dbCounter = 0;
+
+  // Helper to create unique DB names for test isolation
+  function uniqueDbName() {
+    return `test-db-${Date.now()}-${dbCounter++}`;
+  }
+
+  // Helper to write strings to memory and get pointers
+  function writeStrings(mockWasm, ...strings) {
+    const results = [];
+    let offset = 0;
+    const stringPtr = mockWasm.exports.get_string_buffer_ptr();
+    const encoder = new TextEncoder();
+
+    for (const str of strings) {
+      const bytes = encoder.encode(str);
+      const arr = new Uint8Array(mockWasm.exports.memory.buffer, stringPtr + offset, bytes.length);
+      arr.set(bytes);
+      results.push({ ptr: stringPtr + offset, len: bytes.length });
+      offset += bytes.length;
+    }
+    return results;
+  }
+
+  beforeEach(async () => {
+    document.body.innerHTML = '<div id="root" data-wasm data-node-id="1"></div>';
+    bridge = await import('../bridge.js');
+    mockWasm = createMockWasm();
+    bridge._initForTest(mockWasm, false);
+    bridge._clearNodeRegistry();
+    bridge._clearHandles();
+    bridge._clearKvDb();
+    mockWasm.helpers.clearCallbacks();
+  });
+
+  afterEach(() => {
+    bridge._clearKvDb();
+  });
+
+  describe('js_kv_open', () => {
+    it('should call on_kv_open_complete with success=1 on successful open', async () => {
+      const dbName = uniqueDbName();
+      const [dbNameInfo, storesInfo] = writeStrings(mockWasm, dbName, 'teststore');
+
+      bridge._kvOpen(dbNameInfo.ptr, dbNameInfo.len, 1, storesInfo.ptr, storesInfo.len);
+
+      // Wait for async operation
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_open_complete).toHaveLength(1);
+      expect(callbacks.on_kv_open_complete[0].success).toBe(1);
+      expect(bridge._isKvDbOpen()).toBe(true);
+    });
+
+    it('should create specified object stores during upgrade', async () => {
+      const dbName = uniqueDbName();
+      const [dbNameInfo, storesInfo] = writeStrings(mockWasm, dbName, 'books,chapters,resources');
+
+      bridge._kvOpen(dbNameInfo.ptr, dbNameInfo.len, 1, storesInfo.ptr, storesInfo.len);
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      expect(bridge._isKvDbOpen()).toBe(true);
+    });
+
+    it('should open without stores when storesLen is 0', async () => {
+      const dbName = uniqueDbName();
+      const [dbNameInfo] = writeStrings(mockWasm, dbName);
+
+      bridge._kvOpen(dbNameInfo.ptr, dbNameInfo.len, 1, 0, 0);
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_open_complete).toHaveLength(1);
+      expect(callbacks.on_kv_open_complete[0].success).toBe(1);
+    });
+  });
+
+  describe('js_kv_put', () => {
+    it('should call on_kv_complete with success=0 when DB is not open', async () => {
+      const [storeInfo, keyInfo] = writeStrings(mockWasm, 'teststore', 'testkey');
+
+      bridge._kvPut(storeInfo.ptr, storeInfo.len, keyInfo.ptr, keyInfo.len, 0, 5);
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_complete).toHaveLength(1);
+      expect(callbacks.on_kv_complete[0].success).toBe(0);
+    });
+
+    it('should store data from fetch buffer', async () => {
+      const dbName = uniqueDbName();
+      const [dbNameInfo, storesInfo] = writeStrings(mockWasm, dbName, 'teststore');
+
+      // Open DB first
+      bridge._kvOpen(dbNameInfo.ptr, dbNameInfo.len, 1, storesInfo.ptr, storesInfo.len);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      mockWasm.helpers.clearCallbacks();
+
+      // Write data to fetch buffer
+      const testData = 'Hello, IndexedDB!';
+      bridge._writeToFetchBuffer(testData, 0);
+
+      // Put data
+      const [storeInfo, keyInfo] = writeStrings(mockWasm, 'teststore', 'mykey');
+      bridge._kvPut(storeInfo.ptr, storeInfo.len, keyInfo.ptr, keyInfo.len, 0, testData.length);
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_complete).toHaveLength(1);
+      expect(callbacks.on_kv_complete[0].success).toBe(1);
+    });
+  });
+
+  describe('js_kv_put_blob', () => {
+    it('should call on_kv_complete with success=0 when DB is not open', async () => {
+      const testData = new Uint8Array([1, 2, 3, 4, 5]);
+      bridge._addBlobHandle(1, testData.buffer);
+
+      const [storeInfo, keyInfo] = writeStrings(mockWasm, 'teststore', 'testkey');
+      bridge._kvPutBlob(storeInfo.ptr, storeInfo.len, keyInfo.ptr, keyInfo.len, 1);
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_complete).toHaveLength(1);
+      expect(callbacks.on_kv_complete[0].success).toBe(0);
+    });
+
+    it('should call on_kv_complete with success=0 for invalid blob handle', async () => {
+      const dbName = uniqueDbName();
+      const [dbNameInfo, storesInfo] = writeStrings(mockWasm, dbName, 'teststore');
+
+      bridge._kvOpen(dbNameInfo.ptr, dbNameInfo.len, 1, storesInfo.ptr, storesInfo.len);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      mockWasm.helpers.clearCallbacks();
+
+      const [storeInfo, keyInfo] = writeStrings(mockWasm, 'teststore', 'testkey');
+      bridge._kvPutBlob(storeInfo.ptr, storeInfo.len, keyInfo.ptr, keyInfo.len, 999);
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_complete).toHaveLength(1);
+      expect(callbacks.on_kv_complete[0].success).toBe(0);
+    });
+
+    it('should store data from blob handle', async () => {
+      const dbName = uniqueDbName();
+      const [dbNameInfo, storesInfo] = writeStrings(mockWasm, dbName, 'teststore');
+
+      bridge._kvOpen(dbNameInfo.ptr, dbNameInfo.len, 1, storesInfo.ptr, storesInfo.len);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      mockWasm.helpers.clearCallbacks();
+
+      // Add blob
+      const testData = new Uint8Array([10, 20, 30, 40, 50]);
+      bridge._addBlobHandle(1, testData.buffer);
+
+      const [storeInfo, keyInfo] = writeStrings(mockWasm, 'teststore', 'blobkey');
+      bridge._kvPutBlob(storeInfo.ptr, storeInfo.len, keyInfo.ptr, keyInfo.len, 1);
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_complete).toHaveLength(1);
+      expect(callbacks.on_kv_complete[0].success).toBe(1);
+    });
+  });
+
+  describe('js_kv_get', () => {
+    it('should call on_kv_get_complete with len=0 when DB is not open', async () => {
+      const [storeInfo, keyInfo] = writeStrings(mockWasm, 'teststore', 'testkey');
+
+      bridge._kvGet(storeInfo.ptr, storeInfo.len, keyInfo.ptr, keyInfo.len);
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_get_complete).toHaveLength(1);
+      expect(callbacks.on_kv_get_complete[0].len).toBe(0);
+    });
+
+    it('should call on_kv_get_complete with len=0 for non-existent key', async () => {
+      const dbName = uniqueDbName();
+      const [dbNameInfo, storesInfo] = writeStrings(mockWasm, dbName, 'teststore');
+
+      bridge._kvOpen(dbNameInfo.ptr, dbNameInfo.len, 1, storesInfo.ptr, storesInfo.len);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      mockWasm.helpers.clearCallbacks();
+
+      const [storeInfo, keyInfo] = writeStrings(mockWasm, 'teststore', 'nonexistent');
+      bridge._kvGet(storeInfo.ptr, storeInfo.len, keyInfo.ptr, keyInfo.len);
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_get_complete).toHaveLength(1);
+      expect(callbacks.on_kv_get_complete[0].len).toBe(0);
+    });
+
+    it('should retrieve stored data and return length', async () => {
+      const dbName = uniqueDbName();
+      const [dbNameInfo, storesInfo] = writeStrings(mockWasm, dbName, 'teststore');
+
+      bridge._kvOpen(dbNameInfo.ptr, dbNameInfo.len, 1, storesInfo.ptr, storesInfo.len);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      mockWasm.helpers.clearCallbacks();
+
+      // Store data
+      const testData = 'Test data for retrieval';
+      bridge._writeToFetchBuffer(testData, 0);
+      let [storeInfo, keyInfo] = writeStrings(mockWasm, 'teststore', 'mykey');
+      bridge._kvPut(storeInfo.ptr, storeInfo.len, keyInfo.ptr, keyInfo.len, 0, testData.length);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      mockWasm.helpers.clearCallbacks();
+
+      // Retrieve data
+      [storeInfo, keyInfo] = writeStrings(mockWasm, 'teststore', 'mykey');
+      bridge._kvGet(storeInfo.ptr, storeInfo.len, keyInfo.ptr, keyInfo.len);
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_get_complete).toHaveLength(1);
+      expect(callbacks.on_kv_get_complete[0].len).toBe(testData.length);
+
+      // Verify data in fetch buffer
+      const result = bridge._readFetchBuffer(0, testData.length);
+      const decoder = new TextDecoder();
+      expect(decoder.decode(result)).toBe(testData);
+    });
+  });
+
+  describe('js_kv_delete', () => {
+    it('should call on_kv_complete with success=0 when DB is not open', async () => {
+      const [storeInfo, keyInfo] = writeStrings(mockWasm, 'teststore', 'testkey');
+
+      bridge._kvDelete(storeInfo.ptr, storeInfo.len, keyInfo.ptr, keyInfo.len);
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_complete).toHaveLength(1);
+      expect(callbacks.on_kv_complete[0].success).toBe(0);
+    });
+
+    it('should delete stored data', async () => {
+      const dbName = uniqueDbName();
+      const [dbNameInfo, storesInfo] = writeStrings(mockWasm, dbName, 'teststore');
+
+      bridge._kvOpen(dbNameInfo.ptr, dbNameInfo.len, 1, storesInfo.ptr, storesInfo.len);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      mockWasm.helpers.clearCallbacks();
+
+      // Store data
+      const testData = 'Data to delete';
+      bridge._writeToFetchBuffer(testData, 0);
+      let [storeInfo, keyInfo] = writeStrings(mockWasm, 'teststore', 'deletekey');
+      bridge._kvPut(storeInfo.ptr, storeInfo.len, keyInfo.ptr, keyInfo.len, 0, testData.length);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      mockWasm.helpers.clearCallbacks();
+
+      // Delete data
+      [storeInfo, keyInfo] = writeStrings(mockWasm, 'teststore', 'deletekey');
+      bridge._kvDelete(storeInfo.ptr, storeInfo.len, keyInfo.ptr, keyInfo.len);
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_complete).toHaveLength(1);
+      expect(callbacks.on_kv_complete[0].success).toBe(1);
+
+      // Verify data is gone
+      mockWasm.helpers.clearCallbacks();
+      [storeInfo, keyInfo] = writeStrings(mockWasm, 'teststore', 'deletekey');
+      bridge._kvGet(storeInfo.ptr, storeInfo.len, keyInfo.ptr, keyInfo.len);
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const getCallbacks = mockWasm.helpers.getCallbacks();
+      expect(getCallbacks.on_kv_get_complete).toHaveLength(1);
+      expect(getCallbacks.on_kv_get_complete[0].len).toBe(0);
+    });
+  });
+
+  describe('js_kv_close', () => {
+    it('should close the database', async () => {
+      const dbName = uniqueDbName();
+      const [dbNameInfo, storesInfo] = writeStrings(mockWasm, dbName, 'teststore');
+
+      bridge._kvOpen(dbNameInfo.ptr, dbNameInfo.len, 1, storesInfo.ptr, storesInfo.len);
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      expect(bridge._isKvDbOpen()).toBe(true);
+
+      bridge._kvClose();
+
+      expect(bridge._isKvDbOpen()).toBe(false);
+    });
+
+    it('should not throw when no database is open', () => {
+      expect(() => bridge._kvClose()).not.toThrow();
+    });
+  });
+
+  describe('Callback tracking in mock', () => {
+    it('should track on_kv_open_complete callbacks', () => {
+      mockWasm.exports.on_kv_open_complete(1);
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_open_complete).toHaveLength(1);
+      expect(callbacks.on_kv_open_complete[0].success).toBe(1);
+    });
+
+    it('should track on_kv_complete callbacks', () => {
+      mockWasm.exports.on_kv_complete(1);
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_complete).toHaveLength(1);
+      expect(callbacks.on_kv_complete[0].success).toBe(1);
+    });
+
+    it('should track on_kv_get_complete callbacks', () => {
+      mockWasm.exports.on_kv_get_complete(42);
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_get_complete).toHaveLength(1);
+      expect(callbacks.on_kv_get_complete[0].len).toBe(42);
+    });
+
+    it('should track on_kv_get_blob_complete callbacks', () => {
+      mockWasm.exports.on_kv_get_blob_complete(5, 1024);
+
+      const callbacks = mockWasm.helpers.getCallbacks();
+      expect(callbacks.on_kv_get_blob_complete).toHaveLength(1);
+      expect(callbacks.on_kv_get_blob_complete[0]).toEqual({ handle: 5, size: 1024 });
+    });
   });
 });

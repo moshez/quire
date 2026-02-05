@@ -1622,7 +1622,7 @@ Bridge test coverage expands incrementally: M2–M4 each add tests for the bridg
   - Add `js_set_inner_html_from_blob` (§2.3.10)
   - Bridge-only PR — no app logic
 
-- [ ] **M8: Bridge IndexedDB imports**
+- [x] **M8: Bridge IndexedDB imports**
   - Add `js_kv_open`, `js_kv_put`, `js_kv_put_blob`, `js_kv_get`, `js_kv_delete` (§2.3.9)
   - Bridge-only PR
 
