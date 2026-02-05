@@ -25,8 +25,8 @@ fun dom_init(): void = "mac#"
  * parent_pf: proof that parent exists (borrowed, not consumed)
  * Returns: proof that child exists *)
 fun dom_create_element
-  {parent:int} {child:int | child > 0}
-  ( parent_pf: node_proof(parent, 0)
+  {parent:int} {grandparent:int} {child:int | child > 0}
+  ( parent_pf: node_proof(parent, grandparent)
   , parent_id: int parent
   , child_id: int child
   , tag_ptr: ptr

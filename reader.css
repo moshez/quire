@@ -1,8 +1,8 @@
 /**
  * Quire Reader Styles
  *
- * Base styles for the e-reader interface. Full reader styling
- * will be implemented in M10 (Single chapter rendering).
+ * Base styles for the e-reader interface.
+ * M9: Import UI styles
  */
 
 /* Hidden utility class for bridge visibility toggling */
@@ -17,15 +17,91 @@ html, body {
   height: 100%;
   width: 100%;
   overflow: hidden;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #fafaf8;
+  color: #2a2a2a;
 }
 
 /* Loading state */
 #loading {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100vh;
-  font-family: system-ui, -apple-system, sans-serif;
   font-size: 1.25rem;
   color: #666;
+}
+
+/* Main container */
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+/* Title heading */
+.container h1 {
+  font-size: 2.5rem;
+  font-weight: 300;
+  color: #333;
+  margin: 0 0 2rem 0;
+}
+
+/* Hidden file input */
+.hidden, input[type="file"].hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Import button (label styled as button) */
+.import-btn {
+  display: inline-block;
+  padding: 0.875rem 2rem;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #fff;
+  background: #4a7c59;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+  user-select: none;
+}
+
+.import-btn:hover {
+  background: #3d6b4a;
+}
+
+.import-btn:active {
+  transform: scale(0.98);
+}
+
+/* Progress display */
+.progress-div {
+  margin-top: 1.5rem;
+  font-size: 0.875rem;
+  color: #666;
+  min-height: 1.25rem;
+}
+
+/* Title/book info display */
+.title-div {
+  margin-top: 1rem;
+  font-size: 1.125rem;
+  color: #333;
+  text-align: center;
+  max-width: 80%;
+  word-wrap: break-word;
 }

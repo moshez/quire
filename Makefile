@@ -18,6 +18,7 @@ EXPORTS  = -Wl,--export=init \
            -Wl,--export=on_kv_complete \
            -Wl,--export=on_kv_get_complete \
            -Wl,--export=on_kv_get_blob_complete \
+           -Wl,--export=on_kv_open_complete \
            -Wl,--export=on_clipboard_copy_complete \
            -Wl,--export=get_event_buffer_ptr \
            -Wl,--export=get_diff_buffer_ptr \
@@ -25,8 +26,8 @@ EXPORTS  = -Wl,--export=init \
            -Wl,--export=get_string_buffer_ptr \
            -Wl,--export=memory
 
-# Source files (order matters: dom must come before quire)
-ATS_SRC  = src/dom.dats src/quire.dats
+# Source files (order matters: dependencies first)
+ATS_SRC  = src/dom.dats src/zip.dats src/xml.dats src/epub.dats src/quire.dats
 C_GEN    = $(patsubst src/%.dats,build/%_dats.c,$(ATS_SRC))
 
 # Default target
