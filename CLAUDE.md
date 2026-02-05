@@ -4,9 +4,17 @@ PWA e-reader. All application logic in ATS2 → WASM. Generic JS bridge for DOM 
 
 ## Build
 
-    make                    # Build quire.wasm
-    npm test                # Bridge tests
-    npx serve .             # Dev server
+**Prerequisites:** ATS2 toolchain must be installed first (see ATS2 Toolchain section below).
+
+```bash
+# Set environment (required before make)
+export PATSHOME=~/ATS2-Postiats-int-0.4.2
+export PATH=$PATSHOME/bin:$PATH
+
+make                    # Build quire.wasm
+npm test                # Bridge tests
+npx serve .             # Dev server
+```
 
 ## Milestone Workflow
 
@@ -28,7 +36,8 @@ When completing a milestone from quire-design.md §8:
 
 - `.sats`: type declarations (interface)
 - `.dats`: implementations
-- `runtime.c`: minimal C runtime for WASM
+- `runtime.h`: ATS2 macros and typedefs for freestanding builds
+- `runtime.c`: minimal C runtime for WASM (allocator, memory ops, buffers)
 
 ## ATS2 Toolchain
 
@@ -66,7 +75,8 @@ sudo apt-get install -y clang lld
 
 - Uses freestanding WASM (no WASI, no libc)
 - ATS2 prelude is disabled (-D_ATS_CCOMP_PRELUDE_NONE_)
-- Minimal runtime macros defined in src/runtime.c
+- Runtime macros in src/runtime.h (included via -include flag)
+- Function implementations in src/runtime.c (linked separately)
 - CI builds ATS2 from source with caching
 
 ## Protocol

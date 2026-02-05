@@ -25,17 +25,18 @@ EXPORTS  = -Wl,--export=init \
            -Wl,--export=get_string_buffer_ptr \
            -Wl,--export=memory
 
-# Source files
-ATS_SRC  = src/quire.dats
+# Source files (order matters: dom must come before quire)
+ATS_SRC  = src/dom.dats src/quire.dats
 C_GEN    = $(patsubst src/%.dats,build/%_dats.c,$(ATS_SRC))
 
 # Default target
 all: build/quire.wasm
 
 # Link all C files into final WASM
-# Use -include to ensure runtime.c macros are available to ATS-generated code
-build/quire.wasm: $(C_GEN) src/runtime.c | build
-	$(CC) $(CFLAGS) $(LDFLAGS) $(EXPORTS) -include src/runtime.c -o $@ $(C_GEN)
+# Use -include to ensure runtime.h macros are available to ATS-generated code
+# Link runtime.c separately to avoid duplicate symbols
+build/quire.wasm: $(C_GEN) src/runtime.c src/runtime.h | build
+	$(CC) $(CFLAGS) $(LDFLAGS) $(EXPORTS) -include src/runtime.h -o $@ src/runtime.c $(C_GEN)
 
 # Compile ATS to C
 build/%_dats.c: src/%.dats src/%.sats | build
