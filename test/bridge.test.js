@@ -776,3 +776,302 @@ describe('js_measure_node', () => {
     expect(result).toBe(1);
   });
 });
+
+describe('File Handle Operations', () => {
+  let mockWasm;
+  let bridge;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '<div id="root" data-wasm data-node-id="1"></div>';
+    bridge = await import('../bridge.js');
+    mockWasm = createMockWasm();
+    bridge._initForTest(mockWasm, false);
+    bridge._clearNodeRegistry();
+    bridge._clearHandles();
+    const root = document.getElementById('root');
+    bridge.registerNode(root);
+  });
+
+  describe('js_file_read_chunk', () => {
+    it('should read chunk from file handle', () => {
+      // Create test data
+      const testData = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      const buffer = testData.buffer;
+
+      // Add file handle directly
+      bridge._addFileHandle(1, buffer);
+
+      // Read chunk
+      const bytesRead = bridge._fileReadChunk(1, 0, 5);
+
+      expect(bytesRead).toBe(5);
+
+      // Verify data was copied to fetch buffer
+      const result = bridge._readFetchBuffer(0, 5);
+      expect(Array.from(result)).toEqual([1, 2, 3, 4, 5]);
+    });
+
+    it('should read chunk with offset', () => {
+      const testData = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      const buffer = testData.buffer;
+      bridge._addFileHandle(1, buffer);
+
+      const bytesRead = bridge._fileReadChunk(1, 5, 5);
+
+      expect(bytesRead).toBe(5);
+      const result = bridge._readFetchBuffer(0, 5);
+      expect(Array.from(result)).toEqual([6, 7, 8, 9, 10]);
+    });
+
+    it('should return 0 for non-existent handle', () => {
+      const bytesRead = bridge._fileReadChunk(999, 0, 10);
+      expect(bytesRead).toBe(0);
+    });
+
+    it('should clamp to remaining buffer size', () => {
+      const testData = new Uint8Array([1, 2, 3, 4, 5]);
+      const buffer = testData.buffer;
+      bridge._addFileHandle(1, buffer);
+
+      // Request more than available from offset 3
+      const bytesRead = bridge._fileReadChunk(1, 3, 100);
+
+      expect(bytesRead).toBe(2); // Only 2 bytes remaining
+      const result = bridge._readFetchBuffer(0, 2);
+      expect(Array.from(result)).toEqual([4, 5]);
+    });
+
+    it('should return 0 when offset is past buffer end', () => {
+      const testData = new Uint8Array([1, 2, 3, 4, 5]);
+      const buffer = testData.buffer;
+      bridge._addFileHandle(1, buffer);
+
+      const bytesRead = bridge._fileReadChunk(1, 100, 10);
+      expect(bytesRead).toBe(0);
+    });
+  });
+
+  describe('js_file_close', () => {
+    it('should remove file handle', () => {
+      const testData = new Uint8Array([1, 2, 3]);
+      bridge._addFileHandle(1, testData.buffer);
+
+      expect(bridge._hasFileHandle(1)).toBe(true);
+
+      bridge._fileClose(1);
+
+      expect(bridge._hasFileHandle(1)).toBe(false);
+    });
+
+    it('should not throw for non-existent handle', () => {
+      expect(() => bridge._fileClose(999)).not.toThrow();
+    });
+  });
+});
+
+describe('Blob Handle Operations', () => {
+  let mockWasm;
+  let bridge;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '<div id="root" data-wasm data-node-id="1"></div>';
+    bridge = await import('../bridge.js');
+    mockWasm = createMockWasm();
+    bridge._initForTest(mockWasm, false);
+    bridge._clearNodeRegistry();
+    bridge._clearHandles();
+    const root = document.getElementById('root');
+    bridge.registerNode(root);
+  });
+
+  describe('js_blob_size', () => {
+    it('should return blob size', () => {
+      const testData = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      bridge._addBlobHandle(1, testData.buffer);
+
+      const size = bridge._blobSize(1);
+      expect(size).toBe(10);
+    });
+
+    it('should return 0 for non-existent handle', () => {
+      const size = bridge._blobSize(999);
+      expect(size).toBe(0);
+    });
+  });
+
+  describe('js_blob_read_chunk', () => {
+    it('should read chunk from blob handle', () => {
+      const testData = new Uint8Array([10, 20, 30, 40, 50]);
+      bridge._addBlobHandle(1, testData.buffer);
+
+      const bytesRead = bridge._blobReadChunk(1, 0, 3);
+
+      expect(bytesRead).toBe(3);
+      const result = bridge._readFetchBuffer(0, 3);
+      expect(Array.from(result)).toEqual([10, 20, 30]);
+    });
+
+    it('should read chunk with offset', () => {
+      const testData = new Uint8Array([10, 20, 30, 40, 50]);
+      bridge._addBlobHandle(1, testData.buffer);
+
+      const bytesRead = bridge._blobReadChunk(1, 2, 3);
+
+      expect(bytesRead).toBe(3);
+      const result = bridge._readFetchBuffer(0, 3);
+      expect(Array.from(result)).toEqual([30, 40, 50]);
+    });
+
+    it('should return 0 for non-existent handle', () => {
+      const bytesRead = bridge._blobReadChunk(999, 0, 10);
+      expect(bytesRead).toBe(0);
+    });
+
+    it('should clamp to remaining buffer size', () => {
+      const testData = new Uint8Array([1, 2, 3]);
+      bridge._addBlobHandle(1, testData.buffer);
+
+      const bytesRead = bridge._blobReadChunk(1, 1, 100);
+
+      expect(bytesRead).toBe(2);
+      const result = bridge._readFetchBuffer(0, 2);
+      expect(Array.from(result)).toEqual([2, 3]);
+    });
+  });
+
+  describe('js_blob_free', () => {
+    it('should remove blob handle', () => {
+      const testData = new Uint8Array([1, 2, 3]);
+      bridge._addBlobHandle(1, testData.buffer);
+
+      expect(bridge._hasBlobHandle(1)).toBe(true);
+
+      bridge._blobFree(1);
+
+      expect(bridge._hasBlobHandle(1)).toBe(false);
+    });
+
+    it('should not throw for non-existent handle', () => {
+      expect(() => bridge._blobFree(999)).not.toThrow();
+    });
+  });
+});
+
+describe('js_set_inner_html_from_blob', () => {
+  let mockWasm;
+  let bridge;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '<div id="root" data-wasm data-node-id="1"></div>';
+    bridge = await import('../bridge.js');
+    mockWasm = createMockWasm();
+    bridge._initForTest(mockWasm, false);
+    bridge._clearNodeRegistry();
+    bridge._clearHandles();
+    const root = document.getElementById('root');
+    bridge.registerNode(root);
+  });
+
+  it('should set innerHTML from blob', () => {
+    const root = document.getElementById('root');
+    const html = '<p>Hello from blob!</p>';
+    const encoder = new TextEncoder();
+    const htmlData = encoder.encode(html);
+    bridge._addBlobHandle(1, htmlData.buffer);
+
+    const result = bridge._setInnerHtmlFromBlob(1, 1);
+
+    expect(result).toBe(1);
+    expect(root.innerHTML).toBe('<p>Hello from blob!</p>');
+  });
+
+  it('should return 0 for non-existent node', () => {
+    const html = '<p>Test</p>';
+    const encoder = new TextEncoder();
+    const htmlData = encoder.encode(html);
+    bridge._addBlobHandle(1, htmlData.buffer);
+
+    const result = bridge._setInnerHtmlFromBlob(999, 1);
+
+    expect(result).toBe(0);
+  });
+
+  it('should return 0 for non-existent blob', () => {
+    const result = bridge._setInnerHtmlFromBlob(1, 999);
+
+    expect(result).toBe(0);
+  });
+
+  it('should handle complex HTML', () => {
+    const root = document.getElementById('root');
+    const html = '<div class="chapter"><h1>Chapter 1</h1><p>Lorem ipsum <em>dolor</em> sit amet.</p></div>';
+    const encoder = new TextEncoder();
+    const htmlData = encoder.encode(html);
+    bridge._addBlobHandle(1, htmlData.buffer);
+
+    const result = bridge._setInnerHtmlFromBlob(1, 1);
+
+    expect(result).toBe(1);
+    expect(root.querySelector('h1').textContent).toBe('Chapter 1');
+    expect(root.querySelector('em').textContent).toBe('dolor');
+  });
+
+  it('should handle UTF-8 content', () => {
+    const root = document.getElementById('root');
+    const html = '<p>日本語テスト</p>';
+    const encoder = new TextEncoder();
+    const htmlData = encoder.encode(html);
+    bridge._addBlobHandle(1, htmlData.buffer);
+
+    const result = bridge._setInnerHtmlFromBlob(1, 1);
+
+    expect(result).toBe(1);
+    expect(root.querySelector('p').textContent).toBe('日本語テスト');
+  });
+});
+
+describe('Handle Isolation', () => {
+  let bridge;
+
+  beforeEach(async () => {
+    bridge = await import('../bridge.js');
+    bridge._clearHandles();
+  });
+
+  it('should clear all handles', () => {
+    const testData = new Uint8Array([1, 2, 3]);
+    bridge._addFileHandle(1, testData.buffer);
+    bridge._addFileHandle(2, testData.buffer);
+    bridge._addBlobHandle(1, testData.buffer);
+    bridge._addBlobHandle(2, testData.buffer);
+
+    expect(bridge._hasFileHandle(1)).toBe(true);
+    expect(bridge._hasFileHandle(2)).toBe(true);
+    expect(bridge._hasBlobHandle(1)).toBe(true);
+    expect(bridge._hasBlobHandle(2)).toBe(true);
+
+    bridge._clearHandles();
+
+    expect(bridge._hasFileHandle(1)).toBe(false);
+    expect(bridge._hasFileHandle(2)).toBe(false);
+    expect(bridge._hasBlobHandle(1)).toBe(false);
+    expect(bridge._hasBlobHandle(2)).toBe(false);
+  });
+
+  it('should have separate namespaces for file and blob handles', () => {
+    const fileData = new Uint8Array([1, 2, 3]);
+    const blobData = new Uint8Array([4, 5, 6]);
+
+    bridge._addFileHandle(1, fileData.buffer);
+    bridge._addBlobHandle(1, blobData.buffer);
+
+    // Both should exist independently
+    expect(bridge._hasFileHandle(1)).toBe(true);
+    expect(bridge._hasBlobHandle(1)).toBe(true);
+
+    // Freeing one shouldn't affect the other
+    bridge._blobFree(1);
+    expect(bridge._hasFileHandle(1)).toBe(true);
+    expect(bridge._hasBlobHandle(1)).toBe(false);
+  });
+});
