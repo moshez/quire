@@ -33,6 +33,7 @@ test.describe('EPUB Reader E2E', () => {
     // Navigate to app and wait for WASM initialization.
     // The app goes through: INIT → LOADING_DB → LOADING_LIB → LIBRARY.
     await page.goto('/');
+    await screenshot(page, '00-app-loading');
     await page.waitForSelector('label.import-btn', { timeout: 15000 });
 
     // Wait for the library to finish loading via IndexedDB callbacks.
@@ -108,10 +109,11 @@ test.describe('EPUB Reader E2E', () => {
 
     await page.keyboard.press('ArrowLeft');
     await page.waitForTimeout(500);
+    await screenshot(page, '08-reader-arrow-left');
 
     await page.keyboard.press('Space');
     await page.waitForTimeout(500);
-    await screenshot(page, '08-reader-space-forward');
+    await screenshot(page, '09-reader-space-forward');
 
     // --- TOC overlay ---
     await page.mouse.click(centerX, centerY);
@@ -120,17 +122,17 @@ test.describe('EPUB Reader E2E', () => {
     const tocOverlay = page.locator('.toc-overlay');
     const tocVisible = await tocOverlay.isVisible().catch(() => false);
     if (tocVisible) {
-      await screenshot(page, '09-toc-overlay');
+      await screenshot(page, '10-toc-overlay');
 
       const tocEntries = page.locator('.toc-entry');
       const entryCount = await tocEntries.count();
       if (entryCount > 1) {
         await tocEntries.nth(1).click();
         await page.waitForTimeout(1000);
-        await screenshot(page, '10-reader-chapter2-via-toc');
+        await screenshot(page, '11-reader-chapter2-via-toc');
       }
     } else {
-      await screenshot(page, '09-current-state');
+      await screenshot(page, '10-current-state');
     }
 
     // --- Navigate back to library ---
@@ -139,6 +141,7 @@ test.describe('EPUB Reader E2E', () => {
     if (tocStillVisible) {
       await page.keyboard.press('Escape');
       await page.waitForTimeout(500);
+      await screenshot(page, '12-toc-dismissed');
     }
 
     // Use Escape to go back to library (works reliably even with overlays)
@@ -147,7 +150,7 @@ test.describe('EPUB Reader E2E', () => {
 
     // Wait for library to reappear
     await page.waitForSelector('.book-card', { timeout: 10000 });
-    await screenshot(page, '11-library-after-reading');
+    await screenshot(page, '13-library-after-reading');
 
     // Verify reading position was saved
     const posAfterRead = page.locator('.book-position');
