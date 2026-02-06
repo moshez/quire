@@ -6,8 +6,8 @@ export default defineConfig({
   expect: { timeout: 15000 },
   use: {
     baseURL: 'http://localhost:3737',
-    screenshot: 'only-on-failure',
-    trace: 'retain-on-failure',
+    screenshot: 'on',
+    trace: 'on',
     viewport: { width: 1024, height: 768 },
     headless: true,
   },
