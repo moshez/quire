@@ -57,3 +57,54 @@ jobs:
           export PATH=$PATSHOME/src/CBOOT:$PATH
           make
           test -f build/quire.wasm
+
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quire-wasm
+          path: build/quire.wasm
+          retention-days: 1
+
+  e2e:
+    needs: build-wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Download WASM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: quire-wasm
+          path: build/
+
+      - name: Copy WASM to root
+        run: cp build/quire.wasm quire.wasm
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        run: npx playwright test
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: e2e/screenshots/
+          retention-days: 7
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: test-results/
+          retention-days: 7

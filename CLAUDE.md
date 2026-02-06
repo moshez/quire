@@ -190,6 +190,62 @@ dom_set_attr(pf, id, (void*)str_class, 5, (void*)str_value, val_len);
    all state (app_state, pending flags) must be set BEFORE the call, not
    in a continuation or callback.
 
+## E2E Tests (Playwright)
+
+End-to-end tests use Playwright to launch a real browser against the full app (WASM + bridge + DOM).
+
+### Prerequisites
+
+`quire.wasm` must be built and present at the project root before running e2e tests.
+
+```bash
+# Build WASM first (see Build section above)
+make
+cp build/quire.wasm quire.wasm   # or: make install
+```
+
+### Install Playwright
+
+```bash
+npm ci                                       # install @playwright/test
+npx playwright install --with-deps chromium  # download browser + OS deps
+```
+
+On Ubuntu/Debian, `--with-deps` installs required system libraries (libgbm, libnss3, etc.). On other systems, omit `--with-deps` and install OS dependencies manually if the browser fails to launch.
+
+### Run E2E Tests
+
+```bash
+npx playwright test              # headless (default)
+npx playwright test --headed     # visible browser
+npx playwright test --debug      # step-through debugger
+```
+
+Screenshots are saved to `e2e/screenshots/` after each run (gitignored).
+
+### Configuration
+
+- **Config file**: `playwright.config.js`
+- **Test files**: `e2e/*.spec.js`
+- **Dev server**: Playwright auto-starts `npx serve . -l 3737` (reuses an existing server outside CI)
+- **Browser**: Chromium only — the app targets modern browsers, no cross-browser matrix needed
+- **Timeouts**: 60s per test, 15s per assertion
+
+### Writing E2E Tests
+
+- Tests create their own test data (e.g., `createEpub()` from `e2e/create-epub.js`)
+- No external fixtures or network requests — everything is self-contained
+- Use `page.waitForSelector()` to wait for WASM-driven DOM updates (not arbitrary timeouts)
+- The app state machine is async (IndexedDB callbacks), so wait for visible UI elements rather than internal state
+
+### CI
+
+The `e2e` job in `.github/workflows/pr.yaml` runs on every PR:
+1. Downloads the WASM artifact from the `build-wasm` job
+2. Installs Playwright browsers
+3. Runs all e2e tests
+4. Uploads screenshots (always) and Playwright report (on failure) as artifacts
+
 ## Bridge Policy
 
 **Be extremely careful about changes to bridge.js.** Most PRs should not touch it.
