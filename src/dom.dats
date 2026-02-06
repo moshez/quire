@@ -8,6 +8,7 @@
 
 #define ATS_DYNLOADFLAG 0
 
+staload "buf.sats"
 staload "dom.sats"
 
 (* ========== Integer arithmetic for freestanding mode ========== *)

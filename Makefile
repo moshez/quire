@@ -40,7 +40,8 @@ build/quire.wasm: $(C_GEN) src/runtime.c src/runtime.h | build
 	$(CC) $(CFLAGS) $(LDFLAGS) $(EXPORTS) -include src/runtime.h -o $@ src/runtime.c $(C_GEN)
 
 # Compile ATS to C
-build/%_dats.c: src/%.dats src/%.sats | build
+# All modules may transitively depend on buf.sats (general buffer types)
+build/%_dats.c: src/%.dats src/%.sats src/buf.sats | build
 	$(PATSOPT) -IATS src --output $@ --dynamic $<
 
 # Create build directory

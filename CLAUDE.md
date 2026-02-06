@@ -207,17 +207,22 @@ can't break it."
 
 ### Sized buffer pattern: capacity as a type property
 
-Don't hardcode buffer sizes in proof constraints. Instead, make the buffer
-pointer carry its capacity at the type level using `abstype`:
+Don't hardcode buffer sizes in consumer modules. Instead, define a
+general-purpose pointer type that carries remaining capacity as a phantom
+type index. The concrete size appears ONLY at the buffer's definition
+site (buf.sats); downstream modules reference the capacity through the
+type, never through a literal.
+
+**buf.sats** — the single source of truth for buffer sizes:
 
 ```ats
 (* Buffer pointer that knows its remaining capacity — erased to ptr *)
 abstype sized_buf(cap: int) = ptr
 
-(* Static constant: single source of truth for buffer size *)
+(* Concrete size appears ONLY here, at the definition site *)
 stadef SBUF_CAP = 4096
 
-(* Accessor returns a sized_buf, not a raw ptr *)
+(* Accessor returns a sized_buf — callers get capacity from the type *)
 fun get_string_buf(): sized_buf(SBUF_CAP) = "mac#get_string_buffer_ptr"
 
 (* Writing checks len <= remaining capacity *)
@@ -229,18 +234,29 @@ fun sbuf_advance {cap,n:nat | n <= cap}
   (buf: sized_buf(cap), n: int n): sized_buf(cap - n) = "mac#ptr_add_int"
 ```
 
-Usage — sequential writes track remaining space automatically:
+**Consumer module** — imports buf.sats, uses SBUF_CAP without knowing
+its concrete value matters:
 
 ```ats
-val sbuf = get_string_buf()            (* sized_buf(4096) *)
-val () = sbuf_write(sbuf, name, nl)    (* ATS checks: nl <= 4096 *)
-val sbuf = sbuf_advance(sbuf, nl)      (* sized_buf(4096 - nl) *)
-val () = sbuf_write(sbuf, value, vl)   (* ATS checks: vl <= 4096 - nl *)
+staload "buf.sats"
+
+fun dom_create_element
+  {tl:nat | tl <= SBUF_CAP}
+  (..., tag_len: int tl): ... = "mac#"
 ```
 
-The `4096` appears only in the `stadef` and the accessor — write operations
-just check against the capacity carried by the buffer. If the buffer size
-changes, only one place needs updating.
+**Usage** — sequential writes track remaining space automatically:
+
+```ats
+val sbuf = get_string_buf()            (* sized_buf(SBUF_CAP) *)
+val () = sbuf_write(sbuf, name, nl)    (* ATS checks: nl <= SBUF_CAP *)
+val sbuf = sbuf_advance(sbuf, nl)      (* sized_buf(SBUF_CAP - nl) *)
+val () = sbuf_write(sbuf, value, vl)   (* ATS checks: vl <= SBUF_CAP - nl *)
+```
+
+The key insight: if the buffer size changes from 4096 to 8192, only
+buf.sats needs updating. All consumer module constraints and proofs
+automatically adjust because they reference `SBUF_CAP`, not `4096`.
 
 **Note**: ATS2 `#define` is dynamic-level only. For type-level constraints
 (`{tl:nat | tl <= ...}`), use `stadef` instead:
@@ -248,26 +264,6 @@ changes, only one place needs updating.
 ```ats
 #define STRING_BUFFER_SIZE 4096   (* for runtime C code *)
 stadef SBUF_CAP = 4096            (* for type-level constraints *)
-```
-
-### Propagating bounds through APIs
-
-Public API functions constrain parameters against the buffer capacity:
-
-```ats
-fun dom_create_element
-  {parent:int} {child:int | child > 0} {tl:nat | tl <= SBUF_CAP}
-  (pf: node_proof(parent, ...), ..., tag_len: int tl): ...
-```
-
-Inside the implementation, get a sized buffer and write directly:
-
-```ats
-implement dom_create_element {parent} {_} {child} {tl}
-  (..., tag_ptr, tag_len) = let
-  val sbuf = get_string_buf()              (* sized_buf(4096) *)
-  val () = sbuf_write(sbuf, tag_ptr, tag_len)  (* ATS verifies tl <= 4096 *)
-  ...
 ```
 
 ### praxi for connecting proofs to specific values
@@ -411,9 +407,10 @@ dom_set_attr(pf, id, (void*)str_class, 5, (void*)str_value, val_len);
    all state (app_state, pending flags) must be set BEFORE the call, not
    in a continuation or callback. Document with `ASYNC_PRECONDITION`.
 
-6. **Buffer writes need bounds proofs**: Use `STRING_BUFFER_SAFE` and
-   `FETCH_BUFFER_SAFE` dataprops when writing to shared buffers. These
-   prove writes stay within buffer bounds (4096 and 16384 respectively).
+6. **Buffer writes use sized_buf**: Use `sized_buf` from buf.sats for all
+   buffer writes. The `sbuf_write` and `sbuf_advance` functions enforce bounds
+   at the type level. Never hardcode buffer sizes — reference `SBUF_CAP` and
+   `FBUF_CAP` from buf.sats, which is the single source of truth.
 
 7. **Single pending flag invariant**: At most one async pending flag
    (`settings_is_save_pending`, `library_is_metadata_pending`, etc.) may
@@ -509,6 +506,7 @@ If your change truly requires bridge modification (rare), document the justifica
 
 - `.sats`: type declarations (interface)
 - `.dats`: implementations
+- `buf.sats`: general-purpose sized buffer type — single source of truth for buffer sizes
 - `runtime.h`: ATS2 macros and typedefs for freestanding builds
 - `runtime.c`: minimal C runtime for WASM (allocator, memory ops, buffers)
 

@@ -5,6 +5,8 @@
  * The C implementation erases these at runtime.
  *)
 
+staload "buf.sats"
+
 (* Op codes matching bridge protocol (quire-design.md §2.3.5) *)
 #define OP_SET_TEXT       1
 #define OP_SET_ATTR       2
@@ -12,12 +14,6 @@
 #define OP_CREATE_ELEMENT 4
 #define OP_REMOVE_CHILD   5
 #define OP_SET_INNER_HTML 6
-
-(* Buffer capacities at the type level.
- * These are the single source of truth for buffer sizes in proofs.
- * sized_buf accessors and API constraints both reference these. *)
-stadef SBUF_CAP = 4096     (* string buffer capacity *)
-stadef FBUF_CAP = 16384    (* fetch buffer capacity *)
 
 (* Valid opcode proof.
  * VALID_OPCODE(op) proves op is one of the defined bridge opcodes.
@@ -204,46 +200,6 @@ fun dom_drop_proof
  * verified. *)
 absprop BUFFER_FLUSHED(flushed: bool)
 
-(* ========== Buffer Size Constants ========== *)
-
-(* Runtime buffer size values (for C code and dynamic ATS expressions) *)
-#define STRING_BUFFER_SIZE 4096
-#define FETCH_BUFFER_SIZE  16384
-#define DIFF_BUFFER_SIZE   4096
-
-(* ========== Sized Buffers ========== *)
-
-(* A pointer that knows its remaining capacity at the type level.
- * Erased to plain ptr at runtime. The capacity is a phantom index —
- * it exists only for the constraint solver, not in generated code.
- *
- * The buffer accessors (get_string_buf, get_fetch_buf) are the single
- * source of truth for buffer sizes. All write operations check against
- * the capacity carried by the sized_buf, never against a hardcoded
- * constant. If a buffer size changes, only the accessor needs updating. *)
-abstype sized_buf(cap: int) = ptr
-
-(* Get the string buffer with its full capacity *)
-fun get_string_buf(): sized_buf(SBUF_CAP) = "mac#get_string_buffer_ptr"
-
-(* Get the fetch buffer with its full capacity *)
-fun get_fetch_buf(): sized_buf(FBUF_CAP) = "mac#get_fetch_buffer_ptr"
-
-(* Write len bytes at the start of a sized buffer.
- * Requires: len <= remaining capacity. *)
-fun sbuf_write {cap,l:nat | l <= cap}
-  (dst: sized_buf(cap), src: ptr, len: int l): void = "mac#sbuf_write"
-
-(* Advance a buffer pointer by n bytes, reducing capacity.
- * Returns a sub-buffer starting n bytes later with cap-n remaining.
- * This is how sequential writes track remaining space:
- *   val buf = get_string_buf()          -- sized_buf(4096)
- *   val () = sbuf_write(buf, name, nl)  -- write name, ATS checks nl <= 4096
- *   val buf = sbuf_advance(buf, nl)     -- sized_buf(4096 - nl)
- *   val () = sbuf_write(buf, val, vl)   -- write value, ATS checks vl <= 4096-nl *)
-fun sbuf_advance {cap,n:nat | n <= cap}
-  (buf: sized_buf(cap), n: int n): sized_buf(cap - n) = "mac#ptr_add_int"
-
 (* Diff count bounds proof.
  * DIFF_COUNT_BOUNDED(count, max) proves count <= max where max = 255.
  * The diff buffer uses a uint8 count, so at most 255 diffs per frame.
@@ -266,16 +222,6 @@ dataprop DIFF_ENTRY_SAFE(count: int) =
   | {c:nat | 4 + c * 16 + 16 <= 4096} SAFE_DIFF_ENTRY(c)
 
 (* ========== Low-level C primitives (freestanding, no prelude) ========== *)
-
-(* Shared buffer accessors (implemented in runtime.c) *)
-fun get_diff_buffer_ptr(): ptr = "mac#"
-fun get_string_buffer_ptr(): ptr = "mac#"
-fun get_fetch_buffer_ptr(): ptr = "mac#"
-
-(* Byte-level memory access — irreducible C macros in runtime.h *)
-fun buf_get_u8(p: ptr, off: int): int = "mac#"
-fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#"
-fun ptr_add_int(p: ptr, n: int): ptr = "mac#"
 
 (* Bitwise operations — ATS2 has no bitwise ops without prelude *)
 fun quire_band(a: int, b: int): int = "mac#"
