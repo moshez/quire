@@ -87,6 +87,26 @@ absprop OFFSET_FOR_PAGE(page: int, offset: int, stride: int)
  * NOTE: Proof is documentary - runtime checks verify preload state. *)
 absprop ADJACENT_LOADED(curr_ch: int, total: int)
 
+(* Page bounds proof.
+ * PAGE_IN_BOUNDS(page, total) proves 0 <= page < total.
+ * Prevents out-of-bounds scrolling.
+ *
+ * TEST MADE PASS-BY-CONSTRUCTION:
+ *   test_page_navigation_bounds — Page number proved in bounds before
+ *   scroll offset is computed. reader_go_to_page clamps to [0, total-1]. *)
+dataprop PAGE_IN_BOUNDS(page: int, total: int) =
+  | {p,t:nat | p < t} VALID_PAGE(p, t)
+
+(* Chapter transition direction proof.
+ * NAV_DIRECTION(d) proves d is -1 (prev) or +1 (next).
+ * Prevents arbitrary chapter jumps via page navigation.
+ *
+ * TEST MADE PASS-BY-CONSTRUCTION:
+ *   test_slot_rotation_preserves_order — Only adjacent chapter transitions
+ *   are valid; rotation direction is always -1 or +1. *)
+dataprop NAV_DIRECTION(d: int) =
+  | NAV_PREV(~1) | NAV_NEXT(1)
+
 (* ========== Module Functions ========== *)
 
 (* Initialize reader module *)

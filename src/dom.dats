@@ -203,3 +203,19 @@ void dom_drop_proof(void* pf) {
     (void)pf;  /* Proof discarded - no runtime effect */
 }
 %}
+
+(* ========== ATS implementations ========== *)
+
+(* dom_set_attr_checked: proof-checked attribute setter.
+ * Consumes VALID_ATTR_NAME proof at compile time,
+ * delegates to dom_set_attr at runtime.
+ *
+ * This function enforces at compile time that attribute names are
+ * known HTML constants, preventing Bug #3 (invalid attribute names). *)
+implement dom_set_attr_checked
+  {id} {parent} {n}
+  (pf_attr, pf, id, name_ptr, name_len, val_ptr, val_len) = let
+    prval _ = pf_attr  (* Consume proof — name is valid *)
+  in
+    dom_set_attr(pf, id, name_ptr, name_len, val_ptr, val_len)
+  end
