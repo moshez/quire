@@ -56,6 +56,7 @@ typedef int atstype_bool;
 /* Primitive values */
 #define ATSPMVi0nt(i) (i)
 #define ATSPMVint(i) (i)
+#define ATSPMVintrep(i) (i)
 #define ATSPMVbool_true() 1
 #define ATSPMVbool_false() 0
 #define ATSPMVstring(s) (s)
@@ -65,6 +66,9 @@ typedef int atstype_bool;
 #define ATSCKiseqz(x) ((x)==0)
 #define ATSCKisneqz(x) ((x)!=0)
 #define ATSCKpat_int(x, v) ((x)==(v))
+
+/* External function call ($extfcall) */
+#define ATSextfcall(f, args) f args
 
 /* External function declarations for mac# functions */
 #define ATSdyncst_mac(f) /* external C function */
