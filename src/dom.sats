@@ -13,6 +13,12 @@
 #define OP_REMOVE_CHILD   5
 #define OP_SET_INNER_HTML 6
 
+(* Buffer capacities at the type level.
+ * These are the single source of truth for buffer sizes in proofs.
+ * sized_buf accessors and API constraints both reference these. *)
+stadef SBUF_CAP = 4096     (* string buffer capacity *)
+stadef FBUF_CAP = 16384    (* fetch buffer capacity *)
+
 (* Valid opcode proof.
  * VALID_OPCODE(op) proves op is one of the defined bridge opcodes.
  * Only constructors for the 6 protocol opcodes exist, making it
@@ -41,7 +47,7 @@ fun dom_init(): void = "mac#"
  * parent_pf: proof that parent exists (borrowed, not consumed)
  * Returns: proof that child exists *)
 fun dom_create_element
-  {parent:int} {grandparent:int} {child:int | child > 0} {tl:nat | tl <= 4096}
+  {parent:int} {grandparent:int} {child:int | child > 0} {tl:nat | tl <= SBUF_CAP}
   ( parent_pf: node_proof(parent, grandparent)
   , parent_id: int parent
   , child_id: int child
@@ -60,7 +66,7 @@ fun dom_remove_child
 (* Set text content of a node
  * pf: proof that node exists (borrowed) *)
 fun dom_set_text
-  {id:int} {parent:int} {tl:nat | tl <= 16384}
+  {id:int} {parent:int} {tl:nat | tl <= FBUF_CAP}
   ( pf: node_proof(id, parent)
   , id: int id
   , text_ptr: ptr
@@ -114,7 +120,7 @@ dataprop VALID_ATTR_NAME(n: int) =
  * C signature is unchanged. C blocks must use only compile-time
  * string constants for attribute names. *)
 fun dom_set_attr
-  {id:int} {parent:int} {nl:nat | nl <= 4096} {vl:nat | nl + vl <= 4096}
+  {id:int} {parent:int} {nl:nat | nl <= SBUF_CAP} {vl:nat | nl + vl <= SBUF_CAP}
   ( pf_attr: VALID_ATTR_NAME(nl)
   , pf: node_proof(id, parent)
   , id: int id
@@ -128,7 +134,7 @@ fun dom_set_attr
  * Now that dom_set_attr itself requires VALID_ATTR_NAME,
  * this is a pure passthrough. Kept for existing callers. *)
 fun dom_set_attr_checked
-  {id:int} {parent:int} {nl:nat | nl <= 4096} {vl:nat | nl + vl <= 4096}
+  {id:int} {parent:int} {nl:nat | nl <= SBUF_CAP} {vl:nat | nl + vl <= SBUF_CAP}
   ( pf_attr: VALID_ATTR_NAME(nl)
   , pf: node_proof(id, parent)
   , id: int id
@@ -200,27 +206,43 @@ absprop BUFFER_FLUSHED(flushed: bool)
 
 (* ========== Buffer Size Constants ========== *)
 
-(* Buffer size bounds for proof obligations.
- * STRING_BUFFER_SIZE = 4096, FETCH_BUFFER_SIZE = 16384, DIFF_BUFFER_SIZE = 4096.
- *
- * TEST MADE PASS-BY-CONSTRUCTION:
- *   test_string_buffer_write_bounded — Writes proved to stay < 4096
- *   test_fetch_buffer_write_bounded — Writes proved to stay < 16384 *)
+(* Runtime buffer size values (for C code and dynamic ATS expressions) *)
 #define STRING_BUFFER_SIZE 4096
 #define FETCH_BUFFER_SIZE  16384
 #define DIFF_BUFFER_SIZE   4096
 
-(* String buffer bounds proof.
- * STRING_BUFFER_SAFE(offset, len) proves offset + len <= STRING_BUFFER_SIZE.
- * Required when writing to the shared string buffer. *)
-dataprop STRING_BUFFER_SAFE(offset: int, len: int) =
-  | {o,l:nat | o + l <= 4096} SAFE_STRING_WRITE(o, l)
+(* ========== Sized Buffers ========== *)
 
-(* Fetch buffer bounds proof.
- * FETCH_BUFFER_SAFE(offset, len) proves offset + len <= FETCH_BUFFER_SIZE.
- * Required when writing to the shared fetch buffer. *)
-dataprop FETCH_BUFFER_SAFE(offset: int, len: int) =
-  | {o,l:nat | o + l <= 16384} SAFE_FETCH_WRITE(o, l)
+(* A pointer that knows its remaining capacity at the type level.
+ * Erased to plain ptr at runtime. The capacity is a phantom index —
+ * it exists only for the constraint solver, not in generated code.
+ *
+ * The buffer accessors (get_string_buf, get_fetch_buf) are the single
+ * source of truth for buffer sizes. All write operations check against
+ * the capacity carried by the sized_buf, never against a hardcoded
+ * constant. If a buffer size changes, only the accessor needs updating. *)
+abstype sized_buf(cap: int) = ptr
+
+(* Get the string buffer with its full capacity *)
+fun get_string_buf(): sized_buf(SBUF_CAP) = "mac#get_string_buffer_ptr"
+
+(* Get the fetch buffer with its full capacity *)
+fun get_fetch_buf(): sized_buf(FBUF_CAP) = "mac#get_fetch_buffer_ptr"
+
+(* Write len bytes at the start of a sized buffer.
+ * Requires: len <= remaining capacity. *)
+fun sbuf_write {cap,l:nat | l <= cap}
+  (dst: sized_buf(cap), src: ptr, len: int l): void = "mac#sbuf_write"
+
+(* Advance a buffer pointer by n bytes, reducing capacity.
+ * Returns a sub-buffer starting n bytes later with cap-n remaining.
+ * This is how sequential writes track remaining space:
+ *   val buf = get_string_buf()          -- sized_buf(4096)
+ *   val () = sbuf_write(buf, name, nl)  -- write name, ATS checks nl <= 4096
+ *   val buf = sbuf_advance(buf, nl)     -- sized_buf(4096 - nl)
+ *   val () = sbuf_write(buf, val, vl)   -- write value, ATS checks vl <= 4096-nl *)
+fun sbuf_advance {cap,n:nat | n <= cap}
+  (buf: sized_buf(cap), n: int n): sized_buf(cap - n) = "mac#ptr_add_int"
 
 (* Diff count bounds proof.
  * DIFF_COUNT_BOUNDED(count, max) proves count <= max where max = 255.

@@ -64,38 +64,8 @@ in
   end
 end
 
-(* Extern declaration for memcpy (implemented in runtime.c) *)
-extern fun quire_memcpy(dst: ptr, src: ptr, n: int): ptr = "mac#memcpy"
-
-(* Copy bytes to string buffer at given offset.
- * Requires STRING_BUFFER_SAFE proof: offset + len <= 4096.
- *
- * TEST MADE PASS-BY-CONSTRUCTION:
- *   test_string_buffer_write_bounded — Callers must prove writes
- *   stay within STRING_BUFFER_SIZE. Without proof, code won't compile. *)
-fn dom_copy_to_string_buf
-  {o,l:nat | o + l <= 4096}
-  (pf_safe: STRING_BUFFER_SAFE(o, l)
-  , src: ptr, len: int l, offset: int o): void = let
-  prval _ = pf_safe
-  val sbuf = get_string_buffer_ptr()
-  val dst = ptr_add_int(sbuf, offset)
-  val _ = quire_memcpy(dst, src, len)
-in
-end
-
-(* Copy bytes to fetch buffer at given offset.
- * Requires FETCH_BUFFER_SAFE proof: offset + len <= 16384. *)
-fn dom_copy_to_fetch_buf
-  {o,l:nat | o + l <= 16384}
-  (pf_safe: FETCH_BUFFER_SAFE(o, l)
-  , src: ptr, len: int l, offset: int o): void = let
-  prval _ = pf_safe
-  val fbuf = get_fetch_buffer_ptr()
-  val dst = ptr_add_int(fbuf, offset)
-  val _ = quire_memcpy(dst, src, len)
-in
-end
+(* No manual buffer copy functions needed — sbuf_write and sbuf_advance
+ * handle all writes with capacity tracked in the sized_buf type. *)
 
 (* ========== DOM API implementations ========== *)
 
@@ -110,9 +80,9 @@ implement dom_create_element
   (parent_pf, parent_id, child_id, tag_ptr, tag_len) = let
   (* Flush pending diffs before overwriting shared buffers *)
   val () = js_apply_diffs()
-  (* Copy tag name to string buffer at offset 0 *)
-  prval pf_safe = SAFE_STRING_WRITE()
-  val () = dom_copy_to_string_buf(pf_safe, tag_ptr, tag_len, 0)
+  (* Copy tag name to string buffer — capacity checked by sized_buf *)
+  val sbuf = get_string_buf()  (* sized_buf(4096) *)
+  val () = sbuf_write(sbuf, tag_ptr, tag_len)  (* ATS checks: tl <= 4096 *)
   (* CREATE_ELEMENT: nodeId=child, value1=parent, value2=tag_len *)
   val () = dom_emit_diff(OPCODE_CREATE_ELEMENT(), OP_CREATE_ELEMENT, child_id, parent_id, tag_len)
   (* Flush immediately: string buffer data (tag name) must be consumed
@@ -137,9 +107,9 @@ implement dom_set_text
   {id} {parent} {tl}
   (pf, id, text_ptr, text_len) = let
   val () = js_apply_diffs()
-  (* Copy text to fetch buffer at offset 0 *)
-  prval pf_safe = SAFE_FETCH_WRITE()
-  val () = dom_copy_to_fetch_buf(pf_safe, text_ptr, text_len, 0)
+  (* Copy text to fetch buffer — capacity checked by sized_buf *)
+  val fbuf = get_fetch_buf()  (* sized_buf(16384) *)
+  val () = sbuf_write(fbuf, text_ptr, text_len)  (* ATS checks: tl <= 16384 *)
   (* SET_TEXT: nodeId=id, value1=offset(0), value2=len *)
   val () = dom_emit_diff(OPCODE_SET_TEXT(), OP_SET_TEXT, id, 0, text_len)
   val _ = pf
@@ -163,15 +133,12 @@ implement dom_set_attr
   (pf_attr, pf, id, name_ptr, name_len, val_ptr, val_len) = let
   prval _ = pf_attr  (* Consume proof — name is valid *)
   val () = js_apply_diffs()
-  (* Copy name to string buffer at offset 0 *)
-  prval pf_name_safe = SAFE_STRING_WRITE()
-  val () = dom_copy_to_string_buf(pf_name_safe, name_ptr, name_len, 0)
-  (* Copy value to string buffer at offset name_len *)
-  val () = if gt_int_int(val_len, 0) then let
-    prval pf_val_safe = SAFE_STRING_WRITE()
-  in
-    dom_copy_to_string_buf(pf_val_safe, val_ptr, val_len, name_len)
-  end
+  (* Write name then value to string buffer — advancing tracks capacity *)
+  val sbuf = get_string_buf()             (* sized_buf(4096) *)
+  val () = sbuf_write(sbuf, name_ptr, name_len) (* ATS checks: nl <= 4096 *)
+  val sbuf = sbuf_advance(sbuf, name_len) (* sized_buf(4096 - nl) *)
+  val () = if gt_int_int(val_len, 0) then
+    sbuf_write(sbuf, val_ptr, val_len)    (* ATS checks: vl <= 4096 - nl *)
   (* SET_ATTR: nodeId=id, value1=name_len, value2=val_len *)
   val () = dom_emit_diff(OPCODE_SET_ATTR(), OP_SET_ATTR, id, name_len, val_len)
   (* Flush immediately: string buffer data (attr name/value) must be

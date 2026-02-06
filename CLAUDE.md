@@ -205,37 +205,68 @@ This is stronger than `#define` constants — even if you use the right numeric
 value, you must also produce the matching proof. "Use magic, don't use magic,
 can't break it."
 
-### Bounds pattern: constrain ranges
+### Sized buffer pattern: capacity as a type property
 
-When values must stay within a range, use a universally quantified constructor
-with a constraint:
+Don't hardcode buffer sizes in proof constraints. Instead, make the buffer
+pointer carry its capacity at the type level using `abstype`:
 
 ```ats
-dataprop STRING_BUFFER_SAFE(offset: int, len: int) =
-  | {o,l:nat | o + l <= 4096} SAFE_STRING_WRITE(o, l)
+(* Buffer pointer that knows its remaining capacity — erased to ptr *)
+abstype sized_buf(cap: int) = ptr
+
+(* Static constant: single source of truth for buffer size *)
+stadef SBUF_CAP = 4096
+
+(* Accessor returns a sized_buf, not a raw ptr *)
+fun get_string_buf(): sized_buf(SBUF_CAP) = "mac#get_string_buffer_ptr"
+
+(* Writing checks len <= remaining capacity *)
+fun sbuf_write {cap,l:nat | l <= cap}
+  (dst: sized_buf(cap), src: ptr, len: int l): void = "mac#sbuf_write"
+
+(* Advancing reduces remaining capacity *)
+fun sbuf_advance {cap,n:nat | n <= cap}
+  (buf: sized_buf(cap), n: int n): sized_buf(cap - n) = "mac#ptr_add_int"
 ```
 
-Callers construct the proof with `prval pf = SAFE_STRING_WRITE()` — ATS2 infers
-the static args from context and verifies the constraint. If the constraint
-can't be verified, compilation fails.
+Usage — sequential writes track remaining space automatically:
+
+```ats
+val sbuf = get_string_buf()            (* sized_buf(4096) *)
+val () = sbuf_write(sbuf, name, nl)    (* ATS checks: nl <= 4096 *)
+val sbuf = sbuf_advance(sbuf, nl)      (* sized_buf(4096 - nl) *)
+val () = sbuf_write(sbuf, value, vl)   (* ATS checks: vl <= 4096 - nl *)
+```
+
+The `4096` appears only in the `stadef` and the accessor — write operations
+just check against the capacity carried by the buffer. If the buffer size
+changes, only one place needs updating.
+
+**Note**: ATS2 `#define` is dynamic-level only. For type-level constraints
+(`{tl:nat | tl <= ...}`), use `stadef` instead:
+
+```ats
+#define STRING_BUFFER_SIZE 4096   (* for runtime C code *)
+stadef SBUF_CAP = 4096            (* for type-level constraints *)
+```
 
 ### Propagating bounds through APIs
 
-To make callers prove bounds, add constraints to function template parameters:
+Public API functions constrain parameters against the buffer capacity:
 
 ```ats
 fun dom_create_element
-  {parent:int} {child:int | child > 0} {tl:nat | tl <= 4096}
+  {parent:int} {child:int | child > 0} {tl:nat | tl <= SBUF_CAP}
   (pf: node_proof(parent, ...), ..., tag_len: int tl): ...
 ```
 
-Inside the implementation, construct the buffer proof:
+Inside the implementation, get a sized buffer and write directly:
 
 ```ats
 implement dom_create_element {parent} {_} {child} {tl}
   (..., tag_ptr, tag_len) = let
-  prval pf_safe = SAFE_STRING_WRITE()  (* ATS2 verifies 0 + tl <= 4096 *)
-  val () = dom_copy_to_string_buf(pf_safe, tag_ptr, tag_len, 0)
+  val sbuf = get_string_buf()              (* sized_buf(4096) *)
+  val () = sbuf_write(sbuf, tag_ptr, tag_len)  (* ATS verifies tl <= 4096 *)
   ...
 ```
 
@@ -268,11 +299,11 @@ the proof parameter:
 
 ```ats
 fun dom_set_attr
-  {nl:nat | nl <= 4096} {vl:nat | nl + vl <= 4096}
+  {nl:nat | nl <= SBUF_CAP} {vl:nat | nl + vl <= SBUF_CAP}
   (pf_attr: VALID_ATTR_NAME(nl), ..., name_len: int nl, ...): ...
 ```
 
-The `nl <= 4096` is redundant with `VALID_ATTR_NAME` (max name is 8 chars)
+The `nl <= SBUF_CAP` is redundant with `VALID_ATTR_NAME` (max name is 8 chars)
 but necessary for the constraint solver.
 
 ## Known Bug Classes and Proof Obligations

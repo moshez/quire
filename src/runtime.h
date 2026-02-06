@@ -121,6 +121,7 @@ extern void set_dom_next_node_id(unsigned int v);
 #define buf_get_u8(p, off) ((int)(((unsigned char*)(p))[(off)]))
 #define buf_set_u8(p, off, v) (((unsigned char*)(p))[(off)] = (unsigned char)(v))
 #define ptr_add_int(p, n) ((void*)((unsigned char*)(p) + (n)))
+#define sbuf_write(dst, src, len) memcpy((void*)(dst), (void*)(src), (len))
 
 /* Bitwise operations for ATS2 freestanding (no prelude) */
 #define quire_band(a, b) ((int)((unsigned int)(a) & (unsigned int)(b)))
