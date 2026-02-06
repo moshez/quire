@@ -26,6 +26,11 @@ extern unsigned char* get_diff_buffer_ptr(void);
 extern unsigned char* get_fetch_buffer_ptr(void);
 extern unsigned char* get_string_buffer_ptr(void);
 
+/* Flush pending diffs to bridge before overwriting shared buffers.
+ * Operations that write to the string buffer (CREATE_ELEMENT, SET_ATTR)
+ * must flush first so previously queued diffs read correct string data. */
+extern void js_apply_diffs(void);
+
 /* Next available node ID (WASM owns the ID space) */
 static unsigned int dom_next_node_id = 2;  /* 1 is reserved for root */
 
@@ -88,11 +93,18 @@ void* dom_create_element(void* parent_pf, int parent, int child,
                          void* tag_ptr, int tag_len) {
     (void)parent_pf;  /* Proof ignored at runtime */
 
+    /* Flush pending diffs before overwriting shared buffers */
+    js_apply_diffs();
+
     /* Copy tag name to string buffer at offset 0 */
     dom_copy_to_string_buf((const char*)tag_ptr, tag_len, 0);
 
     /* CREATE_ELEMENT: nodeId=child, value1=parent, value2=tag_len */
     dom_emit_diff(4, child, parent, tag_len);
+
+    /* Flush immediately: string buffer data (tag name) must be consumed
+     * before caller can overwrite shared buffers. */
+    js_apply_diffs();
 
     return (void*)0;  /* Return dummy proof (erased at runtime) */
 }
@@ -100,12 +112,16 @@ void* dom_create_element(void* parent_pf, int parent, int child,
 void dom_remove_child(void* pf, int id) {
     (void)pf;  /* Proof consumed - ignored at runtime */
 
+    js_apply_diffs();
+
     /* REMOVE_CHILD: nodeId=id, value1/value2 unused */
     dom_emit_diff(5, id, 0, 0);
 }
 
 void* dom_set_text(void* pf, int id, void* text_ptr, int text_len) {
     (void)pf;
+
+    js_apply_diffs();
 
     /* Copy text to fetch buffer at offset 0 */
     dom_copy_to_fetch_buf((const char*)text_ptr, text_len, 0);
@@ -119,6 +135,8 @@ void* dom_set_text(void* pf, int id, void* text_ptr, int text_len) {
 void* dom_set_text_offset(void* pf, int id, int fetch_offset, int fetch_len) {
     (void)pf;
 
+    js_apply_diffs();
+
     /* SET_TEXT: nodeId=id, value1=offset, value2=len */
     dom_emit_diff(1, id, fetch_offset, fetch_len);
 
@@ -128,6 +146,8 @@ void* dom_set_text_offset(void* pf, int id, int fetch_offset, int fetch_len) {
 void* dom_set_attr(void* pf, int id, void* name_ptr, int name_len,
                    void* val_ptr, int val_len) {
     (void)pf;
+
+    js_apply_diffs();
 
     /* Copy name to string buffer at offset 0 */
     dom_copy_to_string_buf((const char*)name_ptr, name_len, 0);
@@ -140,11 +160,17 @@ void* dom_set_attr(void* pf, int id, void* name_ptr, int name_len,
     /* SET_ATTR: nodeId=id, value1=name_len, value2=val_len */
     dom_emit_diff(2, id, name_len, val_len);
 
+    /* Flush immediately: string buffer data (attr name/value) must be
+     * consumed before caller can overwrite shared buffers. */
+    js_apply_diffs();
+
     return (void*)0;
 }
 
 void* dom_set_transform(void* pf, int id, int x, int y) {
     (void)pf;
+
+    js_apply_diffs();
 
     /* SET_TRANSFORM: nodeId=id, value1=x, value2=y
      * x and y are int32, interpreted as signed by bridge */
@@ -155,6 +181,8 @@ void* dom_set_transform(void* pf, int id, int x, int y) {
 
 void* dom_set_inner_html(void* pf, int id, int fetch_offset, int fetch_len) {
     (void)pf;
+
+    js_apply_diffs();
 
     /* SET_INNER_HTML: nodeId=id, value1=offset, value2=len */
     dom_emit_diff(6, id, fetch_offset, fetch_len);

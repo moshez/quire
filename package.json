@@ -4,10 +4,11 @@
   "description": "PWA e-reader with ATS2/WASM and generic JS bridge",
   "type": "module",
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run --exclude 'e2e/**'",
     "serve": "serve ."
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.0",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^24.0.0",
     "serve": "^14.2.0",
