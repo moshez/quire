@@ -56,6 +56,7 @@ typedef int atstype_bool;
 /* Primitive values */
 #define ATSPMVi0nt(i) (i)
 #define ATSPMVint(i) (i)
+#define ATSPMVintrep(i) (i)
 #define ATSPMVbool_true() 1
 #define ATSPMVbool_false() 0
 #define ATSPMVstring(s) (s)

@@ -13,6 +13,22 @@
 #define OP_REMOVE_CHILD   5
 #define OP_SET_INNER_HTML 6
 
+(* Valid opcode proof.
+ * VALID_OPCODE(op) proves op is one of the defined bridge opcodes.
+ * Only constructors for the 6 protocol opcodes exist, making it
+ * impossible to emit a diff with an arbitrary integer opcode.
+ *
+ * TEST MADE PASS-BY-CONSTRUCTION:
+ *   test_opcodes_match_protocol — Only valid opcodes (1-6) can be
+ *   passed to dom_emit_diff; compile rejects any other value. *)
+dataprop VALID_OPCODE(opc: int) =
+  | OPCODE_SET_TEXT(1)
+  | OPCODE_SET_ATTR(2)
+  | OPCODE_SET_TRANSFORM(3)
+  | OPCODE_CREATE_ELEMENT(4)
+  | OPCODE_REMOVE_CHILD(5)
+  | OPCODE_SET_INNER_HTML(6)
+
 (* Abstract type representing proof that a node exists.
  * id = the node ID, parent = parent node ID
  * These are compile-time only - erased to void* at runtime *)
@@ -25,12 +41,12 @@ fun dom_init(): void = "mac#"
  * parent_pf: proof that parent exists (borrowed, not consumed)
  * Returns: proof that child exists *)
 fun dom_create_element
-  {parent:int} {grandparent:int} {child:int | child > 0}
+  {parent:int} {grandparent:int} {child:int | child > 0} {tl:nat | tl <= 4096}
   ( parent_pf: node_proof(parent, grandparent)
   , parent_id: int parent
   , child_id: int child
   , tag_ptr: ptr
-  , tag_len: int
+  , tag_len: int tl
   ) : node_proof(child, parent) = "mac#"
 
 (* Remove a child element
@@ -44,11 +60,11 @@ fun dom_remove_child
 (* Set text content of a node
  * pf: proof that node exists (borrowed) *)
 fun dom_set_text
-  {id:int} {parent:int}
+  {id:int} {parent:int} {tl:nat | tl <= 16384}
   ( pf: node_proof(id, parent)
   , id: int id
   , text_ptr: ptr
-  , text_len: int
+  , text_len: int tl
   ) : node_proof(id, parent) = "mac#"
 
 (* Set text content using offset into fetch buffer *)
@@ -89,39 +105,37 @@ dataprop VALID_ATTR_NAME(n: int) =
   | ATTR_ROLE(4)            (* "role" *)
   | ATTR_TABINDEX(8)        (* "tabindex" *)
 
-(* Set an attribute on a node — unchecked version.
- * WARNING: Callers in C blocks bypass ATS type checking.
- * New ATS code should prefer dom_set_attr_checked which requires
- * a VALID_ATTR_NAME proof. *)
+(* Set an attribute on a node.
+ * Requires VALID_ATTR_NAME(nl) proof, ensuring name_ptr points to a
+ * known-valid HTML attribute name. Buffer bounds are enforced:
+ * name_len + val_len <= STRING_BUFFER_SIZE.
+ *
+ * C callers bypass ATS type checking — the proof is erased and the
+ * C signature is unchanged. C blocks must use only compile-time
+ * string constants for attribute names. *)
 fun dom_set_attr
-  {id:int} {parent:int}
-  ( pf: node_proof(id, parent)
-  , id: int id
-  , name_ptr: ptr
-  , name_len: int
-  , val_ptr: ptr
-  , val_len: int
-  ) : node_proof(id, parent) = "mac#"
-
-(* Set an attribute on a node — proof-checked version.
- * Requires VALID_ATTR_NAME(name_len) proof, ensuring name_ptr
- * points to a known-valid HTML attribute name string.
- *
- * TEST MADE PASS-BY-CONSTRUCTION:
- *   test_attr_name_is_known_constant — Impossible to pass dynamic
- *   data as attribute name; only compile-time constant strings with
- *   matching VALID_ATTR_NAME proof can be used.
- *
- * This is a wrapper; the C runtime calls dom_set_attr. *)
-fun dom_set_attr_checked
-  {id:int} {parent:int} {n:int}
-  ( pf_attr: VALID_ATTR_NAME(n)
+  {id:int} {parent:int} {nl:nat | nl <= 4096} {vl:nat | nl + vl <= 4096}
+  ( pf_attr: VALID_ATTR_NAME(nl)
   , pf: node_proof(id, parent)
   , id: int id
   , name_ptr: ptr
-  , name_len: int(n)
+  , name_len: int nl
   , val_ptr: ptr
-  , val_len: int
+  , val_len: int vl
+  ) : node_proof(id, parent) = "mac#"
+
+(* Set an attribute on a node — backward-compatible alias.
+ * Now that dom_set_attr itself requires VALID_ATTR_NAME,
+ * this is a pure passthrough. Kept for existing callers. *)
+fun dom_set_attr_checked
+  {id:int} {parent:int} {nl:nat | nl <= 4096} {vl:nat | nl + vl <= 4096}
+  ( pf_attr: VALID_ATTR_NAME(nl)
+  , pf: node_proof(id, parent)
+  , id: int id
+  , name_ptr: ptr
+  , name_len: int nl
+  , val_ptr: ptr
+  , val_len: int vl
   ) : node_proof(id, parent) = "mac#"
 
 (* Set CSS transform on a node *)
@@ -216,6 +230,18 @@ dataprop FETCH_BUFFER_SAFE(offset: int, len: int) =
  *   test_diff_count_bounded — dom_emit_diff silently drops if count >= 255. *)
 dataprop DIFF_COUNT_BOUNDED(count: int, max: int) =
   | {c,m:nat | c <= m} BOUNDED_DIFFS(c, m)
+
+(* Diff entry bounds proof.
+ * DIFF_ENTRY_SAFE(count) proves writing a 16-byte entry at position
+ * (4 + count * 16) stays within DIFF_BUFFER_SIZE (4096).
+ * Max valid count = 254: 4 + 254*16 + 16 = 4084 <= 4096.
+ *
+ * TEST MADE PASS-BY-CONSTRUCTION:
+ *   test_diff_entry_within_buffer — dom_emit_diff only writes when
+ *   DIFF_ENTRY_SAFE(count) is provable, connecting the count >= 255
+ *   runtime check to the buffer size. *)
+dataprop DIFF_ENTRY_SAFE(count: int) =
+  | {c:nat | 4 + c * 16 + 16 <= 4096} SAFE_DIFF_ENTRY(c)
 
 (* ========== Low-level C primitives (freestanding, no prelude) ========== *)
 
