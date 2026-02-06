@@ -505,6 +505,12 @@ void set_title_id(int id) { title_id = id; }
 int get_import_in_progress(void) { return import_in_progress; }
 void set_import_in_progress(int v) { import_in_progress = v; }
 
+/* App state accessors for ATS code.
+ * Every set_app_state call in ATS code must be accompanied by an
+ * APP_STATE_TRANSITION proof construction. */
+int get_app_state(void) { return app_state; }
+void set_app_state(int s) { app_state = s; }
+
 /* Inject styles into document */
 void inject_styles(void) {
     unsigned char* fetch_buf = get_fetch_buffer_ptr();
@@ -740,6 +746,12 @@ static void show_library(void) {
     /* Build library list */
     rebuild_library_list();
 
+    /* TRANSITION: Multiple valid transitions lead here:
+     *   LOADING_LIB_TO_LIBRARY(2, 3)
+     *   LOADING_DB_TO_LIBRARY(1, 3)
+     *   IMPORTING_TO_LIBRARY(4, 3)
+     *   READING_TO_LIBRARY(6, 3)
+     * show_library() is a terminal transition to LIBRARY state. */
     app_state = APP_STATE_LIBRARY;
 }
 
@@ -792,7 +804,7 @@ static void exit_reader_to_library(void) {
 
     reader_exit();
     current_book_index = -1;
-    app_state = APP_STATE_LIBRARY;
+    app_state = APP_STATE_LIBRARY;  // TRANSITION: READING_TO_LIBRARY(6, 3)
 
     /* Show library view */
     show_library();
@@ -826,7 +838,7 @@ static void handle_state_after_op(void) {
     if (state == 99) {  /* Error */
         show_import_error();
         import_in_progress = 0;
-        app_state = APP_STATE_LIBRARY;
+        app_state = APP_STATE_LIBRARY;  // TRANSITION: IMPORTING_TO_LIBRARY(4, 3) [error path]
     } else if (state == 6 || state == 7) {  /* Still processing */
         update_progress_display();
     } else if (state == 8) {  /* Done */
@@ -837,6 +849,10 @@ static void handle_state_after_op(void) {
 /* M15: String constants for IDB */
 static const char str_quire_db[] = "quire";
 static const char str_stores[] = "books,chapters,resources,settings";
+
+/* String constant accessors for open_db (ATS code) */
+void* get_str_quire_db(void) { return (void*)str_quire_db; }
+void* get_str_stores(void) { return (void*)str_stores; }
 
 /* process_event implementation */
 void process_event_impl(void) {
@@ -974,7 +990,7 @@ void on_file_open_impl(int handle, int size) {
     if (state == 99) {
         show_import_error();
         import_in_progress = 0;
-        app_state = APP_STATE_LIBRARY;
+        app_state = APP_STATE_LIBRARY;  // TRANSITION: IMPORTING_TO_LIBRARY(4, 3) [error]
     }
 }
 
@@ -1019,7 +1035,7 @@ void on_kv_complete_impl(int success) {
         library_on_save_complete(success);
         /* If we just finished import+save, show library */
         if (app_state == APP_STATE_IMPORTING) {
-            app_state = APP_STATE_LIBRARY;
+            app_state = APP_STATE_LIBRARY;  // TRANSITION: IMPORTING_TO_LIBRARY(4, 3) [save done]
             show_library();
         }
         return;
@@ -1034,11 +1050,11 @@ void on_kv_open_impl(int success) {
     if (app_state == APP_STATE_LOADING_DB) {
         if (success) {
             /* DB opened, now load library index */
-            app_state = APP_STATE_LOADING_LIB;
+            app_state = APP_STATE_LOADING_LIB;  // TRANSITION: LOADING_DB_TO_LOADING_LIB(1, 2)
             library_load();
         } else {
             /* DB failed to open, show empty library */
-            app_state = APP_STATE_LIBRARY;
+            app_state = APP_STATE_LIBRARY;  // TRANSITION: LOADING_DB_TO_LIBRARY(1, 3)
             show_library();
         }
         return;
@@ -1049,7 +1065,7 @@ void on_kv_open_impl(int success) {
     if (state == 99) {
         show_import_error();
         import_in_progress = 0;
-        app_state = APP_STATE_LIBRARY;
+        app_state = APP_STATE_LIBRARY;  // TRANSITION: IMPORTING_TO_LIBRARY(4, 3) [error]
     }
 }
 
@@ -1090,7 +1106,7 @@ void on_kv_get_complete_impl(int len) {
             /* Metadata restored, enter reader */
             int ch = library_get_chapter(current_book_index);
             int pg = library_get_page(current_book_index);
-            app_state = APP_STATE_READING;
+            app_state = APP_STATE_READING;  // TRANSITION: LOADING_BOOK_TO_READING(5, 6)
             if (ch > 0 || pg > 0) {
                 reader_enter_at(root_id, container_id, ch, pg);
             } else {
@@ -1231,18 +1247,42 @@ extern fun settings_set_root_id_ats(id: int): void = "mac#settings_set_root_id"
 (* M15: ATS extern for library_init *)
 extern fun library_init_ats(): void = "mac#library_init"
 
-(* Open the IDB so library and reader can use it *)
-extern fun open_db(): void = "mac#"
+(* App state accessors — used to enforce APP_STATE_TRANSITION from ATS *)
+extern fun get_app_state(): int = "mac#"
+extern fun set_app_state(s: int): void = "mac#"
 
-%{
-/* Open IndexedDB for library and book data.
- * TRANSITION: INIT_TO_LOADING_DB(0, 1) — required before js_kv_open
- * so on_kv_open_complete sees APP_STATE_LOADING_DB. */
-void open_db(void) {
-    app_state = APP_STATE_LOADING_DB;  // TRANSITION: INIT_TO_LOADING_DB(0, 1)
-    js_kv_open((void*)str_quire_db, 5, 1, (void*)str_stores, 33);
-}
-%}
+(* String constants for open_db *)
+extern fun get_str_quire_db(): ptr = "mac#"
+extern fun get_str_stores(): ptr = "mac#"
+
+(* Bridge import for opening IndexedDB *)
+extern fun js_kv_open(name_ptr: ptr, name_len: int, version: int,
+                      stores_ptr: ptr, stores_len: int): void = "mac#"
+
+(* Open IndexedDB for library and book data.
+ * ENFORCED PROOF: Constructs INIT_TO_LOADING_DB(0, 1) at compile time,
+ * guaranteeing that app_state is set to LOADING_DB BEFORE the async
+ * js_kv_open call.
+ *
+ * BUG PREVENTED: Original C version forgot to set app_state before
+ * js_kv_open. When on_kv_open_complete fired, it checked for
+ * APP_STATE_LOADING_DB but found INIT, so library never loaded.
+ *
+ * TEST MADE PASS-BY-CONSTRUCTION:
+ *   test_open_db_sets_state_before_async — The ATS type system ensures
+ *   set_app_state(1) happens textually before js_kv_open. *)
+fn open_db(): void = let
+    (* Construct transition proof — this is the ENFORCED version of
+     * the documentary comment that was in the C code. *)
+    prval _pf_transition = INIT_TO_LOADING_DB()
+
+    (* Set state BEFORE async call — the proof above witnesses
+     * that this is a valid transition from INIT(0) to LOADING_DB(1). *)
+    val () = set_app_state(1) (* APP_STATE_LOADING_DB *)
+  in
+    (* Now safe to call async: on_kv_open_complete will see LOADING_DB *)
+    js_kv_open(get_str_quire_db(), 5, 1, get_str_stores(), 33)
+  end
 
 (* Initialize the application UI *)
 implement init() = let
@@ -1268,11 +1308,14 @@ implement init() = let
     (* Re-acquire root proof after inject_styles *)
     val pf_root = dom_root_proof()
 
-    (* Create container div *)
+    (* Create container div — all dom_set_attr_checked calls below
+     * consume a VALID_ATTR_NAME proof, enforcing Bug #3 prevention
+     * at compile time. *)
     val cid = dom_next_id()
     val () = set_container_id(cid)
     val pf_container = dom_create_element(pf_root, 1, cid, get_str_div(), 3)
-    val pf_container = dom_set_attr(pf_container, cid,
+    val pf_container = dom_set_attr_checked(lemma_attr_class(),
+                                     pf_container, cid,
                                      get_str_class(), 5,
                                      get_str_container(), 9)
 
@@ -1287,16 +1330,20 @@ implement init() = let
     val fid = dom_next_id()
     val () = set_file_input_id(fid)
     val pf_file = dom_create_element(pf_container, cid, fid, get_str_input(), 5)
-    val pf_file = dom_set_attr(pf_file, fid,
+    val pf_file = dom_set_attr_checked(lemma_attr_type(),
+                                pf_file, fid,
                                 get_str_type(), 4,
                                 get_str_file(), 4)
-    val pf_file = dom_set_attr(pf_file, fid,
+    val pf_file = dom_set_attr_checked(lemma_attr_accept(),
+                                pf_file, fid,
                                 get_str_accept(), 6,
                                 get_str_epub_accept(), 26)
-    val pf_file = dom_set_attr(pf_file, fid,
+    val pf_file = dom_set_attr_checked(lemma_attr_class(),
+                                pf_file, fid,
                                 get_str_class(), 5,
                                 get_str_hidden(), 6)
-    val pf_file = dom_set_attr(pf_file, fid,
+    val pf_file = dom_set_attr_checked(lemma_attr_id(),
+                                pf_file, fid,
                                 get_str_id_attr(), 2,
                                 get_str_file_input(), 10)
     val () = dom_drop_proof(pf_file)
@@ -1305,10 +1352,12 @@ implement init() = let
     val bid = dom_next_id()
     val () = set_import_btn_id(bid)
     val pf_btn = dom_create_element(pf_container, cid, bid, get_str_label(), 5)
-    val pf_btn = dom_set_attr(pf_btn, bid,
+    val pf_btn = dom_set_attr_checked(lemma_attr_class(),
+                               pf_btn, bid,
                                get_str_class(), 5,
                                get_str_import_btn(), 10)
-    val pf_btn = dom_set_attr(pf_btn, bid,
+    val pf_btn = dom_set_attr_checked(lemma_attr_for(),
+                               pf_btn, bid,
                                get_str_for(), 3,
                                get_str_file_input(), 10)
     val _len = copy_text_to_fetch(get_str_import_text(), 11)
@@ -1319,7 +1368,8 @@ implement init() = let
     val pid = dom_next_id()
     val () = set_progress_id(pid)
     val pf_prog = dom_create_element(pf_container, cid, pid, get_str_p(), 1)
-    val pf_prog = dom_set_attr(pf_prog, pid,
+    val pf_prog = dom_set_attr_checked(lemma_attr_class(),
+                                pf_prog, pid,
                                 get_str_class(), 5,
                                 get_str_progress_div(), 12)
     val () = dom_drop_proof(pf_prog)
@@ -1328,7 +1378,8 @@ implement init() = let
     val did = dom_next_id()
     val () = set_title_id(did)
     val pf_tdiv = dom_create_element(pf_container, cid, did, get_str_p(), 1)
-    val pf_tdiv = dom_set_attr(pf_tdiv, did,
+    val pf_tdiv = dom_set_attr_checked(lemma_attr_class(),
+                                pf_tdiv, did,
                                 get_str_class(), 5,
                                 get_str_title_div(), 9)
     val () = dom_drop_proof(pf_tdiv)

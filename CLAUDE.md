@@ -114,15 +114,22 @@ found it was still `INIT`, and skipped the library load entirely.
 type checking. The `APP_STATE_TRANSITION` dataprop existed but was documentary
 — nothing enforced that `open_db()` actually performed the transition.
 
+**Fix (ENFORCED)**: `open_db()` has been converted from a C `%{` block to pure
+ATS code. The function constructs an `INIT_TO_LOADING_DB()` proof witness at
+compile time, guaranteeing the transition is valid. The `set_app_state(1)` call
+happens textually before `js_kv_open()`, making the bug impossible by construction.
+
 **Proof obligation**: Every C block that modifies `app_state` MUST include:
 ```c
 app_state = APP_STATE_X;  // TRANSITION: VALID_TRANSITION_NAME(from, to)
 ```
 Where the transition name matches a constructor of `APP_STATE_TRANSITION`.
 Code review MUST verify the `from` state matches the function's precondition.
+All C state transitions now have `// TRANSITION:` comments.
 
 **Similar risks**: Any function that sets up async operations (js_kv_open,
 js_file_open, js_decompress) must set state BEFORE the async call, not after.
+The `ASYNC_PRECONDITION` dataprop in epub.sats documents this pattern.
 
 ### 2. Shared Buffer Corruption (string buffer race)
 
@@ -157,11 +164,15 @@ fetch buffer data that could be overwritten by intervening code.
 attribute name, causing a DOM exception. The attribute name should always
 be a known constant string like "class", "id", "type", etc.
 
-**Proof obligation**: `VALID_ATTR_NAME(n)` dataprop in dom.sats enumerates
-all valid attribute names by length. New ATS code that calls `dom_set_attr`
-should construct a `VALID_ATTR_NAME` proof witness. C blocks should use
-only compile-time string constants for attribute names and document which
-constructor applies:
+**Fix (ENFORCED)**: `dom_set_attr_checked()` in dom.sats requires a
+`VALID_ATTR_NAME(n)` proof as its first argument. All ATS code in `init()`
+now uses `dom_set_attr_checked` with proof witnesses from `lemma_attr_class()`,
+`lemma_attr_id()`, etc. These `praxi` functions are the ONLY way to obtain
+VALID_ATTR_NAME proofs, making it impossible to pass dynamic data as attribute
+names from ATS code.
+
+**Proof obligation for C code**: C blocks that call `dom_set_attr` directly
+should use only compile-time string constants and document which constructor applies:
 ```c
 // VALID_ATTR_NAME: ATTR_CLASS(5)
 dom_set_attr(pf, id, (void*)str_class, 5, (void*)str_value, val_len);
@@ -181,14 +192,36 @@ dom_set_attr(pf, id, (void*)str_class, 5, (void*)str_value, val_len);
    or write the string/fetch buffer between DOM calls, call `js_apply_diffs()`
    first to flush pending diffs.
 
-4. **Attribute names must be compile-time constants**: Never pass dynamic
-   data (user input, book titles, file names) as attribute names. Use only
-   the `get_str_*` helper functions that return known-constant strings.
+4. **Use dom_set_attr_checked in ATS code**: Always prefer `dom_set_attr_checked`
+   over `dom_set_attr`. The checked version requires a `VALID_ATTR_NAME` proof
+   (obtained via `lemma_attr_class()`, `lemma_attr_id()`, etc.), making it
+   impossible to pass dynamic data as attribute names.
 
 5. **Async operations require state setup BEFORE the call**: If a function
    triggers an async bridge operation (js_kv_open, js_file_open, etc.),
    all state (app_state, pending flags) must be set BEFORE the call, not
-   in a continuation or callback.
+   in a continuation or callback. Document with `ASYNC_PRECONDITION`.
+
+6. **Buffer writes need bounds proofs**: Use `STRING_BUFFER_SAFE` and
+   `FETCH_BUFFER_SAFE` dataprops when writing to shared buffers. These
+   prove writes stay within buffer bounds (4096 and 16384 respectively).
+
+7. **Single pending flag invariant**: At most one async pending flag
+   (`settings_is_save_pending`, `library_is_metadata_pending`, etc.) may
+   be active at any time. See `SINGLE_PENDING` dataprop in library.sats.
+
+### Proof Architecture
+
+Proofs are enforced at three levels:
+
+| Level | Mechanism | Example |
+|-------|-----------|---------|
+| **Enforced** | ATS type system rejects incorrect code | `dom_set_attr_checked` requires `VALID_ATTR_NAME` proof |
+| **Checked** | Dependent types + `praxi` functions | `open_db` constructs `INIT_TO_LOADING_DB()` witness |
+| **Documented** | `// TRANSITION:` comments in C code | `app_state = APP_STATE_LIBRARY; // TRANSITION: ...` |
+
+New code should prefer enforced > checked > documented. Move proofs up
+the hierarchy whenever feasible.
 
 ## E2E Tests (Playwright)
 

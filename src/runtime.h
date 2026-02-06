@@ -73,6 +73,7 @@ typedef int atstype_bool;
 
 /* Static load flags */
 #define ATSstaticdec() static
+#define ATSstatic() static
 
 /* Forward declarations for DOM functions (defined in dom_dats.c) */
 extern void dom_init(void);
@@ -82,6 +83,7 @@ extern void dom_remove_child(void*, int);
 extern void* dom_set_text(void*, int, void*, int);
 extern void* dom_set_text_offset(void*, int, int, int);
 extern void* dom_set_attr(void*, int, void*, int, void*, int);
+extern void* dom_set_attr_checked(void*, int, void*, int, void*, int);
 extern void* dom_set_transform(void*, int, int, int);
 extern void* dom_set_inner_html(void*, int, int, int);
 extern int dom_next_id(void);
