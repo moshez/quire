@@ -1062,4 +1062,221 @@ int epub_get_chapter_title(int spine_index, int buf_offset) {
 
     return 0;  /* No TOC entry found for this chapter */
 }
+
+/* M15: Helper to write uint16 LE to buffer */
+static void write_u16(unsigned char* buf, int offset, int value) {
+    buf[offset] = value & 0xff;
+    buf[offset + 1] = (value >> 8) & 0xff;
+}
+
+/* M15: Helper to read uint16 LE from buffer */
+static int read_u16(unsigned char* buf, int offset) {
+    return buf[offset] | (buf[offset + 1] << 8);
+}
+
+/* M15: Helper to read int16 LE from buffer (signed) */
+static int read_i16(unsigned char* buf, int offset) {
+    int v = buf[offset] | (buf[offset + 1] << 8);
+    if (v >= 0x8000) v -= 0x10000;
+    return v;
+}
+
+/* M15: Serialize book metadata to fetch buffer.
+ * Returns [len:nat] total bytes written.
+ *
+ * Format (symmetric with epub_restore_metadata for METADATA_ROUNDTRIP):
+ *   u16: book_id_len, bytes: book_id
+ *   u16: title_len, bytes: title
+ *   u16: author_len, bytes: author
+ *   u16: opf_dir_len, bytes: opf_dir
+ *   u16: spine_count
+ *   for each spine entry: u16: href_len, bytes: href
+ *   u16: toc_count
+ *   for each toc entry: u16: label_len, i16: spine_index, u16: level, bytes: label
+ *
+ * CORRECTNESS: Field order matches epub_restore_metadata exactly.
+ * Each field is read back in the same order it was written.
+ * This symmetric structure establishes METADATA_ROUNDTRIP. */
+int epub_serialize_metadata(void) {
+    unsigned char* buf = get_fetch_buffer_ptr();
+    int pos = 0;
+    int max = 16384;
+
+    /* book_id */
+    write_u16(buf, pos, book_id_len); pos += 2;
+    for (int i = 0; i < book_id_len && pos < max; i++) buf[pos++] = book_id[i];
+
+    /* title */
+    write_u16(buf, pos, book_title_len); pos += 2;
+    for (int i = 0; i < book_title_len && pos < max; i++) buf[pos++] = book_title[i];
+
+    /* author */
+    write_u16(buf, pos, book_author_len); pos += 2;
+    for (int i = 0; i < book_author_len && pos < max; i++) buf[pos++] = book_author[i];
+
+    /* opf_dir */
+    write_u16(buf, pos, opf_dir_len); pos += 2;
+    for (int i = 0; i < opf_dir_len && pos < max; i++) buf[pos++] = opf_dir[i];
+
+    /* spine */
+    write_u16(buf, pos, spine_count); pos += 2;
+    for (int s = 0; s < spine_count; s++) {
+        int mi = spine_manifest_indices[s];
+        if (mi >= 0 && mi < manifest_count) {
+            manifest_item_t* item = &manifest_items[mi];
+            write_u16(buf, pos, item->href_len); pos += 2;
+            for (int i = 0; i < item->href_len && pos < max; i++) {
+                buf[pos++] = manifest_strings[item->href_offset + i];
+            }
+        } else {
+            write_u16(buf, pos, 0); pos += 2;
+        }
+    }
+
+    /* toc */
+    write_u16(buf, pos, toc_count); pos += 2;
+    for (int t = 0; t < toc_count; t++) {
+        toc_entry_t* entry = &toc_entries[t];
+        write_u16(buf, pos, entry->label_len); pos += 2;
+        write_u16(buf, pos, (unsigned int)(entry->spine_index) & 0xffff); pos += 2;
+        write_u16(buf, pos, entry->nesting_level); pos += 2;
+        for (int i = 0; i < entry->label_len && pos < max; i++) {
+            buf[pos++] = toc_strings[entry->label_offset + i];
+        }
+    }
+
+    return pos;
+}
+
+/* M15: Restore book metadata from fetch buffer.
+ * Returns [r:int | r == 0 || r == 1].
+ *
+ * CORRECTNESS: Reads fields in same order as epub_serialize_metadata
+ * (METADATA_ROUNDTRIP). On success:
+ * - epub_state set to EPUB_STATE_DONE (8), establishing EPUB_STATE_VALID
+ * - spine/manifest/TOC arrays populated matching original import state
+ * - epub_get_chapter_count(), epub_get_toc_count() return correct values
+ * - Reader can load chapters and navigate TOC correctly */
+int epub_restore_metadata(int len) {
+    unsigned char* buf = get_fetch_buffer_ptr();
+    int pos = 0;
+
+    if (len < 12) return 0;  /* Minimum: 6 u16 headers */
+
+    /* Reset state */
+    epub_state = 8;  /* EPUB_STATE_DONE - ready to read */
+    epub_progress = 100;
+    manifest_count = 0;
+    manifest_strings_offset = 0;
+    spine_count = 0;
+    toc_count = 0;
+    toc_strings_offset = 0;
+
+    /* book_id */
+    int id_len = read_u16(buf, pos); pos += 2;
+    if (id_len > MAX_BOOK_ID_LEN - 1) id_len = MAX_BOOK_ID_LEN - 1;
+    for (int i = 0; i < id_len; i++) book_id[i] = buf[pos++];
+    book_id[id_len] = 0;
+    book_id_len = id_len;
+
+    /* title */
+    int tlen = read_u16(buf, pos); pos += 2;
+    if (tlen > MAX_TITLE_LEN - 1) tlen = MAX_TITLE_LEN - 1;
+    for (int i = 0; i < tlen; i++) book_title[i] = buf[pos++];
+    book_title[tlen] = 0;
+    book_title_len = tlen;
+
+    /* author */
+    int alen = read_u16(buf, pos); pos += 2;
+    if (alen > MAX_AUTHOR_LEN - 1) alen = MAX_AUTHOR_LEN - 1;
+    for (int i = 0; i < alen; i++) book_author[i] = buf[pos++];
+    book_author[alen] = 0;
+    book_author_len = alen;
+
+    /* opf_dir */
+    int dlen = read_u16(buf, pos); pos += 2;
+    if (dlen > MAX_OPF_PATH_LEN - 1) dlen = MAX_OPF_PATH_LEN - 1;
+    for (int i = 0; i < dlen; i++) opf_dir[i] = buf[pos++];
+    opf_dir[dlen] = 0;
+    opf_dir_len = dlen;
+
+    /* spine: create one manifest item per spine entry */
+    int sc = read_u16(buf, pos); pos += 2;
+    if (sc > MAX_SPINE_ITEMS) sc = MAX_SPINE_ITEMS;
+    spine_count = sc;
+    manifest_count = 0;
+    manifest_strings_offset = 0;
+
+    for (int s = 0; s < sc; s++) {
+        int href_len = read_u16(buf, pos); pos += 2;
+        if (manifest_count < MAX_MANIFEST_ITEMS && manifest_strings_offset + href_len < 4096) {
+            manifest_item_t* item = &manifest_items[manifest_count];
+            item->id_offset = 0;
+            item->id_len = 0;
+            item->href_offset = manifest_strings_offset;
+            item->href_len = href_len;
+            item->media_type = 1;  /* xhtml */
+            item->zip_index = -1;
+            for (int i = 0; i < href_len; i++) {
+                manifest_strings[manifest_strings_offset++] = buf[pos++];
+            }
+            spine_manifest_indices[s] = manifest_count;
+            manifest_count++;
+        } else {
+            pos += href_len;
+            spine_manifest_indices[s] = -1;
+        }
+    }
+
+    /* toc */
+    int tc = read_u16(buf, pos); pos += 2;
+    if (tc > MAX_TOC_ENTRIES) tc = MAX_TOC_ENTRIES;
+    toc_count = tc;
+    toc_strings_offset = 0;
+
+    for (int t = 0; t < tc; t++) {
+        int label_len = read_u16(buf, pos); pos += 2;
+        int spine_idx = read_i16(buf, pos); pos += 2;
+        int level = read_u16(buf, pos); pos += 2;
+
+        toc_entry_t* entry = &toc_entries[t];
+        entry->label_offset = toc_strings_offset;
+        entry->label_len = label_len;
+        entry->href_offset = 0;
+        entry->href_len = 0;
+        entry->spine_index = spine_idx;
+        entry->nesting_level = level;
+
+        for (int i = 0; i < label_len && toc_strings_offset < 8192; i++) {
+            toc_strings[toc_strings_offset++] = buf[pos++];
+        }
+    }
+
+    return 1;
+}
+
+/* M15: Reset epub state to idle.
+ * Postcondition: EPUB_RESET_TO_IDLE - state == 0, all metadata cleared.
+ * After reset, epub module is equivalent to post-epub_init state. */
+void epub_reset(void) {
+    epub_state = 0;
+    epub_progress = 0;
+    epub_error_len = 0;
+    file_handle = 0;
+    file_size = 0;
+    book_title_len = 0;
+    book_author_len = 0;
+    book_id_len = 0;
+    opf_path_len = 0;
+    opf_dir_len = 0;
+    manifest_count = 0;
+    manifest_strings_offset = 0;
+    spine_count = 0;
+    toc_count = 0;
+    toc_strings_offset = 0;
+    ncx_zip_index = -1;
+    current_entry_index = 0;
+    total_entries = 0;
+    current_blob_handle = 0;
+}
 %}

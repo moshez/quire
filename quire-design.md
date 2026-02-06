@@ -1674,7 +1674,7 @@ Bridge test coverage expands incrementally: M2–M4 each add tests for the bridg
   - Persist settings to IndexedDB
   - Re-measure page count on settings change
 
-- [ ] **M15: Book library**
+- [x] **M15: Book library**
   - List imported books with title, author, cover
   - Last read position
   - Delete book (remove from IndexedDB)

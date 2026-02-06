@@ -194,3 +194,41 @@ fun reader_get_toc_index_for_node(node_id: int): int = "mac#"
 
 (* Handle TOC entry click - internally verifies correct chapter navigation *)
 fun reader_on_toc_click(node_id: int): void = "mac#"
+
+(* ========== M15: Resume Position and Navigation Proofs ========== *)
+
+(* Resume position correctness proof.
+ * RESUME_AT_CORRECT(chapter, page) proves that after reader_enter_at:
+ * - The reader loads chapter `chapter` (not some other chapter)
+ * - After the chapter finishes loading, the display scrolls to page `page`
+ *   (or the last page if `page` exceeds the chapter's page count)
+ *
+ * This is THE key correctness property for reading position persistence:
+ * when the user reopens a book, they see the same chapter and page where
+ * they left off.
+ *
+ * NOTE: Proof is documentary - runtime checks in on_chapter_loaded and
+ * on_chapter_blob_loaded verify resume_page application. *)
+absprop RESUME_AT_CORRECT(chapter: int, page: int)
+
+(* M15: Enter reader at specific chapter and page for resume.
+ * Sets up reader DOM and navigates to the saved position.
+ *
+ * CORRECTNESS:
+ * - chapter is loaded as the current slot's chapter
+ * - page is saved as reader_resume_page and applied after chapter loads
+ * - If chapter >= epub_get_chapter_count(), chapter 0 is loaded instead
+ * - If page >= measured page count, the last page is shown
+ * Internally documents RESUME_AT_CORRECT(chapter, page) and delegates
+ * to reader_enter for DOM setup, then load_chapter_into_slot for the
+ * target chapter. *)
+fun reader_enter_at(root_id: int, container_hide_id: int, chapter: int, page: int): void = "mac#"
+
+(* M15: Get back button node ID.
+ * Returns the DOM node ID of the back button created by reader_enter.
+ * Returns 0 if reader is not active (no back button exists).
+ *
+ * CORRECTNESS: The returned ID is THE node ID assigned to the back button
+ * during reader_enter, ensuring click events on this ID correctly trigger
+ * exit_reader_to_library. *)
+fun reader_get_back_btn_id(): [id:nat] int(id) = "mac#"

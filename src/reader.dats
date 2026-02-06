@@ -102,6 +102,12 @@ static int root_node_id = 1;  /* Save for TOC creation */
 static int toc_entry_ids[MAX_TOC_ENTRY_IDS];
 static int toc_entry_count = 0;
 
+/* M15: Back button and resume state */
+static int reader_back_btn_id = 0;
+static int reader_resume_page = 0;  /* Page to resume at after chapter loads */
+static const char str_back_btn[] = "back-btn";
+static const char str_back_arrow[] = "\xe2\x86\x90";  /* UTF-8 ← */
+
 /* External functions from bridge */
 extern unsigned char* get_fetch_buffer_ptr(void);
 extern unsigned char* get_string_buffer_ptr(void);
@@ -158,6 +164,10 @@ void reader_init(void) {
     progress_bar_id = 0;
     progress_fill_id = 0;
     toc_entry_count = 0;
+
+    /* M15: Reset back button and resume state */
+    reader_back_btn_id = 0;
+    reader_resume_page = 0;
 }
 
 /* Enter reader mode - creates viewport and three chapter containers */
@@ -208,6 +218,20 @@ void reader_enter(int root_id, int container_hide_id) {
     dom_drop_proof(pf_next);
 
     dom_drop_proof(pf_viewport);
+
+    /* M15: Create back button */
+    int back_id = dom_next_id();
+    reader_back_btn_id = back_id;
+    void* pf_back = dom_create_element(pf, root_id, back_id, (void*)str_div, 3);
+    pf_back = dom_set_attr(pf_back, back_id, (void*)str_class, 5,
+                           (void*)str_back_btn, 8);
+    {
+        int blen = 0;
+        const char* arrow = str_back_arrow;
+        while (*arrow && blen < 10) buf[blen++] = *arrow++;
+        dom_set_text_offset(pf_back, back_id, 0, blen);
+    }
+    dom_drop_proof(pf_back);
 
     /* Create page indicator */
     int pid = dom_next_id();
@@ -635,7 +659,18 @@ void reader_on_chapter_loaded(int len) {
 
     /* If this was the current slot, update display and position */
     if (slot_index == SLOT_CURR) {
-        reader_current_page = 0;
+        /* M15: Apply resume page if set (RESUME_AT_CORRECT).
+         * Clamped to [0, max_page] to handle case where chapter content
+         * changed since position was saved (e.g., different font size).
+         * After application, reader_resume_page is cleared to prevent
+         * stale resume on subsequent chapter navigations. */
+        if (reader_resume_page > 0) {
+            int max_page = slots[SLOT_CURR].page_count > 0 ? slots[SLOT_CURR].page_count - 1 : 0;
+            reader_current_page = reader_resume_page <= max_page ? reader_resume_page : max_page;
+            reader_resume_page = 0;  /* Clear to prevent stale resume */
+        } else {
+            reader_current_page = 0;
+        }
         position_all_slots();
         reader_update_page_display();
 
@@ -670,7 +705,15 @@ void reader_on_chapter_blob_loaded(int handle, int size) {
     measure_slot_pages(slot_index);
 
     if (slot_index == SLOT_CURR) {
-        reader_current_page = 0;
+        /* M15: Apply resume page if set (RESUME_AT_CORRECT - blob path).
+         * Same clamping logic as on_chapter_loaded path above. */
+        if (reader_resume_page > 0) {
+            int max_page = slots[SLOT_CURR].page_count > 0 ? slots[SLOT_CURR].page_count - 1 : 0;
+            reader_current_page = reader_resume_page <= max_page ? reader_resume_page : max_page;
+            reader_resume_page = 0;  /* Clear to prevent stale resume */
+        } else {
+            reader_current_page = 0;
+        }
         position_all_slots();
         reader_update_page_display();
         preload_adjacent_chapters();
@@ -1045,6 +1088,48 @@ void reader_on_toc_click(int node_id) {
     if (chapter_index < total) {
         reader_go_to_chapter(chapter_index, total);
     }
+}
+
+/* M15: Enter reader at specific chapter and page for resume.
+ *
+ * CORRECTNESS (RESUME_AT_CORRECT):
+ * - reader_resume_page is set BEFORE reader_enter, ensuring it's available
+ *   when on_chapter_loaded/on_chapter_blob_loaded fires
+ * - If chapter > 0 and chapter < total: loads THE requested chapter by
+ *   clearing default chapter 0 and calling load_chapter_into_slot(SLOT_CURR, chapter)
+ * - If chapter == 0 or chapter >= total: reader_enter loads chapter 0 by default
+ * - Resume page is applied in on_chapter_loaded: clamped to [0, max_page]
+ *   ensuring valid page display even if chapter length changed since last read
+ * - reader_resume_page is cleared after application (set to 0) preventing
+ *   stale resume on subsequent chapter navigations */
+void reader_enter_at(int root_id, int container_hide_id, int chapter, int page) {
+    /* Save desired resume page - will be applied after chapter loads */
+    reader_resume_page = page;
+
+    /* Use standard reader_enter to set up DOM */
+    reader_enter(root_id, container_hide_id);
+
+    /* If chapter > 0, navigate to it after initial setup */
+    int total = epub_get_chapter_count();
+    if (chapter > 0 && chapter < total) {
+        /* Clear the default chapter 0 load and load target instead */
+        loading_slot = -1;
+        for (int i = 0; i < 3; i++) {
+            slots[i].chapter_index = -1;
+            slots[i].status = 0;
+            slots[i].page_count = 0;
+        }
+        load_chapter_into_slot(SLOT_CURR, chapter);
+    }
+    /* Note: reader_resume_page will be applied in on_chapter_loaded/on_chapter_blob_loaded
+     * when the current slot finishes loading */
+}
+
+/* M15: Get back button node ID.
+ * Returns [id:nat] - 0 if reader not active, positive if back button exists.
+ * The returned ID is THE node ID assigned in reader_enter via dom_next_id(). */
+int reader_get_back_btn_id(void) {
+    return reader_back_btn_id;
 }
 %}
 
