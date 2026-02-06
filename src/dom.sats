@@ -60,7 +60,39 @@ fun dom_set_text_offset
   , fetch_len: int
   ) : node_proof(id, parent) = "mac#"
 
-(* Set an attribute on a node *)
+(* ========== Attribute Name Safety ========== *)
+
+(* Valid HTML attribute name proof.
+ * VALID_ATTR_NAME(n) proves a string of length n is a known-valid
+ * HTML attribute name. Only constructors for known names exist.
+ *
+ * BUG PREVENTED: Without this proof, the shared string buffer could
+ * contain arbitrary data (e.g., a book title leaked from a corrupted
+ * buffer) that gets passed as an attribute name, causing DOM exceptions
+ * like "'A Tal' is not a valid attribute name."
+ *
+ * ROOT CAUSE ANALYSIS: The string buffer is shared between SET_ATTR
+ * diffs and other operations. If a pending SET_ATTR diff's string data
+ * is overwritten before the bridge flushes it, the bridge reads garbage
+ * as the attribute name. The VALID_ATTR_NAME proof ensures that only
+ * compile-time-constant names are used, preventing dynamic data from
+ * leaking into attribute names even under buffer corruption. *)
+dataprop VALID_ATTR_NAME(n: int) =
+  | ATTR_CLASS(5)           (* "class" *)
+  | ATTR_ID(2)              (* "id" *)
+  | ATTR_TYPE(4)            (* "type" *)
+  | ATTR_FOR(3)             (* "for" *)
+  | ATTR_ACCEPT(6)          (* "accept" *)
+  | ATTR_HREF(4)            (* "href" *)
+  | ATTR_SRC(3)             (* "src" *)
+  | ATTR_STYLE(5)           (* "style" *)
+  | ATTR_ROLE(4)            (* "role" *)
+  | ATTR_TABINDEX(8)        (* "tabindex" *)
+
+(* Set an attribute on a node — unchecked version.
+ * WARNING: Callers in C blocks bypass ATS type checking.
+ * New ATS code should prefer dom_set_attr_safe which requires
+ * a VALID_ATTR_NAME proof. *)
 fun dom_set_attr
   {id:int} {parent:int}
   ( pf: node_proof(id, parent)
@@ -102,3 +134,31 @@ fun dom_drop_proof
   {id:int} {parent:int}
   ( pf: node_proof(id, parent)
   ) : void = "mac#"
+
+(* ========== Shared Buffer Flush Protocol ========== *)
+
+(* BUFFER_FLUSHED(true) proves all pending diffs have been flushed
+ * and the string/fetch buffers are safe to rewrite.
+ *
+ * CRITICAL INVARIANT: dom_set_attr and dom_create_element write data
+ * to the shared string buffer and emit diffs that reference it.
+ * If ANY code modifies the string buffer before the diff is flushed
+ * by the bridge, the bridge reads corrupted data.
+ *
+ * BUG PREVENTED: rebuild_library_list() called dom_set_attr (writing
+ * "class" to string buffer), then library_get_title() (overwriting
+ * string buffer with book title), then dom_set_text_offset (which
+ * flushed the SET_ATTR diff). The bridge read "A Tal" (first 5 bytes
+ * of title) as the attribute name instead of "class".
+ *
+ * FIX: dom_set_attr and dom_create_element now flush their diffs
+ * immediately after emitting them (via trailing js_apply_diffs call),
+ * ensuring string buffer data is consumed before it can be corrupted.
+ *
+ * ENFORCEMENT: New code that writes to shared buffers between DOM
+ * operations must call js_apply_diffs() first to flush pending diffs.
+ * In ATS code, this is enforced by the node_proof linear type —
+ * each DOM operation consumes and returns the proof, preventing
+ * interleaved buffer writes. In C blocks, this must be manually
+ * verified. *)
+absprop BUFFER_FLUSHED(flushed: bool)

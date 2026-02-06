@@ -1,3 +1,5 @@
 build/
 node_modules/
 quire.wasm
+e2e/screenshots/
+test-results/

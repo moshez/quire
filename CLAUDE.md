@@ -97,6 +97,155 @@ dataprop BOOK_CARD_MAPS(node_id: int, book_index: int, count: int) =
 absprop SERIALIZE_ROUNDTRIP(serialize_len: int, restore_ok: int)
 ```
 
+## Known Bug Classes and Proof Obligations
+
+This section documents bugs discovered during development and the correctness proofs
+that prevent them. **Every fix to ATS2 or bridge code must also add or strengthen
+a proof obligation** to prevent the same class of bug from recurring.
+
+### 1. Missing State Transitions (app_state bug)
+
+**Bug**: `open_db()` called `js_kv_open()` without first setting
+`app_state = APP_STATE_LOADING_DB`. When the async callback
+`on_kv_open_complete` fired, it checked `app_state == APP_STATE_LOADING_DB`,
+found it was still `INIT`, and skipped the library load entirely.
+
+**Root cause**: The state transition was in a C `%{` block that bypasses ATS2
+type checking. The `APP_STATE_TRANSITION` dataprop existed but was documentary
+— nothing enforced that `open_db()` actually performed the transition.
+
+**Proof obligation**: Every C block that modifies `app_state` MUST include:
+```c
+app_state = APP_STATE_X;  // TRANSITION: VALID_TRANSITION_NAME(from, to)
+```
+Where the transition name matches a constructor of `APP_STATE_TRANSITION`.
+Code review MUST verify the `from` state matches the function's precondition.
+
+**Similar risks**: Any function that sets up async operations (js_kv_open,
+js_file_open, js_decompress) must set state BEFORE the async call, not after.
+
+### 2. Shared Buffer Corruption (string buffer race)
+
+**Bug**: `dom_set_attr("class", "book-title")` wrote "class" to the string
+buffer and emitted a SET_ATTR diff. Before the bridge flushed the diff,
+`library_get_title()` overwrote the string buffer with the book title.
+The bridge then read "A Tal" (first 5 bytes of "A Tale of Testing") as
+the attribute name, crashing with "'A Tal' is not a valid attribute name."
+
+**Root cause**: The diff buffer protocol assumed diffs would be flushed
+before the string buffer was reused. But `dom_set_attr` only flushed
+PREVIOUS diffs (via `js_apply_diffs()` at the start), not its OWN diff.
+Any code between `dom_set_attr` and the next DOM operation could corrupt
+the pending diff's string data.
+
+**Fix**: `dom_set_attr` and `dom_create_element` now call `js_apply_diffs()`
+at the END as well, ensuring their diffs are consumed while string data
+is still valid. See `BUFFER_FLUSHED` absprop in dom.sats.
+
+**Proof obligation**: DOM operations that write to the string buffer
+(SET_ATTR, CREATE_ELEMENT) must flush immediately. The `BUFFER_FLUSHED`
+absprop documents this invariant. New DOM operations that use shared
+buffers must follow the same pattern: flush before AND after writing.
+
+**Similar risks**: Any code that reads from the fetch buffer between
+DOM operations faces the same issue — `dom_set_text_offset` reads
+fetch buffer data that could be overwritten by intervening code.
+
+### 3. Invalid Attribute Names (SET_ATTR type safety)
+
+**Bug**: Closely related to #2. Arbitrary data was passed as an HTML
+attribute name, causing a DOM exception. The attribute name should always
+be a known constant string like "class", "id", "type", etc.
+
+**Proof obligation**: `VALID_ATTR_NAME(n)` dataprop in dom.sats enumerates
+all valid attribute names by length. New ATS code that calls `dom_set_attr`
+should construct a `VALID_ATTR_NAME` proof witness. C blocks should use
+only compile-time string constants for attribute names and document which
+constructor applies:
+```c
+// VALID_ATTR_NAME: ATTR_CLASS(5)
+dom_set_attr(pf, id, (void*)str_class, 5, (void*)str_value, val_len);
+```
+
+### Guidelines for New Code
+
+1. **Prefer ATS over C blocks**: ATS type checking catches proof violations
+   at compile time. C blocks bypass all checking. Write new logic in ATS
+   whenever possible.
+
+2. **Every state transition needs a proof witness**: When changing app_state
+   in C code, cite the `APP_STATE_TRANSITION` constructor in a comment.
+   When in ATS code, construct and consume the proof.
+
+3. **Never modify shared buffers between DOM operations**: If you must read
+   or write the string/fetch buffer between DOM calls, call `js_apply_diffs()`
+   first to flush pending diffs.
+
+4. **Attribute names must be compile-time constants**: Never pass dynamic
+   data (user input, book titles, file names) as attribute names. Use only
+   the `get_str_*` helper functions that return known-constant strings.
+
+5. **Async operations require state setup BEFORE the call**: If a function
+   triggers an async bridge operation (js_kv_open, js_file_open, etc.),
+   all state (app_state, pending flags) must be set BEFORE the call, not
+   in a continuation or callback.
+
+## E2E Tests (Playwright)
+
+End-to-end tests use Playwright to launch a real browser against the full app (WASM + bridge + DOM).
+
+### Prerequisites
+
+`quire.wasm` must be built and present at the project root before running e2e tests.
+
+```bash
+# Build WASM first (see Build section above)
+make
+cp build/quire.wasm quire.wasm   # or: make install
+```
+
+### Install Playwright
+
+```bash
+npm ci                                       # install @playwright/test
+npx playwright install --with-deps chromium  # download browser + OS deps
+```
+
+On Ubuntu/Debian, `--with-deps` installs required system libraries (libgbm, libnss3, etc.). On other systems, omit `--with-deps` and install OS dependencies manually if the browser fails to launch.
+
+### Run E2E Tests
+
+```bash
+npx playwright test              # headless (default)
+npx playwright test --headed     # visible browser
+npx playwright test --debug      # step-through debugger
+```
+
+Screenshots are saved to `e2e/screenshots/` after each run (gitignored).
+
+### Configuration
+
+- **Config file**: `playwright.config.js`
+- **Test files**: `e2e/*.spec.js`
+- **Dev server**: Playwright auto-starts `npx serve . -l 3737` (reuses an existing server outside CI)
+- **Browser**: Chromium only — the app targets modern browsers, no cross-browser matrix needed
+- **Timeouts**: 60s per test, 15s per assertion
+
+### Writing E2E Tests
+
+- Tests create their own test data (e.g., `createEpub()` from `e2e/create-epub.js`)
+- No external fixtures or network requests — everything is self-contained
+- Use `page.waitForSelector()` to wait for WASM-driven DOM updates (not arbitrary timeouts)
+- The app state machine is async (IndexedDB callbacks), so wait for visible UI elements rather than internal state
+
+### CI
+
+The `e2e` job in `.github/workflows/pr.yaml` runs on every PR:
+1. Downloads the WASM artifact from the `build-wasm` job
+2. Installs Playwright browsers
+3. Runs all e2e tests
+4. Uploads screenshots (always) and Playwright report (on failure) as artifacts
+
 ## Bridge Policy
 
 **Be extremely careful about changes to bridge.js.** Most PRs should not touch it.

@@ -152,6 +152,11 @@ function handleSwMessage(event) {
 
 const imports = {
   env: {
+    // Flush pending diffs immediately (for batched DOM operations)
+    js_apply_diffs() {
+      applyDiffs();
+    },
+
     js_log(level, ptr, len) {
       const msg = readString(ptr, len);
       const levels = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
@@ -623,6 +628,7 @@ function writeEvent(type, nodeId, data1 = 0, data2 = 0) {
 }
 
 function applyDiffs() {
+  if (!diffBuffer) return;
   const view = new DataView(diffBuffer.buffer, diffBuffer.byteOffset);
   const numDiffs = view.getUint8(0);
 
@@ -703,20 +709,25 @@ function applyDiffs() {
  * This eliminates the need for manual applyDiffs() calls throughout the bridge.
  */
 function wrapExports(instance) {
-  return new Proxy(instance.exports, {
-    get(target, prop) {
-      const val = target[prop];
-      if (typeof val !== 'function') return val;
+  // Build a plain wrapper object instead of a Proxy.
+  // WebAssembly.Instance.exports properties are non-configurable in some
+  // engines, which prevents Proxy get traps from returning wrapped values.
+  const wrapped = Object.create(null);
+  for (const [key, val] of Object.entries(instance.exports)) {
+    if (typeof val !== 'function') {
+      wrapped[key] = val;
+    } else if ((key.startsWith('get_') && key.endsWith('_ptr')) || key === 'memory') {
       // Don't wrap buffer pointer getters or memory
-      if (prop.startsWith('get_') && prop.endsWith('_ptr')) return val;
-      if (prop === 'memory') return val;
-      return (...args) => {
-        const result = val.apply(target, args);
+      wrapped[key] = val;
+    } else {
+      wrapped[key] = (...args) => {
+        const result = val(...args);
         applyDiffs();
         return result;
       };
     }
-  });
+  }
+  return wrapped;
 }
 
 function handleEvent(event, type) {
@@ -771,8 +782,6 @@ export async function initBridge(wasmUrl) {
   });
 
   wasm.init();
-
-  console.log('[Bridge] initialized');
 }
 
 // Test helper: initialize bridge with a provided mock module (bypasses fetch)

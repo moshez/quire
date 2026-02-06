@@ -28,25 +28,49 @@ void free(void* ptr) {
 }
 
 void* calloc(size_t n, size_t size) {
-    void* ptr = malloc(n * size);
-    if (ptr) __builtin_memset(ptr, 0, n * size);
+    size_t total = n * size;
+    void* ptr = malloc(total);
+    if (ptr) {
+        unsigned char* d = (unsigned char*)ptr;
+        for (size_t i = 0; i < total; i++) d[i] = 0;
+    }
     return ptr;
 }
 
+/* Manual byte loops to avoid __builtin_* lowering to recursive calls
+ * in freestanding WASM (clang may emit memcpy calls for __builtin_memcpy). */
+
 void* memcpy(void* dst, const void* src, size_t n) {
-    return __builtin_memcpy(dst, src, n);
+    unsigned char* d = (unsigned char*)dst;
+    const unsigned char* s = (const unsigned char*)src;
+    for (size_t i = 0; i < n; i++) d[i] = s[i];
+    return dst;
 }
 
 void* memset(void* dst, int c, size_t n) {
-    return __builtin_memset(dst, c, n);
+    unsigned char* d = (unsigned char*)dst;
+    for (size_t i = 0; i < n; i++) d[i] = (unsigned char)c;
+    return dst;
 }
 
 void* memmove(void* dst, const void* src, size_t n) {
-    return __builtin_memmove(dst, src, n);
+    unsigned char* d = (unsigned char*)dst;
+    const unsigned char* s = (const unsigned char*)src;
+    if (d < s) {
+        for (size_t i = 0; i < n; i++) d[i] = s[i];
+    } else {
+        for (size_t i = n; i > 0; i--) d[i-1] = s[i-1];
+    }
+    return dst;
 }
 
 int memcmp(const void* a, const void* b, size_t n) {
-    return __builtin_memcmp(a, b, n);
+    const unsigned char* pa = (const unsigned char*)a;
+    const unsigned char* pb = (const unsigned char*)b;
+    for (size_t i = 0; i < n; i++) {
+        if (pa[i] != pb[i]) return pa[i] < pb[i] ? -1 : 1;
+    }
+    return 0;
 }
 
 /* Shared buffers - addresses exported to bridge */

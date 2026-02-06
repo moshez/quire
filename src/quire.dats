@@ -756,7 +756,7 @@ static void enter_reader_for_book(int book_index) {
     if (book_index < 0 || book_index >= library_get_count()) return;
 
     current_book_index = book_index;
-    app_state = APP_STATE_LOADING_BOOK;
+    app_state = APP_STATE_LOADING_BOOK;  // TRANSITION: LIBRARY_TO_LOADING_BOOK(3, 5)
 
     /* Load book metadata from IndexedDB */
     library_load_book_metadata(book_index);
@@ -907,7 +907,7 @@ void process_event_impl(void) {
     if (event_type == 2) {
         if (node_id == file_input_id && !import_in_progress) {
             import_in_progress = 1;
-            app_state = APP_STATE_IMPORTING;
+            app_state = APP_STATE_IMPORTING;  // TRANSITION: LIBRARY_TO_IMPORTING(3, 4)
 
             /* Show import progress */
             unsigned char* buf = get_fetch_buffer_ptr();
@@ -1131,7 +1131,17 @@ dataprop APP_STATE_VALID(state: int) =
  * APP_STATE_TRANSITION(from, to) proves that transitioning from state `from`
  * to state `to` is a valid state machine transition.
  *
- * NOTE: Proof is documentary - runtime state checks verify transitions. *)
+ * BUG PREVENTED: open_db() originally called js_kv_open() without setting
+ * app_state = APP_STATE_LOADING_DB. When on_kv_open_complete fired, the
+ * check `app_state == APP_STATE_LOADING_DB` failed (still INIT), so the
+ * library never loaded. The documentary proof existed but wasn't enforced.
+ *
+ * ENFORCEMENT: Functions that perform state transitions in ATS code should
+ * construct and consume proof witnesses. For C block transitions, the
+ * transition must be documented with a comment citing this dataprop.
+ * Each C block that sets app_state MUST have a comment:
+ *   // TRANSITION: APP_STATE_TRANSITION(from, to)
+ * This ensures code review catches missing transitions. *)
 dataprop APP_STATE_TRANSITION(from: int, to: int) =
   | INIT_TO_LOADING_DB(0, 1)
   | LOADING_DB_TO_LOADING_LIB(1, 2)
@@ -1225,8 +1235,11 @@ extern fun library_init_ats(): void = "mac#library_init"
 extern fun open_db(): void = "mac#"
 
 %{
-/* Open IndexedDB for library and book data */
+/* Open IndexedDB for library and book data.
+ * TRANSITION: INIT_TO_LOADING_DB(0, 1) — required before js_kv_open
+ * so on_kv_open_complete sees APP_STATE_LOADING_DB. */
 void open_db(void) {
+    app_state = APP_STATE_LOADING_DB;  // TRANSITION: INIT_TO_LOADING_DB(0, 1)
     js_kv_open((void*)str_quire_db, 5, 1, (void*)str_stores, 33);
 }
 %}
@@ -1240,14 +1253,20 @@ implement init() = let
     val () = settings_set_root_id_ats(1)
     val () = library_init_ats()
 
-    (* Inject CSS styles into document *)
-    val () = inject_styles()
-
     (* Get root proof *)
     val pf_root = dom_root_proof()
 
-    (* Clear loading text *)
+    (* Clear loading text BEFORE injecting styles.
+     * dom_set_text_offset with len=0 sets textContent='', which removes
+     * all children.  Must happen before inject_styles adds <style>. *)
     val pf_root = dom_set_text_offset(pf_root, 1, 0, 0)
+    val () = dom_drop_proof(pf_root)
+
+    (* Inject CSS styles into document *)
+    val () = inject_styles()
+
+    (* Re-acquire root proof after inject_styles *)
+    val pf_root = dom_root_proof()
 
     (* Create container div *)
     val cid = dom_next_id()
