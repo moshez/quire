@@ -217,6 +217,36 @@ dataprop FETCH_BUFFER_SAFE(offset: int, len: int) =
 dataprop DIFF_COUNT_BOUNDED(count: int, max: int) =
   | {c,m:nat | c <= m} BOUNDED_DIFFS(c, m)
 
+(* ========== Low-level C primitives (freestanding, no prelude) ========== *)
+
+(* Shared buffer accessors (implemented in runtime.c) *)
+fun get_diff_buffer_ptr(): ptr = "mac#"
+fun get_string_buffer_ptr(): ptr = "mac#"
+fun get_fetch_buffer_ptr(): ptr = "mac#"
+
+(* Byte-level memory access — irreducible C macros in runtime.h *)
+fun buf_get_u8(p: ptr, off: int): int = "mac#"
+fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#"
+fun ptr_add_int(p: ptr, n: int): ptr = "mac#"
+
+(* Bitwise operations — ATS2 has no bitwise ops without prelude *)
+fun quire_band(a: int, b: int): int = "mac#"
+fun quire_bsr(a: int, n: int): int = "mac#"
+fun quire_int2uint(x: int): int = "mac#"
+
+(* Null pointer for proof construction *)
+fun quire_null_ptr(): ptr = "mac#"
+
+(* DOM next-node-id state accessors (variable in runtime.c) *)
+fun get_dom_next_node_id(): int = "mac#"
+fun set_dom_next_node_id(v: int): void = "mac#"
+
+(* Bridge flush — consumes pending diffs *)
+fun js_apply_diffs(): void = "mac#"
+
+(* Zero-cost cast: construct node_proof from ptr at compile time *)
+castfn __make_proof {id:int} {parent:int} (x: ptr): node_proof(id, parent)
+
 (* ========== Proof helper functions ========== *)
 
 (* Construct VALID_ATTR_NAME proofs for known attribute names.

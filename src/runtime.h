@@ -60,6 +60,8 @@ typedef int atstype_bool;
 #define ATSPMVbool_false() 0
 #define ATSPMVstring(s) (s)
 #define ATSPMVempty() /* empty */
+#define ATSPMVcastfn(castfn, ty, val) ((ty)(val))
+#define ATSextfcall(f, args) f args
 
 /* Checks */
 #define ATSCKiseqz(x) ((x)==0)
@@ -104,5 +106,33 @@ extern unsigned char* get_event_buffer_ptr(void);
 extern unsigned char* get_diff_buffer_ptr(void);
 extern unsigned char* get_fetch_buffer_ptr(void);
 extern unsigned char* get_string_buffer_ptr(void);
+
+/* Bridge import: flush pending diffs */
+extern void js_apply_diffs(void);
+
+/* DOM next-node-id state (used by dom.dats via extern fun) */
+extern unsigned int get_dom_next_node_id(void);
+extern void set_dom_next_node_id(unsigned int v);
+
+/* Byte-level memory access for ATS2 freestanding (no prelude).
+ * These are the irreducible primitives that ATS2 cannot express
+ * without C bindings — each is a single expression. */
+#define buf_get_u8(p, off) ((int)(((unsigned char*)(p))[(off)]))
+#define buf_set_u8(p, off, v) (((unsigned char*)(p))[(off)] = (unsigned char)(v))
+#define ptr_add_int(p, n) ((void*)((unsigned char*)(p) + (n)))
+
+/* Bitwise operations for ATS2 freestanding (no prelude) */
+#define quire_band(a, b) ((int)((unsigned int)(a) & (unsigned int)(b)))
+#define quire_bsr(a, n) ((int)((unsigned int)(a) >> (n)))
+#define quire_int2uint(x) ((unsigned int)(x))
+
+/* Integer arithmetic for ATS2 freestanding (replaces prelude templates) */
+#define quire_add(a, b) ((a) + (b))
+#define quire_mul(a, b) ((a) * (b))
+#define quire_gte(a, b) ((a) >= (b))
+#define quire_gt(a, b) ((a) > (b))
+
+/* Null pointer for proof construction */
+#define quire_null_ptr() ((void*)0)
 
 #endif /* QUIRE_RUNTIME_H */
