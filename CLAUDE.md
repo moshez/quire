@@ -97,6 +97,211 @@ dataprop BOOK_CARD_MAPS(node_id: int, book_index: int, count: int) =
 absprop SERIALIZE_ROUNDTRIP(serialize_len: int, restore_ok: int)
 ```
 
+## Converting C Blocks to ATS2
+
+C `%{` blocks bypass all ATS2 type checking. Convert them to pure ATS whenever
+possible. The general pattern:
+
+### Step 1: Declare C primitives as extern
+
+Move irreducible C operations (byte access, bitwise ops, pointer arithmetic)
+to `runtime.h` as macros, then declare them in `.sats`:
+
+```ats
+(* .sats — declare the primitive *)
+fun buf_get_u8(p: ptr, off: int): int = "mac#"
+fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#"
+```
+
+```c
+/* runtime.h — implement the primitive */
+#define buf_get_u8(p, off) (((unsigned char*)(p))[(off)])
+#define buf_set_u8(p, off, v) (((unsigned char*)(p))[(off)] = (unsigned char)(v))
+```
+
+### Step 2: Move global state to runtime.c
+
+Don't keep `static` variables in `%{` blocks. Put them in `runtime.c` with
+getter/setter functions declared as `= "mac#"` in `.sats`.
+
+### Step 3: Write ATS implementations using the primitives
+
+Use `fn` for non-recursive module-local helpers, `implement` for `.sats` functions.
+Both support `{...}` template parameters.
+
+### Freestanding arithmetic
+
+ATS2's built-in `+`, `*`, `>=`, `>` generate prelude template dispatch calls
+(`g0int_add`, `g0int_mul`, etc.) that don't exist in freestanding mode. Replace
+them with explicit extern functions and overloads:
+
+```ats
+extern fun add_int_int(a: int, b: int): int = "mac#quire_add"
+extern fun mul_int_int(a: int, b: int): int = "mac#quire_mul"
+overload + with add_int_int of 10   (* priority 10 beats built-in *)
+overload * with mul_int_int of 10
+```
+
+For comparisons, explicit function calls are more reliable than overloads
+(overloads for `>=` can remain ambiguous):
+
+```ats
+extern fun gte_int_int(a: int, b: int): bool = "mac#quire_gte"
+(* Use: if gte_int_int(x, 255) then ... *)
+```
+
+### g0int vs g1int
+
+Plain `int` is `g0int` (untracked). `int c` from `[c:nat] int c` is `g1int`
+(dependent, statically indexed). These are **different types** — g0int overloads
+don't match g1int arguments, causing ATS2 to fall back to prelude templates
+(`g1int_mul`, `g1int_add`). Solutions:
+- Use plain `int` returns when you don't need the static index
+- Add separate g1int overloads if you need dependent arithmetic
+- Use `castfn` to explicitly cast between the two
+
+### ATS2 keywords to avoid
+
+`op` is a reserved keyword in ATS2. Don't use it as any identifier — not in
+dynamic variables, static variables, or dataprop indices. Use `opc`, `opcode`, etc.
+
+### Runtime macros
+
+Freestanding ATS2 code may need these macros in `runtime.h`:
+- `ATSPMVi0nt(i)` — plain integer literals
+- `ATSPMVintrep(i)` — statically-indexed integer representations
+- `ATSPMVcastfn(castfn, ty, val)` — zero-cost type casts
+- `ATSextfcall(f, args)` — external function calls via `$extfcall`
+
+### dataprop parameters are erased
+
+Adding a `dataprop` proof parameter to a `= "mac#"` function does NOT change
+its C signature. C callers continue to work unchanged. This means you can
+strengthen ATS interfaces with proof requirements without breaking C code.
+
+## Writing Dataprops
+
+Dataprops are compile-time proofs that are completely erased at runtime. Use
+them to make invalid states unrepresentable.
+
+### Whitelist pattern: enumerate valid values
+
+When only specific values are legal, create a dataprop with one constructor
+per valid value. The constructors ARE the whitelist — no other values can
+produce a proof:
+
+```ats
+dataprop VALID_OPCODE(opc: int) =
+  | OPCODE_SET_TEXT(1)
+  | OPCODE_SET_ATTR(2)
+  | OPCODE_CREATE_ELEMENT(4)
+
+(* Only way to call: dom_emit_diff(OPCODE_SET_TEXT(), 1, ...) *)
+fn dom_emit_diff {opc:int}
+  (pf: VALID_OPCODE(opc), opcode: int opc, ...): void
+```
+
+This is stronger than `#define` constants — even if you use the right numeric
+value, you must also produce the matching proof. "Use magic, don't use magic,
+can't break it."
+
+### Sized buffer pattern: capacity as a type property
+
+Don't hardcode buffer sizes in consumer modules. Instead, define a
+general-purpose pointer type that carries remaining capacity as a phantom
+type index. The concrete size appears ONLY at the buffer's definition
+site (buf.sats); downstream modules reference the capacity through the
+type, never through a literal.
+
+**buf.sats** — the single source of truth for buffer sizes:
+
+```ats
+(* Buffer pointer that knows its remaining capacity — erased to ptr *)
+abstype sized_buf(cap: int) = ptr
+
+(* Concrete size appears ONLY here, at the definition site *)
+stadef SBUF_CAP = 4096
+
+(* Accessor returns a sized_buf — callers get capacity from the type *)
+fun get_string_buf(): sized_buf(SBUF_CAP) = "mac#get_string_buffer_ptr"
+
+(* Writing checks len <= remaining capacity *)
+fun sbuf_write {cap,l:nat | l <= cap}
+  (dst: sized_buf(cap), src: ptr, len: int l): void = "mac#sbuf_write"
+
+(* Advancing reduces remaining capacity *)
+fun sbuf_advance {cap,n:nat | n <= cap}
+  (buf: sized_buf(cap), n: int n): sized_buf(cap - n) = "mac#ptr_add_int"
+```
+
+**Consumer module** — imports buf.sats, uses SBUF_CAP without knowing
+its concrete value matters:
+
+```ats
+staload "buf.sats"
+
+fun dom_create_element
+  {tl:nat | tl <= SBUF_CAP}
+  (..., tag_len: int tl): ... = "mac#"
+```
+
+**Usage** — sequential writes track remaining space automatically:
+
+```ats
+val sbuf = get_string_buf()            (* sized_buf(SBUF_CAP) *)
+val () = sbuf_write(sbuf, name, nl)    (* ATS checks: nl <= SBUF_CAP *)
+val sbuf = sbuf_advance(sbuf, nl)      (* sized_buf(SBUF_CAP - nl) *)
+val () = sbuf_write(sbuf, value, vl)   (* ATS checks: vl <= SBUF_CAP - nl *)
+```
+
+The key insight: if the buffer size changes from 4096 to 8192, only
+buf.sats needs updating. All consumer module constraints and proofs
+automatically adjust because they reference `SBUF_CAP`, not `4096`.
+
+**Note**: ATS2 `#define` is dynamic-level only. For type-level constraints
+(`{tl:nat | tl <= ...}`), use `stadef` instead:
+
+```ats
+#define STRING_BUFFER_SIZE 4096   (* for runtime C code *)
+stadef SBUF_CAP = 4096            (* for type-level constraints *)
+```
+
+### praxi for connecting proofs to specific values
+
+Use `praxi` (proof axioms) when a proof should only be obtainable through
+specific known values:
+
+```ats
+praxi lemma_attr_class(): VALID_ATTR_NAME(5)   (* "class" *)
+praxi lemma_attr_id(): VALID_ATTR_NAME(2)      (* "id" *)
+```
+
+These are the ONLY way to obtain `VALID_ATTR_NAME` proofs. Since each praxi
+maps to a specific known-safe string, arbitrary dynamic data can never produce
+a proof.
+
+### dataprop vs dataview
+
+- `dataprop` = non-linear (can be unused, duplicated). Use for most proofs.
+- `dataview` = linear (must be consumed exactly once). Use when tracking
+  resource ownership (e.g., a buffer lock that must be released).
+
+### Constraint solver limitations
+
+The ATS2 constraint solver handles linear integer arithmetic but NOT case
+analysis on dataprop constructors. If the solver needs to know that
+`VALID_ATTR_NAME(n)` implies `n <= 8`, add an explicit constraint alongside
+the proof parameter:
+
+```ats
+fun dom_set_attr
+  {nl:nat | nl <= SBUF_CAP} {vl:nat | nl + vl <= SBUF_CAP}
+  (pf_attr: VALID_ATTR_NAME(nl), ..., name_len: int nl, ...): ...
+```
+
+The `nl <= SBUF_CAP` is redundant with `VALID_ATTR_NAME` (max name is 8 chars)
+but necessary for the constraint solver.
+
 ## Known Bug Classes and Proof Obligations
 
 This section documents bugs discovered during development and the correctness proofs
@@ -192,19 +397,20 @@ dom_set_attr(pf, id, (void*)str_class, 5, (void*)str_value, val_len);
    or write the string/fetch buffer between DOM calls, call `js_apply_diffs()`
    first to flush pending diffs.
 
-4. **Use dom_set_attr_checked in ATS code**: Always prefer `dom_set_attr_checked`
-   over `dom_set_attr`. The checked version requires a `VALID_ATTR_NAME` proof
-   (obtained via `lemma_attr_class()`, `lemma_attr_id()`, etc.), making it
-   impossible to pass dynamic data as attribute names.
+4. **dom_set_attr requires VALID_ATTR_NAME**: `dom_set_attr` itself requires
+   a `VALID_ATTR_NAME` proof (obtained via `lemma_attr_class()`, `lemma_attr_id()`,
+   etc.). `dom_set_attr_checked` is a backward-compatible alias — both enforce
+   the proof. C callers are unaffected (proof is erased).
 
 5. **Async operations require state setup BEFORE the call**: If a function
    triggers an async bridge operation (js_kv_open, js_file_open, etc.),
    all state (app_state, pending flags) must be set BEFORE the call, not
    in a continuation or callback. Document with `ASYNC_PRECONDITION`.
 
-6. **Buffer writes need bounds proofs**: Use `STRING_BUFFER_SAFE` and
-   `FETCH_BUFFER_SAFE` dataprops when writing to shared buffers. These
-   prove writes stay within buffer bounds (4096 and 16384 respectively).
+6. **Buffer writes use sized_buf**: Use `sized_buf` from buf.sats for all
+   buffer writes. The `sbuf_write` and `sbuf_advance` functions enforce bounds
+   at the type level. Never hardcode buffer sizes — reference `SBUF_CAP` and
+   `FBUF_CAP` from buf.sats, which is the single source of truth.
 
 7. **Single pending flag invariant**: At most one async pending flag
    (`settings_is_save_pending`, `library_is_metadata_pending`, etc.) may
@@ -300,6 +506,7 @@ If your change truly requires bridge modification (rare), document the justifica
 
 - `.sats`: type declarations (interface)
 - `.dats`: implementations
+- `buf.sats`: general-purpose sized buffer type — single source of truth for buffer sizes
 - `runtime.h`: ATS2 macros and typedefs for freestanding builds
 - `runtime.c`: minimal C runtime for WASM (allocator, memory ops, buffers)
 

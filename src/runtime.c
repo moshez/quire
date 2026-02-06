@@ -83,3 +83,8 @@ unsigned char* get_event_buffer_ptr(void) { return event_buffer; }
 unsigned char* get_diff_buffer_ptr(void)  { return diff_buffer; }
 unsigned char* get_fetch_buffer_ptr(void) { return fetch_buffer; }
 unsigned char* get_string_buffer_ptr(void) { return string_buffer; }
+
+/* DOM next-node-id state (WASM owns the ID space, 1 is reserved for root) */
+static unsigned int dom_next_node_id = 2;
+unsigned int get_dom_next_node_id(void) { return dom_next_node_id; }
+void set_dom_next_node_id(unsigned int v) { dom_next_node_id = v; }
