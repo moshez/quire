@@ -1680,7 +1680,7 @@ Bridge test coverage expands incrementally: M2–M4 each add tests for the bridg
   - Delete book (remove from IndexedDB)
   - Open book → resume at last position
 
-- [ ] **M16: PWA finalization**
+- [x] **M16: PWA finalization**
   - `service-worker.js` with cache-first strategy
   - App shell caching
   - Offline verification
