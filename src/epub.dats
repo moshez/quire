@@ -46,17 +46,17 @@ extern int zip_get_data_offset(int index);
 extern int zip_get_entry_count(void);
 extern void zip_close(void);
 
-/* XML functions (from xml.dats) */
-extern void* xml_init(int data_len);
-extern void xml_free(void* ctx);
-extern int xml_next_element(void* ctx);
-extern int xml_get_element_name(void* ctx, int buf_offset);
-extern int xml_element_is(void* ctx, void* name, int name_len);
-extern int xml_get_attr(void* ctx, void* name, int name_len, int buf_offset);
-extern int xml_is_closing(void* ctx);
-extern int xml_is_self_closing(void* ctx);
-extern int xml_get_text_content(void* ctx, int buf_offset);
-extern void xml_skip_element(void* ctx);
+/* XML tree functions (from xml.dats) */
+extern void* xml_parse(int data_len);
+extern void xml_free_tree(void* tree);
+extern void* xml_find_element(void* tree, void* name, int name_len);
+extern void* xml_first_child(void* node);
+extern void* xml_next_sibling(void* cursor);
+extern void* xml_node_at(void* cursor);
+extern int xml_node_is_element(void* node);
+extern int xml_node_name_is(void* node, void* name, int name_len);
+extern int xml_node_get_attr(void* node, void* name, int name_len, int buf_offset);
+extern int xml_node_get_text(void* node, int buf_offset);
 
 /* Forward declarations */
 static void process_next_entry(void);
@@ -308,26 +308,25 @@ static int parse_container(void) {
             return 0;
         }
 
-        void* xml = xml_init(read_len);
-        if (!xml) {
-            set_error("XML init failed");
+        void* tree = xml_parse(read_len);
+        if (!tree) {
+            set_error("XML parse failed");
             return 0;
         }
 
         /* Find <rootfile full-path="..."> */
-        while (xml_next_element(xml)) {
-            if (xml_element_is(xml, (void*)str_rootfile, 8)) {
-                int path_len = xml_get_attr(xml, (void*)str_full_path, 9, 0);
-                if (path_len > 0) {
-                    unsigned char* str_buf = get_string_buffer_ptr();
-                    opf_path_len = copy_string(str_buf, path_len, opf_path, MAX_OPF_PATH_LEN);
-                    extract_opf_dir();
-                    xml_free(xml);
-                    return 1;
-                }
+        void* rf = xml_find_element(tree, (void*)str_rootfile, 8);
+        if (rf) {
+            int path_len = xml_node_get_attr(rf, (void*)str_full_path, 9, 0);
+            if (path_len > 0) {
+                unsigned char* str_buf = get_string_buffer_ptr();
+                opf_path_len = copy_string(str_buf, path_len, opf_path, MAX_OPF_PATH_LEN);
+                extract_opf_dir();
+                xml_free_tree(tree);
+                return 1;
             }
         }
-        xml_free(xml);
+        xml_free_tree(tree);
         set_error("No rootfile in container.xml");
         return 0;
     } else {
@@ -372,9 +371,9 @@ static int parse_opf(void) {
         return 0;
     }
 
-    void* xml = xml_init(read_len);
-    if (!xml) {
-        set_error("XML init failed for OPF");
+    void* tree = xml_parse(read_len);
+    if (!tree) {
+        set_error("XML parse failed for OPF");
         return 0;
     }
 
@@ -383,139 +382,129 @@ static int parse_opf(void) {
     manifest_strings_offset = 0;
     spine_count = 0;
 
-    int in_metadata = 0;
-    int in_manifest = 0;
-    int in_spine = 0;
-
-    while (xml_next_element(xml)) {
-        if (xml_is_closing(xml)) {
-            /* Check for section end */
-            if (xml_element_is(xml, (void*)str_metadata, 8)) in_metadata = 0;
-            else if (xml_element_is(xml, (void*)str_manifest, 8)) in_manifest = 0;
-            else if (xml_element_is(xml, (void*)str_spine, 5)) in_spine = 0;
-            continue;
-        }
-
-        /* Section starts */
-        if (xml_element_is(xml, (void*)str_metadata, 8)) {
-            in_metadata = 1;
-            continue;
-        }
-        if (xml_element_is(xml, (void*)str_manifest, 8)) {
-            in_manifest = 1;
-            continue;
-        }
-        if (xml_element_is(xml, (void*)str_spine, 5)) {
-            in_spine = 1;
-            continue;
-        }
-
-        /* Parse metadata */
-        if (in_metadata) {
-            if (xml_element_is(xml, (void*)str_dc_title, 8) ||
-                xml_element_is(xml, (void*)str_title, 5)) {
-                if (!xml_is_self_closing(xml)) {
-                    int len = xml_get_text_content(xml, 0);
-                    if (len > 0 && book_title_len == 0) {
+    /* Parse metadata: find <metadata> and iterate children */
+    void* meta_node = xml_find_element(tree, (void*)str_metadata, 8);
+    if (meta_node) {
+        void* mc = xml_first_child(meta_node);
+        while (mc) {
+            void* child = xml_node_at(mc);
+            if (child && xml_node_is_element(child)) {
+                if ((xml_node_name_is(child, (void*)str_dc_title, 8) ||
+                     xml_node_name_is(child, (void*)str_title, 5)) && book_title_len == 0) {
+                    int len = xml_node_get_text(child, 0);
+                    if (len > 0) {
                         book_title_len = copy_string(str_buf, len, book_title, MAX_TITLE_LEN);
                     }
-                }
-            } else if (xml_element_is(xml, (void*)str_dc_creator, 10) ||
-                       xml_element_is(xml, (void*)str_creator, 7)) {
-                if (!xml_is_self_closing(xml)) {
-                    int len = xml_get_text_content(xml, 0);
-                    if (len > 0 && book_author_len == 0) {
+                } else if ((xml_node_name_is(child, (void*)str_dc_creator, 10) ||
+                            xml_node_name_is(child, (void*)str_creator, 7)) && book_author_len == 0) {
+                    int len = xml_node_get_text(child, 0);
+                    if (len > 0) {
                         book_author_len = copy_string(str_buf, len, book_author, MAX_AUTHOR_LEN);
                     }
                 }
             }
-        }
-
-        /* Parse manifest items */
-        if (in_manifest && xml_element_is(xml, (void*)str_item, 4)) {
-            if (manifest_count >= MAX_MANIFEST_ITEMS) continue;
-
-            manifest_item_t* item = &manifest_items[manifest_count];
-
-            /* Get id attribute */
-            int id_len = xml_get_attr(xml, (void*)str_id, 2, 0);
-            if (id_len > 0 && manifest_strings_offset + id_len < 4096) {
-                item->id_offset = manifest_strings_offset;
-                item->id_len = id_len;
-                for (int i = 0; i < id_len; i++) {
-                    manifest_strings[manifest_strings_offset++] = str_buf[i];
-                }
-            } else {
-                continue;
-            }
-
-            /* Get href attribute */
-            int href_len = xml_get_attr(xml, (void*)str_href, 4, 0);
-            if (href_len > 0 && manifest_strings_offset + href_len < 4096) {
-                item->href_offset = manifest_strings_offset;
-                item->href_len = href_len;
-                for (int i = 0; i < href_len; i++) {
-                    manifest_strings[manifest_strings_offset++] = str_buf[i];
-                }
-            } else {
-                continue;
-            }
-
-            /* Get media-type */
-            int mt_len = xml_get_attr(xml, (void*)str_media_type, 10, 0);
-            item->media_type = 0;
-            if (mt_len > 0) {
-                /* Check for xhtml */
-                int is_xhtml = 1;
-                const char* xhtml = str_xhtml;
-                for (int i = 0; i < 20 && i < mt_len && is_xhtml; i++) {
-                    if (str_buf[i] != xhtml[i]) is_xhtml = 0;
-                }
-                if (is_xhtml && mt_len >= 20) item->media_type = 1;
-
-                /* Check for text/html */
-                if (item->media_type == 0) {
-                    int is_html = 1;
-                    const char* html = str_html;
-                    for (int i = 0; i < 9 && i < mt_len && is_html; i++) {
-                        if (str_buf[i] != html[i]) is_html = 0;
-                    }
-                    if (is_html && mt_len >= 9) item->media_type = 1;
-                }
-            }
-
-            /* Find corresponding ZIP entry */
-            /* Build full path: opf_dir + href */
-            char full_path[512];
-            int full_len = 0;
-            for (int i = 0; i < opf_dir_len && full_len < 511; i++) {
-                full_path[full_len++] = opf_dir[i];
-            }
-            for (int i = 0; i < item->href_len && full_len < 511; i++) {
-                full_path[full_len++] = manifest_strings[item->href_offset + i];
-            }
-            full_path[full_len] = 0;
-
-            item->zip_index = zip_find_entry(full_path, full_len);
-
-            manifest_count++;
-        }
-
-        /* Parse spine itemrefs */
-        if (in_spine && xml_element_is(xml, (void*)str_itemref, 7)) {
-            if (spine_count >= MAX_SPINE_ITEMS) continue;
-
-            int idref_len = xml_get_attr(xml, (void*)str_idref, 5, 0);
-            if (idref_len > 0) {
-                int manifest_idx = find_manifest_by_id(str_buf, idref_len);
-                if (manifest_idx >= 0) {
-                    spine_manifest_indices[spine_count++] = manifest_idx;
-                }
-            }
+            mc = xml_next_sibling(mc);
         }
     }
 
-    xml_free(xml);
+    /* Parse manifest: find <manifest> and iterate <item> children */
+    void* manifest_node = xml_find_element(tree, (void*)str_manifest, 8);
+    if (manifest_node) {
+        void* mc = xml_first_child(manifest_node);
+        while (mc) {
+            void* child = xml_node_at(mc);
+            if (child && xml_node_name_is(child, (void*)str_item, 4) &&
+                manifest_count < MAX_MANIFEST_ITEMS) {
+                manifest_item_t* item = &manifest_items[manifest_count];
+
+                /* Get id attribute */
+                int id_len = xml_node_get_attr(child, (void*)str_id, 2, 0);
+                if (id_len > 0 && manifest_strings_offset + id_len < 4096) {
+                    item->id_offset = manifest_strings_offset;
+                    item->id_len = id_len;
+                    for (int i = 0; i < id_len; i++) {
+                        manifest_strings[manifest_strings_offset++] = str_buf[i];
+                    }
+                } else {
+                    mc = xml_next_sibling(mc);
+                    continue;
+                }
+
+                /* Get href attribute */
+                int href_len = xml_node_get_attr(child, (void*)str_href, 4, 0);
+                if (href_len > 0 && manifest_strings_offset + href_len < 4096) {
+                    item->href_offset = manifest_strings_offset;
+                    item->href_len = href_len;
+                    for (int i = 0; i < href_len; i++) {
+                        manifest_strings[manifest_strings_offset++] = str_buf[i];
+                    }
+                } else {
+                    mc = xml_next_sibling(mc);
+                    continue;
+                }
+
+                /* Get media-type */
+                int mt_len = xml_node_get_attr(child, (void*)str_media_type, 10, 0);
+                item->media_type = 0;
+                if (mt_len > 0) {
+                    /* Check for xhtml */
+                    int is_xhtml = 1;
+                    const char* xhtml = str_xhtml;
+                    for (int i = 0; i < 20 && i < mt_len && is_xhtml; i++) {
+                        if (str_buf[i] != xhtml[i]) is_xhtml = 0;
+                    }
+                    if (is_xhtml && mt_len >= 20) item->media_type = 1;
+
+                    /* Check for text/html */
+                    if (item->media_type == 0) {
+                        int is_html = 1;
+                        const char* html = str_html;
+                        for (int i = 0; i < 9 && i < mt_len && is_html; i++) {
+                            if (str_buf[i] != html[i]) is_html = 0;
+                        }
+                        if (is_html && mt_len >= 9) item->media_type = 1;
+                    }
+                }
+
+                /* Find corresponding ZIP entry */
+                char full_path[512];
+                int full_len = 0;
+                for (int i = 0; i < opf_dir_len && full_len < 511; i++) {
+                    full_path[full_len++] = opf_dir[i];
+                }
+                for (int i = 0; i < item->href_len && full_len < 511; i++) {
+                    full_path[full_len++] = manifest_strings[item->href_offset + i];
+                }
+                full_path[full_len] = 0;
+
+                item->zip_index = zip_find_entry(full_path, full_len);
+                manifest_count++;
+            }
+            mc = xml_next_sibling(mc);
+        }
+    }
+
+    /* Parse spine: find <spine> and iterate <itemref> children */
+    void* spine_node = xml_find_element(tree, (void*)str_spine, 5);
+    if (spine_node) {
+        void* mc = xml_first_child(spine_node);
+        while (mc) {
+            void* child = xml_node_at(mc);
+            if (child && xml_node_name_is(child, (void*)str_itemref, 7) &&
+                spine_count < MAX_SPINE_ITEMS) {
+                int idref_len = xml_node_get_attr(child, (void*)str_idref, 5, 0);
+                if (idref_len > 0) {
+                    int manifest_idx = find_manifest_by_id(str_buf, idref_len);
+                    if (manifest_idx >= 0) {
+                        spine_manifest_indices[spine_count++] = manifest_idx;
+                    }
+                }
+            }
+            mc = xml_next_sibling(mc);
+        }
+    }
+
+    xml_free_tree(tree);
 
     /* Set defaults if metadata missing */
     if (book_title_len == 0) {
@@ -537,6 +526,63 @@ static int parse_opf(void) {
     }
 
     return 1;
+}
+
+/* M13: Helper: process navPoint children recursively */
+static void parse_ncx_navpoints(void* parent, int level) {
+    unsigned char* str_buf = get_string_buffer_ptr();
+    void* cursor = xml_first_child(parent);
+    while (cursor) {
+        void* child = xml_node_at(cursor);
+        if (child && xml_node_name_is(child, (void*)str_navPoint, 8)) {
+            /* Found a navPoint - extract label and content src */
+            int label_offset = 0;
+            int label_len = 0;
+            int has_label = 0;
+
+            /* Find navLabel > text for label */
+            void* label_node = xml_find_element(child, (void*)str_text, 4);
+            if (label_node) {
+                int len = xml_node_get_text(label_node, 0);
+                if (len > 0 && toc_strings_offset + len < 8190) {
+                    label_offset = toc_strings_offset;
+                    label_len = len < MAX_TOC_LABEL_LEN ? len : MAX_TOC_LABEL_LEN;
+                    for (int i = 0; i < label_len; i++) {
+                        toc_strings[toc_strings_offset++] = str_buf[i];
+                    }
+                    has_label = 1;
+                }
+            }
+
+            /* Find content[@src] */
+            void* content_node = xml_find_element(child, (void*)str_content, 7);
+            if (content_node && has_label && toc_count < MAX_TOC_ENTRIES) {
+                int src_len = xml_node_get_attr(content_node, (void*)str_src, 3, 0);
+                if (src_len > 0) {
+                    toc_entry_t* entry = &toc_entries[toc_count];
+                    entry->label_offset = label_offset;
+                    entry->label_len = label_len;
+
+                    /* Store href */
+                    entry->href_offset = toc_strings_offset;
+                    entry->href_len = src_len < 256 ? src_len : 255;
+                    if (toc_strings_offset + entry->href_len < 8190) {
+                        for (int i = 0; i < entry->href_len; i++) {
+                            toc_strings[toc_strings_offset++] = str_buf[i];
+                        }
+                    }
+
+                    entry->spine_index = find_spine_index_by_href(str_buf, src_len);
+                    entry->nesting_level = level;
+                    toc_count++;
+                }
+            }
+
+            /* Recurse into nested navPoints */
+            parse_ncx_navpoints(child, level + 1);
+        }
+        cursor = xml_next_sibling(cursor);
+    }
 }
 
 /* M13: Parse NCX file for Table of Contents */
@@ -567,8 +613,8 @@ static int parse_ncx(void) {
         return 0;
     }
 
-    void* xml = xml_init(read_len);
-    if (!xml) {
+    void* tree = xml_parse(read_len);
+    if (!tree) {
         return 0;
     }
 
@@ -576,76 +622,14 @@ static int parse_ncx(void) {
     toc_count = 0;
     toc_strings_offset = 0;
 
-    int in_navMap = 0;
-    int current_level = 0;
-    int pending_label = 0;
-    int pending_label_offset = 0;
-    int pending_label_len = 0;
-    int navPoint_depth = 0;  /* Track nested navPoints */
-
-    while (xml_next_element(xml)) {
-        if (xml_is_closing(xml)) {
-            if (xml_element_is(xml, (void*)str_navMap, 6)) {
-                in_navMap = 0;
-            } else if (xml_element_is(xml, (void*)str_navPoint, 8)) {
-                if (navPoint_depth > 0) navPoint_depth--;
-            }
-            continue;
-        }
-
-        if (xml_element_is(xml, (void*)str_navMap, 6)) {
-            in_navMap = 1;
-            continue;
-        }
-
-        if (in_navMap) {
-            if (xml_element_is(xml, (void*)str_navPoint, 8)) {
-                /* Start of a new navPoint */
-                current_level = navPoint_depth;
-                navPoint_depth++;
-                pending_label = 0;
-            } else if (xml_element_is(xml, (void*)str_text, 4)) {
-                /* Get the label text */
-                if (!xml_is_self_closing(xml)) {
-                    int len = xml_get_text_content(xml, 0);
-                    if (len > 0 && toc_strings_offset + len < 8190) {
-                        pending_label_offset = toc_strings_offset;
-                        pending_label_len = len < MAX_TOC_LABEL_LEN ? len : MAX_TOC_LABEL_LEN;
-                        for (int i = 0; i < pending_label_len; i++) {
-                            toc_strings[toc_strings_offset++] = str_buf[i];
-                        }
-                        pending_label = 1;
-                    }
-                }
-            } else if (xml_element_is(xml, (void*)str_content, 7)) {
-                /* Get the content src and create TOC entry */
-                int src_len = xml_get_attr(xml, (void*)str_src, 3, 0);
-                if (src_len > 0 && pending_label && toc_count < MAX_TOC_ENTRIES) {
-                    toc_entry_t* entry = &toc_entries[toc_count];
-                    entry->label_offset = pending_label_offset;
-                    entry->label_len = pending_label_len;
-
-                    /* Store href */
-                    entry->href_offset = toc_strings_offset;
-                    entry->href_len = src_len < 256 ? src_len : 255;
-                    if (toc_strings_offset + entry->href_len < 8190) {
-                        for (int i = 0; i < entry->href_len; i++) {
-                            toc_strings[toc_strings_offset++] = str_buf[i];
-                        }
-                    }
-
-                    /* Find spine index */
-                    entry->spine_index = find_spine_index_by_href(str_buf, src_len);
-                    entry->nesting_level = current_level;
-
-                    toc_count++;
-                    pending_label = 0;
-                }
-            }
-        }
+    /* Find <navMap> element */
+    void* navMap = xml_find_element(tree, (void*)str_navMap, 6);
+    if (navMap) {
+        /* Process navPoints recursively via helper */
+        parse_ncx_navpoints(navMap, 0);
     }
 
-    xml_free(xml);
+    xml_free_tree(tree);
     return toc_count > 0 ? 1 : 0;
 }
 
