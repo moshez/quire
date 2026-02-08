@@ -21,6 +21,10 @@ typedef void* atstype_ptrk;
 typedef void* atstype_cptr;
 typedef int atstype_int;
 typedef int atstype_bool;
+typedef void* atstype_boxed;
+
+/* Struct keyword for ATS-generated type layouts */
+#define ATSstruct struct
 
 /* Type kind macros - resolve to the actual type */
 #define atstkind_type(tk) tk
@@ -52,6 +56,53 @@ typedef int atstype_bool;
 #define ATSINSmove(dst, src) dst = (src)
 #define ATSINSmove_void(dst, src) src
 #define ATSINSflab(lab) lab
+#define ATSINSlab(lab) lab
+#define ATSINSgoto(lab) goto lab
+
+/* Case/branch control flow */
+#define ATScaseof_beg()
+#define ATScaseof_end()
+#define ATSbranch_beg()
+#define ATSbranch_end()
+#define ATSifthen(x) if(x)
+
+/* Tail call optimization */
+#define ATStailcal_beg()
+#define ATStailcal_end()
+#define ATSINSmove_tlcal(dst, src) dst = (src)
+#define ATSINSargmove_tlcal(dst, src) dst = (src)
+#define ATSINSfgoto(lab) goto lab
+#define ATSINSdeadcode_fail() /* unreachable */
+
+/* Datavtype (heap-allocated tagged union) support */
+#define ATSCKptriscons(p) ((p) != (void*)0)
+#define ATSCKptrisnull(p) ((p) == (void*)0)
+#define ATSSELcon(p, tysum, lab) (((tysum*)(p))->lab)
+#define ATSifnthen(x) if(!(x))
+#define ATSCKpat_con0(p, tag) ((p)==(void*)0)
+#define ATSCKpat_con1(p, tag) (((int*)(p))[0]==(tag))
+#define ATSSELcon(p, tysum, lab) (((tysum*)(p))->lab)
+#define ATSINSfreecon(p) /* bump allocator: free is no-op */
+#define ATSINSmove_nil(dst) (dst) = (void*)0
+#define ATSINSmove_con0(dst, tag) (dst) = (void*)0
+#define ATSINSmove_con1_beg()
+#define ATSINSmove_con1_end()
+#define ATSINSmove_con1_new(dst, tysum) (dst) = malloc(sizeof(tysum))
+#define ATSINSstore_con1_tag(dst, tag) (((int*)(dst))[0] = (tag))
+#define ATSINSstore_con1_ofs(dst, tysum, lab, val) (((tysum*)(dst))->lab) = (val)
+
+/* Borrow parameter support (! in ATS2 function signatures) */
+#define atsrefarg0_type(ty) ty
+#define atsrefarg1_type(ty) ty*
+#define ATSPMVrefarg0(x) (x)
+#define ATSPMVrefarg1(x) (&(x))
+#define ATSderefarg1(x) (*(x))
+
+/* Flat record (tuple) support */
+#define ATSINSmove_fltrec_beg()
+#define ATSINSmove_fltrec_end()
+#define ATSINSstore_fltrec_ofs(dst, tyrec, lab, val) ((dst).lab = (val))
+#define ATSSELfltrec(rec, tyrec, lab) ((rec).lab)
 
 /* Primitive values */
 #define ATSPMVi0nt(i) (i)
@@ -71,7 +122,7 @@ typedef int atstype_bool;
 
 /* External function declarations for mac# functions */
 #define ATSdyncst_mac(f) /* external C function */
-#define ATSdyncst_extfun(f, argtys, restys) /* external function */
+#define ATSdyncst_extfun(f, argtys, restys) extern restys f argtys
 #define ATSdyncst_valimp(f, ty) /* value implementation */
 
 /* Static load flags */
@@ -133,6 +184,11 @@ extern void set_dom_next_node_id(unsigned int v);
 #define quire_mul(a, b) ((a) * (b))
 #define quire_gte(a, b) ((a) >= (b))
 #define quire_gt(a, b) ((a) > (b))
+#define quire_eq(a, b) ((a) == (b))
+#define quire_neq(a, b) ((a) != (b))
+#define quire_ptr_eq(a, b) ((a) == (b))
+#define quire_sub(a, b) ((a) - (b))
+#define quire_neg(a) (-(a))
 
 /* Null pointer for proof construction */
 #define quire_null_ptr() ((void*)0)
