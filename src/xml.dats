@@ -329,16 +329,11 @@ in
       val p = p + nlen
       val () = if gt_int_int(max, p) then buf_set_u8(buf, p, 62)
       val _ = node_to_ptr(node2)
-      (* Proof: serialized '<' name attrs '>' children '</' name '>'
-       * — symmetric with parse_element_impl field order *)
-      prval pf = xml_roundtrip_lemma()
-    in (pf | p + 1) end
+    in p + 1 end
   | xml_text_vt(text, tlen) => let
       val () = copy_bytes(text, 0, buf, pos, tlen, max)
       val _ = node_to_ptr(node2)
-      (* Proof: serialized raw text bytes — symmetric with parse text *)
-      prval pf = xml_roundtrip_lemma()
-    in (pf | pos + tlen) end
+    in pos + tlen end
 end
 
 implement serialize_nodes_h(nodes_ptr, buf, pos, max) =
@@ -352,8 +347,7 @@ implement serialize_nodes_h(nodes_ptr, buf, pos, max) =
         val rp = nodes_borrow_ptr(rest)
         val _ = nodes_to_ptr(nodes)
         val node3 = ptr_to_node(np)
-        val (pf | p) = xml_serialize_node(node3, buf, pos, max)
-        prval _ = pf
+        val p = xml_serialize_node(node3, buf, pos, max)
         val _ = node_to_ptr(node3)
       in serialize_nodes_h(rp, buf, p, max) end
   end
@@ -384,11 +378,7 @@ implement serialize_attrs_h(attrs_ptr, buf, pos, max) =
 
 implement xml_serialize_nodes(nodes, buf, pos, max) = let
   val np = nodes_borrow_ptr(nodes)
-  val result = serialize_nodes_h(np, buf, pos, max)
-  prval pf = xml_roundtrip_lemma()
-in (pf | result) end
-
-(* xml_roundtrip_lemma is praxi — no implementation needed. *)
+in serialize_nodes_h(np, buf, pos, max) end
 
 (* ========== C-Callable Query API ========== *)
 

@@ -163,8 +163,8 @@ extern unsigned char* get_string_buffer_ptr(void);
 extern void js_apply_diffs(void);
 
 /* DOM next-node-id state (used by dom.dats via extern fun) */
-extern unsigned int get_dom_next_node_id(void);
-extern void set_dom_next_node_id(unsigned int v);
+extern int get_dom_next_node_id(void);
+extern int set_dom_next_node_id(int v);
 
 /* Byte-level memory access for ATS2 freestanding (no prelude).
  * These are the irreducible primitives that ATS2 cannot express
@@ -181,6 +181,11 @@ extern void set_dom_next_node_id(unsigned int v);
 #define quire_bsr(a, n) ((int)((unsigned int)(a) >> (n)))
 #define quire_int2uint(x) ((unsigned int)(x))
 #define quire_byte2int(b) ((int)(unsigned char)(b))
+
+/* Bounds-checked byte read from ward_arr (erased to ptr at runtime).
+ * Returns byte value if 0 <= off < len, else 0. */
+#define _ward_arr_byte(arr, off, len) \
+  (((off) >= 0 && (off) < (len)) ? ((int)((unsigned char*)(arr))[(off)]) : 0)
 
 /* Integer arithmetic for ATS2 freestanding (replaces prelude templates) */
 #define quire_add(a, b) ((a) + (b))

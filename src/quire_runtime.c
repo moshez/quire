@@ -3258,12 +3258,13 @@ static int _zip_file_handle = 0;
 static char _zip_name_buffer[ZIP_NAME_BUFFER_SIZE];
 static int _zip_name_offset = 0;
 
-void _zip_reset(void) {
+int _zip_reset(void) {
     _zip_entry_count = 0;
     _zip_name_offset = 0;
     _zip_file_handle = 0;
+    return 0;
 }
-void _zip_set_file_handle(int h) { _zip_file_handle = h; }
+int _zip_set_file_handle(int h) { _zip_file_handle = h; return 0; }
 int _zip_get_file_handle(void) { return _zip_file_handle; }
 int _zip_get_entry_count(void) { return _zip_entry_count; }
 
@@ -3301,4 +3302,104 @@ int _zip_name_buf_put(int off, int byte_val) {
 }
 
 int _zip_name_buf_offset(void) { return _zip_name_offset; }
-void _zip_name_buf_advance(int n) { _zip_name_offset += n; }
+int _zip_name_buf_advance(int n) { _zip_name_offset += n; return 0; }
+
+/* ========== DOM module (moved from dom.dats %{ blocks) ========== */
+
+/* Node ID allocator */
+static int _dom_next_node_id = 1;
+int get_dom_next_node_id(void) { return _dom_next_node_id; }
+int set_dom_next_node_id(int v) { _dom_next_node_id = v; return 0; }
+
+/* Byte copy for tree rendering */
+int _copy_to_arr(void *dst, void *src, int off, int count) {
+    unsigned char *d = (unsigned char*)dst;
+    unsigned char *s = (unsigned char*)src;
+    for (int i = 0; i < count; i++) {
+        d[i] = s[off + i];
+    }
+    return 0;
+}
+
+/* Freestanding memcmp — no libc available */
+static int _dom_memcmp(const void *a, const void *b, int n) {
+    const unsigned char *pa = (const unsigned char *)a;
+    const unsigned char *pb = (const unsigned char *)b;
+    for (int i = 0; i < n; i++) {
+        if (pa[i] != pb[i]) return pa[i] - pb[i];
+    }
+    return 0;
+}
+
+/* Tag lookup table — maps tag name bytes to index */
+typedef struct { const char *name; int len; } _dom_tag_entry;
+
+static const _dom_tag_entry TAG_TABLE[] = {
+  {"div", 3}, {"span", 4}, {"button", 6}, {"style", 5},
+  {"h1", 2}, {"h2", 2}, {"h3", 2}, {"p", 1},
+  {"input", 5}, {"label", 5}, {"select", 6}, {"option", 6},
+  {"a", 1}, {"img", 3},
+  /* EPUB content tags */
+  {"b", 1}, {"i", 1}, {"u", 1}, {"s", 1}, {"q", 1},
+  {"em", 2}, {"br", 2}, {"hr", 2}, {"li", 2},
+  {"dd", 2}, {"dl", 2}, {"dt", 2}, {"ol", 2}, {"ul", 2},
+  {"td", 2}, {"th", 2}, {"tr", 2},
+  {"h4", 2}, {"h5", 2}, {"h6", 2},
+  {"pre", 3}, {"sub", 3}, {"sup", 3}, {"var", 3}, {"wbr", 3},
+  {"nav", 3}, {"kbd", 3},
+  {"code", 4}, {"mark", 4}, {"cite", 4}, {"abbr", 4},
+  {"dfn", 3}, {"main", 4}, {"time", 4}, {"ruby", 4},
+  {"aside", 5}, {"small", 5}, {"table", 5}, {"thead", 5},
+  {"tbody", 5}, {"tfoot", 5},
+  {"strong", 6}, {"figure", 6}, {"footer", 6}, {"header", 6},
+  {"section", 7}, {"article", 7}, {"details", 7}, {"summary", 7},
+  {"caption", 7},
+  {"blockquote", 10}, {"figcaption", 10},
+  /* SVG */
+  {"svg", 3}, {"g", 1}, {"path", 4}, {"circle", 6},
+  {"rect", 4}, {"line", 4}, {"polyline", 8}, {"polygon", 7},
+  {"text", 4}, {"tspan", 5}, {"use", 3}, {"defs", 4},
+  {"image", 5}, {"symbol", 6}, {"title", 5}, {"desc", 4},
+  /* MathML */
+  {"math", 4}, {"mi", 2}, {"mn", 2}, {"mo", 2},
+  {"mrow", 4}, {"msup", 4}, {"msub", 4},
+  {"mfrac", 5}, {"msqrt", 5}, {"mroot", 5}, {"mover", 5},
+  {"munder", 6}, {"mtable", 6}, {"mtr", 3}, {"mtd", 3},
+  {"rp", 2}, {"rt", 2},
+};
+#define TAG_TABLE_SIZE (sizeof(TAG_TABLE) / sizeof(TAG_TABLE[0]))
+
+int lookup_tag(void *bytes, int len) {
+    for (int i = 0; i < (int)TAG_TABLE_SIZE; i++) {
+        if (TAG_TABLE[i].len == len &&
+            _dom_memcmp(bytes, TAG_TABLE[i].name, len) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* Attribute lookup table */
+static const _dom_tag_entry ATTR_TABLE[] = {
+  {"class", 5}, {"id", 2}, {"type", 4}, {"for", 3},
+  {"accept", 6}, {"href", 4}, {"src", 3}, {"alt", 3},
+  {"title", 5}, {"width", 5}, {"height", 6}, {"lang", 4},
+  {"dir", 3}, {"role", 4}, {"tabindex", 8},
+  {"colspan", 7}, {"rowspan", 7}, {"xmlns", 5},
+  {"d", 1}, {"fill", 4}, {"stroke", 6},
+  {"cx", 2}, {"cy", 2}, {"r", 1}, {"x", 1}, {"y", 1},
+  {"transform", 9}, {"viewBox", 7},
+  {"aria-label", 10}, {"aria-hidden", 11},
+  {"name", 4}, {"value", 5},
+};
+#define ATTR_TABLE_SIZE (sizeof(ATTR_TABLE) / sizeof(ATTR_TABLE[0]))
+
+int lookup_attr(void *bytes, int len) {
+    for (int i = 0; i < (int)ATTR_TABLE_SIZE; i++) {
+        if (ATTR_TABLE[i].len == len &&
+            _dom_memcmp(bytes, ATTR_TABLE[i].name, len) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}

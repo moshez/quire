@@ -162,10 +162,10 @@ fun attr_value(): ward_safe_text(5)
 (* Look up a tag name from raw bytes. Returns safe_text index or -1.
  * Used by the tree renderer to match parsed HTML tag bytes to
  * pre-built ward_safe_text constants. *)
-fun lookup_tag(bytes: ptr, len: int): int
+fun lookup_tag(bytes: ptr, len: int): int = "mac#"
 
 (* Look up an attribute name from raw bytes. Returns index or -1. *)
-fun lookup_attr(bytes: ptr, len: int): int
+fun lookup_attr(bytes: ptr, len: int): int = "mac#"
 
 (* Get a tag safe_text by index (returned by lookup_tag).
  * All tags are <= 10 chars, so n + 10 <= 4096 holds. *)

@@ -18,12 +18,6 @@ staload _ = "./../vendor/ward/lib/dom.dats"
 extern fun get_dom_next_node_id(): int = "mac#"
 extern fun set_dom_next_node_id(v: int): void = "mac#"
 
-%{
-static int _dom_next_node_id = 1;
-int get_dom_next_node_id(void) { return _dom_next_node_id; }
-void set_dom_next_node_id(int v) { _dom_next_node_id = v; }
-%}
-
 implement dom_next_id() = let
   val id = get_dom_next_node_id()
   val () = set_dom_next_node_id(id + 1)
@@ -752,113 +746,19 @@ implement attr_value() = let val b = ward_text_build(5)
   val b = ward_text_putc(b, 3, char2int1('u'))
   val b = ward_text_putc(b, 4, char2int1('e')) in ward_text_done(b) end
 
-(* ========== Tag/Attr lookup and tree renderer — C implementation ========== *)
+(* ========== Tree binary byte readers ========== *)
 
-(* The lookup tables and tree renderer are implemented in C because they
- * involve byte-level comparison of parsed HTML binary against known strings.
- * This is irreducible C — the ward_safe_text constants ARE the type-safe
- * interface; the lookup just maps raw bytes to the correct constant index.
- *
- * Note: This C block exists only for Phase 2. Phases 3+ will migrate
- * all remaining modules to pure ATS. The lookup table itself is safe by
- * construction — it can only return indices into the pre-built safe_text
- * table, never create new safe_text values.
- *)
+(* Lookup tables for tag/attr are in quire_runtime.c (mac# functions).
+ * Byte readers use buf_get_u8 from runtime.h. *)
 
-%{
-/* Freestanding memcmp — no libc available */
-static int _dom_memcmp(const void *a, const void *b, int n) {
-    const unsigned char *pa = (const unsigned char *)a;
-    const unsigned char *pb = (const unsigned char *)b;
-    for (int i = 0; i < n; i++) {
-        if (pa[i] != pb[i]) return pa[i] - pb[i];
-    }
-    return 0;
-}
+extern fun _rd_u8(p: ptr, off: int): int = "mac#buf_get_u8"
 
-/* Tag lookup table — maps tag name bytes to index */
-typedef struct { const char *name; int len; } tag_entry;
-
-static const tag_entry TAG_TABLE[] = {
-  {"div", 3}, {"span", 4}, {"button", 6}, {"style", 5},
-  {"h1", 2}, {"h2", 2}, {"h3", 2}, {"p", 1},
-  {"input", 5}, {"label", 5}, {"select", 6}, {"option", 6},
-  {"a", 1}, {"img", 3},
-  /* EPUB content tags */
-  {"b", 1}, {"i", 1}, {"u", 1}, {"s", 1}, {"q", 1},
-  {"em", 2}, {"br", 2}, {"hr", 2}, {"li", 2},
-  {"dd", 2}, {"dl", 2}, {"dt", 2}, {"ol", 2}, {"ul", 2},
-  {"td", 2}, {"th", 2}, {"tr", 2},
-  {"h4", 2}, {"h5", 2}, {"h6", 2},
-  {"pre", 3}, {"sub", 3}, {"sup", 3}, {"var", 3}, {"wbr", 3},
-  {"nav", 3}, {"kbd", 3},
-  {"code", 4}, {"mark", 4}, {"cite", 4}, {"abbr", 4},
-  {"dfn", 3}, {"main", 4}, {"time", 4}, {"ruby", 4},
-  {"aside", 5}, {"small", 5}, {"table", 5}, {"thead", 5},
-  {"tbody", 5}, {"tfoot", 5},
-  {"strong", 6}, {"figure", 6}, {"footer", 6}, {"header", 6},
-  {"section", 7}, {"article", 7}, {"details", 7}, {"summary", 7},
-  {"caption", 7},
-  {"blockquote", 10}, {"figcaption", 10},
-  /* SVG */
-  {"svg", 3}, {"g", 1}, {"path", 4}, {"circle", 6},
-  {"rect", 4}, {"line", 4}, {"polyline", 8}, {"polygon", 7},
-  {"text", 4}, {"tspan", 5}, {"use", 3}, {"defs", 4},
-  {"image", 5}, {"symbol", 6}, {"title", 5}, {"desc", 4},
-  /* MathML */
-  {"math", 4}, {"mi", 2}, {"mn", 2}, {"mo", 2},
-  {"mrow", 4}, {"msup", 4}, {"msub", 4},
-  {"mfrac", 5}, {"msqrt", 5}, {"mroot", 5}, {"mover", 5},
-  {"munder", 6}, {"mtable", 6}, {"mtr", 3}, {"mtd", 3},
-  {"rp", 2}, {"rt", 2},
-};
-#define TAG_TABLE_SIZE (sizeof(TAG_TABLE) / sizeof(TAG_TABLE[0]))
-
-int lookup_tag(void *bytes, int len) {
-    for (int i = 0; i < (int)TAG_TABLE_SIZE; i++) {
-        if (TAG_TABLE[i].len == len &&
-            _dom_memcmp(bytes, TAG_TABLE[i].name, len) == 0) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-/* Attribute lookup table */
-static const tag_entry ATTR_TABLE[] = {
-  {"class", 5}, {"id", 2}, {"type", 4}, {"for", 3},
-  {"accept", 6}, {"href", 4}, {"src", 3}, {"alt", 3},
-  {"title", 5}, {"width", 5}, {"height", 6}, {"lang", 4},
-  {"dir", 3}, {"role", 4}, {"tabindex", 8},
-  {"colspan", 7}, {"rowspan", 7}, {"xmlns", 5},
-  {"d", 1}, {"fill", 4}, {"stroke", 6},
-  {"cx", 2}, {"cy", 2}, {"r", 1}, {"x", 1}, {"y", 1},
-  {"transform", 9}, {"viewBox", 7},
-  {"aria-label", 10}, {"aria-hidden", 11},
-  {"name", 4}, {"value", 5},
-};
-#define ATTR_TABLE_SIZE (sizeof(ATTR_TABLE) / sizeof(ATTR_TABLE[0]))
-
-int lookup_attr(void *bytes, int len) {
-    for (int i = 0; i < (int)ATTR_TABLE_SIZE; i++) {
-        if (ATTR_TABLE[i].len == len &&
-            _dom_memcmp(bytes, ATTR_TABLE[i].name, len) == 0) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-/* Read u8 from byte pointer */
-static int _rd_u8(unsigned char *p, int off) { return p[off]; }
-/* Read u16LE from byte pointer */
-static int _rd_u16(unsigned char *p, int off) {
-    return p[off] | (p[off+1] << 8);
-}
-%}
-
-extern fun _rd_u8(p: ptr, off: int): int = "mac#"
-extern fun _rd_u16(p: ptr, off: int): int = "mac#"
+fn _rd_u16(p: ptr, off: int): int = let
+  extern fun bor(a: int, b: int): int = "mac#quire_bor"
+  extern fun bsl(a: int, b: int): int = "mac#quire_bsl"
+  val b0 = _rd_u8(p, off)
+  val b1 = _rd_u8(p, off + 1)
+in bor(b0, bsl(b1, 8)) end
 
 (* ========== Lookup dispatch via index ========== *)
 
@@ -1059,15 +959,7 @@ fn emit_set_attr {l:agz}{nl:pos | nl <= 11}{vl:nat | nl + vl + 8 <= 4096}
 in st end
 
 
-%{
-void _copy_to_arr(void *dst, void *src, int off, int count) {
-    unsigned char *d = (unsigned char*)dst;
-    unsigned char *s = (unsigned char*)src;
-    for (int i = 0; i < count; i++) {
-        d[i] = s[off + i];
-    }
-}
-%}
+(* _copy_to_arr implementation is in quire_runtime.c *)
 
 (* Allocate a ward_arr and fill with bytes from tree binary.
  * Uses $UNSAFE.castvwtp0 to erase the dependent size from the
