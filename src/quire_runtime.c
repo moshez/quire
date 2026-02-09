@@ -3236,3 +3236,69 @@ void reader_enter_at(int root_id, int container_hide_id, int chapter, int page) 
 int reader_get_back_btn_id(void) {
     return reader_back_btn_id;
 }
+
+/* ========== ZIP module storage (moved from zip.dats %{ block) ========== */
+
+#define MAX_ZIP_ENTRIES 256
+#define ZIP_NAME_BUFFER_SIZE 8192
+
+typedef struct {
+    int file_handle;
+    int name_offset;
+    int name_len;
+    int compression;
+    int compressed_size;
+    int uncompressed_size;
+    int local_header_offset;
+} zip_entry_t;
+
+static zip_entry_t _zip_entries[MAX_ZIP_ENTRIES];
+static int _zip_entry_count = 0;
+static int _zip_file_handle = 0;
+static char _zip_name_buffer[ZIP_NAME_BUFFER_SIZE];
+static int _zip_name_offset = 0;
+
+void _zip_reset(void) {
+    _zip_entry_count = 0;
+    _zip_name_offset = 0;
+    _zip_file_handle = 0;
+}
+void _zip_set_file_handle(int h) { _zip_file_handle = h; }
+int _zip_get_file_handle(void) { return _zip_file_handle; }
+int _zip_get_entry_count(void) { return _zip_entry_count; }
+
+int _zip_entry_file_handle(int i) { return _zip_entries[i].file_handle; }
+int _zip_entry_name_offset(int i) { return _zip_entries[i].name_offset; }
+int _zip_entry_name_len(int i) { return _zip_entries[i].name_len; }
+int _zip_entry_compression(int i) { return _zip_entries[i].compression; }
+int _zip_entry_compressed_size(int i) { return _zip_entries[i].compressed_size; }
+int _zip_entry_uncompressed_size(int i) { return _zip_entries[i].uncompressed_size; }
+int _zip_entry_local_offset(int i) { return _zip_entries[i].local_header_offset; }
+
+int _zip_name_char(int off) { return (int)(unsigned char)_zip_name_buffer[off]; }
+
+/* Store a new entry. Returns 1 on success, 0 if full. */
+int _zip_store_entry(int file_handle, int name_offset, int name_len,
+                     int compression, int compressed_size,
+                     int uncompressed_size, int local_offset) {
+    if (_zip_entry_count >= MAX_ZIP_ENTRIES) return 0;
+    _zip_entries[_zip_entry_count].file_handle = file_handle;
+    _zip_entries[_zip_entry_count].name_offset = name_offset;
+    _zip_entries[_zip_entry_count].name_len = name_len;
+    _zip_entries[_zip_entry_count].compression = compression;
+    _zip_entries[_zip_entry_count].compressed_size = compressed_size;
+    _zip_entries[_zip_entry_count].uncompressed_size = uncompressed_size;
+    _zip_entries[_zip_entry_count].local_header_offset = local_offset;
+    _zip_entry_count++;
+    return 1;
+}
+
+/* Copy a name byte into the name buffer. Returns 1 on success. */
+int _zip_name_buf_put(int off, int byte_val) {
+    if (off < 0 || off >= ZIP_NAME_BUFFER_SIZE) return 0;
+    _zip_name_buffer[off] = (char)byte_val;
+    return 1;
+}
+
+int _zip_name_buf_offset(void) { return _zip_name_offset; }
+void _zip_name_buf_advance(int n) { _zip_name_offset += n; }

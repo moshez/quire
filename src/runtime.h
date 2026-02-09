@@ -176,19 +176,25 @@ extern void set_dom_next_node_id(unsigned int v);
 
 /* Bitwise operations for ATS2 freestanding (no prelude) */
 #define quire_band(a, b) ((int)((unsigned int)(a) & (unsigned int)(b)))
+#define quire_bor(a, b) ((int)((unsigned int)(a) | (unsigned int)(b)))
+#define quire_bsl(a, n) ((int)((unsigned int)(a) << (n)))
 #define quire_bsr(a, n) ((int)((unsigned int)(a) >> (n)))
 #define quire_int2uint(x) ((unsigned int)(x))
+#define quire_byte2int(b) ((int)(unsigned char)(b))
 
 /* Integer arithmetic for ATS2 freestanding (replaces prelude templates) */
 #define quire_add(a, b) ((a) + (b))
 #define quire_mul(a, b) ((a) * (b))
 #define quire_gte(a, b) ((a) >= (b))
 #define quire_gt(a, b) ((a) > (b))
+#define quire_lt(a, b) ((a) < (b))
+#define quire_lte(a, b) ((a) <= (b))
 #define quire_eq(a, b) ((a) == (b))
 #define quire_neq(a, b) ((a) != (b))
 #define quire_ptr_eq(a, b) ((a) == (b))
 #define quire_sub(a, b) ((a) - (b))
 #define quire_neg(a) (-(a))
+#define quire_ptr_add(p, n) ((void*)((unsigned char*)(p) + (n)))
 
 /* Null pointer for proof construction */
 #define quire_null_ptr() ((void*)0)
