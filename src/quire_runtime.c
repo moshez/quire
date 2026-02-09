@@ -3369,10 +3369,11 @@ static const _dom_tag_entry TAG_TABLE[] = {
 };
 #define TAG_TABLE_SIZE (sizeof(TAG_TABLE) / sizeof(TAG_TABLE[0]))
 
-int lookup_tag(void *bytes, int len) {
+int lookup_tag(void *base, int offset, int name_len) {
+    unsigned char *bytes = (unsigned char*)base + offset;
     for (int i = 0; i < (int)TAG_TABLE_SIZE; i++) {
-        if (TAG_TABLE[i].len == len &&
-            _dom_memcmp(bytes, TAG_TABLE[i].name, len) == 0) {
+        if (TAG_TABLE[i].len == name_len &&
+            _dom_memcmp(bytes, TAG_TABLE[i].name, name_len) == 0) {
             return i;
         }
     }
@@ -3394,10 +3395,11 @@ static const _dom_tag_entry ATTR_TABLE[] = {
 };
 #define ATTR_TABLE_SIZE (sizeof(ATTR_TABLE) / sizeof(ATTR_TABLE[0]))
 
-int lookup_attr(void *bytes, int len) {
+int lookup_attr(void *base, int offset, int name_len) {
+    unsigned char *bytes = (unsigned char*)base + offset;
     for (int i = 0; i < (int)ATTR_TABLE_SIZE; i++) {
-        if (ATTR_TABLE[i].len == len &&
-            _dom_memcmp(bytes, ATTR_TABLE[i].name, len) == 0) {
+        if (ATTR_TABLE[i].len == name_len &&
+            _dom_memcmp(bytes, ATTR_TABLE[i].name, name_len) == 0) {
             return i;
         }
     }

@@ -162,10 +162,12 @@ fun attr_value(): ward_safe_text(5)
 (* Look up a tag name from raw bytes. Returns safe_text index or -1.
  * Used by the tree renderer to match parsed HTML tag bytes to
  * pre-built ward_safe_text constants. *)
-fun lookup_tag(bytes: ptr, len: int): int = "mac#"
+fun lookup_tag {lb:agz}{n:pos}
+  (tree: !ward_arr(byte, lb, n), offset: int, name_len: int): int = "mac#"
 
 (* Look up an attribute name from raw bytes. Returns index or -1. *)
-fun lookup_attr(bytes: ptr, len: int): int = "mac#"
+fun lookup_attr {lb:agz}{n:pos}
+  (tree: !ward_arr(byte, lb, n), offset: int, name_len: int): int = "mac#"
 
 (* Get a tag safe_text by index (returned by lookup_tag).
  * All tags are <= 10 chars, so n + 10 <= 4096 holds. *)
@@ -183,6 +185,7 @@ fun get_attr_by_index(idx: int): [n:pos | n <= 11] @(ward_safe_text(n), int n)
  * tree_len: length of binary data
  * Returns the dom state after all emissions. *)
 fun render_tree
-  {l:agz}
-  (state: ward_dom_state(l), parent_id: int, tree: ptr, tree_len: int)
+  {l:agz}{lb:agz}{n:pos}
+  (state: ward_dom_state(l), parent_id: int,
+   tree: !ward_arr(byte, lb, n), tree_len: int n)
   : ward_dom_state(l)

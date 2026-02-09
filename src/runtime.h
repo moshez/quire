@@ -166,6 +166,11 @@ extern void js_apply_diffs(void);
 extern int get_dom_next_node_id(void);
 extern int set_dom_next_node_id(int v);
 
+/* DOM lookup tables and copy (used by dom.dats tree renderer) */
+extern int lookup_tag(void *base, int offset, int name_len);
+extern int lookup_attr(void *base, int offset, int name_len);
+extern int _copy_to_arr(void *dst, void *src, int offset, int count);
+
 /* Byte-level memory access for ATS2 freestanding (no prelude).
  * These are the irreducible primitives that ATS2 cannot express
  * without C bindings — each is a single expression. */

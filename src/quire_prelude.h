@@ -124,4 +124,28 @@ extern unsigned char *get_fetch_buffer_ptr(void);
 extern unsigned char *get_diff_buffer_ptr(void);
 extern int quire_get_byte(void *p, int off);
 
+/* DOM next-node-id state (used by dom.dats via extern fun) */
+extern int get_dom_next_node_id(void);
+extern int set_dom_next_node_id(int v);
+
+/* DOM lookup tables and copy (used by dom.dats tree renderer) */
+extern int lookup_tag(void *base, int offset, int name_len);
+extern int lookup_attr(void *base, int offset, int name_len);
+extern int _copy_to_arr(void *dst, void *src, int offset, int count);
+
+/* Bounds-checked byte read from ward_arr (erased to ptr at runtime).
+ * Returns byte value if 0 <= off < len, else 0. */
+#ifndef _ward_arr_byte
+#define _ward_arr_byte(arr, off, len) \
+  (((off) >= 0 && (off) < (len)) ? ((int)((unsigned char*)(arr))[(off)]) : 0)
+#endif
+
+/* Bitwise operations (may also be in ward runtime.h) */
+#ifndef quire_bor
+#define quire_bor(a, b) ((int)((unsigned int)(a) | (unsigned int)(b)))
+#endif
+#ifndef quire_bsl
+#define quire_bsl(a, n) ((int)((unsigned int)(a) << (n)))
+#endif
+
 #endif /* QUIRE_PRELUDE_H */

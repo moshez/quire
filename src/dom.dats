@@ -748,17 +748,27 @@ implement attr_value() = let val b = ward_text_build(5)
 
 (* ========== Tree binary byte readers ========== *)
 
-(* Lookup tables for tag/attr are in quire_runtime.c (mac# functions).
- * Byte readers use buf_get_u8 from runtime.h. *)
+(* ========== Ward array byte access ========== *)
 
-extern fun _rd_u8(p: ptr, off: int): int = "mac#buf_get_u8"
+(* Bounds-checked byte read from ward_arr (erased to ptr at runtime).
+ * Same mac# pattern as zip.dats. *)
+extern fun ward_arr_byte {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), off: int, len: int n): int = "mac#_ward_arr_byte"
 
-fn _rd_u16(p: ptr, off: int): int = let
+fn rd_u16 {lb:agz}{n:pos}
+  (tree: !ward_arr(byte, lb, n), off: int, len: int n): int = let
   extern fun bor(a: int, b: int): int = "mac#quire_bor"
   extern fun bsl(a: int, b: int): int = "mac#quire_bsl"
-  val b0 = _rd_u8(p, off)
-  val b1 = _rd_u8(p, off + 1)
+  val b0 = ward_arr_byte(tree, off, len)
+  val b1 = ward_arr_byte(tree, off + 1, len)
 in bor(b0, bsl(b1, 8)) end
+
+(* Copy bytes between ward_arrs. Both erase to ptr at runtime.
+ * Copies count bytes from src[src_off..] to dst[0..count-1].
+ * Implemented by _copy_to_arr in quire_runtime.c. *)
+extern fun copy_arr_bytes {la:agz}{na:pos}{lb:agz}{nb:pos}
+  (dst: !ward_arr(byte, la, na), src: !ward_arr(byte, lb, nb),
+   src_off: int, count: int): int = "mac#_copy_to_arr"
 
 (* ========== Lookup dispatch via index ========== *)
 
@@ -921,90 +931,39 @@ end
  * ELEMENT_CLOSE (0x02):  (no payload)
  *)
 
-(* C helper: copy bytes from src+off into ward_arr dst, count bytes *)
-extern fun _copy_to_arr(dst: ptr, src: ptr, off: int, count: int): void = "mac#"
+(* Cast dynamic ints to satisfy ward DOM buffer / allocation constraints.
+ * Safe because: text_len and attr_value_len from the HTML binary are
+ * bounded in practice. These castfns tell the constraint solver
+ * what the runtime bounds are. *)
+extern castfn _to_text_pos(x: int): [n:pos | n + 7 <= 4096] int n
+extern castfn _to_attr_vpos(x: int): [n:pos | n + 20 <= 4096] int n
 
-(* Cast plain int to dependent int — used for ward API calls.
- * These are safe because all tag/attr names are <= 11 chars (max is "aria-hidden"),
- * so the constraint tl + 10 <= 4096 is always met. *)
-extern castfn _to_pos(x: int): [n:pos] int n
-extern castfn _to_nat(x: int): [n:nat] int n
-(* Cast dynamic ints to satisfy ward DOM buffer constraints.
- * Safe because: text_len from HTML binary is bounded in practice,
- * and attr values are also bounded. These castfns just tell the
- * constraint solver what the runtime bounds are. *)
-extern castfn _to_text_len(x: int): [n:nat | n + 7 <= 4096] int n
-extern castfn _to_attr_vlen(x: int): [n:nat | n + 20 <= 4096] int n
+implement render_tree{l}{lb}{n}(state, parent_id, tree, tree_len) = let
 
-(* Helper: emit set_text using raw ptr + length.
- * Fabricates a borrow from the ptr for ward_dom_set_text. *)
-fn emit_set_text {l:agz}{tl:nat | tl + 7 <= 4096}
-  (st: ward_dom_state(l), nid: int, raw_p: ptr, tl: int tl)
-  : ward_dom_state(l) = let
-  val borrow = $UNSAFE.castvwtp0{[lb:agz] ward_arr_borrow(byte, lb, tl)}(raw_p)
-  val st = ward_dom_set_text(st, nid, borrow, tl)
-  val () = $UNSAFE.castvwtp0{void}(borrow)
-in st end
-
-(* Helper: emit set_attr using raw ptr + lengths.
- * Fabricates a borrow from the ptr for ward_dom_set_attr. *)
-fn emit_set_attr {l:agz}{nl:pos | nl <= 11}{vl:nat | nl + vl + 8 <= 4096}
-  (st: ward_dom_state(l), nid: int,
-   attr_st: ward_safe_text(nl), attr_st_len: int nl,
-   raw_p: ptr, vl: int vl)
-  : ward_dom_state(l) = let
-  val borrow = $UNSAFE.castvwtp0{[lb:agz] ward_arr_borrow(byte, lb, vl)}(raw_p)
-  val st = ward_dom_set_attr(st, nid, attr_st, attr_st_len, borrow, vl)
-  val () = $UNSAFE.castvwtp0{void}(borrow)
-in st end
-
-
-(* _copy_to_arr implementation is in quire_runtime.c *)
-
-(* Allocate a ward_arr and fill with bytes from tree binary.
- * Uses $UNSAFE.castvwtp0 to erase the dependent size from the
- * allocated array — the actual allocation matches `len`, but
- * the type system sees size 1 (sufficient for the cast-based
- * borrow protocol used in render_tree). *)
-fn alloc_and_copy(src: ptr, off: int, len: int)
-  : [l:agz] ward_arr(byte, l, 1) = let
-  val alloc_len = (if len > 0 then len else 1): int
-  val arr = ward_arr_alloc<byte>(_to_pos(alloc_len))
-  val p = $UNSAFE.castvwtp1{ptr}(arr)
-  val () = if len > 0 then _copy_to_arr(p, src, off, len)
-in
-  $UNSAFE.castvwtp0{[l:agz] ward_arr(byte, l, 1)}(arr)
-end
-
-implement render_tree{l}(state, parent_id, tree, tree_len) = let
-  extern fun _ptr_add(p: ptr, n: int): ptr = "mac#quire_ptr_add"
-
-  fun loop {l:agz}
-    (st: ward_dom_state(l), p: ptr, pos: int, len: int, parent: int)
+  fun loop {l:agz}{lb:agz}{n:pos}
+    (st: ward_dom_state(l), tree: !ward_arr(byte, lb, n),
+     pos: int, len: int, parent: int, tlen: int n)
     : @(ward_dom_state(l), int) =
     if pos >= len then @(st, pos)
     else let
-      val opc = _rd_u8(p, pos)
+      val opc = ward_arr_byte(tree, pos, tlen)
     in
       if opc = 1 then let (* ELEMENT_OPEN *)
-        val tag_len = _rd_u8(p, pos + 1)
-        val tag_idx = lookup_tag(_ptr_add(p, pos + 2), tag_len)
+        val tag_len = ward_arr_byte(tree, pos + 1, tlen)
+        val tag_idx = lookup_tag(tree, pos + 2, tag_len)
         val attr_off = pos + 2 + tag_len
-        val attr_count = _rd_u8(p, attr_off)
-        val after_attrs = skip_attrs(p, attr_off + 1, attr_count)
+        val attr_count = ward_arr_byte(tree, attr_off, tlen)
+        val after_attrs = skip_attrs(tree, attr_off + 1, attr_count, tlen)
       in
         if tag_idx >= 0 then let
           val @(tag_st, tag_st_len) = get_tag_by_index(tag_idx)
           val nid = dom_next_id()
           val st = ward_dom_create_element(st, nid, parent, tag_st, tag_st_len)
-          (* Emit attributes *)
-          val st = emit_attrs(st, nid, p, attr_off + 1, attr_count)
-          (* Recurse into children *)
-          val @(st, child_end) = loop(st, p, after_attrs, len, nid)
+          val st = emit_attrs(st, nid, tree, attr_off + 1, attr_count, tlen)
+          val @(st, child_end) = loop(st, tree, after_attrs, len, nid, tlen)
         in
-          (* child_end should be at ELEMENT_CLOSE — skip it *)
           if child_end < len then let
-            val close_opc = _rd_u8(p, child_end)
+            val close_opc = ward_arr_byte(tree, child_end, tlen)
           in
             if close_opc = 2 then @(st, child_end + 1)
             else @(st, child_end)
@@ -1012,88 +971,101 @@ implement render_tree{l}(state, parent_id, tree, tree_len) = let
           else @(st, child_end)
         end
         else let
-          (* Unknown tag: skip children until matching ELEMENT_CLOSE *)
-          val end_pos = skip_element(p, after_attrs, len)
+          val end_pos = skip_element(tree, after_attrs, len, tlen)
         in
-          loop(st, p, end_pos, len, parent)
+          loop(st, tree, end_pos, len, parent, tlen)
         end
       end
       else if opc = 3 then let (* TEXT *)
-        val text_len = _rd_u16(p, pos + 1)
+        val text_len = rd_u16(tree, pos + 1, tlen)
         val text_start = pos + 3
       in
         if text_len > 0 then let
-          val text_arr = alloc_and_copy(p, text_start, text_len)
-          val raw_p = $UNSAFE.castvwtp1{ptr}(text_arr)
-          val st = emit_set_text(st, parent, raw_p, _to_text_len(text_len))
+          val tl = _to_text_pos(text_len)
+          val text_arr = ward_arr_alloc<byte>(tl)
+          val _ = copy_arr_bytes(text_arr, tree, text_start, text_len)
+          val @(frozen, borrow) = ward_arr_freeze<byte>(text_arr)
+          val st = ward_dom_set_text(st, parent, borrow, tl)
+          val () = ward_arr_drop<byte>(frozen, borrow)
+          val text_arr = ward_arr_thaw<byte>(frozen)
           val () = ward_arr_free<byte>(text_arr)
         in
-          loop(st, p, text_start + text_len, len, parent)
+          loop(st, tree, text_start + text_len, len, parent, tlen)
         end
-        else loop(st, p, text_start + text_len, len, parent)
+        else loop(st, tree, text_start + text_len, len, parent, tlen)
       end
       else if opc = 2 then (* ELEMENT_CLOSE — return to parent *)
         @(st, pos)
       else (* Unknown opcode — skip byte *)
-        loop(st, p, pos + 1, len, parent)
+        loop(st, tree, pos + 1, len, parent, tlen)
     end
-  and skip_attrs(p: ptr, pos: int, count: int): int =
+  and skip_attrs {lb:agz}{n:pos}
+    (tree: !ward_arr(byte, lb, n), pos: int, count: int, tlen: int n): int =
     if count <= 0 then pos
     else let
-      val name_len = _rd_u8(p, pos)
-      val val_len = _rd_u16(p, pos + 1 + name_len)
+      val name_len = ward_arr_byte(tree, pos, tlen)
+      val val_len = rd_u16(tree, pos + 1 + name_len, tlen)
     in
-      skip_attrs(p, pos + 1 + name_len + 2 + val_len, count - 1)
+      skip_attrs(tree, pos + 1 + name_len + 2 + val_len, count - 1, tlen)
     end
-  and emit_attrs {l:agz}
-    (st: ward_dom_state(l), nid: int, p: ptr, pos: int, count: int)
+  and emit_attrs {l:agz}{lb:agz}{n:pos}
+    (st: ward_dom_state(l), nid: int, tree: !ward_arr(byte, lb, n),
+     pos: int, count: int, tlen: int n)
     : ward_dom_state(l) =
     if count <= 0 then st
     else let
-      val name_len = _rd_u8(p, pos)
-      val name_ptr = _ptr_add(p, pos + 1)
-      val attr_idx = lookup_attr(name_ptr, name_len)
+      val name_len = ward_arr_byte(tree, pos, tlen)
+      val attr_idx = lookup_attr(tree, pos + 1, name_len)
       val val_off = pos + 1 + name_len
-      val val_len = _rd_u16(p, val_off)
+      val val_len = rd_u16(tree, val_off, tlen)
       val val_start = val_off + 2
     in
       if attr_idx >= 0 then let
         val @(attr_st, attr_st_len) = get_attr_by_index(attr_idx)
-        val val_arr = alloc_and_copy(p, val_start, val_len)
-        val raw_p = $UNSAFE.castvwtp1{ptr}(val_arr)
-        val st = emit_set_attr(st, nid, attr_st, attr_st_len, raw_p, _to_attr_vlen(val_len))
-        val () = ward_arr_free<byte>(val_arr)
       in
-        emit_attrs(st, nid, p, val_start + val_len, count - 1)
+        if val_len > 0 then let
+          val vl = _to_attr_vpos(val_len)
+          val val_arr = ward_arr_alloc<byte>(vl)
+          val _ = copy_arr_bytes(val_arr, tree, val_start, val_len)
+          val @(frozen, borrow) = ward_arr_freeze<byte>(val_arr)
+          val st = ward_dom_set_attr(st, nid, attr_st, attr_st_len, borrow, vl)
+          val () = ward_arr_drop<byte>(frozen, borrow)
+          val val_arr = ward_arr_thaw<byte>(frozen)
+          val () = ward_arr_free<byte>(val_arr)
+        in
+          emit_attrs(st, nid, tree, val_start + val_len, count - 1, tlen)
+        end
+        else (* empty attr value — skip *)
+          emit_attrs(st, nid, tree, val_start, count - 1, tlen)
       end
       else (* Unknown attribute — skip *)
-        emit_attrs(st, nid, p, val_start + val_len, count - 1)
+        emit_attrs(st, nid, tree, val_start + val_len, count - 1, tlen)
     end
-  and skip_element(p: ptr, pos: int, len: int): int =
-    (* Skip past children of unknown element until ELEMENT_CLOSE *)
+  and skip_element {lb:agz}{n:pos}
+    (tree: !ward_arr(byte, lb, n), pos: int, len: int, tlen: int n): int =
     if pos >= len then pos
     else let
-      val opc = _rd_u8(p, pos)
+      val opc = ward_arr_byte(tree, pos, tlen)
     in
       if opc = 2 then pos + 1  (* ELEMENT_CLOSE *)
       else if opc = 1 then let (* nested ELEMENT_OPEN *)
-        val tag_len = _rd_u8(p, pos + 1)
+        val tag_len = ward_arr_byte(tree, pos + 1, tlen)
         val attr_off = pos + 2 + tag_len
-        val attr_count = _rd_u8(p, attr_off)
-        val after_attrs = skip_attrs(p, attr_off + 1, attr_count)
-        val end_inner = skip_element(p, after_attrs, len)
+        val attr_count = ward_arr_byte(tree, attr_off, tlen)
+        val after_attrs = skip_attrs(tree, attr_off + 1, attr_count, tlen)
+        val end_inner = skip_element(tree, after_attrs, len, tlen)
       in
-        skip_element(p, end_inner, len)
+        skip_element(tree, end_inner, len, tlen)
       end
       else if opc = 3 then let (* TEXT *)
-        val text_len = _rd_u16(p, pos + 1)
+        val text_len = rd_u16(tree, pos + 1, tlen)
       in
-        skip_element(p, pos + 3 + text_len, len)
+        skip_element(tree, pos + 3 + text_len, len, tlen)
       end
-      else skip_element(p, pos + 1, len) (* unknown — skip byte *)
+      else skip_element(tree, pos + 1, len, tlen) (* unknown — skip byte *)
     end
 
-  val @(st, _) = loop(state, tree, 0, tree_len, parent_id)
+  val @(st, _) = loop(state, tree, 0, tree_len, parent_id, tree_len)
 in
   st
 end
