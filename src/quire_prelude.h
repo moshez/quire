@@ -202,6 +202,19 @@ extern void _app_set_stg_save_pend(int v);
 extern int _app_stg_load_pend(void);
 extern void _app_set_stg_load_pend(int v);
 
+/* Zip entry accessors (implemented in quire_runtime.c) */
+extern int _zip_entry_file_handle(int i);
+extern int _zip_entry_name_offset(int i);
+extern int _zip_entry_name_len(int i);
+extern int _zip_entry_compression(int i);
+extern int _zip_entry_compressed_size(int i);
+extern int _zip_entry_uncompressed_size(int i);
+extern int _zip_entry_local_offset(int i);
+extern int _zip_name_char(int off);
+extern int _zip_name_buf_put(int off, int byte_val);
+extern int _zip_store_entry_at(int idx, int fh, int no, int nl,
+  int comp, int cs, int us, int lo);
+
 /* DOM lookup tables and copy (used by dom.dats tree renderer) */
 extern int lookup_tag(void *base, int offset, int name_len);
 extern int lookup_attr(void *base, int offset, int name_len);
