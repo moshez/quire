@@ -179,13 +179,13 @@ fun get_attr_by_index(idx: int): [n:pos | n <= 11] @(ward_safe_text(n), int n)
 
 (* ========== Tree renderer ========== *)
 
-(* Walk parsed HTML tree binary and emit DOM nodes via ward diffs.
+(* Walk parsed HTML tree binary and emit DOM nodes via ward stream.
  * parent_id: parent DOM node for emitted elements
  * tree: pointer to parsed tree binary (from wardJsParseHtml)
  * tree_len: length of binary data
- * Returns the dom state after all emissions. *)
+ * Returns the stream after all emissions. Caller manages begin/end. *)
 fun render_tree
   {l:agz}{lb:agz}{n:pos}
-  (state: ward_dom_state(l), parent_id: int,
+  (stream: ward_dom_stream(l), parent_id: int,
    tree: !ward_arr(byte, lb, n), tree_len: int n)
-  : ward_dom_state(l)
+  : ward_dom_stream(l)

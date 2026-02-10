@@ -19,7 +19,7 @@ WASM_CFLAGS := --target=wasm32 -O2 -nostdlib -ffreestanding \
   -D_ATS_CCOMP_PRELUDE_NONE_ \
   -include $(WARD_DIR)lib/runtime.h
 WASM_LDFLAGS := --no-entry --export-dynamic \
-  -z stack-size=65536 --initial-memory=1048576
+  -z stack-size=65536 --initial-memory=16777216 --max-memory=268435456
 
 # Node WASM flags (ward_dom_flush = WASM import, not stub)
 WASM_NODE_CFLAGS := $(WASM_CFLAGS) -DWARD_NO_DOM_STUB
@@ -129,6 +129,14 @@ build/dom_read_dats.c: lib/dom_read.dats lib/dom_read.sats lib/memory.sats lib/m
 build/listener_dats.c: lib/listener.dats lib/listener.sats lib/memory.sats lib/memory.dats | build
 	$(PATSOPT) -o $@ -d $<
 
+# ATS2 -> C for callback module
+build/callback_dats.c: lib/callback.dats lib/callback.sats lib/memory.sats lib/memory.dats | build
+	$(PATSOPT) -o $@ -d $<
+
+# ATS2 -> C for xml module
+build/xml_dats.c: lib/xml.dats lib/xml.sats lib/memory.sats lib/memory.dats | build
+	$(PATSOPT) -o $@ -d $<
+
 # ATS2 -> C for fetch module
 build/fetch_dats.c: lib/fetch.dats lib/fetch.sats $(BRIDGE_SATS) | build
 	$(PATSOPT) -o $@ -d $<
@@ -154,9 +162,11 @@ BRIDGE_ALL_SATS := lib/memory.sats lib/memory.dats lib/dom.sats lib/dom.dats \
   lib/promise.sats lib/promise.dats lib/event.sats lib/event.dats \
   lib/idb.sats lib/idb.dats lib/window.sats lib/window.dats \
   lib/nav.sats lib/nav.dats lib/dom_read.sats lib/dom_read.dats \
-  lib/listener.sats lib/listener.dats lib/fetch.sats lib/fetch.dats \
+  lib/listener.sats lib/listener.dats lib/callback.sats lib/callback.dats \
+  lib/fetch.sats lib/fetch.dats \
   lib/clipboard.sats lib/clipboard.dats lib/file.sats lib/file.dats \
-  lib/decompress.sats lib/decompress.dats lib/notify.sats lib/notify.dats
+  lib/decompress.sats lib/decompress.dats lib/notify.sats lib/notify.dats \
+  lib/xml.sats lib/xml.dats
 
 # ATS2 -> C for dom_exerciser
 build/dom_exerciser_dats.c: exerciser/dom_exerciser.dats $(BRIDGE_ALL_SATS) | build
@@ -182,6 +192,12 @@ build/dom_read_dats.o: build/dom_read_dats.c lib/runtime.h | build
 	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
 
 build/listener_dats.o: build/listener_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/callback_dats.o: build/callback_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/xml_dats.o: build/xml_dats.c lib/runtime.h | build
 	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
 
 build/fetch_dats.o: build/fetch_dats.c lib/runtime.h | build
@@ -215,18 +231,20 @@ build/runtime_node.o: lib/runtime.c lib/runtime.h | build
 # All node WASM objects
 NODE_WASM_OBJS := build/memory_node_dats.o build/dom_node_dats.o build/promise_node_dats.o \
   build/event_dats.o build/idb_dats.o \
-  build/window_dats.o build/nav_dats.o build/dom_read_dats.o build/listener_dats.o \
-  build/fetch_dats.o build/clipboard_dats.o build/file_dats.o build/decompress_dats.o \
+  build/window_dats.o build/nav_dats.o build/dom_read_dats.o build/listener_dats.o build/callback_dats.o \
+  build/fetch_dats.o build/clipboard_dats.o build/file_dats.o build/decompress_dats.o build/xml_dats.o \
   build/notify_dats.o \
   build/dom_exerciser_dats.o build/runtime_node.o
 
 # WASM exports for bridge callbacks
 NODE_WASM_EXPORTS := --export=ward_node_init --export=ward_timer_fire \
-  --export=ward_idb_fire --export=ward_idb_fire_get --export=malloc \
+  --export=ward_idb_fire --export=ward_idb_fire_get \
   --export=ward_on_event --export=ward_measure_set \
   --export=ward_on_fetch_complete --export=ward_on_clipboard_complete \
   --export=ward_on_file_open --export=ward_on_decompress_complete \
-  --export=ward_on_permission_result --export=ward_on_push_subscribe
+  --export=ward_on_permission_result --export=ward_on_push_subscribe \
+  --export=ward_on_callback \
+  --export=ward_bridge_stash_set_int
 
 build/node_ward.wasm: $(NODE_WASM_OBJS)
 	$(WASM_LD) $(WASM_LDFLAGS) --allow-undefined \

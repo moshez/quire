@@ -1,16 +1,14 @@
 (* xml.dats - Tree-based XML parser implementation
  *
  * Pure ATS2 recursive descent parser that builds a tree of xml_node_vt.
- * Replaces the old C %{ SAX-style parser.
- *
  * All byte access goes through buf_get_u8 / buf_set_u8 (runtime.h macros).
  * Strings reference the fetch buffer directly (zero-copy).
  *)
 
 #define ATS_DYNLOADFLAG 0
 
-staload "buf.sats"
-staload "xml.sats"
+staload "./buf.sats"
+staload "./xml.sats"
 
 (* ========== Integer arithmetic for freestanding mode ========== *)
 extern fun add_int_int(a: int, b: int): int = "mac#quire_add"

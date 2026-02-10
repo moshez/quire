@@ -59,7 +59,8 @@ WARD_DATS := \
   $(WARD_DIR)/clipboard.dats \
   $(WARD_DIR)/file.dats \
   $(WARD_DIR)/decompress.dats \
-  $(WARD_DIR)/notify.dats
+  $(WARD_DIR)/notify.dats \
+  $(WARD_DIR)/xml.dats
 
 # Quire application sources (order: dependencies first)
 QUIRE_DATS := \

@@ -33,7 +33,7 @@ fun ward_idb_delete
 
 (* WASM exports — called by JS host to fire resolvers *)
 fun ward_idb_fire
-  (resolver_ptr: ptr, status: int): void = "ext#ward_idb_fire"
+  (resolver_id: int, status: int): void = "ext#ward_idb_fire"
 
 fun ward_idb_fire_get
-  (resolver_ptr: ptr, data_ptr: ptr, data_len: int): void = "ext#ward_idb_fire_get"
+  (resolver_id: int, data_len: int): void = "ext#ward_idb_fire_get"

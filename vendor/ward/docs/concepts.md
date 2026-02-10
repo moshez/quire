@@ -32,15 +32,15 @@ Mutable arrays can be frozen to allow shared read-only access. The borrow count 
 
 ```
 ward_arr(a, l, n)                        (* mutable, owned *)
-    │
-    ▼ freeze
+    |
+    v freeze
 @(ward_arr_frozen(a, l, n, 1),           (* frozen, 1 borrow *)
   ward_arr_borrow(a, l, n))              (* read-only handle *)
-    │
-    ├── dup → borrow count becomes k+1
-    ├── drop → borrow count becomes k-1
-    │
-    ▼ thaw (requires k=0)
+    |
+    +-- dup -> borrow count becomes k+1
+    +-- drop -> borrow count becomes k-1
+    |
+    v thaw (requires k=0)
 ward_arr(a, l, n)                        (* mutable again *)
 ```
 
@@ -70,37 +70,58 @@ val @(p, r) = ward_promise_create<int>()
 val () = ward_promise_resolve<int>(r, 42)  (* consumes r *)
 ```
 
-Chaining uses monadic bind (`ward_promise_then`). The callback receives the resolved value and must return a new pending promise. Use `ward_promise_return` to lift an immediate value:
+Chaining uses monadic bind (`ward_promise_then`). The callback is a linear closure (`cloptr1`) that receives the resolved value, can capture linear values, and must return a new pending promise. The closure is freed after invocation. Use `ward_promise_return` to lift an immediate value:
 
 ```ats
-val p2 = ward_promise_then<int><int>(p, lam (x) => ward_promise_return<int>(x + 1))
+val p2 = ward_promise_then<int><int>(p, llam (x) => ward_promise_return<int>(x + 1))
 ```
 
 No error type parameter. Use `Result(a, e)` as your `a` if you need errors.
 
-## DOM state threading
+## DOM streaming
 
-DOM operations consume and return a linear `ward_dom_state`. This ensures operations are sequenced and the state is not duplicated or leaked:
+DOM operations use a streaming model that batches multiple ops into a 256KB buffer before flushing to the JS bridge. This minimizes WASM/JS boundary crossings.
+
+The stream lifecycle is: `begin` -> ops -> `end`.
 
 ```ats
 val dom = ward_dom_init()
-val dom = ward_dom_create_element(dom, 1, 0, tag, 3)
-val dom = ward_dom_set_safe_text(dom, 1, text, 10)
+val s = ward_dom_stream_begin(dom)
+val s = ward_dom_stream_create_element(s, 1, 0, tag, 3)
+val s = ward_dom_stream_set_safe_text(s, 1, text, 10)
+val dom = ward_dom_stream_end(s)       (* flushes remaining ops *)
 val () = ward_dom_fini(dom)
 ```
 
-For async boundaries (e.g., timer callbacks), `ward_dom_store` and `ward_dom_load` persist and retrieve the state through a global slot.
+`stream_begin` consumes the `ward_dom_state` and returns a `ward_dom_stream`. Stream ops accumulate into the buffer. When the buffer fills, the stream auto-flushes and resets the cursor. `stream_end` flushes any remaining ops and returns the `ward_dom_state`.
+
+### Linear closure capture for async boundaries
+
+For async boundaries (e.g., timer callbacks), capture linear DOM state directly in `llam` closures. `ward_promise_then` uses `cloptr1` (linear closures) which can capture linear values and are freed after invocation.
+
+```ats
+val dom = ward_dom_init()
+
+val p = ward_promise_then<int><int>(timer,
+  llam (x: int) => let
+    (* dom is captured linearly from enclosing scope *)
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_create_element(s, 1, 0, tag, 1)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+  in ward_promise_return<int>(0) end)
+```
 
 ## The trusted surface
 
-Safety by construction means the `.sats` files are the specification. User code cannot introduce `praxi` or `$UNSAFE` operations. The trusted surface is limited to:
+Safety by construction means the `.sats` files are the specification. User code cannot introduce `$UNSAFE` operations. The trusted surface is limited to:
 
 - **`memory.dats`** -- implementations behind the safe interface. Each `$UNSAFE` use is individually justified.
 - **`dom.dats`**, **`promise.dats`**, etc. -- similarly restricted implementation files.
-- **`runtime.h`** / **`runtime.c`** -- the C runtime (bump allocator, memset/memcpy).
-- **`ward_bridge.mjs`** -- the JS bridge that implements WASM imports.
+- **`runtime.h`** / **`runtime.c`** -- the C runtime (free-list allocator, stash/resolver tables).
+- **`ward_bridge.mjs`** -- the JS bridge that implements WASM imports, including the JS-side data stash that holds data for WASM to pull via `ward_bridge_recv`.
 
-The anti-exerciser (`exerciser/anti/`) contains 12 files that must fail to compile, verifying that the type system rejects:
+The anti-exerciser (`exerciser/anti/`) contains 13 files that must fail to compile, verifying that the type system rejects:
 
 | File | What it tests |
 |------|--------------|
@@ -116,3 +137,4 @@ The anti-exerciser (`exerciser/anti/`) contains 12 files that must fail to compi
 | `extract_pending.dats` | Extracting from a pending promise |
 | `forget_resolver.dats` | Forgetting to use a resolver |
 | `use_after_then.dats` | Using a promise after chaining |
+| `use_stream_after_end.dats` | Using a stream after stream_end |

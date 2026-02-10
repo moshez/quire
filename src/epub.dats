@@ -7,8 +7,8 @@
 
 #define ATS_DYNLOADFLAG 0
 
-staload "epub.sats"
-staload "zip.sats"
-staload "xml.sats"
+staload "./epub.sats"
+staload "./zip.sats"
+staload "./xml.sats"
 
 (* All implementations provided by quire_runtime.c via mac# linkage *)

@@ -150,7 +150,49 @@ fun ward_safe_text_get
   : byte
 
 (* ============================================================
+   Text from bytes — runtime SAFE_CHAR validation
+   ============================================================ *)
+
+datavtype ward_text_result(n:int) =
+  | {n:int} ward_text_ok(n) of (ward_safe_text(n))
+  | {n:int} ward_text_fail(n) of ()
+
+fun ward_text_from_bytes
+  {lb:agz}{n:pos}
+  (src: !ward_arr_borrow(byte, lb, n), len: int n): ward_text_result(n)
+
+(* ============================================================
    Utility — int to byte conversion (freestanding)
    ============================================================ *)
 
-fun ward_int2byte(i: int): byte
+fun ward_int2byte{i:nat | i < 256}(i: int i): byte
+
+(* ============================================================
+   Array write operations (byte-level, for DOM streaming)
+   ============================================================ *)
+
+fun ward_arr_write_byte
+  {l:agz}{n:nat}{i:nat | i < n}
+  (arr: !ward_arr(byte, l, n), i: int i, v: int): void
+
+fun ward_arr_write_i32
+  {l:agz}{n:nat}{i:nat | i + 4 <= n}
+  (arr: !ward_arr(byte, l, n), i: int i, v: int): void
+
+fun ward_arr_write_borrow
+  {ld:agz}{ls:agz}{m:nat}{n:nat}{off:nat | off + n <= m}
+  (dst: !ward_arr(byte, ld, m), off: int off,
+   src: !ward_arr_borrow(byte, ls, n), len: int n): void
+
+fun ward_arr_write_safe_text
+  {l:agz}{m:nat}{n:nat}{off:nat | off + n <= m}
+  (dst: !ward_arr(byte, l, m), off: int off,
+   src: ward_safe_text(n), len: int n): void
+
+(* ============================================================
+   Bridge recv — allocate buffer, pull data from JS stash
+   ============================================================ *)
+
+fun ward_bridge_recv
+  {n:pos}
+  (stash_id: int, len: int n): [l:agz] ward_arr(byte, l, n)

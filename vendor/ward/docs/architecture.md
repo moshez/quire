@@ -4,17 +4,17 @@
 
 ```
 ATS2 source (.sats/.dats)
-    │
-    ▼ patsopt
+    |
+    v patsopt
 C source (_dats.c)
-    │
-    ▼ clang --target=wasm32
+    |
+    v clang --target=wasm32
 WASM objects (.o)
-    │
-    ▼ wasm-ld
+    |
+    v wasm-ld
 WASM binary (.wasm)
-    │
-    ▼ ward_bridge.mjs
+    |
+    v ward_bridge.mjs
 DOM in browser / jsdom in Node.js
 ```
 
@@ -23,12 +23,12 @@ DOM in browser / jsdom in Node.js
 ## Module dependency graph
 
 ```
-memory.sats ◄── dom.sats
-    ▲            ▲
-    │            │
-promise.sats ◄──┤
-    ▲            │
-    │            │
+memory.sats <-- dom.sats
+    ^            ^
+    |            |
+promise.sats <--+
+    ^            |
+    |            |
 event.sats      idb.sats
                 window.sats
                 nav.sats
@@ -56,7 +56,7 @@ All proofs are erased at runtime. There are no runtime bounds checks, no referen
 
 ## Anti-exerciser
 
-The `exerciser/anti/` directory contains 12 files that **must fail to compile**. `make anti-exerciser` runs `patsopt` on each and verifies it is rejected. This is a regression test for the type system -- if any file compiles, it means the safety specification has a hole.
+The `exerciser/anti/` directory contains 13 files that **must fail to compile**. `make anti-exerciser` runs `patsopt` on each and verifies it is rejected. This is a regression test for the type system -- if any file compiles, it means the safety specification has a hole.
 
 | File | Rejected pattern |
 |------|-----------------|
@@ -72,6 +72,7 @@ The `exerciser/anti/` directory contains 12 files that **must fail to compile**.
 | `extract_pending.dats` | Extracting value from pending promise |
 | `forget_resolver.dats` | Dropping a resolver without resolving |
 | `use_after_then.dats` | Using a promise after passing it to `then` |
+| `use_stream_after_end.dats` | Using a DOM stream after `stream_end` |
 
 ## Runtime architecture
 
@@ -83,18 +84,26 @@ Replaces the ATS2 standard runtime headers that require libc. Provides:
 - **Ward type definitions** -- all ward types erase to `void*`
 - **Closure support** -- `ATSclosurerize_beg/end`, `ATSFCreturn`, `ATSPMVcfunlab`
 - **DOM helpers** -- `ward_set_byte`, `ward_set_i32`, `ward_copy_at`
-- **Slot helpers** -- `ward_slot_get`, `ward_slot_set` (for promise internals)
-- **Global state** -- `ward_dom_global_get/set`, `ward_idb_result_*`, `ward_measure_set`
+- **Promise support** -- `_ward_cloptr1_wrap` self-freeing closure wrapper, `_ward_resolve_chain` declaration
+- **Stash and table declarations** -- `ward_bridge_stash_set/get_int`, `ward_measure_set/get`, `ward_listener_set/get`, `ward_resolver_stash/unstash/fire`, `ward_js_stash_read`
 
-### `runtime.c` -- Bump allocator and support
+### `runtime.c` -- Free-list allocator and support
 
-- **Bump allocator** -- simple `malloc` that increments a pointer, `free` is a no-op (WASM linear memory)
+- **Free-list allocator** -- segregated-list `malloc` with 4 size classes (32, 128, 512, 4096 bytes) and oversized free list (first-fit). `free` returns blocks to the appropriate list.
 - **memset/memcpy** -- freestanding implementations
-- **DOM global state** -- single `ward_dom_state*` pointer for store/load
+- **Bridge int stash** -- 4-slot integer array for stash IDs and metadata
+- **Resolver table** -- 64-slot linear clear-on-take table for async resolvers
+- **Listener table** -- 128-slot table for event listener closures
 
 ### `ward_prelude.h` -- Native build macros
 
 Provides the same ward type macros for gcc (used by the native exerciser). Must mirror `runtime.h` additions.
+
+## DOM streaming
+
+DOM operations use a streaming model with a 256KB diff buffer. The `ward_dom_stream` type accumulates ops into the buffer. When the next op wouldn't fit, the stream auto-flushes to the JS bridge and resets the cursor. At `stream_end`, any remaining ops are flushed.
+
+This batching reduces WASM/JS boundary crossings -- a single `ward_dom_flush` call can carry many ops instead of one op per call.
 
 ## Freestanding WASM
 
@@ -112,5 +121,5 @@ The resulting WASM binary has:
 - No libc dependency
 - No dynamic linking
 - No WASI requirement
-- 1 MB initial memory with 64 KB stack
+- 16 MB initial memory, 256 MB max, with 64 KB stack
 - Explicit exports for host callbacks

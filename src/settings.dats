@@ -7,6 +7,6 @@
 
 #define ATS_DYNLOADFLAG 0
 
-staload "settings.sats"
+staload "./settings.sats"
 
 (* All implementations provided by quire_runtime.c via mac# linkage *)

@@ -6,12 +6,10 @@ staload "./listener.sats"
 staload _ = "./memory.dats"
 
 (*
- * $UNSAFE justifications:
+ * $<M>UNSAFE justification:
  * [U-cb] castvwtp0{ptr}(callback) — erase closure to ptr for table storage.
  *   Same as promise.dats [U1]. Closure is heap-allocated cloref1, survives
  *   across multiple event fires. Recovered in ward_on_event.
- * [U-arr] castvwtp0{ward_arr(byte,l,n)}(p) — wrap stashed malloc'd ptr.
- *   Same as idb.dats [U8].
  *)
 
 extern fun _ward_js_add_event_listener
@@ -33,12 +31,9 @@ extern fun _ward_listener_set
 extern fun _ward_listener_get
   (id: int): ptr = "mac#ward_listener_get"
 
-(* Event payload stash — uses bridge stash in runtime.c *)
-extern fun _ward_bridge_stash_get_ptr
-  (): ptr = "mac#ward_bridge_stash_get_ptr"
-
-extern fun _ward_bridge_stash_set_ptr
-  (p: ptr): void = "mac#ward_bridge_stash_set_ptr"
+(* Bridge int stash — stash_id in slot 1 *)
+extern fun _ward_bridge_stash_get_int
+  (slot: int): int = "mac#ward_bridge_stash_get_int"
 
 implement
 ward_add_event_listener{tn}
@@ -56,17 +51,16 @@ implement
 ward_prevent_default() = _ward_js_prevent_default()
 
 implement
-ward_event_get_payload{n}(len) = let
-  val p = _ward_bridge_stash_get_ptr()
-in $UNSAFE.castvwtp0{[l:agz] ward_arr(byte, l, n)}(p) end (* [U-arr] *)
+ward_event_get_payload{n}(len) =
+  ward_bridge_recv(_ward_bridge_stash_get_int(1), len)
 
 implement
 ward_on_event(listener_id, payload_len) = let
   val cbp = _ward_listener_get(listener_id)
 in
-  if $UNSAFE.cast{int}(cbp) > 0 then let
-    val _ = $extfcall(ptr, "ward_cloref1_invoke", cbp,
-                      $UNSAFE.cast{ptr}(payload_len))
+  if ptr_isnot_null(cbp) then let
+    val cb = $UNSAFE.cast{int -<cloref1> int}(cbp) (* [U-cb] recover *)
+    val _ = cb(payload_len)
   in () end
   else ()
 end

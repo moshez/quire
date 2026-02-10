@@ -81,9 +81,9 @@ in ward_text_done(b) end
 *)
 ```
 
-## DOM creation and attributes
+## DOM streaming
 
-Tag and attribute names must be safe text. Content values use borrows or safe text.
+Stream ops batch into a 256KB buffer. Auto-flush handles buffer overflow.
 
 ```ats
 staload "lib/dom.sats"
@@ -99,7 +99,8 @@ fun dom_example (): void = let
   val b = ward_text_putc(b, 2, char2int1('v'))
   val tag = ward_text_done(b)
 
-  val dom = ward_dom_create_element(dom, 1, 0, tag, 3)
+  val s = ward_dom_stream_begin(dom)
+  val s = ward_dom_stream_create_element(s, 1, 0, tag, 3)
 
   (* Set text content from safe text *)
   val b = ward_text_build(5)
@@ -109,7 +110,7 @@ fun dom_example (): void = let
   val b = ward_text_putc(b, 3, char2int1('l'))
   val b = ward_text_putc(b, 4, char2int1('o'))
   val text = ward_text_done(b)
-  val dom = ward_dom_set_safe_text(dom, 1, text, 5)
+  val s = ward_dom_stream_set_safe_text(s, 1, text, 5)
 
   (* Set attribute with safe text name and value *)
   val b = ward_text_build(2)
@@ -123,15 +124,39 @@ fun dom_example (): void = let
   val b = ward_text_putc(b, 2, char2int1('i'))
   val b = ward_text_putc(b, 3, char2int1('n'))
   val attr_val = ward_text_done(b)
-  val dom = ward_dom_set_attr_safe(dom, 1, attr_name, 2, attr_val, 4)
+  val s = ward_dom_stream_set_attr_safe(s, 1, attr_name, 2, attr_val, 4)
 
+  val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
+in end
+```
+
+## DOM with async boundaries
+
+Use linear closures (`llam`) in `ward_promise_then` to capture and thread linear DOM state across promise callbacks.
+
+```ats
+fun async_dom_example (): void = let
+  val dom = ward_dom_init()
+
+  val p1 = ward_timer_set(1000)
+
+  val p2 = ward_promise_then<int><int>(p1,
+    llam (x: int) => let
+      (* dom is captured linearly from enclosing scope *)
+      val s = ward_dom_stream_begin(dom)
+      (* ... stream ops ... *)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+    in ward_promise_return<int>(0) end)
+
+  val () = ward_promise_discard<int><Pending>(p2)
 in end
 ```
 
 ## Flat promise chain
 
-Timer fires, then immediate value, then exit. All promises are linear -- every one must be consumed.
+Timer fires, then immediate value, then exit. All promises are linear -- every one must be consumed. Closures use `llam` (linear lambda) which can capture linear values and are freed after invocation.
 
 ```ats
 staload "lib/promise.sats"
@@ -143,10 +168,10 @@ fun chain_example (): void = let
   val p1 = ward_timer_set(1000)
 
   val p2 = ward_promise_then<int><int>(p1,
-    lam (x: int) =<cloref1> ward_promise_return<int>(x + 1))
+    llam (x: int) => ward_promise_return<int>(x + 1))
 
   val p3 = ward_promise_then<int><int>(p2,
-    lam (x: int) =<cloref1> let
+    llam (x: int) => let
       val () = ward_exit()
     in ward_promise_return<int>(0) end)
 
@@ -184,7 +209,7 @@ fun idb_example (): void = let
   val vbuf = ward_arr_thaw<byte>(frozen)
   val () = ward_arr_free<byte>(vbuf)
 
-  (* Chain: put → get → delete *)
+  (* Chain: put -> get -> delete *)
   val b = ward_text_build(4)
   val b = ward_text_putc(b, 0, char2int1('k'))
   val b = ward_text_putc(b, 1, char2int1('e'))
@@ -193,7 +218,7 @@ fun idb_example (): void = let
   val key2 = ward_text_done(b)
 
   val p_get = ward_promise_then<int><int>(p_put,
-    lam (_: int) =<cloref1> ward_idb_get(key2, 4))
+    llam (_: int) => ward_idb_get(key2, 4))
 
   val () = ward_promise_discard<int><Pending>(p_get)
 in end

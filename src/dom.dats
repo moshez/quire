@@ -923,15 +923,15 @@ implement get_attr_by_index(idx) =
  * ELEMENT_CLOSE (0x02):  (no payload)
  *)
 
-(* Ward DOM buffer cap — text needs tl + 7 <= 4096, attr needs nl + vl + 8 <= 4096.
- * Max attr name is 11 chars, so vl + 19 <= 4096, i.e. vl <= 4077. *)
+(* Ward DOM buffer cap — text needs tl + 7 <= 262144, attr needs nl + vl + 8 <= 262144.
+ * Max attr name is 11 chars, so vl + 19 <= 262144. Auto-flush handles large payloads. *)
 
-implement render_tree{l}{lb}{n}(state, parent_id, tree, tree_len) = let
+implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
 
   fun loop {l:agz}{lb:agz}{n:pos}
-    (st: ward_dom_state(l), tree: !ward_arr(byte, lb, n),
+    (st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n),
      pos: int, len: int, parent: int, tlen: int n)
-    : @(ward_dom_state(l), int) =
+    : @(ward_dom_stream(l), int) =
     if pos >= len then @(st, pos)
     else let
       val opc = ward_arr_byte(tree, pos, tlen)
@@ -946,7 +946,7 @@ implement render_tree{l}{lb}{n}(state, parent_id, tree, tree_len) = let
         if tag_idx >= 0 then let
           val @(tag_st, tag_st_len) = get_tag_by_index(tag_idx)
           val nid = dom_next_id()
-          val st = ward_dom_create_element(st, nid, parent, tag_st, tag_st_len)
+          val st = ward_dom_stream_create_element(st, nid, parent, tag_st, tag_st_len)
           val st = emit_attrs(st, nid, tree, attr_off + 1, attr_count, tlen)
           val @(st, child_end) = loop(st, tree, after_attrs, len, nid, tlen)
         in
@@ -970,11 +970,11 @@ implement render_tree{l}{lb}{n}(state, parent_id, tree, tree_len) = let
         val tl = g1ofg0(text_len)
       in
         if tl > 0 then
-          if tl + 7 <= 4096 then let
+          if tl + 7 <= 262144 then let
             val text_arr = ward_arr_alloc<byte>(tl)
             val _ = copy_arr_bytes(text_arr, tree, text_start, text_len)
             val @(frozen, borrow) = ward_arr_freeze<byte>(text_arr)
-            val st = ward_dom_set_text(st, parent, borrow, tl)
+            val st = ward_dom_stream_set_text(st, parent, borrow, tl)
             val () = ward_arr_drop<byte>(frozen, borrow)
             val text_arr = ward_arr_thaw<byte>(frozen)
             val () = ward_arr_free<byte>(text_arr)
@@ -1000,9 +1000,9 @@ implement render_tree{l}{lb}{n}(state, parent_id, tree, tree_len) = let
       skip_attrs(tree, pos + 1 + name_len + 2 + val_len, count - 1, tlen)
     end
   and emit_attrs {l:agz}{lb:agz}{n:pos}
-    (st: ward_dom_state(l), nid: int, tree: !ward_arr(byte, lb, n),
+    (st: ward_dom_stream(l), nid: int, tree: !ward_arr(byte, lb, n),
      pos: int, count: int, tlen: int n)
-    : ward_dom_state(l) =
+    : ward_dom_stream(l) =
     if count <= 0 then st
     else let
       val name_len = ward_arr_byte(tree, pos, tlen)
@@ -1016,11 +1016,11 @@ implement render_tree{l}{lb}{n}(state, parent_id, tree, tree_len) = let
         val vl = g1ofg0(val_len)
       in
         if vl > 0 then
-          if attr_st_len + vl + 8 <= 4096 then let
+          if attr_st_len + vl + 8 <= 262144 then let
             val val_arr = ward_arr_alloc<byte>(vl)
             val _ = copy_arr_bytes(val_arr, tree, val_start, val_len)
             val @(frozen, borrow) = ward_arr_freeze<byte>(val_arr)
-            val st = ward_dom_set_attr(st, nid, attr_st, attr_st_len, borrow, vl)
+            val st = ward_dom_stream_set_attr(st, nid, attr_st, attr_st_len, borrow, vl)
             val () = ward_arr_drop<byte>(frozen, borrow)
             val val_arr = ward_arr_thaw<byte>(frozen)
             val () = ward_arr_free<byte>(val_arr)
@@ -1059,7 +1059,7 @@ implement render_tree{l}{lb}{n}(state, parent_id, tree, tree_len) = let
       else skip_element(tree, pos + 1, len, tlen) (* unknown — skip byte *)
     end
 
-  val @(st, _) = loop(state, tree, 0, tree_len, parent_id, tree_len)
+  val @(st, _) = loop(stream, tree, 0, tree_len, parent_id, tree_len)
 in
   st
 end

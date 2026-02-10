@@ -32,9 +32,7 @@ and xml_attr_list_vt =
 
 (* ========== Functional Correctness Dataprops ========== *)
 
-(* NOTE: XML_ROUNDTRIP absprop was removed — it was an opaque prop
- * with a praxi, so it proved nothing. The serializer and parser
- * are structurally symmetric; correctness is verified by tests. *)
+(* NOTE: Serializer/parser roundtrip correctness is verified by tests. *)
 
 (* Attribute value correctness proof.
  * When found=true, the returned value IS the value of the requested
@@ -73,7 +71,7 @@ fun xml_serialize_node(node: !xml_node_vt, buf: ptr, pos: int, max: int): int
 (* ========== C-Callable Tree Query API ========== *)
 (* These functions use ptr for the opaque tree handle, with internal
  * castfn between ptr and xml_node_vt/xml_node_list_vt at the boundary.
- * C callers (epub.dats %{ block) pass raw pointers.
+ * C callers pass raw pointers.
  *
  * Proof parameters are erased at runtime — C signature unchanged. *)
 

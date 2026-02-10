@@ -92,20 +92,20 @@
 #endif
 
 /* Datavtype (tagged union) construction and matching.
- * ATS2 datavtype generates con1 (non-null constructors) as malloc'd structs
- * with a tag field and data fields. con0 (nullary) represented as NULL. */
-#define ATSINSmove_con1_beg()
-#define ATSINSmove_con1_end()
-#define ATSINSmove_con1_new(dst, tysum) ((dst) = malloc(sizeof(tysum)))
+ * ward runtime.h provides: ATSINSmove_con1_beg/end/new, ATSINSstore_con1_ofs,
+ * ATSINSfreecon, ATSSELcon, ATSSELfltrec. We only add what's missing. */
+#ifndef ATSINSstore_con1_tag
 #define ATSINSstore_con1_tag(dst, tag) (((int*)(dst))[0] = (tag))
-#define ATSINSstore_con1_ofs(dst, tysum, lab, val) (((tysum*)(dst))->lab = (val))
+#endif
 #ifndef ATSINSmove_con0
 #define ATSINSmove_con0(dst, tag) ((dst) = (void*)0)
 #endif
-#define ATSINSfreecon(p) /* bump allocator: no-op */
+#ifndef ATSCKpat_con0
 #define ATSCKpat_con0(p, tag) ((p) == (void*)0)
+#endif
+#ifndef ATSCKpat_con1
 #define ATSCKpat_con1(p, tag) (((int*)(p))[0] == (tag))
-#define ATSSELcon(p, tysum, lab) (((tysum*)(p))->lab)
+#endif
 
 /* Pointer arithmetic */
 #define ptr_add_int(p, n) ((void*)((char*)(p) + (n)))

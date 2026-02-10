@@ -19,4 +19,4 @@ fun ward_file_close(handle: int): void
 
 (* WASM export — called by JS when file opens *)
 fun ward_on_file_open
-  (resolver_ptr: ptr, handle: int, size: int): void = "ext#ward_on_file_open"
+  (resolver_id: int, handle: int, size: int): void = "ext#ward_on_file_open"

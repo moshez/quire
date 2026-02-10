@@ -21,5 +21,5 @@ fun ward_blob_free(handle: int): void
 
 (* WASM export — called by JS when decompression completes *)
 fun ward_on_decompress_complete
-  (resolver_ptr: ptr, handle: int, decompressed_len: int)
+  (resolver_id: int, handle: int, decompressed_len: int)
   : void = "ext#ward_on_decompress_complete"

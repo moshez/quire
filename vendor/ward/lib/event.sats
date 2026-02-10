@@ -6,7 +6,7 @@ staload "./promise.sats"
 fun ward_timer_set(delay_ms: int): ward_promise_pending(int)
 
 (* Called by JS host to fire a timer — WASM export *)
-fun ward_timer_fire(resolver_ptr: ptr): void = "ext#ward_timer_fire"
+fun ward_timer_fire(resolver_id: int): void = "ext#ward_timer_fire"
 
 (* Exit the process — host-provided *)
 fun ward_exit(): void = "mac#ward_exit"

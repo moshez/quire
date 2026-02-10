@@ -19,5 +19,5 @@ fun ward_fetch_get_body
 
 (* WASM export — called by JS when fetch completes *)
 fun ward_on_fetch_complete
-  (resolver_ptr: ptr, status: int, body_ptr: ptr, body_len: int)
+  (resolver_id: int, status: int, body_len: int)
   : void = "ext#ward_on_fetch_complete"

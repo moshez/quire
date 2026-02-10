@@ -8,7 +8,7 @@
 #define ATS_DYNLOADFLAG 0
 
 #include "share/atspre_staload.hats"
-staload "zip.sats"
+staload "./zip.sats"
 staload "./app_state.sats"
 staload "./../vendor/ward/lib/memory.sats"
 staload "./../vendor/ward/lib/file.sats"

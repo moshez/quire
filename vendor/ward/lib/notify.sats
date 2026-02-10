@@ -29,8 +29,8 @@ fun ward_push_get_subscription
 
 (* WASM exports — called by JS *)
 fun ward_on_permission_result
-  (resolver_ptr: ptr, granted: int): void = "ext#ward_on_permission_result"
+  (resolver_id: int, granted: int): void = "ext#ward_on_permission_result"
 
 fun ward_on_push_subscribe
-  (resolver_ptr: ptr, json_ptr: ptr, json_len: int)
+  (resolver_id: int, json_len: int)
   : void = "ext#ward_on_push_subscribe"

@@ -5,7 +5,7 @@ staload "./memory.sats"
 staload "./window.sats"
 staload _ = "./memory.dats"
 
-(* No $UNSAFE needed — all parameters are non-linear ATS2 types *)
+(* No $<M>UNSAFE needed — all parameters are non-linear ATS2 types *)
 
 extern fun _ward_js_focus_window
   (): void = "mac#ward_js_focus_window"

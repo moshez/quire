@@ -11,4 +11,4 @@ fun ward_clipboard_write_text
 
 (* WASM export — called by JS when clipboard op completes *)
 fun ward_on_clipboard_complete
-  (resolver_ptr: ptr, success: int): void = "ext#ward_on_clipboard_complete"
+  (resolver_id: int, success: int): void = "ext#ward_on_clipboard_complete"

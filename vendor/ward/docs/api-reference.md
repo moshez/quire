@@ -102,7 +102,7 @@ fun ward_int2byte(i: int): byte
 
 ---
 
-## dom -- Type-safe DOM diffing
+## dom -- Type-safe DOM streaming
 
 **Source:** `lib/dom.sats`
 
@@ -110,60 +110,61 @@ fun ward_int2byte(i: int): byte
 
 | Type | Kind | Description |
 |------|------|-------------|
-| `ward_dom_state(l)` | linear | DOM diff buffer at address `l` |
+| `ward_dom_state(l)` | linear | DOM diff buffer at address `l` (256KB) |
+| `ward_dom_stream(l)` | linear | Accumulates ops, auto-flushes when full |
 
 ### Functions
 
-#### Lifecycle
+#### Lifecycle (2)
 
 ```ats
 fun ward_dom_init (): [l:agz] ward_dom_state(l)
 fun ward_dom_fini {l:agz} (state: ward_dom_state(l)): void
 ```
 
-#### DOM operations (consume and return state)
+#### Stream lifecycle (2)
 
 ```ats
-fun ward_dom_create_element {l:agz}{tl:pos | tl + 10 <= 4096}
-  (state: ward_dom_state(l), node_id: int, parent_id: int,
-   tag: ward_safe_text(tl), tag_len: int tl): ward_dom_state(l)
+fun ward_dom_stream_begin {l:agz} (state: ward_dom_state(l)): [l2:agz] ward_dom_stream(l2)
+fun ward_dom_stream_end {l:agz} (stream: ward_dom_stream(l)): [l2:agz] ward_dom_state(l2)
+```
 
-fun ward_dom_set_text {l:agz}{lb:agz}{tl:nat | tl + 7 <= 4096}
-  (state: ward_dom_state(l), node_id: int,
-   text: !ward_arr_borrow(byte, lb, tl), text_len: int tl): ward_dom_state(l)
+`stream_begin` consumes the state and resets the cursor. `stream_end` flushes remaining ops and returns the state.
 
-fun ward_dom_set_attr {l:agz}{lb:agz}{nl:pos}{vl:nat | nl + vl + 8 <= 4096}
-  (state: ward_dom_state(l), node_id: int,
+#### Stream ops (5 core + 2 safe text variants)
+
+```ats
+fun ward_dom_stream_create_element {l:agz}{tl:pos | tl + 10 <= 262144}
+  (stream: ward_dom_stream(l), node_id: int, parent_id: int,
+   tag: ward_safe_text(tl), tag_len: int tl): ward_dom_stream(l)
+
+fun ward_dom_stream_set_text {l:agz}{lb:agz}{tl:nat | tl + 7 <= 262144}
+  (stream: ward_dom_stream(l), node_id: int,
+   text: !ward_arr_borrow(byte, lb, tl), text_len: int tl): ward_dom_stream(l)
+
+fun ward_dom_stream_set_attr {l:agz}{lb:agz}{nl:pos}{vl:nat | nl + vl + 8 <= 262144}
+  (stream: ward_dom_stream(l), node_id: int,
    attr_name: ward_safe_text(nl), name_len: int nl,
-   value: !ward_arr_borrow(byte, lb, vl), value_len: int vl): ward_dom_state(l)
+   value: !ward_arr_borrow(byte, lb, vl), value_len: int vl): ward_dom_stream(l)
 
-fun ward_dom_set_style {l:agz}{lb:agz}{vl:nat | vl + 13 <= 4096}
-  (state: ward_dom_state(l), node_id: int,
-   value: !ward_arr_borrow(byte, lb, vl), value_len: int vl): ward_dom_state(l)
+fun ward_dom_stream_set_style {l:agz}{lb:agz}{vl:nat | vl + 13 <= 262144}
+  (stream: ward_dom_stream(l), node_id: int,
+   value: !ward_arr_borrow(byte, lb, vl), value_len: int vl): ward_dom_stream(l)
 
-fun ward_dom_remove_children {l:agz}
-  (state: ward_dom_state(l), node_id: int): ward_dom_state(l)
-```
+fun ward_dom_stream_remove_children {l:agz}
+  (stream: ward_dom_stream(l), node_id: int): ward_dom_stream(l)
 
-#### State persistence (for async boundaries)
+fun ward_dom_stream_set_safe_text {l:agz}{tl:nat | tl + 7 <= 262144}
+  (stream: ward_dom_stream(l), node_id: int,
+   text: ward_safe_text(tl), text_len: int tl): ward_dom_stream(l)
 
-```ats
-fun ward_dom_store {l:agz} (state: ward_dom_state(l)): void
-fun ward_dom_load (): [l:agz] ward_dom_state(l)
-```
-
-#### Safe text variants (no borrow needed)
-
-```ats
-fun ward_dom_set_safe_text {l:agz}{tl:nat | tl + 7 <= 4096}
-  (state: ward_dom_state(l), node_id: int,
-   text: ward_safe_text(tl), text_len: int tl): ward_dom_state(l)
-
-fun ward_dom_set_attr_safe {l:agz}{nl:pos}{vl:nat | nl + vl + 8 <= 4096}
-  (state: ward_dom_state(l), node_id: int,
+fun ward_dom_stream_set_attr_safe {l:agz}{nl:pos}{vl:nat | nl + vl + 8 <= 262144}
+  (stream: ward_dom_stream(l), node_id: int,
    attr_name: ward_safe_text(nl), name_len: int nl,
-   value: ward_safe_text(vl), value_len: int vl): ward_dom_state(l)
+   value: ward_safe_text(vl), value_len: int vl): ward_dom_stream(l)
 ```
+
+Each stream op auto-flushes the buffer if the next op would exceed the 256KB capacity. The compile-time constraint ensures a single op always fits in an empty buffer.
 
 ---
 
@@ -190,20 +191,20 @@ Convenience aliases: `ward_promise_pending(a)` = `ward_promise(a, Pending)`, `wa
 
 ```ats
 (* Creation *)
-fun{a:t@ype} ward_promise_create (): @(ward_promise_pending(a), ward_promise_resolver(a))
-fun{a:t@ype} ward_promise_resolved (v: a): ward_promise_resolved(a)
-fun{a:t@ype} ward_promise_return (v: a): ward_promise_pending(a)
+fun{a:vt@ype} ward_promise_create (): @(ward_promise_pending(a), ward_promise_resolver(a))
+fun{a:vt@ype} ward_promise_resolved (v: a): ward_promise_resolved(a)
+fun{a:vt@ype} ward_promise_return (v: a): ward_promise_pending(a)
 
 (* Resolution -- consumes the resolver *)
-fun{a:t@ype} ward_promise_resolve (r: ward_promise_resolver(a), v: a): void
+fun{a:vt@ype} ward_promise_resolve (r: ward_promise_resolver(a), v: a): void
 
 (* Consumption *)
-fun{a:t@ype} ward_promise_extract (p: ward_promise_resolved(a)): a
-fun{a:t@ype} {s:PromiseState} ward_promise_discard (p: ward_promise(a, s)): void
+fun{a:vt@ype} ward_promise_extract (p: ward_promise_resolved(a)): a
+fun{a:vt@ype} {s:PromiseState} ward_promise_discard (p: ward_promise(a, s)): void
 
-(* Monadic bind *)
-fun{a:t@ype} {b:t@ype} ward_promise_then
-  (p: ward_promise_pending(a), f: a -<cloref1> ward_promise_pending(b))
+(* Monadic bind -- linear closure, freed after invocation *)
+fun{a:vt@ype}{b:vt@ype} ward_promise_then
+  (p: ward_promise_pending(a), f: (a) -<lin,cloptr1> ward_promise_pending(b))
   : ward_promise_pending(b)
 ```
 
@@ -217,7 +218,7 @@ fun{a:t@ype} {b:t@ype} ward_promise_then
 
 ```ats
 fun ward_timer_set (delay_ms: int): ward_promise_pending(int)
-fun ward_timer_fire (resolver_ptr: ptr): void = "ext#ward_timer_fire"   (* WASM export *)
+fun ward_timer_fire (resolver_id: int): void = "ext#ward_timer_fire"   (* WASM export *)
 fun ward_exit (): void = "mac#ward_exit"
 ```
 
@@ -248,8 +249,8 @@ fun ward_idb_delete {kn:pos}
   : ward_promise_pending(int)
 
 (* WASM exports *)
-fun ward_idb_fire (resolver_ptr: ptr, status: int): void = "ext#ward_idb_fire"
-fun ward_idb_fire_get (resolver_ptr: ptr, data_ptr: ptr, data_len: int): void = "ext#ward_idb_fire_get"
+fun ward_idb_fire (resolver_id: int, status: int): void = "ext#ward_idb_fire"
+fun ward_idb_fire_get (resolver_id: int, data_len: int): void = "ext#ward_idb_fire_get"
 ```
 
 ---
@@ -354,7 +355,7 @@ fun ward_fetch_get_body {n:pos} (len: int n): [l:agz] ward_arr(byte, l, n)
 
 (* WASM export *)
 fun ward_on_fetch_complete
-  (resolver_ptr: ptr, status: int, body_ptr: ptr, body_len: int): void = "ext#ward_on_fetch_complete"
+  (resolver_id: int, status: int, body_len: int): void = "ext#ward_on_fetch_complete"
 ```
 
 ---
@@ -372,7 +373,7 @@ fun ward_clipboard_write_text {n:nat}
 
 (* WASM export *)
 fun ward_on_clipboard_complete
-  (resolver_ptr: ptr, success: int): void = "ext#ward_on_clipboard_complete"
+  (resolver_id: int, success: int): void = "ext#ward_on_clipboard_complete"
 ```
 
 ---
@@ -392,7 +393,7 @@ fun ward_file_close (handle: int): void
 
 (* WASM export *)
 fun ward_on_file_open
-  (resolver_ptr: ptr, handle: int, size: int): void = "ext#ward_on_file_open"
+  (resolver_id: int, handle: int, size: int): void = "ext#ward_on_file_open"
 ```
 
 ---
@@ -415,7 +416,7 @@ fun ward_blob_free (handle: int): void
 
 (* WASM export *)
 fun ward_on_decompress_complete
-  (resolver_ptr: ptr, handle: int, decompressed_len: int): void = "ext#ward_on_decompress_complete"
+  (resolver_id: int, handle: int, decompressed_len: int): void = "ext#ward_on_decompress_complete"
 ```
 
 ---
@@ -444,7 +445,7 @@ fun ward_push_get_subscription ()
 
 (* WASM exports *)
 fun ward_on_permission_result
-  (resolver_ptr: ptr, granted: int): void = "ext#ward_on_permission_result"
+  (resolver_id: int, granted: int): void = "ext#ward_on_permission_result"
 fun ward_on_push_subscribe
-  (resolver_ptr: ptr, json_ptr: ptr, json_len: int): void = "ext#ward_on_push_subscribe"
+  (resolver_id: int, json_len: int): void = "ext#ward_on_push_subscribe"
 ```

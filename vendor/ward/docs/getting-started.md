@@ -63,16 +63,16 @@ lib/                    # Core library
   decompress.sats/dats  # Decompression
   notify.sats/dats      # Notifications/push
   runtime.h             # Freestanding WASM runtime macros
-  runtime.c             # Bump allocator + DOM state
+  runtime.c             # Free-list allocator + stash/resolver/listener tables
   ward_prelude.h        # Native build macros
-  ward_bridge.mjs       # JS bridge (DOM protocol parser)
+  ward_bridge.mjs       # JS bridge (DOM protocol, data stash, event listeners)
 
 exerciser/              # Test programs
   exerciser.dats        # Native exerciser
   wasm_exerciser.dats   # WASM exerciser
   dom_exerciser.dats    # DOM exerciser (pure safe ATS2)
   node_exerciser.mjs    # Node.js wrapper (jsdom)
-  anti/                 # 12 files that must FAIL to compile
+  anti/                 # 13 files that must FAIL to compile
 
 tests/                  # Bridge tests (node:test)
 docs/                   # Documentation

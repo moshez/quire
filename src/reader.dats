@@ -7,7 +7,7 @@
 
 #define ATS_DYNLOADFLAG 0
 
-staload "reader.sats"
-staload "dom.sats"
+staload "./reader.sats"
+staload "./dom.sats"
 
 (* All implementations provided by quire_runtime.c via mac# linkage *)

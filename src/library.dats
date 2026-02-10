@@ -7,6 +7,6 @@
 
 #define ATS_DYNLOADFLAG 0
 
-staload "library.sats"
+staload "./library.sats"
 
 (* All implementations provided by quire_runtime.c via mac# linkage *)

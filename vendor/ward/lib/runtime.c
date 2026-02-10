@@ -117,24 +117,8 @@ void *memcpy(void *dst, const void *src, unsigned int n) {
     return dst;
 }
 
-/* DOM state global — single-instance for ward_dom_store/ward_dom_load */
-static void *_ward_dom_stored = 0;
-void ward_dom_global_set(void *p) { _ward_dom_stored = p; }
-void *ward_dom_global_get(void) { return _ward_dom_stored; }
-
-/* IDB result stash — JS stores malloc'd ptr here, ATS2 recovers via ward_idb_get_result */
-static void *_ward_idb_stash_ptr = 0;
-static int _ward_idb_stash_len = 0;
-void ward_idb_stash_set(void *p, int len) {
-    _ward_idb_stash_ptr = p; _ward_idb_stash_len = len;
-}
-void *ward_idb_stash_get_ptr(void) { return _ward_idb_stash_ptr; }
-
-/* Bridge stash — shared by fetch, file, decompress, notify, listener */
-static void *_ward_bridge_stash_ptr = 0;
+/* Bridge int stash — 4 slots for stash IDs and metadata */
 static int _ward_bridge_stash_int[4] = {0};
-void ward_bridge_stash_set_ptr(void *p) { _ward_bridge_stash_ptr = p; }
-void *ward_bridge_stash_get_ptr(void) { return _ward_bridge_stash_ptr; }
 void ward_bridge_stash_set_int(int slot, int v) { _ward_bridge_stash_int[slot] = v; }
 int ward_bridge_stash_get_int(int slot) { return _ward_bridge_stash_int[slot]; }
 
@@ -143,8 +127,8 @@ static int _ward_measure[6] = {0};
 void ward_measure_set(int slot, int v) { _ward_measure[slot] = v; }
 int ward_measure_get(int slot) { return _ward_measure[slot]; }
 
-/* Listener table — max 64 listeners */
-#define WARD_MAX_LISTENERS 64
+/* Listener table — max 128 listeners */
+#define WARD_MAX_LISTENERS 128
 static void *_ward_listener_table[WARD_MAX_LISTENERS] = {0};
 void ward_listener_set(int id, void *cb) {
     if (id >= 0 && id < WARD_MAX_LISTENERS) _ward_listener_table[id] = cb;
@@ -154,18 +138,30 @@ void *ward_listener_get(int id) {
     return (void*)0;
 }
 
-/* Callback registry — max 128 entries */
-#define WARD_MAX_CALLBACKS 128
-static int _ward_cb_ids[WARD_MAX_CALLBACKS];
-static void *_ward_cb_fns[WARD_MAX_CALLBACKS];
-static void *_ward_cb_ctx[WARD_MAX_CALLBACKS];
-static int _ward_cb_count = 0;
+/* Resolver stash — linear: each slot consumed exactly once */
+#define WARD_MAX_RESOLVERS 64
+static void *_ward_resolver_table[WARD_MAX_RESOLVERS] = {0};
 
-int ward_cb_get_id(int idx) { return _ward_cb_ids[idx]; }
-void ward_cb_set_id(int idx, int id) { _ward_cb_ids[idx] = id; }
-void *ward_cb_get_fn(int idx) { return _ward_cb_fns[idx]; }
-void ward_cb_set_fn(int idx, void *fn) { _ward_cb_fns[idx] = fn; }
-void *ward_cb_get_ctx(int idx) { return _ward_cb_ctx[idx]; }
-void ward_cb_set_ctx(int idx, void *ctx) { _ward_cb_ctx[idx] = ctx; }
-int ward_cb_get_count(void) { return _ward_cb_count; }
-void ward_cb_set_count(int n) { _ward_cb_count = n; }
+int ward_resolver_stash(void *resolver) {
+    for (int i = 0; i < WARD_MAX_RESOLVERS; i++) {
+        if (!_ward_resolver_table[i]) {
+            _ward_resolver_table[i] = resolver;
+            return i;
+        }
+    }
+    __builtin_trap(); /* resolver table full — 64 concurrent async ops exceeded */
+}
+
+void *ward_resolver_unstash(int id) {
+    if (id < 0 || id >= WARD_MAX_RESOLVERS) return (void*)0;
+    void *r = _ward_resolver_table[id];
+    _ward_resolver_table[id] = 0; /* clear-on-take: linear consumption */
+    return r; /* NULL if already consumed or never stashed */
+}
+
+/* Combined unstash + resolve — safe against bad IDs from JS.
+   If ID is invalid or already consumed, silently no-ops. */
+void ward_resolver_fire(int id, int value) {
+    void *r = ward_resolver_unstash(id);
+    if (r) _ward_resolve_chain(r, (void*)(long)value);
+}

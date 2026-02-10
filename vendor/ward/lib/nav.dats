@@ -6,7 +6,7 @@ staload "./nav.sats"
 staload _ = "./memory.dats"
 
 (*
- * $UNSAFE justification:
+ * $<M>UNSAFE justification:
  * [U-bw] castvwtp1{ptr}(arr) — borrow ward_arr -> ptr for JS out-buffer
  *   (same as dom.dats [U2]). JS writes synchronously during the call.
  *)

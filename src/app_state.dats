@@ -1,4 +1,4 @@
-(* app_state.dats — Linear application state implementation
+(* app_state.dats -- Linear application state implementation
  *
  * Pure ATS2 datavtype. No C code. Fields accessed via @-unfold
  * pattern which generates direct struct member access in C.
@@ -8,12 +8,11 @@
 
 #include "share/atspre_staload.hats"
 staload "./app_state.sats"
-staload "./../vendor/ward/lib/callback.sats"
-staload _ = "./../vendor/ward/lib/callback.dats"
 
-(* Well-known callback ID for the app_state stash.
- * This entry's ctx slot holds the app_state pointer. *)
-#define APP_STATE_CB_ID 0
+(* Listener table slot for the app_state stash.
+ * ward_listener_set/get in runtime.c stores/retrieves ptr.
+ * app_state erases to atstype_ptrk at runtime -- same width. *)
+#define APP_STATE_SLOT 127
 
 datavtype app_state_impl =
   | APP_STATE of @{
@@ -545,35 +544,23 @@ implement _app_stg_load_pend() = let val st = app_state_load()
 implement _app_set_stg_load_pend(v) = let val st = app_state_load()
   val () = app_set_stg_load_pend(st, v) val () = app_state_store(st) in end
 
-(* ========== Callback registry stash ========== *)
+(* ========== Listener table stash ========== *)
 
-(*
- * $UNSAFE justifications:
- * [U-store] castvwtp0{ptr}(st) — erase linear app_state to ptr for
- *   callback registry storage. Same pattern as ward's promise/event
- *   resolver storage. The linear ownership is preserved by convention:
- *   exactly one load follows each store.
- * [U-load] castvwtp0{app_state}(p) — recover linear app_state from
- *   ptr retrieved from callback registry. Same as ward_dom_load in
- *   vendor/ward/lib/dom.dats:141. Trust boundary: we trust that the
- *   pointer was stored by a prior store/register and not aliased.
- *)
+(* app_state is stored in ward's listener table at slot 127.
+ * mac# declarations erase app_state to atstype_ptrk, matching
+ * ward_listener_set/get signatures. Same trust boundary as
+ * ward's own resolver stash: one load per store. *)
 
-implement app_state_register(st) = let
-  val p = $UNSAFE.castvwtp0{ptr}(st) (* [U-store] *)
-  val dummy = lam (payload: int): int =<cloref1> 0
-in
-  ward_callback_register_ctx(APP_STATE_CB_ID, p, dummy)
-end
+extern fun _app_stash_set
+  (id: int, st: app_state): void = "mac#ward_listener_set"
+extern fun _app_stash_get
+  (id: int): app_state = "mac#ward_listener_get"
 
-implement app_state_store(st) = let
-  val p = $UNSAFE.castvwtp0{ptr}(st) (* [U-store] *)
-in
-  ward_callback_set_ctx(APP_STATE_CB_ID, p)
-end
+implement app_state_register(st) =
+  _app_stash_set(APP_STATE_SLOT, st)
 
-implement app_state_load() = let
-  val p = ward_callback_get_ctx(APP_STATE_CB_ID)
-in
-  $UNSAFE.castvwtp0{app_state}(p) (* [U-load] *)
-end
+implement app_state_store(st) =
+  _app_stash_set(APP_STATE_SLOT, st)
+
+implement app_state_load() =
+  _app_stash_get(APP_STATE_SLOT)
