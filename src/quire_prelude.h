@@ -12,6 +12,9 @@
 #ifndef QUIRE_PRELUDE_H
 #define QUIRE_PRELUDE_H
 
+/* ATS2 abstract type erasure — absvtype app_state erases to ptr */
+#define app_state atstype_ptrk
+
 /* Arithmetic — quire_* names for explicit extern fun declarations */
 #define quire_add(a, b) ((a) + (b))
 #define quire_sub(a, b) ((a) - (b))
@@ -81,6 +84,13 @@
 #define atspre_g1int_lte_int(a, b) ((a) <= (b))
 #endif
 
+/* Record-in-singleton selection — for datavtype with one-field record.
+ * ATS2 optimizes single-field records: the record IS the field value.
+ * ATSSELrecsin just returns the value unchanged. */
+#ifndef ATSSELrecsin
+#define ATSSELrecsin(pmv, tyrec, lab) (pmv)
+#endif
+
 /* Datavtype (tagged union) construction and matching.
  * ATS2 datavtype generates con1 (non-null constructors) as malloc'd structs
  * with a tag field and data fields. con0 (nullary) represented as NULL. */
@@ -124,9 +134,73 @@ extern unsigned char *get_fetch_buffer_ptr(void);
 extern unsigned char *get_diff_buffer_ptr(void);
 extern int quire_get_byte(void *p, int off);
 
-/* DOM next-node-id state (used by dom.dats via extern fun) */
-extern int get_dom_next_node_id(void);
-extern int set_dom_next_node_id(int v);
+/* DOM next-node-id — REMOVED: now in app_state.dats (ATS2 datavtype) */
+
+/* C-callable app_state accessors (implemented in app_state.dats via ext#) */
+extern int _app_lib_count(void);
+extern void _app_set_lib_count(int v);
+extern int _app_lib_save_pend(void);
+extern void _app_set_lib_save_pend(int v);
+extern int _app_lib_load_pend(void);
+extern void _app_set_lib_load_pend(int v);
+extern int _app_lib_meta_save_pend(void);
+extern void _app_set_lib_meta_save_pend(int v);
+extern int _app_lib_meta_load_pend(void);
+extern void _app_set_lib_meta_load_pend(int v);
+extern int _app_lib_meta_load_idx(void);
+extern void _app_set_lib_meta_load_idx(int v);
+
+/* C-callable app_state accessors for settings module */
+extern int _app_stg_font_size(void);
+extern void _app_set_stg_font_size(int v);
+extern int _app_stg_font_family(void);
+extern void _app_set_stg_font_family(int v);
+extern int _app_stg_theme(void);
+extern void _app_set_stg_theme(int v);
+extern int _app_stg_lh_tenths(void);
+extern void _app_set_stg_lh_tenths(int v);
+extern int _app_stg_margin(void);
+extern void _app_set_stg_margin(int v);
+extern int _app_stg_visible(void);
+extern void _app_set_stg_visible(int v);
+extern int _app_stg_overlay_id(void);
+extern void _app_set_stg_overlay_id(int v);
+extern int _app_stg_close_id(void);
+extern void _app_set_stg_close_id(int v);
+extern int _app_stg_root_id(void);
+extern void _app_set_stg_root_id(int v);
+extern int _app_stg_btn_font_minus(void);
+extern void _app_set_stg_btn_font_minus(int v);
+extern int _app_stg_btn_font_plus(void);
+extern void _app_set_stg_btn_font_plus(int v);
+extern int _app_stg_btn_font_fam(void);
+extern void _app_set_stg_btn_font_fam(int v);
+extern int _app_stg_btn_theme_l(void);
+extern void _app_set_stg_btn_theme_l(int v);
+extern int _app_stg_btn_theme_d(void);
+extern void _app_set_stg_btn_theme_d(int v);
+extern int _app_stg_btn_theme_s(void);
+extern void _app_set_stg_btn_theme_s(int v);
+extern int _app_stg_btn_lh_minus(void);
+extern void _app_set_stg_btn_lh_minus(int v);
+extern int _app_stg_btn_lh_plus(void);
+extern void _app_set_stg_btn_lh_plus(int v);
+extern int _app_stg_btn_mg_minus(void);
+extern void _app_set_stg_btn_mg_minus(int v);
+extern int _app_stg_btn_mg_plus(void);
+extern void _app_set_stg_btn_mg_plus(int v);
+extern int _app_stg_disp_fs(void);
+extern void _app_set_stg_disp_fs(int v);
+extern int _app_stg_disp_ff(void);
+extern void _app_set_stg_disp_ff(int v);
+extern int _app_stg_disp_lh(void);
+extern void _app_set_stg_disp_lh(int v);
+extern int _app_stg_disp_mg(void);
+extern void _app_set_stg_disp_mg(int v);
+extern int _app_stg_save_pend(void);
+extern void _app_set_stg_save_pend(int v);
+extern int _app_stg_load_pend(void);
+extern void _app_set_stg_load_pend(int v);
 
 /* DOM lookup tables and copy (used by dom.dats tree renderer) */
 extern int lookup_tag(void *base, int offset, int name_len);

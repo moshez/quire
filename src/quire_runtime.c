@@ -61,16 +61,8 @@ typedef struct {
     int spine_count;
 } library_entry_t;
 
-/* Library state */
+/* Library state — array stays in C, int globals moved to app_state */
 static library_entry_t library_books[MAX_LIBRARY_BOOKS];
-static int library_count = 0;
-
-/* Async operation flags */
-static int lib_save_pending = 0;
-static int lib_load_pending = 0;
-static int lib_metadata_save_pending = 0;
-static int lib_metadata_load_pending = 0;
-static int lib_metadata_load_index = -1;
 
 /* String constants */
 static const char str_books[] = "books";
@@ -89,12 +81,12 @@ static int lib_read_u16(unsigned char* buf, int offset) {
 }
 
 void library_init(void) {
-    library_count = 0;
-    lib_save_pending = 0;
-    lib_load_pending = 0;
-    lib_metadata_save_pending = 0;
-    lib_metadata_load_pending = 0;
-    lib_metadata_load_index = -1;
+    _app_set_lib_count(0);
+    _app_set_lib_save_pend(0);
+    _app_set_lib_load_pend(0);
+    _app_set_lib_meta_save_pend(0);
+    _app_set_lib_meta_load_pend(0);
+    _app_set_lib_meta_load_idx(-1);
     for (int i = 0; i < MAX_LIBRARY_BOOKS; i++) {
         library_books[i].book_id_len = 0;
         library_books[i].title_len = 0;
@@ -106,11 +98,11 @@ void library_init(void) {
 }
 
 int library_get_count(void) {
-    return library_count;
+    return _app_lib_count();
 }
 
 int library_get_title(int index, int buf_offset) {
-    if (index < 0 || index >= library_count) return 0;
+    if (index < 0 || index >= _app_lib_count()) return 0;
     unsigned char* buf = get_string_buffer_ptr();
     library_entry_t* entry = &library_books[index];
     for (int i = 0; i < entry->title_len && buf_offset + i < STRING_BUFFER_SIZE; i++) {
@@ -120,7 +112,7 @@ int library_get_title(int index, int buf_offset) {
 }
 
 int library_get_author(int index, int buf_offset) {
-    if (index < 0 || index >= library_count) return 0;
+    if (index < 0 || index >= _app_lib_count()) return 0;
     unsigned char* buf = get_string_buffer_ptr();
     library_entry_t* entry = &library_books[index];
     for (int i = 0; i < entry->author_len && buf_offset + i < STRING_BUFFER_SIZE; i++) {
@@ -130,7 +122,7 @@ int library_get_author(int index, int buf_offset) {
 }
 
 int library_get_book_id(int index, int buf_offset) {
-    if (index < 0 || index >= library_count) return 0;
+    if (index < 0 || index >= _app_lib_count()) return 0;
     unsigned char* buf = get_string_buffer_ptr();
     library_entry_t* entry = &library_books[index];
     for (int i = 0; i < entry->book_id_len && buf_offset + i < STRING_BUFFER_SIZE; i++) {
@@ -140,17 +132,17 @@ int library_get_book_id(int index, int buf_offset) {
 }
 
 int library_get_chapter(int index) {
-    if (index < 0 || index >= library_count) return 0;
+    if (index < 0 || index >= _app_lib_count()) return 0;
     return library_books[index].current_chapter;
 }
 
 int library_get_page(int index) {
-    if (index < 0 || index >= library_count) return 0;
+    if (index < 0 || index >= _app_lib_count()) return 0;
     return library_books[index].current_page;
 }
 
 int library_get_spine_count(int index) {
-    if (index < 0 || index >= library_count) return 0;
+    if (index < 0 || index >= _app_lib_count()) return 0;
     return library_books[index].spine_count;
 }
 
@@ -159,7 +151,8 @@ int library_find_book_by_id(void) {
     int id_len = epub_get_book_id(0);
     if (id_len <= 0) return -1;
 
-    for (int i = 0; i < library_count; i++) {
+    int _lc = _app_lib_count();
+    for (int i = 0; i < _lc; i++) {
         library_entry_t* entry = &library_books[i];
         if (entry->book_id_len == id_len) {
             int match = 1;
@@ -173,10 +166,11 @@ int library_find_book_by_id(void) {
 }
 
 int library_add_book(void) {
-    if (library_count >= MAX_LIBRARY_BOOKS) return -1;
+    int _lc = _app_lib_count();
+    if (_lc >= MAX_LIBRARY_BOOKS) return -1;
 
     unsigned char* str_buf = get_string_buffer_ptr();
-    library_entry_t* entry = &library_books[library_count];
+    library_entry_t* entry = &library_books[_lc];
 
     /* Get book_id */
     int id_len = epub_get_book_id(0);
@@ -187,7 +181,7 @@ int library_add_book(void) {
     entry->book_id_len = id_len;
 
     /* Check for duplicate */
-    for (int i = 0; i < library_count; i++) {
+    for (int i = 0; i < _lc; i++) {
         if (library_books[i].book_id_len == id_len) {
             int match = 1;
             for (int j = 0; j < id_len && match; j++) {
@@ -218,19 +212,21 @@ int library_add_book(void) {
     entry->current_page = 0;
     entry->spine_count = epub_get_chapter_count();
 
-    return library_count++;
+    _app_set_lib_count(_lc + 1);
+    return _lc;
 }
 
 void library_remove_book(int index) {
-    if (index < 0 || index >= library_count) return;
-    for (int i = index; i < library_count - 1; i++) {
+    int _lc = _app_lib_count();
+    if (index < 0 || index >= _lc) return;
+    for (int i = index; i < _lc - 1; i++) {
         library_books[i] = library_books[i + 1];
     }
-    library_count--;
+    _app_set_lib_count(_lc - 1);
 }
 
 void library_update_position(int index, int chapter, int page) {
-    if (index < 0 || index >= library_count) return;
+    if (index < 0 || index >= _app_lib_count()) return;
     library_books[index].current_chapter = chapter;
     library_books[index].current_page = page;
 }
@@ -239,9 +235,10 @@ int library_serialize(void) {
     unsigned char* buf = get_fetch_buffer_ptr();
     int pos = 0;
 
-    lib_write_u16(buf, pos, library_count); pos += 2;
+    int _lc = _app_lib_count();
+    lib_write_u16(buf, pos, _lc); pos += 2;
 
-    for (int i = 0; i < library_count; i++) {
+    for (int i = 0; i < _lc; i++) {
         library_entry_t* entry = &library_books[i];
 
         /* book_id (fixed 8 bytes padded with zeros) */
@@ -279,10 +276,11 @@ int library_deserialize(int len) {
     int count = lib_read_u16(buf, pos); pos += 2;
     if (count > MAX_LIBRARY_BOOKS) count = MAX_LIBRARY_BOOKS;
 
-    library_count = 0;
+    _app_set_lib_count(0);
+    int _deser_lc = 0;
 
     for (int i = 0; i < count && pos < len; i++) {
-        library_entry_t* entry = &library_books[library_count];
+        library_entry_t* entry = &library_books[_deser_lc];
 
         /* book_id (fixed 8 bytes) */
         for (int j = 0; j < 8 && pos < len; j++) {
@@ -323,8 +321,9 @@ int library_deserialize(int len) {
         entry->current_page = lib_read_u16(buf, pos); pos += 2;
         entry->spine_count = lib_read_u16(buf, pos); pos += 2;
 
-        library_count++;
+        _deser_lc++;
     }
+    _app_set_lib_count(_deser_lc);
 
     return 1;
 }
@@ -337,7 +336,7 @@ void library_save(void) {
     /* Write key to string buffer */
     for (int i = 0; i < 13; i++) str_buf[i] = str_lib_key[i];
 
-    lib_save_pending = 1;
+    _app_set_lib_save_pend(1);
     js_kv_put((void*)str_books, 5, str_buf, 13, 0, data_len);
 }
 
@@ -347,19 +346,19 @@ void library_load(void) {
     /* Write key to string buffer */
     for (int i = 0; i < 13; i++) str_buf[i] = str_lib_key[i];
 
-    lib_load_pending = 1;
+    _app_set_lib_load_pend(1);
     js_kv_get((void*)str_books, 5, str_buf, 13);
 }
 
 void library_on_load_complete(int len) {
-    lib_load_pending = 0;
+    _app_set_lib_load_pend(0);
     if (len > 0) {
         library_deserialize(len);
     }
 }
 
 void library_on_save_complete(int success) {
-    lib_save_pending = 0;
+    _app_set_lib_save_pend(0);
 }
 
 void library_save_book_metadata(void) {
@@ -375,12 +374,12 @@ void library_save_book_metadata(void) {
     int id_len = epub_get_book_id(key_len);
     key_len += id_len;
 
-    lib_metadata_save_pending = 1;
+    _app_set_lib_meta_save_pend(1);
     js_kv_put((void*)str_books, 5, str_buf, key_len, 0, data_len);
 }
 
 void library_load_book_metadata(int index) {
-    if (index < 0 || index >= library_count) return;
+    if (index < 0 || index >= _app_lib_count()) return;
 
     unsigned char* str_buf = get_string_buffer_ptr();
     library_entry_t* entry = &library_books[index];
@@ -390,25 +389,25 @@ void library_load_book_metadata(int index) {
     for (int i = 0; i < 5; i++) str_buf[key_len++] = str_book_prefix[i];
     for (int i = 0; i < entry->book_id_len; i++) str_buf[key_len++] = entry->book_id[i];
 
-    lib_metadata_load_pending = 1;
-    lib_metadata_load_index = index;
+    _app_set_lib_meta_load_pend(1);
+    _app_set_lib_meta_load_idx(index);
     js_kv_get((void*)str_books, 5, str_buf, key_len);
 }
 
 void library_on_metadata_load_complete(int len) {
-    lib_metadata_load_pending = 0;
+    _app_set_lib_meta_load_pend(0);
     if (len > 0) {
         epub_restore_metadata(len);
     }
 }
 
 void library_on_metadata_save_complete(int success) {
-    lib_metadata_save_pending = 0;
+    _app_set_lib_meta_save_pend(0);
 }
 
-int library_is_save_pending(void) { return lib_save_pending; }
-int library_is_load_pending(void) { return lib_load_pending; }
-int library_is_metadata_pending(void) { return lib_metadata_save_pending || lib_metadata_load_pending; }
+int library_is_save_pending(void) { return _app_lib_save_pend(); }
+int library_is_load_pending(void) { return _app_lib_load_pend(); }
+int library_is_metadata_pending(void) { return _app_lib_meta_save_pend() || _app_lib_meta_load_pend(); }
 
 /* ========== Settings module (moved from settings.dats %{^ block) ========== */
 
@@ -426,40 +425,7 @@ extern void dom_drop_proof(void*);
 extern int reader_is_active(void);
 extern void reader_remeasure_all(void);
 
-/* Settings state */
-static int setting_font_size = 18;
-static int setting_font_family = 0;
-static int setting_theme = 0;
-static int setting_line_height_tenths = 16;
-static int setting_margin = 2;
-
-/* Settings UI state */
-static int settings_visible = 0;
-static int settings_overlay_id = 0;
-static int settings_close_id = 0;
-static int settings_root_id = 1;
-
-/* Button IDs for click handling */
-static int btn_font_minus_id = 0;
-static int btn_font_plus_id = 0;
-static int btn_font_family_id = 0;
-static int btn_theme_light_id = 0;
-static int btn_theme_dark_id = 0;
-static int btn_theme_sepia_id = 0;
-static int btn_lh_minus_id = 0;
-static int btn_lh_plus_id = 0;
-static int btn_margin_minus_id = 0;
-static int btn_margin_plus_id = 0;
-
-/* Display IDs */
-static int disp_font_size_id = 0;
-static int disp_font_family_id = 0;
-static int disp_line_height_id = 0;
-static int disp_margin_id = 0;
-
-/* Save/load state */
-static int settings_save_pending = 0;
-static int settings_load_pending = 0;
+/* Settings state — all in app_state (ATS2 datavtype) */
 
 /* String constants */
 static const char s_div[] = "div";
@@ -540,82 +506,82 @@ static int settings_append_int(unsigned char* buf, int pos, int val) {
 }
 
 void settings_init(void) {
-    setting_font_size = 18;
-    setting_font_family = 0;
-    setting_theme = 0;
-    setting_line_height_tenths = 16;
-    setting_margin = 2;
-    settings_visible = 0;
-    settings_overlay_id = 0;
+    _app_set_stg_font_size(18);
+    _app_set_stg_font_family(0);
+    _app_set_stg_theme(0);
+    _app_set_stg_lh_tenths(16);
+    _app_set_stg_margin(2);
+    _app_set_stg_visible(0);
+    _app_set_stg_overlay_id(0);
 }
 
-int settings_get_font_size(void) { return setting_font_size; }
-int settings_get_font_family(void) { return setting_font_family; }
-int settings_get_theme(void) { return setting_theme; }
-int settings_get_line_height_tenths(void) { return setting_line_height_tenths; }
-int settings_get_margin(void) { return setting_margin; }
+int settings_get_font_size(void) { return _app_stg_font_size(); }
+int settings_get_font_family(void) { return _app_stg_font_family(); }
+int settings_get_theme(void) { return _app_stg_theme(); }
+int settings_get_line_height_tenths(void) { return _app_stg_lh_tenths(); }
+int settings_get_margin(void) { return _app_stg_margin(); }
 
 void settings_set_font_size(int size) {
-    setting_font_size = clamp(size, 14, 32);
+    _app_set_stg_font_size(clamp(size, 14, 32));
 }
 void settings_set_font_family(int family) {
-    setting_font_family = clamp(family, 0, 2);
+    _app_set_stg_font_family(clamp(family, 0, 2));
 }
 void settings_set_theme(int theme) {
-    setting_theme = clamp(theme, 0, 2);
+    _app_set_stg_theme(clamp(theme, 0, 2));
 }
 void settings_set_line_height_tenths(int tenths) {
-    setting_line_height_tenths = clamp(tenths, 14, 24);
+    _app_set_stg_lh_tenths(clamp(tenths, 14, 24));
 }
 void settings_set_margin(int margin) {
-    setting_margin = clamp(margin, 1, 4);
+    _app_set_stg_margin(clamp(margin, 1, 4));
 }
 
 void settings_increase_font_size(void) {
-    settings_set_font_size(setting_font_size + 2);
+    settings_set_font_size(_app_stg_font_size() + 2);
     settings_apply();
     update_display_values();
     settings_save();
 }
 void settings_decrease_font_size(void) {
-    settings_set_font_size(setting_font_size - 2);
+    settings_set_font_size(_app_stg_font_size() - 2);
     settings_apply();
     update_display_values();
     settings_save();
 }
 void settings_next_font_family(void) {
-    setting_font_family = (setting_font_family + 1) % 3;
+    _app_set_stg_font_family((_app_stg_font_family() + 1) % 3);
     settings_apply();
     update_display_values();
     settings_save();
 }
 void settings_next_theme(void) {
-    setting_theme = (setting_theme + 1) % 3;
+    _app_set_stg_theme((_app_stg_theme() + 1) % 3);
     settings_apply();
     apply_theme_to_body();
     update_display_values();
     settings_save();
 }
 void settings_increase_line_height(void) {
-    settings_set_line_height_tenths(setting_line_height_tenths + 1);
+    settings_set_line_height_tenths(_app_stg_lh_tenths() + 1);
     settings_apply();
     update_display_values();
     settings_save();
 }
 void settings_decrease_line_height(void) {
-    settings_set_line_height_tenths(setting_line_height_tenths - 1);
+    settings_set_line_height_tenths(_app_stg_lh_tenths() - 1);
     settings_apply();
     update_display_values();
     settings_save();
 }
 void settings_increase_margin(void) {
-    settings_set_margin(setting_margin + 1);
+    settings_set_margin(_app_stg_margin() + 1);
     settings_apply();
     update_display_values();
     settings_save();
 }
 void settings_decrease_margin(void) {
-    settings_set_margin(setting_margin - 1);
+    settings_set_margin(_app_stg_margin() - 1);
     settings_apply();
     update_display_values();
     settings_save();
@@ -624,13 +590,18 @@ void settings_decrease_margin(void) {
 int settings_build_css_vars(int buf_offset) {
     unsigned char* buf = get_fetch_buffer_ptr() + buf_offset;
     int len = 0;
+    int _fs = _app_stg_font_size();
+    int _ff = _app_stg_font_family();
+    int _lh = _app_stg_lh_tenths();
+    int _mg = _app_stg_margin();
+    int _th = _app_stg_theme();
 
     len = settings_append_str(buf, len, "--font-size:");
-    len = settings_append_int(buf, len, setting_font_size);
+    len = settings_append_int(buf, len, _fs);
     len = settings_append_str(buf, len, "px;");
 
     len = settings_append_str(buf, len, "--font-family:");
-    switch (setting_font_family) {
+    switch (_ff) {
         case 0: len = settings_append_str(buf, len, s_serif_css); break;
         case 1: len = settings_append_str(buf, len, s_sans_css); break;
         case 2: len = settings_append_str(buf, len, s_mono_css); break;
@@ -639,18 +610,18 @@ int settings_build_css_vars(int buf_offset) {
     len = settings_append_str(buf, len, ";");
 
     len = settings_append_str(buf, len, "--line-height:");
-    len = settings_append_int(buf, len, setting_line_height_tenths / 10);
+    len = settings_append_int(buf, len, _lh / 10);
     buf[len++] = '.';
-    len = settings_append_int(buf, len, setting_line_height_tenths % 10);
+    len = settings_append_int(buf, len, _lh % 10);
     len = settings_append_str(buf, len, ";");
 
     len = settings_append_str(buf, len, "--margin:");
-    len = settings_append_int(buf, len, setting_margin);
+    len = settings_append_int(buf, len, _mg);
     len = settings_append_str(buf, len, "rem;");
 
     const char* bg_color;
     const char* fg_color;
-    switch (setting_theme) {
+    switch (_th) {
         case 0: bg_color = s_light_bg; fg_color = s_light_fg; break;
         case 1: bg_color = s_dark_bg; fg_color = s_dark_fg; break;
         case 2: bg_color = s_sepia_bg; fg_color = s_sepia_fg; break;
@@ -669,12 +640,13 @@ int settings_build_css_vars(int buf_offset) {
 static void apply_theme_to_body(void) {
     unsigned char* str_buf = get_string_buffer_ptr();
     void* pf = dom_root_proof();
+    int _th = _app_stg_theme();
 
     int len = 0;
     const char* bg;
     const char* fg;
 
-    switch (setting_theme) {
+    switch (_th) {
         case 0: bg = s_light_bg; fg = s_light_fg; break;
         case 1: bg = s_dark_bg; fg = s_dark_fg; break;
         case 2: bg = s_sepia_bg; fg = s_sepia_fg; break;
@@ -699,23 +671,28 @@ void settings_apply(void) {
 void settings_save(void) {
     unsigned char* buf = get_fetch_buffer_ptr();
     unsigned char* str_buf = get_string_buffer_ptr();
+    int _fs = _app_stg_font_size();
+    int _ff = _app_stg_font_family();
+    int _th = _app_stg_theme();
+    int _lh = _app_stg_lh_tenths();
+    int _mg = _app_stg_margin();
 
-    buf[0] = setting_font_size & 0xff;
-    buf[1] = (setting_font_size >> 8) & 0xff;
-    buf[2] = setting_font_family & 0xff;
-    buf[3] = (setting_font_family >> 8) & 0xff;
-    buf[4] = setting_theme & 0xff;
-    buf[5] = (setting_theme >> 8) & 0xff;
-    buf[6] = setting_line_height_tenths & 0xff;
-    buf[7] = (setting_line_height_tenths >> 8) & 0xff;
-    buf[8] = setting_margin & 0xff;
-    buf[9] = (setting_margin >> 8) & 0xff;
+    buf[0] = _fs & 0xff;
+    buf[1] = (_fs >> 8) & 0xff;
+    buf[2] = _ff & 0xff;
+    buf[3] = (_ff >> 8) & 0xff;
+    buf[4] = _th & 0xff;
+    buf[5] = (_th >> 8) & 0xff;
+    buf[6] = _lh & 0xff;
+    buf[7] = (_lh >> 8) & 0xff;
+    buf[8] = _mg & 0xff;
+    buf[9] = (_mg >> 8) & 0xff;
 
     static const char key[] = "reader-settings";
     for (int i = 0; i < 15; i++) str_buf[i] = key[i];
 
     static const char store[] = "settings";
-    settings_save_pending = 1;
+    _app_set_stg_save_pend(1);
     js_kv_put((void*)store, 8, str_buf, 15, 0, 10);
 }
 
@@ -726,12 +703,12 @@ void settings_load(void) {
     for (int i = 0; i < 15; i++) str_buf[i] = key[i];
 
     static const char store[] = "settings";
-    settings_load_pending = 1;
+    _app_set_stg_load_pend(1);
     js_kv_get((void*)store, 8, str_buf, 15);
 }
 
 void settings_on_load_complete(int len) {
-    settings_load_pending = 0;
+    _app_set_stg_load_pend(0);
     if (len < 10) return;
 
     unsigned char* buf = get_fetch_buffer_ptr();
@@ -752,80 +729,98 @@ void settings_on_load_complete(int len) {
 }
 
 void settings_on_save_complete(int success) {
-    settings_save_pending = 0;
+    _app_set_stg_save_pend(0);
 }
 
-int settings_is_visible(void) { return settings_visible; }
-int settings_get_overlay_id(void) { return settings_overlay_id; }
+int settings_is_visible(void) { return _app_stg_visible(); }
+int settings_get_overlay_id(void) { return _app_stg_overlay_id(); }
 
 static void update_display_values(void) {
-    if (!settings_visible) return;
+    if (!_app_stg_visible()) return;
 
     unsigned char* buf = get_fetch_buffer_ptr();
     void* pf = dom_root_proof();
     int len;
+    int _dfs = _app_stg_disp_fs();
+    int _dff = _app_stg_disp_ff();
+    int _dlh = _app_stg_disp_lh();
+    int _dmg = _app_stg_disp_mg();
+    int _fs = _app_stg_font_size();
+    int _ff = _app_stg_font_family();
+    int _lh = _app_stg_lh_tenths();
+    int _mg = _app_stg_margin();
+    int _th = _app_stg_theme();
+    int _btl = _app_stg_btn_theme_l();
+    int _btd = _app_stg_btn_theme_d();
+    int _bts = _app_stg_btn_theme_s();
 
-    if (disp_font_size_id > 0) {
+    if (_dfs > 0) {
         len = 0;
-        len = settings_append_int(buf, len, setting_font_size);
+        len = settings_append_int(buf, len, _fs);
         len = settings_append_str(buf, len, "px");
-        dom_set_text_offset(pf, disp_font_size_id, 0, len);
+        dom_set_text_offset(pf, _dfs, 0, len);
     }
 
-    if (disp_font_family_id > 0) {
+    if (_dff > 0) {
         const char* family_name;
         int family_len;
-        switch (setting_font_family) {
+        switch (_ff) {
             case 0: family_name = s_serif; family_len = 5; break;
             case 1: family_name = s_sans; family_len = 4; break;
             case 2: family_name = s_mono; family_len = 4; break;
             default: family_name = s_serif; family_len = 5; break;
         }
         for (int i = 0; i < family_len; i++) buf[i] = family_name[i];
-        dom_set_text_offset(pf, disp_font_family_id, 0, family_len);
+        dom_set_text_offset(pf, _dff, 0, family_len);
     }
 
-    if (disp_line_height_id > 0) {
+    if (_dlh > 0) {
         len = 0;
-        len = settings_append_int(buf, len, setting_line_height_tenths / 10);
+        len = settings_append_int(buf, len, _lh / 10);
         buf[len++] = '.';
-        len = settings_append_int(buf, len, setting_line_height_tenths % 10);
-        dom_set_text_offset(pf, disp_line_height_id, 0, len);
+        len = settings_append_int(buf, len, _lh % 10);
+        dom_set_text_offset(pf, _dlh, 0, len);
     }
 
-    if (disp_margin_id > 0) {
+    if (_dmg > 0) {
         len = 0;
-        len = settings_append_int(buf, len, setting_margin);
+        len = settings_append_int(buf, len, _mg);
         len = settings_append_str(buf, len, "rem");
-        dom_set_text_offset(pf, disp_margin_id, 0, len);
+        dom_set_text_offset(pf, _dmg, 0, len);
     }
 
     unsigned char* str_buf = get_string_buffer_ptr();
-    if (btn_theme_light_id > 0) {
-        if (setting_theme == 0) dom_set_attr(pf, btn_theme_light_id, (void*)s_class, 5, (void*)s_settings_btn_active, 19);
-        else dom_set_attr(pf, btn_theme_light_id, (void*)s_class, 5, (void*)s_settings_btn, 12);
+    if (_btl > 0) {
+        if (_th == 0) dom_set_attr(pf, _btl, (void*)s_class, 5, (void*)s_settings_btn_active, 19);
+        else dom_set_attr(pf, _btl, (void*)s_class, 5, (void*)s_settings_btn, 12);
     }
-    if (btn_theme_dark_id > 0) {
-        if (setting_theme == 1) dom_set_attr(pf, btn_theme_dark_id, (void*)s_class, 5, (void*)s_settings_btn_active, 19);
-        else dom_set_attr(pf, btn_theme_dark_id, (void*)s_class, 5, (void*)s_settings_btn, 12);
+    if (_btd > 0) {
+        if (_th == 1) dom_set_attr(pf, _btd, (void*)s_class, 5, (void*)s_settings_btn_active, 19);
+        else dom_set_attr(pf, _btd, (void*)s_class, 5, (void*)s_settings_btn, 12);
     }
-    if (btn_theme_sepia_id > 0) {
-        if (setting_theme == 2) dom_set_attr(pf, btn_theme_sepia_id, (void*)s_class, 5, (void*)s_settings_btn_active, 19);
-        else dom_set_attr(pf, btn_theme_sepia_id, (void*)s_class, 5, (void*)s_settings_btn, 12);
+    if (_bts > 0) {
+        if (_th == 2) dom_set_attr(pf, _bts, (void*)s_class, 5, (void*)s_settings_btn_active, 19);
+        else dom_set_attr(pf, _bts, (void*)s_class, 5, (void*)s_settings_btn, 12);
     }
     dom_drop_proof(pf);
 }
 
 void settings_show(void) {
-    if (settings_visible) return;
+    if (_app_stg_visible()) return;
 
     unsigned char* buf = get_fetch_buffer_ptr();
     void* pf = dom_root_proof();
     int len;
+    int _fs = _app_stg_font_size();
+    int _ff = _app_stg_font_family();
+    int _th = _app_stg_theme();
+    int _lh = _app_stg_lh_tenths();
+    int _mg = _app_stg_margin();
+    int _root = _app_stg_root_id();
 
     int overlay_id = dom_next_id();
-    settings_overlay_id = overlay_id;
-    void* pf_overlay = dom_create_element(pf, settings_root_id, overlay_id, (void*)s_div, 3);
+    _app_set_stg_overlay_id(overlay_id);
+    void* pf_overlay = dom_create_element(pf, _root, overlay_id, (void*)s_div, 3);
     pf_overlay = dom_set_attr(pf_overlay, overlay_id, (void*)s_class, 5, (void*)s_settings_overlay, 16);
 
     int modal_id = dom_next_id();
@@ -840,7 +835,7 @@ void settings_show(void) {
     dom_set_text_offset(pf_header, header_id, 0, len);
 
     int close_id = dom_next_id();
-    settings_close_id = close_id;
+    _app_set_stg_close_id(close_id);
     void* pf_close = dom_create_element(pf_header, header_id, close_id, (void*)s_div, 3);
     pf_close = dom_set_attr(pf_close, close_id, (void*)s_class, 5, (void*)s_settings_close, 14);
     len = 0;
@@ -866,23 +861,23 @@ void settings_show(void) {
     int ctrl1_id = dom_next_id();
     void* pf_ctrl1 = dom_create_element(pf_row1, row1_id, ctrl1_id, (void*)s_div, 3);
     pf_ctrl1 = dom_set_attr(pf_ctrl1, ctrl1_id, (void*)s_class, 5, (void*)s_settings_controls, 17);
-    btn_font_minus_id = dom_next_id();
-    void* pf_btn = dom_create_element(pf_ctrl1, ctrl1_id, btn_font_minus_id, (void*)s_div, 3);
-    pf_btn = dom_set_attr(pf_btn, btn_font_minus_id, (void*)s_class, 5, (void*)s_settings_btn, 12);
+    int _bfm = dom_next_id();
+    void* pf_btn = dom_create_element(pf_ctrl1, ctrl1_id, _bfm, (void*)s_div, 3);
+    pf_btn = dom_set_attr(pf_btn, _bfm, (void*)s_class, 5, (void*)s_settings_btn, 12);
     len = 0; len = settings_append_str(buf, len, s_minus);
-    dom_set_text_offset(pf_btn, btn_font_minus_id, 0, len);
+    dom_set_text_offset(pf_btn, _bfm, 0, len);
     dom_drop_proof(pf_btn);
-    disp_font_size_id = dom_next_id();
-    void* pf_val = dom_create_element(pf_ctrl1, ctrl1_id, disp_font_size_id, (void*)s_div, 3);
-    pf_val = dom_set_attr(pf_val, disp_font_size_id, (void*)s_class, 5, (void*)s_settings_value, 14);
-    len = 0; len = settings_append_int(buf, len, setting_font_size); len = settings_append_str(buf, len, "px");
-    dom_set_text_offset(pf_val, disp_font_size_id, 0, len);
+    int _dfs = dom_next_id();
+    void* pf_val = dom_create_element(pf_ctrl1, ctrl1_id, _dfs, (void*)s_div, 3);
+    pf_val = dom_set_attr(pf_val, _dfs, (void*)s_class, 5, (void*)s_settings_value, 14);
+    len = 0; len = settings_append_int(buf, len, _fs); len = settings_append_str(buf, len, "px");
+    dom_set_text_offset(pf_val, _dfs, 0, len);
     dom_drop_proof(pf_val);
-    btn_font_plus_id = dom_next_id();
-    pf_btn = dom_create_element(pf_ctrl1, ctrl1_id, btn_font_plus_id, (void*)s_div, 3);
-    pf_btn = dom_set_attr(pf_btn, btn_font_plus_id, (void*)s_class, 5, (void*)s_settings_btn, 12);
+    int _bfp = dom_next_id();
+    pf_btn = dom_create_element(pf_ctrl1, ctrl1_id, _bfp, (void*)s_div, 3);
+    pf_btn = dom_set_attr(pf_btn, _bfp, (void*)s_class, 5, (void*)s_settings_btn, 12);
     len = 0; len = settings_append_str(buf, len, s_plus);
-    dom_set_text_offset(pf_btn, btn_font_plus_id, 0, len);
+    dom_set_text_offset(pf_btn, _bfp, 0, len);
     dom_drop_proof(pf_btn);
     dom_drop_proof(pf_ctrl1);
     dom_drop_proof(pf_row1);
@@ -900,19 +895,19 @@ void settings_show(void) {
     int ctrl2_id = dom_next_id();
     void* pf_ctrl2 = dom_create_element(pf_row2, row2_id, ctrl2_id, (void*)s_div, 3);
     pf_ctrl2 = dom_set_attr(pf_ctrl2, ctrl2_id, (void*)s_class, 5, (void*)s_settings_controls, 17);
-    btn_font_family_id = dom_next_id();
-    disp_font_family_id = btn_font_family_id;
-    pf_btn = dom_create_element(pf_ctrl2, ctrl2_id, btn_font_family_id, (void*)s_div, 3);
-    pf_btn = dom_set_attr(pf_btn, btn_font_family_id, (void*)s_class, 5, (void*)s_settings_btn, 12);
+    int _bff = dom_next_id();
+    int _dff = _bff;
+    pf_btn = dom_create_element(pf_ctrl2, ctrl2_id, _bff, (void*)s_div, 3);
+    pf_btn = dom_set_attr(pf_btn, _bff, (void*)s_class, 5, (void*)s_settings_btn, 12);
     const char* family_name; int family_len;
-    switch (setting_font_family) {
+    switch (_ff) {
         case 0: family_name = s_serif; family_len = 5; break;
         case 1: family_name = s_sans; family_len = 4; break;
         case 2: family_name = s_mono; family_len = 4; break;
         default: family_name = s_serif; family_len = 5; break;
     }
     for (int i = 0; i < family_len; i++) buf[i] = family_name[i];
-    dom_set_text_offset(pf_btn, btn_font_family_id, 0, family_len);
+    dom_set_text_offset(pf_btn, _bff, 0, family_len);
     dom_drop_proof(pf_btn);
     dom_drop_proof(pf_ctrl2);
     dom_drop_proof(pf_row2);
@@ -930,26 +925,26 @@ void settings_show(void) {
     int ctrl3_id = dom_next_id();
     void* pf_ctrl3 = dom_create_element(pf_row3, row3_id, ctrl3_id, (void*)s_div, 3);
     pf_ctrl3 = dom_set_attr(pf_ctrl3, ctrl3_id, (void*)s_class, 5, (void*)s_settings_controls, 17);
-    btn_theme_light_id = dom_next_id();
-    pf_btn = dom_create_element(pf_ctrl3, ctrl3_id, btn_theme_light_id, (void*)s_div, 3);
-    pf_btn = dom_set_attr(pf_btn, btn_theme_light_id, (void*)s_class, 5,
-        setting_theme == 0 ? (void*)s_settings_btn_active : (void*)s_settings_btn, setting_theme == 0 ? 19 : 12);
+    int _btl = dom_next_id();
+    pf_btn = dom_create_element(pf_ctrl3, ctrl3_id, _btl, (void*)s_div, 3);
+    pf_btn = dom_set_attr(pf_btn, _btl, (void*)s_class, 5,
+        _th == 0 ? (void*)s_settings_btn_active : (void*)s_settings_btn, _th == 0 ? 19 : 12);
     len = 0; len = settings_append_str(buf, len, s_light);
-    dom_set_text_offset(pf_btn, btn_theme_light_id, 0, len);
+    dom_set_text_offset(pf_btn, _btl, 0, len);
     dom_drop_proof(pf_btn);
-    btn_theme_dark_id = dom_next_id();
-    pf_btn = dom_create_element(pf_ctrl3, ctrl3_id, btn_theme_dark_id, (void*)s_div, 3);
-    pf_btn = dom_set_attr(pf_btn, btn_theme_dark_id, (void*)s_class, 5,
-        setting_theme == 1 ? (void*)s_settings_btn_active : (void*)s_settings_btn, setting_theme == 1 ? 19 : 12);
+    int _btd = dom_next_id();
+    pf_btn = dom_create_element(pf_ctrl3, ctrl3_id, _btd, (void*)s_div, 3);
+    pf_btn = dom_set_attr(pf_btn, _btd, (void*)s_class, 5,
+        _th == 1 ? (void*)s_settings_btn_active : (void*)s_settings_btn, _th == 1 ? 19 : 12);
     len = 0; len = settings_append_str(buf, len, s_dark);
-    dom_set_text_offset(pf_btn, btn_theme_dark_id, 0, len);
+    dom_set_text_offset(pf_btn, _btd, 0, len);
     dom_drop_proof(pf_btn);
-    btn_theme_sepia_id = dom_next_id();
-    pf_btn = dom_create_element(pf_ctrl3, ctrl3_id, btn_theme_sepia_id, (void*)s_div, 3);
-    pf_btn = dom_set_attr(pf_btn, btn_theme_sepia_id, (void*)s_class, 5,
-        setting_theme == 2 ? (void*)s_settings_btn_active : (void*)s_settings_btn, setting_theme == 2 ? 19 : 12);
+    int _bts = dom_next_id();
+    pf_btn = dom_create_element(pf_ctrl3, ctrl3_id, _bts, (void*)s_div, 3);
+    pf_btn = dom_set_attr(pf_btn, _bts, (void*)s_class, 5,
+        _th == 2 ? (void*)s_settings_btn_active : (void*)s_settings_btn, _th == 2 ? 19 : 12);
     len = 0; len = settings_append_str(buf, len, s_sepia);
-    dom_set_text_offset(pf_btn, btn_theme_sepia_id, 0, len);
+    dom_set_text_offset(pf_btn, _bts, 0, len);
     dom_drop_proof(pf_btn);
     dom_drop_proof(pf_ctrl3);
     dom_drop_proof(pf_row3);
@@ -967,24 +962,24 @@ void settings_show(void) {
     int ctrl4_id = dom_next_id();
     void* pf_ctrl4 = dom_create_element(pf_row4, row4_id, ctrl4_id, (void*)s_div, 3);
     pf_ctrl4 = dom_set_attr(pf_ctrl4, ctrl4_id, (void*)s_class, 5, (void*)s_settings_controls, 17);
-    btn_lh_minus_id = dom_next_id();
-    pf_btn = dom_create_element(pf_ctrl4, ctrl4_id, btn_lh_minus_id, (void*)s_div, 3);
-    pf_btn = dom_set_attr(pf_btn, btn_lh_minus_id, (void*)s_class, 5, (void*)s_settings_btn, 12);
+    int _blhm = dom_next_id();
+    pf_btn = dom_create_element(pf_ctrl4, ctrl4_id, _blhm, (void*)s_div, 3);
+    pf_btn = dom_set_attr(pf_btn, _blhm, (void*)s_class, 5, (void*)s_settings_btn, 12);
     len = 0; len = settings_append_str(buf, len, s_minus);
-    dom_set_text_offset(pf_btn, btn_lh_minus_id, 0, len);
+    dom_set_text_offset(pf_btn, _blhm, 0, len);
     dom_drop_proof(pf_btn);
-    disp_line_height_id = dom_next_id();
-    pf_val = dom_create_element(pf_ctrl4, ctrl4_id, disp_line_height_id, (void*)s_div, 3);
-    pf_val = dom_set_attr(pf_val, disp_line_height_id, (void*)s_class, 5, (void*)s_settings_value, 14);
-    len = 0; len = settings_append_int(buf, len, setting_line_height_tenths / 10);
-    buf[len++] = '.'; len = settings_append_int(buf, len, setting_line_height_tenths % 10);
-    dom_set_text_offset(pf_val, disp_line_height_id, 0, len);
+    int _dlh = dom_next_id();
+    pf_val = dom_create_element(pf_ctrl4, ctrl4_id, _dlh, (void*)s_div, 3);
+    pf_val = dom_set_attr(pf_val, _dlh, (void*)s_class, 5, (void*)s_settings_value, 14);
+    len = 0; len = settings_append_int(buf, len, _lh / 10);
+    buf[len++] = '.'; len = settings_append_int(buf, len, _lh % 10);
+    dom_set_text_offset(pf_val, _dlh, 0, len);
     dom_drop_proof(pf_val);
-    btn_lh_plus_id = dom_next_id();
-    pf_btn = dom_create_element(pf_ctrl4, ctrl4_id, btn_lh_plus_id, (void*)s_div, 3);
-    pf_btn = dom_set_attr(pf_btn, btn_lh_plus_id, (void*)s_class, 5, (void*)s_settings_btn, 12);
+    int _blhp = dom_next_id();
+    pf_btn = dom_create_element(pf_ctrl4, ctrl4_id, _blhp, (void*)s_div, 3);
+    pf_btn = dom_set_attr(pf_btn, _blhp, (void*)s_class, 5, (void*)s_settings_btn, 12);
     len = 0; len = settings_append_str(buf, len, s_plus);
-    dom_set_text_offset(pf_btn, btn_lh_plus_id, 0, len);
+    dom_set_text_offset(pf_btn, _blhp, 0, len);
     dom_drop_proof(pf_btn);
     dom_drop_proof(pf_ctrl4);
     dom_drop_proof(pf_row4);
@@ -1002,23 +997,23 @@ void settings_show(void) {
     int ctrl5_id = dom_next_id();
     void* pf_ctrl5 = dom_create_element(pf_row5, row5_id, ctrl5_id, (void*)s_div, 3);
     pf_ctrl5 = dom_set_attr(pf_ctrl5, ctrl5_id, (void*)s_class, 5, (void*)s_settings_controls, 17);
-    btn_margin_minus_id = dom_next_id();
-    pf_btn = dom_create_element(pf_ctrl5, ctrl5_id, btn_margin_minus_id, (void*)s_div, 3);
-    pf_btn = dom_set_attr(pf_btn, btn_margin_minus_id, (void*)s_class, 5, (void*)s_settings_btn, 12);
+    int _bmm = dom_next_id();
+    pf_btn = dom_create_element(pf_ctrl5, ctrl5_id, _bmm, (void*)s_div, 3);
+    pf_btn = dom_set_attr(pf_btn, _bmm, (void*)s_class, 5, (void*)s_settings_btn, 12);
     len = 0; len = settings_append_str(buf, len, s_minus);
-    dom_set_text_offset(pf_btn, btn_margin_minus_id, 0, len);
+    dom_set_text_offset(pf_btn, _bmm, 0, len);
     dom_drop_proof(pf_btn);
-    disp_margin_id = dom_next_id();
-    pf_val = dom_create_element(pf_ctrl5, ctrl5_id, disp_margin_id, (void*)s_div, 3);
-    pf_val = dom_set_attr(pf_val, disp_margin_id, (void*)s_class, 5, (void*)s_settings_value, 14);
-    len = 0; len = settings_append_int(buf, len, setting_margin); len = settings_append_str(buf, len, "rem");
-    dom_set_text_offset(pf_val, disp_margin_id, 0, len);
+    int _dmg = dom_next_id();
+    pf_val = dom_create_element(pf_ctrl5, ctrl5_id, _dmg, (void*)s_div, 3);
+    pf_val = dom_set_attr(pf_val, _dmg, (void*)s_class, 5, (void*)s_settings_value, 14);
+    len = 0; len = settings_append_int(buf, len, _mg); len = settings_append_str(buf, len, "rem");
+    dom_set_text_offset(pf_val, _dmg, 0, len);
     dom_drop_proof(pf_val);
-    btn_margin_plus_id = dom_next_id();
-    pf_btn = dom_create_element(pf_ctrl5, ctrl5_id, btn_margin_plus_id, (void*)s_div, 3);
-    pf_btn = dom_set_attr(pf_btn, btn_margin_plus_id, (void*)s_class, 5, (void*)s_settings_btn, 12);
+    int _bmp = dom_next_id();
+    pf_btn = dom_create_element(pf_ctrl5, ctrl5_id, _bmp, (void*)s_div, 3);
+    pf_btn = dom_set_attr(pf_btn, _bmp, (void*)s_class, 5, (void*)s_settings_btn, 12);
     len = 0; len = settings_append_str(buf, len, s_plus);
-    dom_set_text_offset(pf_btn, btn_margin_plus_id, 0, len);
+    dom_set_text_offset(pf_btn, _bmp, 0, len);
     dom_drop_proof(pf_btn);
     dom_drop_proof(pf_ctrl5);
     dom_drop_proof(pf_row5);
@@ -1028,52 +1023,68 @@ void settings_show(void) {
     dom_drop_proof(pf_overlay);
     dom_drop_proof(pf);
 
-    settings_visible = 1;
+    /* Store all button/display IDs to app_state */
+    _app_set_stg_btn_font_minus(_bfm);
+    _app_set_stg_btn_font_plus(_bfp);
+    _app_set_stg_btn_font_fam(_bff);
+    _app_set_stg_disp_fs(_dfs);
+    _app_set_stg_disp_ff(_dff);
+    _app_set_stg_btn_theme_l(_btl);
+    _app_set_stg_btn_theme_d(_btd);
+    _app_set_stg_btn_theme_s(_bts);
+    _app_set_stg_btn_lh_minus(_blhm);
+    _app_set_stg_btn_lh_plus(_blhp);
+    _app_set_stg_disp_lh(_dlh);
+    _app_set_stg_btn_mg_minus(_bmm);
+    _app_set_stg_btn_mg_plus(_bmp);
+    _app_set_stg_disp_mg(_dmg);
+    _app_set_stg_visible(1);
 }
 
 void settings_hide(void) {
-    if (!settings_visible || settings_overlay_id == 0) return;
+    int _oid = _app_stg_overlay_id();
+    if (!_app_stg_visible() || _oid == 0) return;
 
     void* pf = dom_root_proof();
-    dom_remove_child(pf, settings_overlay_id);
+    dom_remove_child(pf, _oid);
     dom_drop_proof(pf);
 
-    settings_visible = 0;
-    settings_overlay_id = 0;
-    settings_close_id = 0;
-    btn_font_minus_id = 0; btn_font_plus_id = 0;
-    btn_font_family_id = 0;
-    btn_theme_light_id = 0; btn_theme_dark_id = 0; btn_theme_sepia_id = 0;
-    btn_lh_minus_id = 0; btn_lh_plus_id = 0;
-    btn_margin_minus_id = 0; btn_margin_plus_id = 0;
-    disp_font_size_id = 0; disp_font_family_id = 0;
-    disp_line_height_id = 0; disp_margin_id = 0;
+    _app_set_stg_visible(0);
+    _app_set_stg_overlay_id(0);
+    _app_set_stg_close_id(0);
+    _app_set_stg_btn_font_minus(0); _app_set_stg_btn_font_plus(0);
+    _app_set_stg_btn_font_fam(0);
+    _app_set_stg_btn_theme_l(0); _app_set_stg_btn_theme_d(0); _app_set_stg_btn_theme_s(0);
+    _app_set_stg_btn_lh_minus(0); _app_set_stg_btn_lh_plus(0);
+    _app_set_stg_btn_mg_minus(0); _app_set_stg_btn_mg_plus(0);
+    _app_set_stg_disp_fs(0); _app_set_stg_disp_ff(0);
+    _app_set_stg_disp_lh(0); _app_set_stg_disp_mg(0);
 }
 
 void settings_toggle(void) {
-    if (settings_visible) settings_hide();
+    if (_app_stg_visible()) settings_hide();
     else settings_show();
 }
 
 int settings_handle_click(int node_id) {
-    if (!settings_visible) return 0;
-    if (node_id == settings_close_id) { settings_hide(); return 1; }
-    if (node_id == btn_font_minus_id) { settings_decrease_font_size(); return 1; }
-    if (node_id == btn_font_plus_id) { settings_increase_font_size(); return 1; }
-    if (node_id == btn_font_family_id) { settings_next_font_family(); return 1; }
-    if (node_id == btn_theme_light_id) { settings_set_theme(0); settings_apply(); apply_theme_to_body(); update_display_values(); settings_save(); return 1; }
-    if (node_id == btn_theme_dark_id) { settings_set_theme(1); settings_apply(); apply_theme_to_body(); update_display_values(); settings_save(); return 1; }
-    if (node_id == btn_theme_sepia_id) { settings_set_theme(2); settings_apply(); apply_theme_to_body(); update_display_values(); settings_save(); return 1; }
-    if (node_id == btn_lh_minus_id) { settings_decrease_line_height(); return 1; }
-    if (node_id == btn_lh_plus_id) { settings_increase_line_height(); return 1; }
-    if (node_id == btn_margin_minus_id) { settings_decrease_margin(); return 1; }
-    if (node_id == btn_margin_plus_id) { settings_increase_margin(); return 1; }
+    if (!_app_stg_visible()) return 0;
+    if (node_id == _app_stg_close_id()) { settings_hide(); return 1; }
+    if (node_id == _app_stg_btn_font_minus()) { settings_decrease_font_size(); return 1; }
+    if (node_id == _app_stg_btn_font_plus()) { settings_increase_font_size(); return 1; }
+    if (node_id == _app_stg_btn_font_fam()) { settings_next_font_family(); return 1; }
+    if (node_id == _app_stg_btn_theme_l()) { settings_set_theme(0); settings_apply(); apply_theme_to_body(); update_display_values(); settings_save(); return 1; }
+    if (node_id == _app_stg_btn_theme_d()) { settings_set_theme(1); settings_apply(); apply_theme_to_body(); update_display_values(); settings_save(); return 1; }
+    if (node_id == _app_stg_btn_theme_s()) { settings_set_theme(2); settings_apply(); apply_theme_to_body(); update_display_values(); settings_save(); return 1; }
+    if (node_id == _app_stg_btn_lh_minus()) { settings_decrease_line_height(); return 1; }
+    if (node_id == _app_stg_btn_lh_plus()) { settings_increase_line_height(); return 1; }
+    if (node_id == _app_stg_btn_mg_minus()) { settings_decrease_margin(); return 1; }
+    if (node_id == _app_stg_btn_mg_plus()) { settings_increase_margin(); return 1; }
     return 0;
 }
 
-void settings_set_root_id(int id) { settings_root_id = id; }
-int settings_is_save_pending(void) { return settings_save_pending; }
-int settings_is_load_pending(void) { return settings_load_pending; }
+void settings_set_root_id(int id) { _app_set_stg_root_id(id); }
+int settings_is_save_pending(void) { return _app_stg_save_pend(); }
+int settings_is_load_pending(void) { return _app_stg_load_pend(); }
 
 /* ========== EPUB module (moved from epub.dats %{^ block) ========== */
 
@@ -3252,21 +3263,11 @@ typedef struct {
     int local_header_offset;
 } zip_entry_t;
 
+/* ZIP arrays — kept in C, accessed via mac# from zip.dats.
+ * Simple int globals (entry_count, file_handle, name_offset) REMOVED:
+ * now in app_state.dats (ATS2 datavtype). */
 static zip_entry_t _zip_entries[MAX_ZIP_ENTRIES];
-static int _zip_entry_count = 0;
-static int _zip_file_handle = 0;
 static char _zip_name_buffer[ZIP_NAME_BUFFER_SIZE];
-static int _zip_name_offset = 0;
-
-int _zip_reset(void) {
-    _zip_entry_count = 0;
-    _zip_name_offset = 0;
-    _zip_file_handle = 0;
-    return 0;
-}
-int _zip_set_file_handle(int h) { _zip_file_handle = h; return 0; }
-int _zip_get_file_handle(void) { return _zip_file_handle; }
-int _zip_get_entry_count(void) { return _zip_entry_count; }
 
 int _zip_entry_file_handle(int i) { return _zip_entries[i].file_handle; }
 int _zip_entry_name_offset(int i) { return _zip_entries[i].name_offset; }
@@ -3278,19 +3279,18 @@ int _zip_entry_local_offset(int i) { return _zip_entries[i].local_header_offset;
 
 int _zip_name_char(int off) { return (int)(unsigned char)_zip_name_buffer[off]; }
 
-/* Store a new entry. Returns 1 on success, 0 if full. */
-int _zip_store_entry(int file_handle, int name_offset, int name_len,
-                     int compression, int compressed_size,
-                     int uncompressed_size, int local_offset) {
-    if (_zip_entry_count >= MAX_ZIP_ENTRIES) return 0;
-    _zip_entries[_zip_entry_count].file_handle = file_handle;
-    _zip_entries[_zip_entry_count].name_offset = name_offset;
-    _zip_entries[_zip_entry_count].name_len = name_len;
-    _zip_entries[_zip_entry_count].compression = compression;
-    _zip_entries[_zip_entry_count].compressed_size = compressed_size;
-    _zip_entries[_zip_entry_count].uncompressed_size = uncompressed_size;
-    _zip_entries[_zip_entry_count].local_header_offset = local_offset;
-    _zip_entry_count++;
+/* Store entry at given index. Caller manages count via app_state. */
+int _zip_store_entry_at(int idx, int file_handle, int name_offset, int name_len,
+                        int compression, int compressed_size,
+                        int uncompressed_size, int local_offset) {
+    if (idx < 0 || idx >= MAX_ZIP_ENTRIES) return 0;
+    _zip_entries[idx].file_handle = file_handle;
+    _zip_entries[idx].name_offset = name_offset;
+    _zip_entries[idx].name_len = name_len;
+    _zip_entries[idx].compression = compression;
+    _zip_entries[idx].compressed_size = compressed_size;
+    _zip_entries[idx].uncompressed_size = uncompressed_size;
+    _zip_entries[idx].local_header_offset = local_offset;
     return 1;
 }
 
@@ -3301,15 +3301,9 @@ int _zip_name_buf_put(int off, int byte_val) {
     return 1;
 }
 
-int _zip_name_buf_offset(void) { return _zip_name_offset; }
-int _zip_name_buf_advance(int n) { _zip_name_offset += n; return 0; }
-
 /* ========== DOM module (moved from dom.dats %{ blocks) ========== */
 
-/* Node ID allocator */
-static int _dom_next_node_id = 1;
-int get_dom_next_node_id(void) { return _dom_next_node_id; }
-int set_dom_next_node_id(int v) { _dom_next_node_id = v; return 0; }
+/* Node ID allocator — REMOVED: now in app_state.dats (ATS2 datavtype) */
 
 /* Byte copy for tree rendering */
 int _copy_to_arr(void *dst, void *src, int off, int count) {

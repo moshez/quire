@@ -46,6 +46,7 @@ WASM_EXPORTS := \
 # Ward library sources (order: dependencies first)
 WARD_DATS := \
   $(WARD_DIR)/memory.dats \
+  $(WARD_DIR)/callback.dats \
   $(WARD_DIR)/dom.dats \
   $(WARD_DIR)/promise.dats \
   $(WARD_DIR)/event.dats \
@@ -62,6 +63,7 @@ WARD_DATS := \
 
 # Quire application sources (order: dependencies first)
 QUIRE_DATS := \
+  src/app_state.dats \
   src/dom.dats \
   src/quire_ext.dats \
   src/zip.dats \

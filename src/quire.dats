@@ -10,10 +10,15 @@
 
 #define ATS_DYNLOADFLAG 0
 
+#include "share/atspre_staload.hats"
 staload "quire.sats"
+staload "./app_state.sats"
 
-(* Ward entry point — stub until Phase 9 *)
-implement ward_node_init(root_id) = ()
+(* Ward entry point — create and register app_state *)
+implement ward_node_init(root_id) = let
+  val st = app_state_init()
+  val () = app_state_register(st)
+in end
 
 (* Legacy callback stubs — will be removed in Phase 9 *)
 implement init() = ()

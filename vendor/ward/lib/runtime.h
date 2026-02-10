@@ -330,6 +330,16 @@ int ward_measure_get(int slot);
 void ward_listener_set(int id, void *cb);
 void *ward_listener_get(int id);
 
+/* Callback registry (implemented in runtime.c) — max 128 entries */
+int ward_cb_get_id(int idx);
+void ward_cb_set_id(int idx, int id);
+void *ward_cb_get_fn(int idx);
+void ward_cb_set_fn(int idx, void *fn);
+void *ward_cb_get_ctx(int idx);
+void ward_cb_set_ctx(int idx, void *ctx);
+int ward_cb_get_count(void);
+void ward_cb_set_count(int n);
+
 /* Window JS imports */
 extern void ward_js_focus_window(void);
 extern int ward_js_get_visibility_state(void);

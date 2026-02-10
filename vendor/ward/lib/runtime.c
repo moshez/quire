@@ -153,3 +153,19 @@ void *ward_listener_get(int id) {
     if (id >= 0 && id < WARD_MAX_LISTENERS) return _ward_listener_table[id];
     return (void*)0;
 }
+
+/* Callback registry — max 128 entries */
+#define WARD_MAX_CALLBACKS 128
+static int _ward_cb_ids[WARD_MAX_CALLBACKS];
+static void *_ward_cb_fns[WARD_MAX_CALLBACKS];
+static void *_ward_cb_ctx[WARD_MAX_CALLBACKS];
+static int _ward_cb_count = 0;
+
+int ward_cb_get_id(int idx) { return _ward_cb_ids[idx]; }
+void ward_cb_set_id(int idx, int id) { _ward_cb_ids[idx] = id; }
+void *ward_cb_get_fn(int idx) { return _ward_cb_fns[idx]; }
+void ward_cb_set_fn(int idx, void *fn) { _ward_cb_fns[idx] = fn; }
+void *ward_cb_get_ctx(int idx) { return _ward_cb_ctx[idx]; }
+void ward_cb_set_ctx(int idx, void *ctx) { _ward_cb_ctx[idx] = ctx; }
+int ward_cb_get_count(void) { return _ward_cb_count; }
+void ward_cb_set_count(int n) { _ward_cb_count = n; }

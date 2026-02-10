@@ -9,6 +9,7 @@
 
 #include "share/atspre_staload.hats"
 staload "zip.sats"
+staload "./app_state.sats"
 staload "./../vendor/ward/lib/memory.sats"
 staload "./../vendor/ward/lib/file.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
@@ -40,11 +41,7 @@ extern castfn _checked_bounded(x: int): [n:nat | n <= 256] int n
 
 (* ========== C storage accessors (quire_runtime.c) ========== *)
 
-extern fun _zip_reset(): void = "mac#"
-extern fun _zip_set_file_handle(h: int): void = "mac#"
-extern fun _zip_get_file_handle(): int = "mac#"
-extern fun _zip_get_entry_count(): int = "mac#"
-
+(* Array-backed storage stays in C — only arrays, not simple int globals *)
 extern fun _zip_entry_file_handle(i: int): int = "mac#"
 extern fun _zip_entry_name_offset(i: int): int = "mac#"
 extern fun _zip_entry_name_len(i: int): int = "mac#"
@@ -53,14 +50,60 @@ extern fun _zip_entry_compressed_size(i: int): int = "mac#"
 extern fun _zip_entry_uncompressed_size(i: int): int = "mac#"
 extern fun _zip_entry_local_offset(i: int): int = "mac#"
 extern fun _zip_name_char(off: int): int = "mac#"
-
-extern fun _zip_store_entry(fh: int, no: int, nl: int,
-  comp: int, cs: int, us: int, lo: int): int = "mac#"
 extern fun _zip_name_buf_put(off: int, byte_val: int): int = "mac#"
-extern fun _zip_name_buf_offset(): int = "mac#"
-extern fun _zip_name_buf_advance(n: int): void = "mac#"
+
+(* Store entry at a specific index — caller manages count via app_state *)
+extern fun _zip_store_entry_at(idx: int, fh: int, no: int, nl: int,
+  comp: int, cs: int, us: int, lo: int): int = "mac#"
 
 extern fun quire_get_byte(p: ptr, off: int): int = "mac#"
+
+(* ========== App state wrappers for ZIP int fields ========== *)
+
+fn _get_zip_count(): int = let
+  val st = app_state_load()
+  val c = app_get_zip_entry_count(st)
+  val () = app_state_store(st)
+in c end
+
+fn _set_zip_count(v: int): void = let
+  val st = app_state_load()
+  val () = app_set_zip_entry_count(st, v)
+  val () = app_state_store(st)
+in end
+
+fn _get_zip_handle(): int = let
+  val st = app_state_load()
+  val h = app_get_zip_file_handle(st)
+  val () = app_state_store(st)
+in h end
+
+fn _set_zip_handle(h: int): void = let
+  val st = app_state_load()
+  val () = app_set_zip_file_handle(st, h)
+  val () = app_state_store(st)
+in end
+
+fn _get_zip_name_off(): int = let
+  val st = app_state_load()
+  val o = app_get_zip_name_offset(st)
+  val () = app_state_store(st)
+in o end
+
+fn _advance_zip_name(n: int): void = let
+  val st = app_state_load()
+  val o = app_get_zip_name_offset(st)
+  val () = app_set_zip_name_offset(st, o + n)
+  val () = app_state_store(st)
+in end
+
+fn _zip_reset_state(): void = let
+  val st = app_state_load()
+  val () = app_set_zip_entry_count(st, 0)
+  val () = app_set_zip_file_handle(st, 0)
+  val () = app_set_zip_name_offset(st, 0)
+  val () = app_state_store(st)
+in end
 
 (* ========== ZIP signature constants ========== *)
 
@@ -120,12 +163,13 @@ fn parse_cd_entry {l:agz}{n:pos}
     val extra_len = arr_u16(arr, 30, read_len)
     val comment_len = arr_u16(arr, 32, read_len)
     val local_offset = arr_u32(arr, 42, read_len)
-    val name_buf_off = _zip_name_buf_offset()
+    val name_buf_off = _get_zip_name_off()
+    val entry_count = _get_zip_count()
   in
     if gt_int_int(1, name_len) then 46 + extra_len + comment_len
     else if gte_int_int(name_buf_off + name_len, 8192) then
       46 + name_len + extra_len + comment_len
-    else if gte_int_int(_zip_get_entry_count(), 256) then
+    else if gte_int_int(entry_count, 256) then
       46 + name_len + extra_len + comment_len
     else if gt_int_int(46 + name_len, read_len) then
       46 + name_len + extra_len + comment_len
@@ -140,9 +184,11 @@ fn parse_cd_entry {l:agz}{n:pos}
           val _ = _zip_name_buf_put(dest_off + j, b)
         in copy_name(arr, j + 1, nlen, dest_off, alen) end
       val () = copy_name(arr, 0, name_len, name_buf_off, read_len)
-      val _ = _zip_store_entry(file_handle, name_buf_off, name_len,
-                compression, compressed_size, uncompressed_size, local_offset)
-      val () = _zip_name_buf_advance(name_len)
+      val _ = _zip_store_entry_at(entry_count, file_handle, name_buf_off,
+                name_len, compression, compressed_size, uncompressed_size,
+                local_offset)
+      val () = _set_zip_count(entry_count + 1)
+      val () = _advance_zip_name(name_len)
     in 46 + name_len + extra_len + comment_len end
   end
 
@@ -158,11 +204,11 @@ fn parse_local_header {l:agz}{n:pos}
 
 (* ========== Public API implementations ========== *)
 
-implement zip_init() = _zip_reset()
+implement zip_init() = _zip_reset_state()
 
 implement zip_open(file_handle, file_size) = let
   val () = zip_init()
-  val () = _zip_set_file_handle(file_handle)
+  val () = _set_zip_handle(file_handle)
   val search_size = (if file_size < 65558 then file_size else 65558): int
 in
   if gt_int_int(1, search_size) then _checked_bounded(0)
@@ -185,7 +231,7 @@ in
       else let
         fun loop(handle: int, offset: int, remaining: int): void =
           if gt_int_int(1, remaining) then ()
-          else if gte_int_int(_zip_get_entry_count(), 256) then ()
+          else if gte_int_int(_get_zip_count(), 256) then ()
           else let
             val arr3 = ward_arr_alloc<byte>(512)
             val rlen = ward_file_read(handle, offset, arr3, 512)
@@ -196,13 +242,13 @@ in
             else loop(handle, offset + entry_size, remaining - 1)
           end
         val () = loop(file_handle, cd_offset, expected_count)
-      in _checked_bounded(_zip_get_entry_count()) end
+      in _checked_bounded(_get_zip_count()) end
     end
   end
 end
 
 implement zip_get_entry(index, entry) = let
-  val count = _zip_get_entry_count()
+  val count = _get_zip_count()
   fun set_default(entry: &zip_entry? >> zip_entry): void =
     entry := @{
       file_handle = 0, name_offset = 0, name_len = 0,
@@ -226,7 +272,7 @@ in
 end
 
 implement zip_get_entry_name(index, buf_offset) = let
-  val count = _zip_get_entry_count()
+  val count = _get_zip_count()
   extern castfn _to_nat(x: int): [n:nat] int n
 in
   if gt_int_int(0, index) then _to_nat(0)
@@ -235,7 +281,7 @@ in
 end
 
 implement zip_entry_name_ends_with(index, suffix_ptr, suffix_len) = let
-  val count = _zip_get_entry_count()
+  val count = _get_zip_count()
 in
   if gt_int_int(0, index) then 0
   else if gte_int_int(index, count) then 0
@@ -265,7 +311,7 @@ in
 end
 
 implement zip_entry_name_equals(index, name_ptr, name_len) = let
-  val count = _zip_get_entry_count()
+  val count = _get_zip_count()
 in
   if gt_int_int(0, index) then 0
   else if gte_int_int(index, count) then 0
@@ -288,7 +334,7 @@ in
 end
 
 implement zip_find_entry(name_ptr, name_len) = let
-  val count = _zip_get_entry_count()
+  val count = _get_zip_count()
   fun search(i: int): int =
     if gte_int_int(i, count) then 0 - 1
     else if gt_int_int(zip_entry_name_equals(i, name_ptr, name_len), 0) then i
@@ -296,7 +342,7 @@ implement zip_find_entry(name_ptr, name_len) = let
 in search(0) end
 
 implement zip_get_data_offset(index) = let
-  val count = _zip_get_entry_count()
+  val count = _get_zip_count()
 in
   if gt_int_int(0, index) then 0 - 1
   else if gte_int_int(index, count) then 0 - 1
@@ -311,6 +357,6 @@ in
 end
 
 implement zip_get_entry_count() =
-  _checked_bounded(_zip_get_entry_count())
+  _checked_bounded(_get_zip_count())
 
 implement zip_close() = zip_init()

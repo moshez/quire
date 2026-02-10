@@ -1,6 +1,6 @@
 # Ward Upstream Change Requests
 
-This document requests changes to the [ward](https://github.com/example/ward) library
+This document requests changes to the [ward](https://github.com/moshez/ward) library
 so that quire (and other ward-based apps) can use ward as-is without modifying
 `vendor/ward/`. Each section includes a concrete diff.
 
@@ -251,11 +251,97 @@ part of ward's contract would let apps write type-safe decoders.
 
 ---
 
+## 8. General-Purpose Callback Registry
+
+**Current state**: Ward's event listener system uses a fixed-size C array
+(`_ward_listener_table[64]`) in runtime.c to map listener IDs to closures.
+This is the only callback dispatch mechanism. Applications that need to
+thread state through async boundaries (IDB callbacks, fetch completions,
+timer fires) must maintain their own mutable globals.
+
+**Problem**: Applications end up with many mutable globals for state that
+needs to survive across async boundaries. Each module (settings, library,
+reader, etc.) maintains its own set of static variables that callbacks
+read/write. This makes the codebase hard to reason about and impossible
+to prove correct with linear types.
+
+**Proposed solution**: A general-purpose callback registry — a single
+mutable global table mapping integer IDs to closures. Applications
+register closures that capture their state; ward dispatches by ID when
+async operations complete. This consolidates all "ugly mutable global"
+state into one place in ward, letting applications thread state through
+closures instead.
+
+**Design**: For simplicity, a flat array of (id, callback) pairs with
+linear scan. Max 128 entries (more than sufficient — most apps will have
+fewer than 20 active callbacks at any time).
+
+### New file: callback.sats
+
+```ats
+(* Register a callback. Overwrites if ID already exists. *)
+fun ward_callback_register
+  (id: int, cb: (int) -<cloref1> int): void
+
+(* Fire callback for given ID, passing payload. No-op if not found. *)
+fun ward_callback_fire
+  (id: int, payload: int): void
+
+(* Remove callback for given ID. No-op if not found. *)
+fun ward_callback_remove
+  (id: int): void
+```
+
+### New file: callback.dats
+
+All logic in ATS2. Storage accessors use `mac#` to access C arrays in
+runtime.c. Registration does linear scan to find existing or append.
+Removal swaps with last entry (O(1) after the scan). Firing invokes
+via `ward_cloref1_invoke`.
+
+### Diff: runtime.h
+
+```diff
++/* Callback registry (implemented in runtime.c) */
++int ward_cb_get_id(int idx);
++void ward_cb_set_id(int idx, int id);
++void *ward_cb_get_fn(int idx);
++void ward_cb_set_fn(int idx, void *fn);
++int ward_cb_get_count(void);
++void ward_cb_set_count(int n);
+```
+
+### Diff: runtime.c
+
+```diff
++/* Callback registry — max 128 entries */
++#define WARD_MAX_CALLBACKS 128
++static int _ward_cb_ids[WARD_MAX_CALLBACKS];
++static void *_ward_cb_fns[WARD_MAX_CALLBACKS];
++static int _ward_cb_count = 0;
++
++int ward_cb_get_id(int idx) { return _ward_cb_ids[idx]; }
++void ward_cb_set_id(int idx, int id) { _ward_cb_ids[idx] = id; }
++void *ward_cb_get_fn(int idx) { return _ward_cb_fns[idx]; }
++void ward_cb_set_fn(int idx, void *fn) { _ward_cb_fns[idx] = fn; }
++int ward_cb_get_count(void) { return _ward_cb_count; }
++void ward_cb_set_count(int n) { _ward_cb_count = n; }
+```
+
+**Use case**: Quire's e-reader has 66 mutable globals across 6 modules.
+With the callback registry, each module registers closures that capture
+an `app_state` linear type (erased to ptr in the closure). When an async
+callback fires, ward dispatches to the closure which recovers the state.
+Result: zero per-module mutable globals.
+
+---
+
 ## Priority
 
 1. **High**: Unstub bridge (#1) + parseHTML (#2) — already implemented, just needs upstream merge
 2. **High**: REMOVE_CHILD opcode (#3) — small diff, needed by any app with dynamic UI
-3. **Medium**: ward_text_from_bytes (#4) — enables efficient HTML tree rendering
-4. **Medium**: loadWard extension point (#6) — small diff, high value
-5. **Low**: Event payload docs (#7) — documentation only
-6. **Low**: XML tree structure (#5) — nice-to-have, workaround exists
+3. **High**: Callback registry (#8) — enables elimination of per-module mutable globals
+4. **Medium**: ward_text_from_bytes (#4) — enables efficient HTML tree rendering
+5. **Medium**: loadWard extension point (#6) — small diff, high value
+6. **Low**: Event payload docs (#7) — documentation only
+7. **Low**: XML tree structure (#5) — nice-to-have, workaround exists
