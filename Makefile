@@ -41,6 +41,7 @@ WASM_EXPORTS := \
   --export=ward_on_push_subscribe \
   --export=ward_parse_html_stash \
   --export=ward_bridge_stash_set_ptr \
+  --export=ward_bridge_stash_set_int \
   --export=memory
 
 # Ward library sources (order: dependencies first)
