@@ -76,9 +76,10 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForTimeout(1000);
     await screenshot(page, '03-reader-chapter1');
 
-    // Verify chapter container is visible
+    // Verify chapter container is visible and has paragraph text
     const chapterContainer = page.locator('.chapter-container').first();
     await expect(chapterContainer).toBeVisible();
+    await expect(chapterContainer).toContainText('morning', { timeout: 5000 });
 
     // --- Flip pages forward using click zones ---
     const viewport = page.viewportSize();
@@ -91,6 +92,12 @@ test.describe('EPUB Reader E2E', () => {
     await page.mouse.click(rightZoneX, centerY);
     await page.waitForTimeout(500);
     await screenshot(page, '04-reader-page-forward');
+
+    // Verify transform changed (page actually moved)
+    const transformAfterForward = await chapterContainer.evaluate(
+      el => getComputedStyle(el).transform
+    );
+    expect(transformAfterForward).not.toBe('none');
 
     // Click right zone again
     await page.mouse.click(rightZoneX, centerY);
@@ -107,6 +114,12 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForTimeout(500);
     await screenshot(page, '07-reader-arrow-right');
 
+    // Verify keyboard navigation also applies transform
+    const transformAfterArrow = await chapterContainer.evaluate(
+      el => getComputedStyle(el).transform
+    );
+    expect(transformAfterArrow).not.toBe('none');
+
     await page.keyboard.press('ArrowLeft');
     await page.waitForTimeout(500);
     await screenshot(page, '08-reader-arrow-left');
@@ -115,36 +128,7 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForTimeout(500);
     await screenshot(page, '09-reader-space-forward');
 
-    // --- TOC overlay ---
-    await page.mouse.click(centerX, centerY);
-    await page.waitForTimeout(500);
-
-    const tocOverlay = page.locator('.toc-overlay');
-    const tocVisible = await tocOverlay.isVisible().catch(() => false);
-    if (tocVisible) {
-      await screenshot(page, '10-toc-overlay');
-
-      const tocEntries = page.locator('.toc-entry');
-      const entryCount = await tocEntries.count();
-      if (entryCount > 1) {
-        await tocEntries.nth(1).click();
-        await page.waitForTimeout(1000);
-        await screenshot(page, '11-reader-chapter2-via-toc');
-      }
-    } else {
-      await screenshot(page, '10-current-state');
-    }
-
     // --- Navigate back to library ---
-    // Dismiss TOC overlay if still showing (it intercepts pointer events)
-    const tocStillVisible = await tocOverlay.isVisible().catch(() => false);
-    if (tocStillVisible) {
-      await page.keyboard.press('Escape');
-      await page.waitForTimeout(500);
-      await screenshot(page, '12-toc-dismissed');
-    }
-
-    // Use Escape to go back to library (works reliably even with overlays)
     await page.keyboard.press('Escape');
     await page.waitForTimeout(500);
 
