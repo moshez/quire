@@ -179,6 +179,29 @@ fun get_attr_by_index(idx: int): [n:pos | n <= 11] @(ward_safe_text(n), int n)
 
 (* ========== Tree renderer ========== *)
 
+(* TEXT_RENDER_SAFE invariant (prevents set_text from destroying existing children):
+ *
+ * ward_dom_stream_set_text sets textContent, REPLACING all existing children
+ * with a single text node. render_tree tracks has_child (0 or 1) per scope:
+ *
+ *   has_child=0: parent has no DOM children yet.
+ *     set_text(parent) is safe — nothing to destroy.
+ *   has_child=1: parent has at least one DOM child (text or element).
+ *     TEXT must be wrapped in <span>; set_text called on span, not parent.
+ *
+ * Transitions: has_child goes 0→1 after any TEXT or ELEMENT_OPEN creates
+ * a DOM child. Entering a child scope resets to 0. Skipping whitespace-only
+ * text or unknown elements does NOT change has_child (no DOM node created).
+ *
+ * Bug classes prevented:
+ * - Whitespace text between <h1> and <p> wiping <h1> via set_text
+ * - Non-whitespace text after element children wiping siblings
+ * - Split large text fragments where second set_text wipes first
+ * - Mixed inline content (text + elements) losing text or elements
+ *)
+dataprop TEXT_RENDER_SAFE(has_child: int) =
+  | TEXT_ON_EMPTY(0)  (* no children yet — set_text on parent is safe *)
+
 (* SIBLING_CONTINUATION invariant (prevents render_tree first-element-only bug):
  *
  * The render_tree loop must process ALL sibling elements under a parent.

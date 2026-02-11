@@ -926,11 +926,33 @@ implement get_attr_by_index(idx) =
 (* Ward DOM buffer cap — text needs tl + 7 <= 262144, attr needs nl + vl + 8 <= 262144.
  * Max attr name is 11 chars, so vl + 19 <= 262144. Auto-flush handles large payloads. *)
 
+(* Check if text content in SAX buffer is whitespace-only.
+ * Whitespace: space(32), newline(10), tab(9), carriage-return(13).
+ * TEXT_RENDER_SAFE: whitespace-only TEXT nodes are always skipped as an
+ * optimization — they represent source indentation, not content.
+ * Non-whitespace TEXT on a parent with existing children (has_child > 0)
+ * is wrapped in <span> rather than calling set_text on parent. *)
+fn is_whitespace_only {lb:agz}{n:pos}
+  (tree: !ward_arr(byte, lb, n), start: int, text_len: int, tlen: int n): bool = let
+  fun check(tree: !ward_arr(byte, lb, n), pos: int, endp: int, tlen: int n): bool =
+    if pos >= endp then true
+    else let
+      val b = ward_arr_byte(tree, pos, tlen)
+    in
+      if b = 32 then check(tree, pos + 1, endp, tlen)        (* space *)
+      else if b = 10 then check(tree, pos + 1, endp, tlen)   (* newline *)
+      else if b = 9 then check(tree, pos + 1, endp, tlen)    (* tab *)
+      else if b = 13 then check(tree, pos + 1, endp, tlen)   (* CR *)
+      else false
+    end
+in check(tree, start, start + text_len, tlen) end
+
 implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
 
   fun loop {l:agz}{lb:agz}{n:pos}
     (st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n),
-     pos: int, len: int, parent: int, tlen: int n)
+     pos: int, len: int, parent: int, tlen: int n,
+     has_child: int)
     : @(ward_dom_stream(l), int) =
     if pos >= len then @(st, pos)
     else let
@@ -948,26 +970,25 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
           val nid = dom_next_id()
           val st = ward_dom_stream_create_element(st, nid, parent, tag_st, tag_st_len)
           val st = emit_attrs(st, nid, tree, attr_off + 1, attr_count, tlen)
-          val @(st, child_end) = loop(st, tree, after_attrs, len, nid, tlen)
+          val @(st, child_end) = loop(st, tree, after_attrs, len, nid, tlen, 0)
         in
           (* SIBLING_CONTINUATION: after closing this element, continue
            * processing remaining siblings under the same parent.
-           * Bug class: returning here instead of continuing causes only
-           * the first sibling to render (e.g., <h1> renders but <p> skipped). *)
+           * has_child=1: we just created an element child under parent. *)
           if child_end < len then let
             val close_opc = ward_arr_byte(tree, child_end, tlen)
           in
             if close_opc = 2 then
-              loop(st, tree, child_end + 1, len, parent, tlen)
+              loop(st, tree, child_end + 1, len, parent, tlen, 1)
             else
-              loop(st, tree, child_end, len, parent, tlen)
+              loop(st, tree, child_end, len, parent, tlen, 1)
           end
           else @(st, child_end)
         end
         else let
           val end_pos = skip_element(tree, after_attrs, len, tlen)
         in
-          loop(st, tree, end_pos, len, parent, tlen)
+          loop(st, tree, end_pos, len, parent, tlen, has_child)
         end
       end
       else if opc = 3 then let (* TEXT *)
@@ -976,25 +997,45 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
         val tl = g1ofg0(text_len)
       in
         if tl > 0 then
-          if tl + 7 <= 262144 then let
-            val text_arr = ward_arr_alloc<byte>(tl)
-            val _ = copy_arr_bytes(text_arr, tree, text_start, text_len)
-            val @(frozen, borrow) = ward_arr_freeze<byte>(text_arr)
-            val st = ward_dom_stream_set_text(st, parent, borrow, tl)
-            val () = ward_arr_drop<byte>(frozen, borrow)
-            val text_arr = ward_arr_thaw<byte>(frozen)
-            val () = ward_arr_free<byte>(text_arr)
-          in
-            loop(st, tree, text_start + text_len, len, parent, tlen)
-          end
+          if is_whitespace_only(tree, text_start, text_len, tlen) then
+            loop(st, tree, text_start + text_len, len, parent, tlen, has_child)
+          else if tl + 7 <= 262144 then
+            if has_child > 0 then let
+              (* TEXT_RENDER_SAFE: parent has existing children.
+               * Wrap text in <span> to prevent set_text from destroying them. *)
+              val span_id = dom_next_id()
+              val st = ward_dom_stream_create_element(
+                st, span_id, parent, tag_span(), 4)
+              val text_arr = ward_arr_alloc<byte>(tl)
+              val _ = copy_arr_bytes(text_arr, tree, text_start, text_len)
+              val @(frozen, borrow) = ward_arr_freeze<byte>(text_arr)
+              val st = ward_dom_stream_set_text(st, span_id, borrow, tl)
+              val () = ward_arr_drop<byte>(frozen, borrow)
+              val text_arr = ward_arr_thaw<byte>(frozen)
+              val () = ward_arr_free<byte>(text_arr)
+            in
+              loop(st, tree, text_start + text_len, len, parent, tlen, 1)
+            end
+            else let
+              (* TEXT_RENDER_SAFE: no children yet — set_text on parent is safe *)
+              val text_arr = ward_arr_alloc<byte>(tl)
+              val _ = copy_arr_bytes(text_arr, tree, text_start, text_len)
+              val @(frozen, borrow) = ward_arr_freeze<byte>(text_arr)
+              val st = ward_dom_stream_set_text(st, parent, borrow, tl)
+              val () = ward_arr_drop<byte>(frozen, borrow)
+              val text_arr = ward_arr_thaw<byte>(frozen)
+              val () = ward_arr_free<byte>(text_arr)
+            in
+              loop(st, tree, text_start + text_len, len, parent, tlen, 1)
+            end
           else (* text too large for DOM buffer — skip *)
-            loop(st, tree, text_start + text_len, len, parent, tlen)
-        else loop(st, tree, text_start + text_len, len, parent, tlen)
+            loop(st, tree, text_start + text_len, len, parent, tlen, has_child)
+        else loop(st, tree, text_start + text_len, len, parent, tlen, has_child)
       end
       else if opc = 2 then (* ELEMENT_CLOSE — return to parent *)
         @(st, pos)
       else (* Unknown opcode — skip byte *)
-        loop(st, tree, pos + 1, len, parent, tlen)
+        loop(st, tree, pos + 1, len, parent, tlen, has_child)
     end
   and skip_attrs {lb:agz}{n:pos}
     (tree: !ward_arr(byte, lb, n), pos: int, count: int, tlen: int n): int =
@@ -1065,7 +1106,7 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
       else skip_element(tree, pos + 1, len, tlen) (* unknown — skip byte *)
     end
 
-  val @(st, _) = loop(stream, tree, 0, tree_len, parent_id, tree_len)
+  val @(st, _) = loop(stream, tree, 0, tree_len, parent_id, tree_len, 0)
 in
   st
 end

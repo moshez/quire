@@ -385,6 +385,34 @@ should use only compile-time string constants and document which constructor app
 dom_set_attr(pf, id, (void*)str_class, 5, (void*)str_value, val_len);
 ```
 
+### 4. set_text Destroying Sibling/Child Nodes (TEXT_RENDER_SAFE)
+
+**Bug**: `ward_dom_stream_set_text` sets `textContent`, which REPLACES all
+existing children with a single text node. In parsed HTML SAX output,
+whitespace text nodes appear between sibling elements (from XHTML
+indentation), and the parser may split large text into multiple TEXT nodes.
+Calling `set_text` on a parent that already has children destroys them.
+
+**Root cause**: `render_tree`'s TEXT handler called `set_text(parent, ...)`
+unconditionally. Whitespace text between `<h1>` and `<p>` wiped the `<h1>`.
+Non-whitespace text after element children wiped all siblings.
+
+**Fix (ENFORCED)**: `render_tree` tracks `has_child` (0 or 1) per scope:
+- `has_child=0`: parent has no DOM children. `set_text(parent)` is safe.
+- `has_child=1`: parent has existing children. TEXT is wrapped in a `<span>`
+  and `set_text` is called on the span, not the parent.
+- Whitespace-only TEXT nodes are always skipped (optimization).
+- `has_child` transitions 0→1 after any TEXT or ELEMENT_OPEN creates a
+  DOM node. Entering a child scope resets to 0.
+
+See `TEXT_RENDER_SAFE` dataprop in dom.sats and `SIBLING_CONTINUATION`
+invariant (prevents the first-element-only bug in loop recursion shape).
+
+**Proof obligation**: Any code that calls `set_text` on a node must ensure
+no existing children will be destroyed. In `render_tree`, the `has_child`
+parameter structurally enforces this. New code adding `set_text` calls must
+document which invariant guarantees safety.
+
 ### Guidelines for New Code
 
 1. **Prefer ATS over C blocks**: ATS type checking catches proof violations
