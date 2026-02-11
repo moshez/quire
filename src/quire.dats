@@ -1,9 +1,8 @@
 (* quire.dats — Quire application entry point
  *
- * Renders library view on init using ward DOM stream API.
- * Registers "change" event listener on file input for EPUB import.
- * Import flow: file_open → zip_open → parse container → parse OPF
- *              → library_add_book → render book cards.
+ * Library view: renders import button and book cards.
+ * Reader view: loads chapter from ZIP, decompresses, parses HTML, renders.
+ * Navigation: click zones and keyboard (ArrowRight/Left, Space, Escape).
  *)
 
 #define ATS_DYNLOADFLAG 0
@@ -15,24 +14,35 @@ staload "./dom.sats"
 staload "./zip.sats"
 staload "./epub.sats"
 staload "./library.sats"
+staload "./reader.sats"
 staload "./../vendor/ward/lib/memory.sats"
 staload "./../vendor/ward/lib/dom.sats"
 staload "./../vendor/ward/lib/listener.sats"
 staload "./../vendor/ward/lib/file.sats"
 staload "./../vendor/ward/lib/promise.sats"
+staload "./../vendor/ward/lib/decompress.sats"
+staload "./../vendor/ward/lib/xml.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
 staload _ = "./../vendor/ward/lib/dom.dats"
 staload _ = "./../vendor/ward/lib/listener.dats"
 staload _ = "./../vendor/ward/lib/file.dats"
 staload _ = "./../vendor/ward/lib/promise.dats"
+staload _ = "./../vendor/ward/lib/decompress.dats"
+staload _ = "./../vendor/ward/lib/xml.dats"
 
 (* ========== Freestanding arithmetic ========== *)
 
 extern fun add_int_int(a: int, b: int): int = "mac#quire_add"
+extern fun sub_int_int(a: int, b: int): int = "mac#quire_sub"
 extern fun gte_int_int(a: int, b: int): bool = "mac#quire_gte"
 extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
+extern fun lt_int_int(a: int, b: int): bool = "mac#quire_lt"
 extern fun eq_int_int(a: int, b: int): bool = "mac#quire_eq"
+extern fun neq_int_int(a: int, b: int): bool = "mac#quire_neq"
+(* g1-level comparison: preserves static info for dependent array bounds *)
+extern fun gt1_int_int {a,b:int} (a: int a, b: int b): bool(a > b) = "mac#quire_gt"
 overload + with add_int_int of 10
+overload - with sub_int_int of 10
 
 (* Runtime-checked positive: used after verifying x > 0 at runtime *)
 extern castfn _checked_pos(x: int): [n:pos] int n
@@ -58,6 +68,21 @@ extern fun epub_parse_opf_bytes {l:agz}{n:pos}
 extern fun epub_get_opf_path_ptr(): ptr = "mac#"
 extern fun epub_get_opf_path_len(): int = "mac#"
 extern fun get_str_container_ptr(): ptr = "mac#"
+
+(* Spine path accessors *)
+extern fun epub_get_spine_path_ptr(index: int): ptr = "mac#"
+extern fun epub_get_spine_path_len(index: int): int = "mac#"
+
+(* Reader extra accessors (implemented in quire_runtime.c) *)
+extern fun reader_set_viewport_id(id: int): void = "mac#"
+extern fun reader_set_container_id(id: int): void = "mac#"
+extern fun reader_get_container_id(): int = "mac#"
+extern fun reader_set_book_index(idx: int): void = "mac#"
+extern fun reader_get_book_index(): int = "mac#"
+extern fun reader_set_file_handle(h: int): void = "mac#"
+extern fun reader_get_file_handle(): int = "mac#"
+extern fun reader_set_btn_id(book_index: int, node_id: int): void = "mac#"
+extern fun reader_get_btn_id(book_index: int): int = "mac#"
 
 (* ========== CSS class safe text builders ========== *)
 
@@ -122,13 +147,33 @@ fn evt_change(): ward_safe_text(6) = let
   val b = ward_text_putc(b, 5, char2int1('e'))
 in ward_text_done(b) end
 
+fn evt_click(): ward_safe_text(5) = let
+  val b = ward_text_build(5)
+  val b = ward_text_putc(b, 0, char2int1('c'))
+  val b = ward_text_putc(b, 1, char2int1('l'))
+  val b = ward_text_putc(b, 2, char2int1('i'))
+  val b = ward_text_putc(b, 3, char2int1('c'))
+  val b = ward_text_putc(b, 4, char2int1('k'))
+in ward_text_done(b) end
+
+fn evt_keydown(): ward_safe_text(7) = let
+  val b = ward_text_build(7)
+  val b = ward_text_putc(b, 0, char2int1('k'))
+  val b = ward_text_putc(b, 1, char2int1('e'))
+  val b = ward_text_putc(b, 2, char2int1('y'))
+  val b = ward_text_putc(b, 3, char2int1('d'))
+  val b = ward_text_putc(b, 4, char2int1('o'))
+  val b = ward_text_putc(b, 5, char2int1('w'))
+  val b = ward_text_putc(b, 6, char2int1('n'))
+in ward_text_done(b) end
+
 fn cls_book_card(): ward_safe_text(9) = let
   val b = ward_text_build(9)
   val b = ward_text_putc(b, 0, char2int1('b'))
   val b = ward_text_putc(b, 1, char2int1('o'))
   val b = ward_text_putc(b, 2, char2int1('o'))
   val b = ward_text_putc(b, 3, char2int1('k'))
-  val b = ward_text_putc(b, 4, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, 45)
   val b = ward_text_putc(b, 5, char2int1('c'))
   val b = ward_text_putc(b, 6, char2int1('a'))
   val b = ward_text_putc(b, 7, char2int1('r'))
@@ -141,7 +186,7 @@ fn cls_book_title(): ward_safe_text(10) = let
   val b = ward_text_putc(b, 1, char2int1('o'))
   val b = ward_text_putc(b, 2, char2int1('o'))
   val b = ward_text_putc(b, 3, char2int1('k'))
-  val b = ward_text_putc(b, 4, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, 45)
   val b = ward_text_putc(b, 5, char2int1('t'))
   val b = ward_text_putc(b, 6, char2int1('i'))
   val b = ward_text_putc(b, 7, char2int1('t'))
@@ -155,7 +200,7 @@ fn cls_book_author(): ward_safe_text(11) = let
   val b = ward_text_putc(b, 1, char2int1('o'))
   val b = ward_text_putc(b, 2, char2int1('o'))
   val b = ward_text_putc(b, 3, char2int1('k'))
-  val b = ward_text_putc(b, 4, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, 45)
   val b = ward_text_putc(b, 5, char2int1('a'))
   val b = ward_text_putc(b, 6, char2int1('u'))
   val b = ward_text_putc(b, 7, char2int1('t'))
@@ -170,7 +215,7 @@ fn cls_book_position(): ward_safe_text(13) = let
   val b = ward_text_putc(b, 1, char2int1('o'))
   val b = ward_text_putc(b, 2, char2int1('o'))
   val b = ward_text_putc(b, 3, char2int1('k'))
-  val b = ward_text_putc(b, 4, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, 45)
   val b = ward_text_putc(b, 5, char2int1('p'))
   val b = ward_text_putc(b, 6, char2int1('o'))
   val b = ward_text_putc(b, 7, char2int1('s'))
@@ -187,10 +232,58 @@ fn cls_read_btn(): ward_safe_text(8) = let
   val b = ward_text_putc(b, 1, char2int1('e'))
   val b = ward_text_putc(b, 2, char2int1('a'))
   val b = ward_text_putc(b, 3, char2int1('d'))
-  val b = ward_text_putc(b, 4, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, 45)
   val b = ward_text_putc(b, 5, char2int1('b'))
   val b = ward_text_putc(b, 6, char2int1('t'))
   val b = ward_text_putc(b, 7, char2int1('n'))
+in ward_text_done(b) end
+
+(* "reader-viewport" = 15 chars *)
+fn cls_reader_viewport(): ward_safe_text(15) = let
+  val b = ward_text_build(15)
+  val b = ward_text_putc(b, 0, char2int1('r'))
+  val b = ward_text_putc(b, 1, char2int1('e'))
+  val b = ward_text_putc(b, 2, char2int1('a'))
+  val b = ward_text_putc(b, 3, char2int1('d'))
+  val b = ward_text_putc(b, 4, char2int1('e'))
+  val b = ward_text_putc(b, 5, char2int1('r'))
+  val b = ward_text_putc(b, 6, 45) (* '-' *)
+  val b = ward_text_putc(b, 7, char2int1('v'))
+  val b = ward_text_putc(b, 8, char2int1('i'))
+  val b = ward_text_putc(b, 9, char2int1('e'))
+  val b = ward_text_putc(b, 10, char2int1('w'))
+  val b = ward_text_putc(b, 11, char2int1('p'))
+  val b = ward_text_putc(b, 12, char2int1('o'))
+  val b = ward_text_putc(b, 13, char2int1('r'))
+  val b = ward_text_putc(b, 14, char2int1('t'))
+in ward_text_done(b) end
+
+(* "chapter-container" = 17 chars *)
+fn cls_chapter_container(): ward_safe_text(17) = let
+  val b = ward_text_build(17)
+  val b = ward_text_putc(b, 0, char2int1('c'))
+  val b = ward_text_putc(b, 1, char2int1('h'))
+  val b = ward_text_putc(b, 2, char2int1('a'))
+  val b = ward_text_putc(b, 3, char2int1('p'))
+  val b = ward_text_putc(b, 4, char2int1('t'))
+  val b = ward_text_putc(b, 5, char2int1('e'))
+  val b = ward_text_putc(b, 6, char2int1('r'))
+  val b = ward_text_putc(b, 7, 45) (* '-' *)
+  val b = ward_text_putc(b, 8, char2int1('c'))
+  val b = ward_text_putc(b, 9, char2int1('o'))
+  val b = ward_text_putc(b, 10, char2int1('n'))
+  val b = ward_text_putc(b, 11, char2int1('t'))
+  val b = ward_text_putc(b, 12, char2int1('a'))
+  val b = ward_text_putc(b, 13, char2int1('i'))
+  val b = ward_text_putc(b, 14, char2int1('n'))
+  val b = ward_text_putc(b, 15, char2int1('e'))
+  val b = ward_text_putc(b, 16, char2int1('r'))
+in ward_text_done(b) end
+
+(* tabindex value "0" = 1 char *)
+fn val_zero(): ward_safe_text(1) = let
+  val b = ward_text_build(1)
+  val b = ward_text_putc(b, 0, 48) (* '0' *)
 in ward_text_done(b) end
 
 (* ========== Helper: set text content from C string constant ========== *)
@@ -332,51 +425,169 @@ fn render_library_with_books {l:agz}
   fun loop {l:agz}(s: ward_dom_stream(l), i: int, n: int): ward_dom_stream(l) =
     if gte_int_int(i, n) then s
     else let
-      (* div.book-card *)
       val card_id = dom_next_id()
       val s = ward_dom_stream_create_element(s, card_id, list_id, tag_div(), 3)
       val s = ward_dom_stream_set_attr_safe(s, card_id, attr_class(), 5, cls_book_card(), 9)
 
-      (* div.book-title *)
       val title_id = dom_next_id()
       val s = ward_dom_stream_create_element(s, title_id, card_id, tag_div(), 3)
       val s = ward_dom_stream_set_attr_safe(s, title_id, attr_class(), 5, cls_book_title(), 10)
       val title_len = library_get_title(i, 0)
       val s = set_text_from_sbuf(s, title_id, title_len)
 
-      (* div.book-author *)
       val author_id = dom_next_id()
       val s = ward_dom_stream_create_element(s, author_id, card_id, tag_div(), 3)
       val s = ward_dom_stream_set_attr_safe(s, author_id, attr_class(), 5, cls_book_author(), 11)
       val author_len = library_get_author(i, 0)
       val s = set_text_from_sbuf(s, author_id, author_len)
 
-      (* div.book-position *)
       val pos_id = dom_next_id()
       val s = ward_dom_stream_create_element(s, pos_id, card_id, tag_div(), 3)
       val s = ward_dom_stream_set_attr_safe(s, pos_id, attr_class(), 5, cls_book_position(), 13)
       val s = set_text_cstr(s, pos_id, TEXT_NOT_STARTED, 11)
 
-      (* button.read-btn *)
       val btn_id = dom_next_id()
+      val () = reader_set_btn_id(i, btn_id)
       val s = ward_dom_stream_create_element(s, btn_id, card_id, tag_button(), 6)
       val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5, cls_read_btn(), 8)
       val s = set_text_cstr(s, btn_id, TEXT_READ, 4)
     in loop(s, i + 1, n) end
 in loop(s, 0, count) end
 
-(* ========== Entry point ========== *)
+(* ========== Chapter loading ========== *)
 
-implement ward_node_init(root_id) = let
-  (* Initialize app state and register in callback stash *)
-  val st = app_state_init()
-  val () = app_state_register(st)
+fn load_chapter(file_handle: int, chapter_idx: int, container_id: int): void = let
+  val path_len = epub_get_spine_path_len(chapter_idx)
+in
+  if gt_int_int(path_len, 0) then let
+    val path_ptr = epub_get_spine_path_ptr(chapter_idx)
+    val zip_idx = zip_find_entry(path_ptr, path_len)
+  in
+    if gte_int_int(zip_idx, 0) then let
+      var entry: zip_entry
+      val found = zip_get_entry(zip_idx, entry)
+    in
+      if gt_int_int(found, 0) then let
+        val compression = entry.compression
+        val compressed_size = entry.compressed_size
+        val uncompressed_size = entry.uncompressed_size
+        val data_off = zip_get_data_offset(zip_idx)
+      in
+        if gt_int_int(data_off, 0) then
+          if eq_int_int(compression, 8) then let
+            (* Deflated — async decompression *)
+            val cs1 = (if gt_int_int(compressed_size, 0) then compressed_size else 1): int
+            val cs_pos = _checked_pos(cs1)
+            val arr = ward_arr_alloc<byte>(cs_pos)
+            val _rd = ward_file_read(file_handle, data_off, arr, cs_pos)
+            val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+            val p = ward_decompress(borrow, cs_pos, 2) (* deflate-raw *)
+            val () = ward_arr_drop<byte>(frozen, borrow)
+            val arr = ward_arr_thaw<byte>(frozen)
+            val () = ward_arr_free<byte>(arr)
+            val saved_cid = container_id
+            val p2 = ward_promise_then<int><int>(p,
+              llam (blob_handle: int): ward_promise_pending(int) => let
+                val dlen = ward_decompress_get_len()
+              in
+                if gt_int_int(dlen, 0) then let
+                  val dl = _checked_pos(dlen)
+                  val arr2 = ward_arr_alloc<byte>(dl)
+                  val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
+                  val () = ward_blob_free(blob_handle)
+                  val @(frozen2, borrow2) = ward_arr_freeze<byte>(arr2)
+                  val sax_len = ward_xml_parse_html(borrow2, dl)
+                  val () = ward_arr_drop<byte>(frozen2, borrow2)
+                  val arr2 = ward_arr_thaw<byte>(frozen2)
+                  val () = ward_arr_free<byte>(arr2)
+                in
+                  if gt_int_int(sax_len, 0) then let
+                    val sl = _checked_pos(sax_len)
+                    val sax_buf = ward_xml_get_result(sl)
+                    val dom = ward_dom_init()
+                    val s = ward_dom_stream_begin(dom)
+                    val s = render_tree(s, saved_cid, sax_buf, sl)
+                    val dom = ward_dom_stream_end(s)
+                    val () = ward_dom_fini(dom)
+                    val () = ward_arr_free<byte>(sax_buf)
+                  in ward_promise_return<int>(0) end
+                  else ward_promise_return<int>(0)
+                end
+                else let
+                  val () = ward_blob_free(blob_handle)
+                in ward_promise_return<int>(0) end
+              end)
+            val () = ward_promise_discard<int>(p2)
+          in end
+          else if eq_int_int(compression, 0) then let
+            (* Stored — read directly, no decompression needed *)
+            val us1 = (if gt_int_int(uncompressed_size, 0)
+              then uncompressed_size else 1): int
+            val us_pos = _checked_pos(us1)
+            val arr = ward_arr_alloc<byte>(us_pos)
+            val _rd = ward_file_read(file_handle, data_off, arr, us_pos)
+            val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+            val sax_len = ward_xml_parse_html(borrow, us_pos)
+            val () = ward_arr_drop<byte>(frozen, borrow)
+            val arr = ward_arr_thaw<byte>(frozen)
+            val () = ward_arr_free<byte>(arr)
+          in
+            if gt_int_int(sax_len, 0) then let
+              val sl = _checked_pos(sax_len)
+              val sax_buf = ward_xml_get_result(sl)
+              val dom = ward_dom_init()
+              val s = ward_dom_stream_begin(dom)
+              val s = render_tree(s, container_id, sax_buf, sl)
+              val dom = ward_dom_stream_end(s)
+              val () = ward_dom_fini(dom)
+              val () = ward_arr_free<byte>(sax_buf)
+            in end
+            else ()
+          end
+          else () (* unsupported compression method *)
+        else ()
+      end
+      else ()
+    end
+    else ()
+  end
+  else ()
+end
 
-  (* Initialize DOM and render library view *)
+(* ========== Forward declarations for mutual recursion ========== *)
+
+extern fun render_library(root_id: int): void
+extern fun enter_reader(root_id: int, book_index: int): void
+
+(* ========== Reader keyboard handler ========== *)
+
+fn on_reader_keydown(payload_len: int, root_id: int): void = let
+  val pl = g1ofg0(payload_len)
+in
+  (* Keydown payload: [u8:keyLen][bytes:key][u8:flags] — need >= 7 for Escape *)
+  if gt1_int_int(pl, 6) then let
+    val payload = ward_event_get_payload(pl)
+    val key_len = byte2int0(ward_arr_get<byte>(payload, 0))
+    val k0 = byte2int0(ward_arr_get<byte>(payload, 1))
+    val () = ward_arr_free<byte>(payload)
+  in
+    (* Check for "Escape": key_len=6, first char='E' (69) *)
+    if eq_int_int(key_len, 6) then
+      if eq_int_int(k0, 69) then let
+        val () = reader_exit()
+        val () = render_library(root_id)
+      in end
+      else ()
+    else ()
+  end
+  else ()
+end
+
+(* ========== Render library view ========== *)
+
+implement render_library(root_id) = let
   val dom = ward_dom_init()
   val s = ward_dom_stream_begin(dom)
-
-  (* Clear "Loading..." text from root *)
   val s = ward_dom_stream_remove_children(s, root_id)
 
   (* Import button: <label class="import-btn">Import<input ...></label> *)
@@ -384,7 +595,6 @@ implement ward_node_init(root_id) = let
   val s = ward_dom_stream_create_element(s, label_id, root_id, tag_label(), 5)
   val s = ward_dom_stream_set_attr_safe(s, label_id, attr_class(), 5, cls_import_btn(), 10)
 
-  (* "Import" text *)
   val import_st = let
     val b = ward_text_build(6)
     val b = ward_text_putc(b, 0, 73) (* 'I' *)
@@ -396,54 +606,189 @@ implement ward_node_init(root_id) = let
   in ward_text_done(b) end
   val s = ward_dom_stream_set_safe_text(s, label_id, import_st, 6)
 
-  (* File input: <input type="file" accept=".epub"> *)
   val input_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, input_id, label_id, tag_input(), 5)
   val s = ward_dom_stream_set_attr_safe(s, input_id, attr_type(), 4, st_file(), 4)
   val s = set_attr_cstr(s, input_id, attr_accept(), 6, TEXT_EPUB_EXT, 5)
 
-  (* Library list: <div class="library-list"> *)
+  (* Library list *)
   val list_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, list_id, root_id, tag_div(), 3)
   val s = ward_dom_stream_set_attr_safe(s, list_id, attr_class(), 5, cls_library_list(), 12)
 
-  (* Empty message: <div class="empty-lib">No books yet</div> *)
-  val empty_id = dom_next_id()
-  val s = ward_dom_stream_create_element(s, empty_id, list_id, tag_div(), 3)
-  val s = ward_dom_stream_set_attr_safe(s, empty_id, attr_class(), 5, cls_empty_lib(), 9)
-  val s = set_text_cstr(s, empty_id, TEXT_NO_BOOKS, 12)
+  val count = library_get_count()
+in
+  if gt_int_int(count, 0) then let
+    (* Render book cards *)
+    val s = render_library_with_books(s, list_id)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+
+    (* Register change listener on file input *)
+    val saved_input_id = input_id
+    val saved_list_id = list_id
+    val saved_root = root_id
+    val () = ward_add_event_listener(
+      input_id, evt_change(), 6, 1,
+      lam (_payload_len: int): int => let
+        val p = ward_file_open(saved_input_id)
+        val p2 = ward_promise_then<int><int>(p,
+          llam (handle: int): ward_promise_pending(int) => let
+            val file_size = ward_file_get_size()
+            val _nentries = zip_open(handle, file_size)
+            val ok1 = epub_read_container(handle)
+            val ok2 = (if gt_int_int(ok1, 0)
+              then epub_read_opf(handle) else 0): int
+            val _book_idx = (if gt_int_int(ok2, 0)
+              then library_add_book() else 0 - 1): int
+            val () = reader_set_file_handle(handle)
+            val dom = ward_dom_init()
+            val s = ward_dom_stream_begin(dom)
+            val s = render_library_with_books(s, saved_list_id)
+            val dom = ward_dom_stream_end(s)
+            val () = ward_dom_fini(dom)
+          in ward_promise_return<int>(0) end)
+        val () = ward_promise_discard<int>(p2)
+      in 0 end
+    )
+
+    (* Register click listeners on read buttons *)
+    fun reg_btns(i: int, n: int, root: int): void =
+      if gte_int_int(i, n) then ()
+      else let
+        val btn_id = reader_get_btn_id(i)
+        val book_idx = i
+        val saved_r = root
+      in
+        if gt_int_int(btn_id, 0) then let
+          val () = ward_add_event_listener(
+            btn_id, evt_click(), 5, 2 + i,
+            lam (_pl: int): int => let
+              val () = enter_reader(saved_r, book_idx)
+            in 0 end
+          )
+        in reg_btns(i + 1, n, root) end
+        else reg_btns(i + 1, n, root)
+      end
+    val () = reg_btns(0, count, root_id)
+  in end
+  else let
+    (* Empty library message *)
+    val empty_id = dom_next_id()
+    val s = ward_dom_stream_create_element(s, empty_id, list_id, tag_div(), 3)
+    val s = ward_dom_stream_set_attr_safe(s, empty_id, attr_class(), 5, cls_empty_lib(), 9)
+    val s = set_text_cstr(s, empty_id, TEXT_NO_BOOKS, 12)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+
+    (* Register change listener on file input *)
+    val saved_input_id = input_id
+    val saved_list_id = list_id
+    val saved_root = root_id
+    val () = ward_add_event_listener(
+      input_id, evt_change(), 6, 1,
+      lam (_payload_len: int): int => let
+        val p = ward_file_open(saved_input_id)
+        val p2 = ward_promise_then<int><int>(p,
+          llam (handle: int): ward_promise_pending(int) => let
+            val file_size = ward_file_get_size()
+            val _nentries = zip_open(handle, file_size)
+            val ok1 = epub_read_container(handle)
+            val ok2 = (if gt_int_int(ok1, 0)
+              then epub_read_opf(handle) else 0): int
+            val _book_idx = (if gt_int_int(ok2, 0)
+              then library_add_book() else 0 - 1): int
+            val () = reader_set_file_handle(handle)
+            val dom = ward_dom_init()
+            val s = ward_dom_stream_begin(dom)
+            val s = render_library_with_books(s, saved_list_id)
+            val dom = ward_dom_stream_end(s)
+            val () = ward_dom_fini(dom)
+
+            (* Register click listeners on newly rendered read buttons *)
+            val btn_count = library_get_count()
+            fun reg_new_btns(i: int, n: int, root: int): void =
+              if gte_int_int(i, n) then ()
+              else let
+                val bid = reader_get_btn_id(i)
+                val bidx = i
+                val sr = root
+              in
+                if gt_int_int(bid, 0) then let
+                  val () = ward_add_event_listener(
+                    bid, evt_click(), 5, 2 + i,
+                    lam (_pl2: int): int => let
+                      val () = enter_reader(sr, bidx)
+                    in 0 end
+                  )
+                in reg_new_btns(i + 1, n, root) end
+                else reg_new_btns(i + 1, n, root)
+              end
+            val () = reg_new_btns(0, btn_count, saved_root)
+          in ward_promise_return<int>(0) end)
+        val () = ward_promise_discard<int>(p2)
+      in 0 end
+    )
+  in end
+end
+
+(* ========== Enter reader view ========== *)
+
+implement enter_reader(root_id, book_index) = let
+  val () = reader_enter(root_id, 0)
+  val () = reader_set_book_index(book_index)
+  val file_handle = reader_get_file_handle()
+
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+  val s = ward_dom_stream_remove_children(s, root_id)
+
+  (* Create .reader-viewport with tabindex="0" for keyboard focus *)
+  val viewport_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, viewport_id, root_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, viewport_id, attr_class(), 5,
+    cls_reader_viewport(), 15)
+  val s = ward_dom_stream_set_attr_safe(s, viewport_id, attr_tabindex(), 8,
+    val_zero(), 1)
+
+  (* Create .chapter-container *)
+  val container_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, container_id, viewport_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, container_id, attr_class(), 5,
+    cls_chapter_container(), 17)
 
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
 
-  (* Capture IDs for the event listener closure *)
-  val saved_input_id = input_id
-  val saved_list_id = list_id
+  (* Store IDs *)
+  val () = reader_set_viewport_id(viewport_id)
+  val () = reader_set_container_id(container_id)
 
-  (* Register "change" event listener on file input *)
+  (* Register keydown listener on viewport *)
+  val saved_root = root_id
   val () = ward_add_event_listener(
-    input_id, evt_change(), 6, 1,
-    lam (_payload_len: int): int => let
-      val p = ward_file_open(saved_input_id)
-      val p2 = ward_promise_then<int><int>(p,
-        llam (handle: int): ward_promise_pending(int) => let
-          val file_size = ward_file_get_size()
-          val _nentries = zip_open(handle, file_size)
-          val ok1 = epub_read_container(handle)
-          val ok2 = (if gt_int_int(ok1, 0)
-            then epub_read_opf(handle) else 0): int
-          val _book_idx = (if gt_int_int(ok2, 0)
-            then library_add_book() else 0 - 1): int
-          (* Re-render library list with book cards *)
-          val dom = ward_dom_init()
-          val s = ward_dom_stream_begin(dom)
-          val s = render_library_with_books(s, saved_list_id)
-          val dom = ward_dom_stream_end(s)
-          val () = ward_dom_fini(dom)
-        in ward_promise_return<int>(0) end)
-      val () = ward_promise_discard<int>(p2)
+    viewport_id, evt_keydown(), 7, 50,
+    lam (payload_len: int): int => let
+      val () = on_reader_keydown(payload_len, saved_root)
     in 0 end
   )
+
+  (* Register click listener on viewport (for page nav — no-op for now) *)
+  val () = ward_add_event_listener(
+    viewport_id, evt_click(), 5, 51,
+    lam (_pl: int): int => 0
+  )
+
+  (* Load first chapter *)
+  val () = load_chapter(file_handle, 0, container_id)
+in end
+
+(* ========== Entry point ========== *)
+
+implement ward_node_init(root_id) = let
+  val st = app_state_init()
+  val () = app_state_register(st)
+  val () = render_library(root_id)
 in end
 
 (* Legacy callback stubs *)

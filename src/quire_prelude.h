@@ -254,6 +254,10 @@ extern void* get_str_container_ptr(void);
 /* String buffer copy (implemented in quire_runtime.c) */
 extern void _copy_from_sbuf(void *dst, int len);
 
+/* Spine path accessors (implemented in quire_runtime.c) */
+extern void* epub_get_spine_path_ptr(int index);
+extern int epub_get_spine_path_len(int index);
+
 /* EPUB module functions (epub.sats — implemented in quire_runtime.c) */
 extern void epub_init(void);
 extern int epub_start_import(int file_input_node_id);
@@ -338,5 +342,16 @@ extern int reader_get_toc_index_for_node(int node_id);
 extern void reader_on_toc_click(int node_id);
 extern void reader_enter_at(int root_id, int container_hide_id, int chapter, int page);
 extern int reader_get_back_btn_id(void);
+
+/* Extra reader accessors for quire.dats orchestration */
+extern void reader_set_viewport_id(int id);
+extern void reader_set_container_id(int id);
+extern int reader_get_container_id(void);
+extern void reader_set_book_index(int idx);
+extern int reader_get_book_index(void);
+extern void reader_set_file_handle(int h);
+extern int reader_get_file_handle(void);
+extern void reader_set_btn_id(int book_index, int node_id);
+extern int reader_get_btn_id(int book_index);
 
 #endif /* QUIRE_PRELUDE_H */

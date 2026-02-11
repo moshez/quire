@@ -232,6 +232,15 @@ static int _epub_opf_dir_len = 0;
 static int _epub_spine_count = 0;
 static int _epub_state = 0;
 
+/* Spine path storage — resolved chapter file paths in ZIP */
+#define MAX_SPINE_ENTRIES 32
+#define SPINE_PATH_BUF_SIZE 4096
+static unsigned char _spine_path_buf[SPINE_PATH_BUF_SIZE];
+static int _spine_path_offsets[MAX_SPINE_ENTRIES];
+static int _spine_path_lens[MAX_SPINE_ENTRIES];
+static int _spine_path_count = 0;
+static int _spine_path_pos = 0;
+
 void epub_init(void) {
     _epub_title_len = 0;
     _epub_author_len = 0;
@@ -240,6 +249,8 @@ void epub_init(void) {
     _epub_opf_dir_len = 0;
     _epub_spine_count = 0;
     _epub_state = 0;
+    _spine_path_count = 0;
+    _spine_path_pos = 0;
 }
 
 int epub_get_state(void) { return _epub_state; }
@@ -379,6 +390,73 @@ int epub_parse_opf_bytes(void *buf, int len) {
         pos += 9;
     }
 
+    /* Resolve spine entries to full ZIP paths.
+     * For each <itemref idref="X">, find <item id="X" href="Y">,
+     * and store opf_dir + Y as the spine path. */
+    _spine_path_count = 0;
+    _spine_path_pos = 0;
+    pos = 0;
+    for (int si = 0; si < _epub_spine_count && si < MAX_SPINE_ENTRIES; si++) {
+        pos = _find_bytes(data, len, "<itemref ", 9, pos);
+        if (pos < 0) break;
+        /* Extract idref="..." */
+        int idref_pos = _find_bytes(data, len, "idref=\"", 7, pos);
+        if (idref_pos < 0 || idref_pos > pos + 200) { pos += 9; continue; }
+        int id_start = idref_pos + 7;
+        int id_end = id_start;
+        while (id_end < len && data[id_end] != '"') id_end++;
+        int idref_len = id_end - id_start;
+        if (idref_len <= 0 || idref_len > 63) { pos += 9; continue; }
+        /* Search manifest for matching <item id="<idref>" href="..." */
+        int item_pos = 0;
+        int found_href = 0;
+        while (!found_href) {
+            item_pos = _find_bytes(data, len, "<item ", 6, item_pos);
+            if (item_pos < 0) break;
+            int item_limit = item_pos + 500;
+            if (item_limit > len) item_limit = len;
+            /* Find id="..." in this <item */
+            int mid_pos = _find_bytes(data, item_limit, " id=\"", 5, item_pos);
+            if (mid_pos < 0) { item_pos += 6; continue; }
+            int mid_start = mid_pos + 5;
+            int mid_end = mid_start;
+            while (mid_end < len && data[mid_end] != '"') mid_end++;
+            int mid_len = mid_end - mid_start;
+            if (mid_len == idref_len) {
+                int match = 1;
+                for (int j = 0; j < idref_len; j++) {
+                    if (data[mid_start + j] != data[id_start + j]) { match = 0; break; }
+                }
+                if (match) {
+                    int href_pos = _find_bytes(data, item_limit, "href=\"", 6, item_pos);
+                    if (href_pos >= 0) {
+                        int href_start = href_pos + 6;
+                        int href_end = href_start;
+                        while (href_end < len && data[href_end] != '"') href_end++;
+                        int href_len = href_end - href_start;
+                        int full_len = _epub_opf_dir_len + href_len;
+                        if (full_len > 0 && full_len <= 255 &&
+                            _spine_path_pos + full_len <= SPINE_PATH_BUF_SIZE) {
+                            for (int k = 0; k < _epub_opf_dir_len; k++)
+                                _spine_path_buf[_spine_path_pos + k] =
+                                    (unsigned char)_epub_opf_dir[k];
+                            for (int k = 0; k < href_len; k++)
+                                _spine_path_buf[_spine_path_pos + _epub_opf_dir_len + k] =
+                                    data[href_start + k];
+                            _spine_path_offsets[_spine_path_count] = _spine_path_pos;
+                            _spine_path_lens[_spine_path_count] = full_len;
+                            _spine_path_count++;
+                            _spine_path_pos += full_len;
+                        }
+                    }
+                    found_href = 1;
+                }
+            }
+            item_pos += 6;
+        }
+        pos += 9;
+    }
+
     _epub_state = 8; /* EPUB_STATE_DONE */
     return _epub_spine_count;
 }
@@ -390,6 +468,16 @@ int epub_get_opf_path_len(void) { return _epub_opf_path_len; }
 /* String constant for "META-INF/container.xml" ZIP lookup */
 static const char _str_container[] = "META-INF/container.xml";
 void* get_str_container_ptr(void) { return (void*)_str_container; }
+
+/* Spine path accessors — return pointer/length for ZIP entry lookup */
+void* epub_get_spine_path_ptr(int index) {
+    if (index < 0 || index >= _spine_path_count) return (void*)0;
+    return (void*)(&_spine_path_buf[_spine_path_offsets[index]]);
+}
+int epub_get_spine_path_len(int index) {
+    if (index < 0 || index >= _spine_path_count) return 0;
+    return _spine_path_lens[index];
+}
 
 /* ========== Library module storage ========== */
 
@@ -528,28 +616,74 @@ int library_is_save_pending(void) { return 0; }
 int library_is_load_pending(void) { return 0; }
 int library_is_metadata_pending(void) { return 0; }
 
-/* ========== Reader module stubs ========== */
+/* ========== Reader module ========== */
 
-void reader_init(void) {}
-void reader_enter(int root_id, int container_hide_id) {}
-void reader_exit(void) {}
-int reader_is_active(void) { return 0; }
-int reader_get_current_chapter(void) { return 0; }
-int reader_get_current_page(void) { return 0; }
-int reader_get_total_pages(void) { return 1; }
-int reader_get_chapter_count(void) { return 0; }
-void reader_next_page(void) {}
-void reader_prev_page(void) {}
-void reader_go_to_page(int page) {}
+static int _reader_active = 0;
+static int _reader_book_index = -1;
+static int _reader_current_chapter = 0;
+static int _reader_current_page = 0;
+static int _reader_total_pages = 1;
+static int _reader_viewport_id = 0;
+static int _reader_container_id = 0;
+static int _reader_root_id = 0;
+static int _reader_file_handle = 0;
+static int _reader_btn_ids[MAX_LIB_BOOKS];
+
+void reader_init(void) {
+    _reader_active = 0;
+    _reader_book_index = -1;
+    _reader_current_chapter = 0;
+    _reader_current_page = 0;
+    _reader_total_pages = 1;
+}
+
+void reader_enter(int root_id, int container_hide_id) {
+    _reader_active = 1;
+    _reader_root_id = root_id;
+}
+
+void reader_exit(void) {
+    _reader_active = 0;
+    _reader_book_index = -1;
+    _reader_current_chapter = 0;
+    _reader_current_page = 0;
+    _reader_total_pages = 1;
+}
+
+int reader_is_active(void) { return _reader_active; }
+int reader_get_current_chapter(void) { return _reader_current_chapter; }
+int reader_get_current_page(void) { return _reader_current_page; }
+int reader_get_total_pages(void) { return _reader_total_pages; }
+int reader_get_chapter_count(void) { return _epub_spine_count; }
+
+void reader_next_page(void) {
+    if (_reader_current_page < _reader_total_pages - 1)
+        _reader_current_page++;
+}
+
+void reader_prev_page(void) {
+    if (_reader_current_page > 0) _reader_current_page--;
+}
+
+void reader_go_to_page(int page) {
+    if (page >= 0 && page < _reader_total_pages) _reader_current_page = page;
+}
+
+void reader_go_to_chapter(int chapter_index, int total_chapters) {
+    if (chapter_index >= 0 && chapter_index < _epub_spine_count) {
+        _reader_current_chapter = chapter_index;
+        _reader_current_page = 0;
+    }
+}
+
 void reader_on_chapter_loaded(int len) {}
 void reader_on_chapter_blob_loaded(int handle, int size) {}
-int reader_get_viewport_id(void) { return 0; }
+int reader_get_viewport_id(void) { return _reader_viewport_id; }
 int reader_get_viewport_width(void) { return 0; }
 int reader_get_page_indicator_id(void) { return 0; }
 void reader_update_page_display(void) {}
 int reader_is_loading(void) { return 0; }
 void reader_remeasure_all(void) {}
-void reader_go_to_chapter(int chapter_index, int total_chapters) {}
 void reader_show_toc(void) {}
 void reader_hide_toc(void) {}
 void reader_toggle_toc(void) {}
@@ -558,5 +692,28 @@ int reader_get_toc_id(void) { return 0; }
 int reader_get_progress_bar_id(void) { return 0; }
 int reader_get_toc_index_for_node(int node_id) { return -1; }
 void reader_on_toc_click(int node_id) {}
-void reader_enter_at(int root_id, int container_hide_id, int chapter, int page) {}
+
+void reader_enter_at(int root_id, int container_hide_id, int chapter, int page) {
+    reader_enter(root_id, container_hide_id);
+    _reader_current_chapter = chapter;
+    _reader_current_page = page;
+}
+
 int reader_get_back_btn_id(void) { return 0; }
+
+/* Extra accessors for quire.dats reader orchestration */
+void reader_set_viewport_id(int id) { _reader_viewport_id = id; }
+void reader_set_container_id(int id) { _reader_container_id = id; }
+int reader_get_container_id(void) { return _reader_container_id; }
+void reader_set_book_index(int idx) { _reader_book_index = idx; }
+int reader_get_book_index(void) { return _reader_book_index; }
+void reader_set_file_handle(int h) { _reader_file_handle = h; }
+int reader_get_file_handle(void) { return _reader_file_handle; }
+void reader_set_btn_id(int book_index, int node_id) {
+    if (book_index >= 0 && book_index < MAX_LIB_BOOKS)
+        _reader_btn_ids[book_index] = node_id;
+}
+int reader_get_btn_id(int book_index) {
+    if (book_index < 0 || book_index >= MAX_LIB_BOOKS) return -1;
+    return _reader_btn_ids[book_index];
+}
