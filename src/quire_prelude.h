@@ -132,7 +132,7 @@
 extern unsigned char *get_string_buffer_ptr(void);
 extern unsigned char *get_fetch_buffer_ptr(void);
 extern unsigned char *get_diff_buffer_ptr(void);
-extern int quire_get_byte(void *p, int off);
+#define quire_get_byte(p, off) ((int)(((unsigned char*)(p))[(off)]))
 
 /* DOM next-node-id — REMOVED: now in app_state.dats (ATS2 datavtype) */
 
