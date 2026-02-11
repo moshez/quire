@@ -107,9 +107,15 @@ in end
 
 (* ========== ZIP signature constants ========== *)
 
-#define EOCD_SIG  101010256  (* 0x06054b50 *)
-#define CD_SIG     33639248  (* 0x02014b50 *)
-#define LOCAL_SIG  67324752  (* 0x04034b50 *)
+(* Proof implementations — constraint solver verifies the equalities.
+ * If any decimal is wrong, the build fails here. *)
+primplement lemma_eocd_sig() = ()
+primplement lemma_cd_sig() = ()
+primplement lemma_local_sig() = ()
+
+#define EOCD_SIG  101010256  (* 0x06054b50 = LE_U32(80,75,5,6) — verified by lemma_eocd_sig *)
+#define CD_SIG     33639248  (* 0x02014b50 = LE_U32(80,75,1,2) — verified by lemma_cd_sig *)
+#define LOCAL_SIG  67324752  (* 0x04034b50 = LE_U32(80,75,3,4) — verified by lemma_local_sig *)
 
 (* ========== Multi-byte reading from ward_arr ========== *)
 

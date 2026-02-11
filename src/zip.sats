@@ -10,6 +10,30 @@
  * - NAME_BOUNDED: Entry names fit in buffer without overflow
  *)
 
+(* ========== ZIP Signature Proofs ========== *)
+
+(* ZIP signatures are 4-byte little-endian magic numbers.
+ * All start with 'P','K' (0x50,0x4B) followed by a 2-byte type code.
+ * Bug class: computing wrong decimal from hex bytes (e.g. EOCD 0x06054b50).
+ * Prevention: define signatures from constituent bytes via stadef, then
+ * verify the decimal via praxi. If either the bytes or decimal are wrong,
+ * the constraint solver rejects the code at compile time. *)
+stadef LE_U32(b0:int, b1:int, b2:int, b3:int) =
+  b0 + b1 * 256 + b2 * 65536 + b3 * 16777216
+
+(* Source of truth: signatures computed from their raw bytes *)
+stadef EOCD_SIG_S  = LE_U32(80, 75, 5, 6)   (* PK\x05\x06 *)
+stadef CD_SIG_S    = LE_U32(80, 75, 1, 2)   (* PK\x01\x02 *)
+stadef LOCAL_SIG_S = LE_U32(80, 75, 3, 4)   (* PK\x03\x04 *)
+
+(* Constraint solver verifies these equalities at compile time.
+ * prfun bodies must be provided in .dats — the solver checks the
+ * return constraint when implementing. If the decimal is wrong,
+ * patsopt rejects the implementation. *)
+prfun lemma_eocd_sig():  [EOCD_SIG_S == 101010256] void
+prfun lemma_cd_sig():    [CD_SIG_S == 33639248] void
+prfun lemma_local_sig(): [LOCAL_SIG_S == 67324752] void
+
 (* ========== Functional Correctness Dataprops ========== *)
 
 (* Entry index validity proof.
