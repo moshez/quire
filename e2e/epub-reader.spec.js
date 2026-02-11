@@ -79,7 +79,7 @@ test.describe('EPUB Reader E2E', () => {
     // Verify chapter container is visible and has paragraph text
     const chapterContainer = page.locator('.chapter-container').first();
     await expect(chapterContainer).toBeVisible();
-    await expect(chapterContainer).toContainText('morning', { timeout: 5000 });
+    await expect(chapterContainer).toContainText('mountain path', { timeout: 5000 });
 
     // --- Flip pages forward using click zones ---
     const viewport = page.viewportSize();
