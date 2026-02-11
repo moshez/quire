@@ -107,7 +107,7 @@ in end
 
 (* ========== ZIP signature constants ========== *)
 
-#define EOCD_SIG  100991312  (* 0x06054b50 *)
+#define EOCD_SIG  101010256  (* 0x06054b50 *)
 #define CD_SIG     33639248  (* 0x02014b50 *)
 #define LOCAL_SIG  67324752  (* 0x04034b50 *)
 
