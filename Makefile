@@ -22,7 +22,7 @@ WASM_CFLAGS := --target=wasm32 -O2 -nostdlib -ffreestanding \
   -include src/quire_prelude.h
 
 WASM_LDFLAGS := --no-entry --allow-undefined \
-  -z stack-size=65536 --initial-memory=1048576
+  -z stack-size=65536 --initial-memory=16777216 --max-memory=268435456
 
 # WASM exports for bridge protocol
 WASM_EXPORTS := \
