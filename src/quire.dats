@@ -22,6 +22,7 @@ staload "./../vendor/ward/lib/file.sats"
 staload "./../vendor/ward/lib/promise.sats"
 staload "./../vendor/ward/lib/decompress.sats"
 staload "./../vendor/ward/lib/xml.sats"
+staload "./../vendor/ward/lib/dom_read.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
 staload _ = "./../vendor/ward/lib/dom.dats"
 staload _ = "./../vendor/ward/lib/listener.dats"
@@ -29,6 +30,7 @@ staload _ = "./../vendor/ward/lib/file.dats"
 staload _ = "./../vendor/ward/lib/promise.dats"
 staload _ = "./../vendor/ward/lib/decompress.dats"
 staload _ = "./../vendor/ward/lib/xml.dats"
+staload _ = "./../vendor/ward/lib/dom_read.dats"
 
 (* ========== Freestanding arithmetic ========== *)
 
@@ -39,6 +41,9 @@ extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
 extern fun lt_int_int(a: int, b: int): bool = "mac#quire_lt"
 extern fun eq_int_int(a: int, b: int): bool = "mac#quire_eq"
 extern fun neq_int_int(a: int, b: int): bool = "mac#quire_neq"
+extern fun mul_int_int(a: int, b: int): int = "mac#quire_mul"
+extern fun div_int_int(a: int, b: int): int = "mac#quire_div"
+extern fun mod_int_int(a: int, b: int): int = "mac#quire_mod"
 (* g1-level comparison: preserves static info for dependent array bounds *)
 extern fun gt1_int_int {a,b:int} (a: int a, b: int b): bool(a > b) = "mac#quire_gt"
 overload + with add_int_int of 10
@@ -83,6 +88,20 @@ extern fun reader_set_file_handle(h: int): void = "mac#"
 extern fun reader_get_file_handle(): int = "mac#"
 extern fun reader_set_btn_id(book_index: int, node_id: int): void = "mac#"
 extern fun reader_get_btn_id(book_index: int): int = "mac#"
+extern fun reader_set_total_pages(n: int): void = "mac#"
+
+(* Read f64 clientX from click payload, return as int — irreducibly C *)
+extern fun read_payload_click_x {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n)): int = "mac#"
+
+(* Castfn for indices proven in-bounds at runtime but not by solver.
+ * Used for ward_arr(byte, l, 48) where max write index is 35. *)
+extern castfn _idx48(x: int): [i:nat | i < 48] int i
+
+(* Safe byte conversion: value must be 0-255.
+ * For static chars: use char2int1('x') which carries the static value.
+ * For computed digits: 48 + (v % 10) is always 48-57 — in range. *)
+extern castfn _byte {c:int | 0 <= c; c <= 255} (c: int c): byte
 
 (* ========== CSS class safe text builders ========== *)
 
@@ -351,6 +370,127 @@ in
   else s
 end
 
+(* ========== Page navigation helpers ========== *)
+
+(* Write non-negative int as decimal digits into ward_arr at offset.
+ * Returns number of digits written. Array must be >= 48 bytes.
+ * Digit bytes are 48-57 ('0'-'9') — always valid for int2byte0.
+ * NOTE: mod_int_int returns plain int so solver can't verify range;
+ * the invariant 0 <= (v%10) <= 9 holds by definition of modulo. *)
+fn itoa_to_arr {l:agz}
+  (arr: !ward_arr(byte, l, 48), v: int, offset: int): int = let
+  fun count_digits(x: int, acc: int): int =
+    if gt_int_int(x, 0) then count_digits(div_int_int(x, 10), acc + 1)
+    else acc
+in
+  if gt_int_int(1, v) then let
+    val () = ward_arr_set<byte>(arr, _idx48(offset),
+      _byte(char2int1('0')))
+  in 1 end
+  else let
+    val ndigits = count_digits(v, 0)
+    fun write_rev {l:agz}
+      (arr: !ward_arr(byte, l, 48), x: int, pos: int): void =
+      if gt_int_int(x, 0) then let
+        val digit = mod_int_int(x, 10)
+        (* digit is 0-9, so 48+digit is 48-57 — within byte range *)
+        val () = ward_arr_set<byte>(arr, _idx48(pos), int2byte0(48 + digit))
+      in write_rev(arr, div_int_int(x, 10), pos - 1) end
+      else ()
+    val () = write_rev(arr, v, offset + ndigits - 1)
+  in ndigits end
+end
+
+(* Build "transform:translateX(-Npx)" in a ward_arr(48).
+ * Returns total bytes written. Max: 22 prefix + 10 digits + 3 suffix = 35.
+ * Static chars use char2int1 + _byte — constraint-solver verified. *)
+fn build_transform_arr {l:agz}
+  (arr: !ward_arr(byte, l, 48), page: int, page_width: int): int = let
+  val pixel_offset = mul_int_int(page, page_width)
+  (* "transform:translateX(-" — 22 bytes, all verified via char2int1 *)
+  val () = ward_arr_set<byte>(arr, 0, _byte(char2int1('t')))
+  val () = ward_arr_set<byte>(arr, 1, _byte(char2int1('r')))
+  val () = ward_arr_set<byte>(arr, 2, _byte(char2int1('a')))
+  val () = ward_arr_set<byte>(arr, 3, _byte(char2int1('n')))
+  val () = ward_arr_set<byte>(arr, 4, _byte(char2int1('s')))
+  val () = ward_arr_set<byte>(arr, 5, _byte(char2int1('f')))
+  val () = ward_arr_set<byte>(arr, 6, _byte(char2int1('o')))
+  val () = ward_arr_set<byte>(arr, 7, _byte(char2int1('r')))
+  val () = ward_arr_set<byte>(arr, 8, _byte(char2int1('m')))
+  val () = ward_arr_set<byte>(arr, 9, _byte(58))  (* ':' — char2int1 can't parse punctuation *)
+  val () = ward_arr_set<byte>(arr, 10, _byte(char2int1('t')))
+  val () = ward_arr_set<byte>(arr, 11, _byte(char2int1('r')))
+  val () = ward_arr_set<byte>(arr, 12, _byte(char2int1('a')))
+  val () = ward_arr_set<byte>(arr, 13, _byte(char2int1('n')))
+  val () = ward_arr_set<byte>(arr, 14, _byte(char2int1('s')))
+  val () = ward_arr_set<byte>(arr, 15, _byte(char2int1('l')))
+  val () = ward_arr_set<byte>(arr, 16, _byte(char2int1('a')))
+  val () = ward_arr_set<byte>(arr, 17, _byte(char2int1('t')))
+  val () = ward_arr_set<byte>(arr, 18, _byte(char2int1('e')))
+  val () = ward_arr_set<byte>(arr, 19, _byte(char2int1('X')))
+  val () = ward_arr_set<byte>(arr, 20, _byte(40))  (* '(' *)
+  val () = ward_arr_set<byte>(arr, 21, _byte(45))  (* '-' *)
+  (* decimal digits *)
+  val ndigits = itoa_to_arr(arr, pixel_offset, 22)
+  val pos = 22 + ndigits
+  (* "px)" — 3 bytes *)
+  val () = ward_arr_set<byte>(arr, _idx48(pos), _byte(char2int1('p')))
+  val () = ward_arr_set<byte>(arr, _idx48(pos + 1), _byte(char2int1('x')))
+  val () = ward_arr_set<byte>(arr, _idx48(pos + 2), _byte(41))  (* ')' *)
+in pos + 3 end
+
+(* Apply CSS transform to scroll chapter container to current page *)
+fn apply_page_transform(container_id: int): void = let
+  val viewport_id = reader_get_viewport_id()
+  val _found = ward_measure_node(viewport_id)
+  val page_width = ward_measure_get_w()
+in
+  if gt_int_int(page_width, 0) then let
+    val cur_page = reader_get_current_page()
+    val arr = ward_arr_alloc<byte>(48)
+    val slen = build_transform_arr(arr, cur_page, page_width)
+    (* Split arr to exact length for set_style *)
+    val slen1 = g1ofg0(slen)
+  in
+    if slen1 > 0 then
+      if slen1 <= 48 then let
+        val @(used, rest) = ward_arr_split<byte>(arr, slen1)
+        val () = ward_arr_free<byte>(rest)
+        val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+        val dom = ward_dom_init()
+        val s = ward_dom_stream_begin(dom)
+        val s = ward_dom_stream_set_style(s, container_id, borrow, slen1)
+        val dom = ward_dom_stream_end(s)
+        val () = ward_dom_fini(dom)
+        val () = ward_arr_drop<byte>(frozen, borrow)
+        val used = ward_arr_thaw<byte>(frozen)
+        val () = ward_arr_free<byte>(used)
+      in end
+      else let
+        val () = ward_arr_free<byte>(arr)
+      in end
+    else let
+      val () = ward_arr_free<byte>(arr)
+    in end
+  end
+  else ()
+end
+
+(* Measure chapter container and viewport, compute total pages *)
+fn measure_and_set_pages(container_id: int): void = let
+  val _found_c = ward_measure_node(container_id)
+  val scroll_width = ward_measure_get_left() (* slot 5 = scrollWidth *)
+  val _found_v = ward_measure_node(reader_get_viewport_id())
+  val page_width = ward_measure_get_w()
+in
+  if gt_int_int(page_width, 0) then let
+    (* ceiling division: (scrollWidth + pageWidth - 1) / pageWidth *)
+    val total = div_int_int(scroll_width + page_width - 1, page_width)
+    val () = reader_set_total_pages(total)
+  in end
+  else ()
+end
+
 (* ========== EPUB import: read and parse ZIP entries ========== *)
 
 fn epub_read_container(handle: int): int = let
@@ -510,6 +650,7 @@ in
                     val dom = ward_dom_stream_end(s)
                     val () = ward_dom_fini(dom)
                     val () = ward_arr_free<byte>(sax_buf)
+                    val () = measure_and_set_pages(saved_cid)
                   in ward_promise_return<int>(0) end
                   else ward_promise_return<int>(0)
                 end
@@ -541,6 +682,7 @@ in
               val dom = ward_dom_stream_end(s)
               val () = ward_dom_fini(dom)
               val () = ward_arr_free<byte>(sax_buf)
+              val () = measure_and_set_pages(container_id)
             in end
             else ()
           end
@@ -564,18 +706,41 @@ extern fun enter_reader(root_id: int, book_index: int): void
 fn on_reader_keydown(payload_len: int, root_id: int): void = let
   val pl = g1ofg0(payload_len)
 in
-  (* Keydown payload: [u8:keyLen][bytes:key][u8:flags] — need >= 7 for Escape *)
-  if gt1_int_int(pl, 6) then let
+  (* Keydown payload: [u8:keyLen][bytes:key][u8:flags]
+   * Minimum payload sizes: Space=3, Escape=8, ArrowLeft=11, ArrowRight=12 *)
+  if gt1_int_int(pl, 2) then let
     val payload = ward_event_get_payload(pl)
     val key_len = byte2int0(ward_arr_get<byte>(payload, 0))
     val k0 = byte2int0(ward_arr_get<byte>(payload, 1))
     val () = ward_arr_free<byte>(payload)
+    val cid = reader_get_container_id()
   in
-    (* Check for "Escape": key_len=6, first char='E' (69) *)
     if eq_int_int(key_len, 6) then
+      (* "Escape": key_len=6, k0='E' (69) *)
       if eq_int_int(k0, 69) then let
         val () = reader_exit()
         val () = render_library(root_id)
+      in end
+      else ()
+    else if eq_int_int(key_len, 10) then
+      (* "ArrowRight": key_len=10, k0='A' (65) *)
+      if eq_int_int(k0, 65) then let
+        val () = reader_next_page()
+        val () = apply_page_transform(cid)
+      in end
+      else ()
+    else if eq_int_int(key_len, 9) then
+      (* "ArrowLeft": key_len=9, k0='A' (65) *)
+      if eq_int_int(k0, 65) then let
+        val () = reader_prev_page()
+        val () = apply_page_transform(cid)
+      in end
+      else ()
+    else if eq_int_int(key_len, 1) then
+      (* " " (Space): key_len=1, k0=' ' (32) *)
+      if eq_int_int(k0, 32) then let
+        val () = reader_next_page()
+        val () = apply_page_transform(cid)
       in end
       else ()
     else ()
@@ -773,10 +938,38 @@ implement enter_reader(root_id, book_index) = let
     in 0 end
   )
 
-  (* Register click listener on viewport (for page nav — no-op for now) *)
+  (* Register click listener on viewport for page navigation *)
+  val saved_container = container_id
   val () = ward_add_event_listener(
     viewport_id, evt_click(), 5, 51,
-    lam (_pl: int): int => 0
+    lam (pl: int): int => let
+      val pl1 = g1ofg0(pl)
+    in
+      if gt1_int_int(pl1, 19) then let
+        (* Click payload: f64 clientX (0-7), f64 clientY (8-15), i32 target (16-19) *)
+        val payload = ward_event_get_payload(pl1)
+        val click_x = read_payload_click_x(payload)
+        val () = ward_arr_free<byte>(payload)
+        val _found = ward_measure_node(reader_get_viewport_id())
+        val vw = ward_measure_get_w()
+      in
+        if gt_int_int(vw, 0) then let
+          (* Right 75% → next page, left 25% → prev page *)
+          val threshold = div_int_int(vw, 4)
+        in
+          if gt_int_int(click_x, threshold) then let
+            val () = reader_next_page()
+            val () = apply_page_transform(saved_container)
+          in 0 end
+          else let
+            val () = reader_prev_page()
+            val () = apply_page_transform(saved_container)
+          in 0 end
+        end
+        else 0
+      end
+      else 0
+    end
   )
 
   (* Load first chapter *)

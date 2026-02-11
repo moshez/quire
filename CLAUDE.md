@@ -34,6 +34,7 @@ When completing a milestone from quire-design.md §8:
 4. **WASM owns node IDs** — assigned via CREATE_ELEMENT diffs
 5. **Dependent types enforce correctness** — if it compiles, diffs are valid
 6. **Never work around ward bugs** — if ward (vendor/ward/) has a bug, STOP and give the user a bug report instead of working around it. Do not patch vendor/ files or add workarounds in quire code. The user will report the issue upstream and have it fixed.
+7. **Minimize C code** — Any function added to C (`quire_runtime.c`, `quire_prelude.h`) must be accompanied by a justification that includes: (a) external research (links, references) showing that this operation is conventionally done in C rather than a type-safe language (e.g., IEEE 754 reinterpretation, hardware intrinsics), (b) what alternative ATS2-only solutions were tried and why they don't work, (c) what the trade-offs are, and (d) why the C implementation is safe (e.g., no truncation, no overflow, no aliasing). Prefer ATS2 with ward_arr over C global buffers. If an algorithm can be expressed with ward_arr_set/get, div/mod, and existing extern funs, it belongs in ATS2.
 
 ## Type Safety Requirements
 

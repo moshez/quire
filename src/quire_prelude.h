@@ -19,6 +19,8 @@
 #define quire_add(a, b) ((a) + (b))
 #define quire_sub(a, b) ((a) - (b))
 #define quire_mul(a, b) ((a) * (b))
+#define quire_div(a, b) ((a) / (b))
+#define quire_mod(a, b) ((a) % (b))
 
 /* Comparison — quire_* names for explicit extern fun declarations */
 #define quire_eq(a, b) ((a) == (b))
@@ -27,6 +29,11 @@
 #define quire_gt(a, b) ((a) > (b))
 #define quire_lt(a, b) ((a) < (b))
 #define quire_lte(a, b) ((a) <= (b))
+
+/* int2byte0 — not in ward runtime.h, needed for ward_arr_set<byte> */
+#ifndef atspre_int2byte0
+#define atspre_int2byte0(x) ((unsigned char)(x))
+#endif
 
 /* ATS2 prelude names NOT already in ward runtime.h */
 #ifndef atspre_g0int_eq_int
@@ -353,5 +360,7 @@ extern void reader_set_file_handle(int h);
 extern int reader_get_file_handle(void);
 extern void reader_set_btn_id(int book_index, int node_id);
 extern int reader_get_btn_id(int book_index);
+extern int reader_set_total_pages(int n);
+extern int read_payload_click_x(void *arr);
 
 #endif /* QUIRE_PRELUDE_H */

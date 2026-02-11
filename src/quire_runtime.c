@@ -717,3 +717,17 @@ int reader_get_btn_id(int book_index) {
     if (book_index < 0 || book_index >= MAX_LIB_BOOKS) return -1;
     return _reader_btn_ids[book_index];
 }
+
+int reader_set_total_pages(int n) {
+    _reader_total_pages = (n > 0) ? n : 1;
+    return 0;
+}
+
+/* Read f64 clientX from click payload bytes 0-7, return as int.
+ * Uses __builtin_memcpy for alignment safety — irreducibly C
+ * because ward_arr doesn't expose float64 reinterpretation. */
+int read_payload_click_x(void *arr) {
+    double val;
+    __builtin_memcpy(&val, arr, 8);
+    return (int)val;
+}
