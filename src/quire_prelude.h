@@ -220,6 +220,9 @@ extern int lookup_tag(void *base, int offset, int name_len);
 extern int lookup_attr(void *base, int offset, int name_len);
 extern int _copy_to_arr(void *dst, void *src, int offset, int count);
 
+/* Text constant filler (implemented in quire_runtime.c) */
+extern int _fill_text(void *arr, int text_id);
+
 /* Bounds-checked byte read from ward_arr (erased to ptr at runtime).
  * Returns byte value if 0 <= off < len, else 0. */
 #ifndef _ward_arr_byte
