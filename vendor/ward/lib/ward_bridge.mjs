@@ -402,8 +402,17 @@ export async function loadWard(wasmBytes, root, opts) {
   // --- Fetch ---
 
   function wardJsFetch(urlPtr, urlLen, resolverId) {
-    // stub — immediately resolve with status 0
-    instance.exports.ward_on_fetch_complete(resolverId, 0, 0);
+    const url = readString(urlPtr, urlLen);
+    fetch(url).then(async (response) => {
+      const body = new Uint8Array(await response.arrayBuffer());
+      if (body.length > 0) {
+        const stashId = stashData(body);
+        instance.exports.ward_bridge_stash_set_int(1, stashId);
+      }
+      instance.exports.ward_on_fetch_complete(resolverId, response.status, body.length);
+    }).catch(() => {
+      instance.exports.ward_on_fetch_complete(resolverId, 0, 0);
+    });
   }
 
   // --- Clipboard ---
@@ -427,53 +436,163 @@ export async function loadWard(wasmBytes, root, opts) {
 
   // --- File ---
 
+  const fileCache = new Map();
+  let nextFileHandle = 1;
+
   function wardJsFileOpen(inputNodeId, resolverId) {
-    // stub — immediately resolve with handle=0, size=0
-    instance.exports.ward_on_file_open(resolverId, 0, 0);
+    const el = nodes.get(inputNodeId);
+    if (!el || !el.files || !el.files[0]) {
+      instance.exports.ward_on_file_open(resolverId, 0, 0);
+      return;
+    }
+    const file = el.files[0];
+    const reader = new FileReader();
+    reader.onload = () => {
+      const handle = nextFileHandle++;
+      const data = new Uint8Array(reader.result);
+      fileCache.set(handle, data);
+      instance.exports.ward_on_file_open(resolverId, handle, data.length);
+    };
+    reader.onerror = () => {
+      instance.exports.ward_on_file_open(resolverId, 0, 0);
+    };
+    reader.readAsArrayBuffer(file);
   }
 
   function wardJsFileRead(handle, fileOffset, len, outPtr) {
-    return 0;
+    const data = fileCache.get(handle);
+    if (!data) return 0;
+    const available = Math.max(0, data.length - fileOffset);
+    const copyLen = Math.min(len, available);
+    if (copyLen > 0) {
+      new Uint8Array(instance.exports.memory.buffer).set(
+        data.subarray(fileOffset, fileOffset + copyLen), outPtr);
+    }
+    return copyLen;
   }
 
   function wardJsFileClose(handle) {
-    // stub
+    fileCache.delete(handle);
   }
 
   // --- Decompress ---
 
+  const blobCache = new Map();
+  let nextBlobHandle = 1;
+
   function wardJsDecompress(dataPtr, dataLen, method, resolverId) {
-    // stub — immediately resolve with handle=0, len=0
-    instance.exports.ward_on_decompress_complete(resolverId, 0, 0);
+    const compressed = readBytes(dataPtr, dataLen);
+    const formats = ['gzip', 'deflate', 'deflate-raw'];
+    const format = formats[method];
+    if (!format || typeof DecompressionStream === 'undefined') {
+      instance.exports.ward_on_decompress_complete(resolverId, 0, 0);
+      return;
+    }
+    const ds = new DecompressionStream(format);
+    const writer = ds.writable.getWriter();
+    writer.write(compressed);
+    writer.close();
+    const reader = ds.readable.getReader();
+    const chunks = [];
+    (function pump() {
+      reader.read().then(({ done, value }) => {
+        if (value) chunks.push(value);
+        if (done) {
+          let totalLen = 0;
+          for (const c of chunks) totalLen += c.length;
+          const result = new Uint8Array(totalLen);
+          let off = 0;
+          for (const c of chunks) { result.set(c, off); off += c.length; }
+          const handle = nextBlobHandle++;
+          blobCache.set(handle, result);
+          instance.exports.ward_on_decompress_complete(resolverId, handle, result.length);
+        } else {
+          pump();
+        }
+      }).catch(() => {
+        instance.exports.ward_on_decompress_complete(resolverId, 0, 0);
+      });
+    })();
   }
 
   function wardJsBlobRead(handle, blobOffset, len, outPtr) {
-    return 0;
+    const data = blobCache.get(handle);
+    if (!data) return 0;
+    const available = Math.max(0, data.length - blobOffset);
+    const copyLen = Math.min(len, available);
+    if (copyLen > 0) {
+      new Uint8Array(instance.exports.memory.buffer).set(
+        data.subarray(blobOffset, blobOffset + copyLen), outPtr);
+    }
+    return copyLen;
   }
 
   function wardJsBlobFree(handle) {
-    // stub
+    blobCache.delete(handle);
   }
 
   // --- Notification/Push ---
 
   function wardJsNotificationRequestPermission(resolverId) {
-    // stub — immediately resolve with granted=1
-    instance.exports.ward_on_permission_result(resolverId, 1);
+    if (typeof Notification === 'undefined') {
+      instance.exports.ward_on_permission_result(resolverId, 0);
+      return;
+    }
+    Notification.requestPermission().then((perm) => {
+      instance.exports.ward_on_permission_result(resolverId, perm === 'granted' ? 1 : 0);
+    }).catch(() => {
+      instance.exports.ward_on_permission_result(resolverId, 0);
+    });
   }
 
   function wardJsNotificationShow(titlePtr, titleLen) {
-    // stub
+    if (typeof Notification === 'undefined') return;
+    const title = readString(titlePtr, titleLen);
+    try { new Notification(title); } catch(e) {}
   }
 
   function wardJsPushSubscribe(vapidPtr, vapidLen, resolverId) {
-    // stub — immediately resolve
-    instance.exports.ward_on_push_subscribe(resolverId, 0);
+    try {
+      const vapidBytes = readBytes(vapidPtr, vapidLen);
+      navigator.serviceWorker.ready.then((reg) => {
+        return reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: vapidBytes,
+        });
+      }).then((sub) => {
+        const json = JSON.stringify(sub.toJSON());
+        const jsonBytes = new TextEncoder().encode(json);
+        const stashId = stashData(jsonBytes);
+        instance.exports.ward_bridge_stash_set_int(1, stashId);
+        instance.exports.ward_on_push_subscribe(resolverId, jsonBytes.length);
+      }).catch(() => {
+        instance.exports.ward_on_push_subscribe(resolverId, 0);
+      });
+    } catch(e) {
+      instance.exports.ward_on_push_subscribe(resolverId, 0);
+    }
   }
 
   function wardJsPushGetSubscription(resolverId) {
-    // stub — immediately resolve
-    instance.exports.ward_on_push_subscribe(resolverId, 0);
+    try {
+      navigator.serviceWorker.ready.then((reg) => {
+        return reg.pushManager.getSubscription();
+      }).then((sub) => {
+        if (!sub) {
+          instance.exports.ward_on_push_subscribe(resolverId, 0);
+          return;
+        }
+        const json = JSON.stringify(sub.toJSON());
+        const jsonBytes = new TextEncoder().encode(json);
+        const stashId = stashData(jsonBytes);
+        instance.exports.ward_bridge_stash_set_int(1, stashId);
+        instance.exports.ward_on_push_subscribe(resolverId, jsonBytes.length);
+      }).catch(() => {
+        instance.exports.ward_on_push_subscribe(resolverId, 0);
+      });
+    } catch(e) {
+      instance.exports.ward_on_push_subscribe(resolverId, 0);
+    }
   }
 
   // --- HTML parsing ---
