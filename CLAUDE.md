@@ -33,6 +33,7 @@ When completing a milestone from quire-design.md §8:
 3. **All UI logic in WASM** — bridge forwards events and applies diffs
 4. **WASM owns node IDs** — assigned via CREATE_ELEMENT diffs
 5. **Dependent types enforce correctness** — if it compiles, diffs are valid
+6. **Never work around ward bugs** — if ward (vendor/ward/) has a bug, STOP and give the user a bug report instead of working around it. Do not patch vendor/ files or add workarounds in quire code. The user will report the issue upstream and have it fixed.
 
 ## Type Safety Requirements
 

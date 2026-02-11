@@ -238,4 +238,105 @@ extern int _fill_text(void *arr, int text_id);
 #define quire_bsl(a, n) ((int)((unsigned int)(a) << (n)))
 #endif
 
+/* ZIP module functions (zip.sats — implemented in zip.dats, mac# linkage) */
+extern int zip_open(int file_handle, int file_size);
+extern int zip_get_entry(int index, void *entry);
+extern int zip_find_entry(void *name_ptr, int name_len);
+extern int zip_get_data_offset(int index);
+
+/* EPUB module (implemented in quire_runtime.c) */
+extern int epub_parse_container_bytes(void *buf, int len);
+extern int epub_parse_opf_bytes(void *buf, int len);
+extern void* epub_get_opf_path_ptr(void);
+extern int epub_get_opf_path_len(void);
+extern void* get_str_container_ptr(void);
+
+/* String buffer copy (implemented in quire_runtime.c) */
+extern void _copy_from_sbuf(void *dst, int len);
+
+/* EPUB module functions (epub.sats — implemented in quire_runtime.c) */
+extern void epub_init(void);
+extern int epub_start_import(int file_input_node_id);
+extern int epub_get_state(void);
+extern int epub_get_progress(void);
+extern int epub_get_error(int buf_offset);
+extern int epub_get_title(int buf_offset);
+extern int epub_get_author(int buf_offset);
+extern int epub_get_book_id(int buf_offset);
+extern int epub_get_chapter_count(void);
+extern int epub_get_chapter_key(int chapter_index, int buf_offset);
+extern void epub_continue(void);
+extern void epub_on_file_open(int handle, int size);
+extern void epub_on_decompress(int blob_handle, int size);
+extern void epub_on_db_open(int success);
+extern void epub_on_db_put(int success);
+extern void epub_cancel(void);
+extern int epub_get_toc_count(void);
+extern int epub_get_toc_label(int toc_index, int buf_offset);
+extern int epub_get_toc_chapter(int toc_index);
+extern int epub_get_toc_level(int toc_index);
+extern int epub_get_chapter_title(int spine_index, int buf_offset);
+extern int epub_serialize_metadata(void);
+extern int epub_restore_metadata(int len);
+extern void epub_reset(void);
+
+/* Library module functions (library.sats — implemented in quire_runtime.c) */
+extern void library_init(void);
+extern int library_get_count(void);
+extern int library_get_title(int index, int buf_offset);
+extern int library_get_author(int index, int buf_offset);
+extern int library_get_book_id(int index, int buf_offset);
+extern int library_get_chapter(int index);
+extern int library_get_page(int index);
+extern int library_get_spine_count(int index);
+extern int library_add_book(void);
+extern void library_remove_book(int index);
+extern void library_update_position(int index, int chapter, int page);
+extern int library_find_book_by_id(void);
+extern int library_serialize(void);
+extern int library_deserialize(int len);
+extern void library_save(void);
+extern void library_load(void);
+extern void library_on_load_complete(int len);
+extern void library_on_save_complete(int success);
+extern void library_save_book_metadata(void);
+extern void library_load_book_metadata(int index);
+extern void library_on_metadata_load_complete(int len);
+extern void library_on_metadata_save_complete(int success);
+extern int library_is_save_pending(void);
+extern int library_is_load_pending(void);
+extern int library_is_metadata_pending(void);
+
+/* Reader module functions (reader.sats — implemented in quire_runtime.c) */
+extern void reader_init(void);
+extern void reader_enter(int root_id, int container_hide_id);
+extern void reader_exit(void);
+extern int reader_is_active(void);
+extern int reader_get_current_chapter(void);
+extern int reader_get_current_page(void);
+extern int reader_get_total_pages(void);
+extern int reader_get_chapter_count(void);
+extern void reader_next_page(void);
+extern void reader_prev_page(void);
+extern void reader_go_to_page(int page);
+extern void reader_on_chapter_loaded(int len);
+extern void reader_on_chapter_blob_loaded(int handle, int size);
+extern int reader_get_viewport_id(void);
+extern int reader_get_viewport_width(void);
+extern int reader_get_page_indicator_id(void);
+extern void reader_update_page_display(void);
+extern int reader_is_loading(void);
+extern void reader_remeasure_all(void);
+extern void reader_go_to_chapter(int chapter_index, int total_chapters);
+extern void reader_show_toc(void);
+extern void reader_hide_toc(void);
+extern void reader_toggle_toc(void);
+extern int reader_is_toc_visible(void);
+extern int reader_get_toc_id(void);
+extern int reader_get_progress_bar_id(void);
+extern int reader_get_toc_index_for_node(int node_id);
+extern void reader_on_toc_click(int node_id);
+extern void reader_enter_at(int root_id, int container_hide_id, int chapter, int page);
+extern int reader_get_back_btn_id(void);
+
 #endif /* QUIRE_PRELUDE_H */
