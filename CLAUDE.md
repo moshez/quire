@@ -418,6 +418,14 @@ dom_set_attr(pf, id, (void*)str_class, 5, (void*)str_value, val_len);
    (`settings_is_save_pending`, `library_is_metadata_pending`, etc.) may
    be active at any time. See `SINGLE_PENDING` dataprop in library.sats.
 
+8. **Every bug fix must add a preventing proof or invariant**: When fixing a bug,
+   don't just fix the code — add a dataprop, absprop, or documented structural
+   invariant that makes the same class of bug impossible to reintroduce. If the
+   invariant can be encoded as a dataprop (data values, state transitions, bounds),
+   use a dataprop. If it's structural (recursion shape, continuation pattern),
+   document it as a formal invariant in the `.sats` file with the specific bug
+   class it prevents. This is standard operating procedure for all bug fixes.
+
 ### Proof Architecture
 
 Proofs are enforced at three levels:

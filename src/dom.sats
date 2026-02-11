@@ -179,6 +179,27 @@ fun get_attr_by_index(idx: int): [n:pos | n <= 11] @(ward_safe_text(n), int n)
 
 (* ========== Tree renderer ========== *)
 
+(* SIBLING_CONTINUATION invariant (prevents render_tree first-element-only bug):
+ *
+ * The render_tree loop must process ALL sibling elements under a parent.
+ * Every branch in the loop must either:
+ * (a) call loop() recursively to continue processing the next sibling, OR
+ * (b) return @(st, pos) ONLY when opc = ELEMENT_CLOSE (returning to parent)
+ *     or pos >= len (buffer exhausted)
+ *
+ * Bug class prevented: returning after processing one known element causes
+ * all subsequent siblings to be silently dropped (e.g., <h1> renders but
+ * sibling <p> elements are never visited).
+ *
+ * This is documented rather than encoded as dataprop because the invariant
+ * is structural (about recursion shape) rather than about data values.
+ * The correct pattern for each SAX opcode:
+ *   ELEMENT_OPEN (known):   create element, process children, then loop()
+ *   ELEMENT_OPEN (unknown): skip_element, then loop()
+ *   TEXT:                    render text, then loop()
+ *   ELEMENT_CLOSE:           return @(st, pos) — only valid exit
+ *)
+
 (* Walk parsed HTML tree binary and emit DOM nodes via ward stream.
  * parent_id: parent DOM node for emitted elements
  * tree: pointer to parsed tree binary (from wardJsParseHtml)

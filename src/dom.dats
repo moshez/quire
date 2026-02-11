@@ -950,11 +950,17 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
           val st = emit_attrs(st, nid, tree, attr_off + 1, attr_count, tlen)
           val @(st, child_end) = loop(st, tree, after_attrs, len, nid, tlen)
         in
+          (* SIBLING_CONTINUATION: after closing this element, continue
+           * processing remaining siblings under the same parent.
+           * Bug class: returning here instead of continuing causes only
+           * the first sibling to render (e.g., <h1> renders but <p> skipped). *)
           if child_end < len then let
             val close_opc = ward_arr_byte(tree, child_end, tlen)
           in
-            if close_opc = 2 then @(st, child_end + 1)
-            else @(st, child_end)
+            if close_opc = 2 then
+              loop(st, tree, child_end + 1, len, parent, tlen)
+            else
+              loop(st, tree, child_end, len, parent, tlen)
           end
           else @(st, child_end)
         end
