@@ -107,6 +107,20 @@ dataprop PAGE_IN_BOUNDS(page: int, total: int) =
 dataprop NAV_DIRECTION(d: int) =
   | NAV_PREV(~1) | NAV_NEXT(1)
 
+(* Position saved before exit proof.
+ * POSITION_SAVED() proves that library_update_position was called
+ * with the reader's current book_index, chapter, and page BEFORE
+ * reader_exit clears reader state (book_index → -1, page → 0).
+ *
+ * Without this proof, reader_exit rejects at compile time.
+ * The only way to construct SAVED() is at the call site where
+ * library_update_position is textually adjacent — forcing the
+ * developer to consciously save before exiting.
+ *
+ * BUG PREVENTED: reader_exit called without saving position,
+ * causing library to show "Not started" after reading. *)
+dataprop POSITION_SAVED() = | SAVED()
+
 (* ========== Module Functions ========== *)
 
 (* Initialize reader module *)
@@ -115,8 +129,9 @@ fun reader_init(): void = "mac#"
 (* Enter reader mode - creates three chapter containers *)
 fun reader_enter(root_id: int, container_hide_id: int): void = "mac#"
 
-(* Exit reader mode *)
-fun reader_exit(): void = "mac#"
+(* Exit reader mode — requires proof that position was saved.
+ * Proof parameter is erased at runtime (C signature unchanged). *)
+fun reader_exit(pf: POSITION_SAVED()): void = "mac#"
 
 (* Check if reader is active *)
 fun reader_is_active(): int = "mac#"

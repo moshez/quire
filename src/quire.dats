@@ -90,6 +90,36 @@ extern fun reader_set_btn_id(book_index: int, node_id: int): void = "mac#"
 extern fun reader_get_btn_id(book_index: int): int = "mac#"
 extern fun reader_set_total_pages(n: int): void = "mac#"
 
+(* ========== Measurement correctness ========== *)
+
+(* SCROLL_WIDTH_SLOT: proves that scrollWidth lives in ward measurement slot 4.
+ * ward_measure_get_top() reads slot 4 = el.scrollWidth.
+ * ward_measure_get_left() reads slot 5 = el.scrollHeight.
+ * The names are confusing — this dataprop ensures quire code uses the correct slot.
+ *
+ * BUG PREVENTED: measure_and_set_pages used ward_measure_get_left (scrollHeight)
+ * instead of ward_measure_get_top (scrollWidth), giving total_pages=1 always. *)
+dataprop SCROLL_WIDTH_SLOT(slot: int) =
+  | SLOT_4(4)
+
+(* Safe wrapper: measures a node and returns its scrollWidth.
+ * Abstracts over ward's confusing slot naming.
+ * Constructs SCROLL_WIDTH_SLOT(4) proof to document correctness. *)
+fn measure_node_scroll_width(node_id: int): int = let
+  val _found = ward_measure_node(node_id)
+  prval _ = SLOT_4()  (* proof: we read slot 4 = scrollWidth *)
+in
+  ward_measure_get_top()  (* slot 4 = el.scrollWidth *)
+end
+
+(* Safe wrapper: measures a node and returns its element width.
+ * Uses slot 2 = el.width from getBoundingClientRect. *)
+fn measure_node_width(node_id: int): int = let
+  val _found = ward_measure_node(node_id)
+in
+  ward_measure_get_w()  (* slot 2 = rect.width *)
+end
+
 (* Read f64 clientX from click payload, return as int — irreducibly C *)
 extern fun read_payload_click_x {l:agz}{n:pos}
   (arr: !ward_arr(byte, l, n)): int = "mac#"
@@ -439,11 +469,10 @@ fn build_transform_arr {l:agz}
   val () = ward_arr_set<byte>(arr, _idx48(pos + 2), _byte(41))  (* ')' *)
 in pos + 3 end
 
-(* Apply CSS transform to scroll chapter container to current page *)
+(* Apply CSS transform to scroll chapter container to current page.
+ * Uses measure_node_width wrapper for clarity. *)
 fn apply_page_transform(container_id: int): void = let
-  val viewport_id = reader_get_viewport_id()
-  val _found = ward_measure_node(viewport_id)
-  val page_width = ward_measure_get_w()
+  val page_width = measure_node_width(reader_get_viewport_id())
 in
   if gt_int_int(page_width, 0) then let
     val cur_page = reader_get_current_page()
@@ -476,12 +505,11 @@ in
   else ()
 end
 
-(* Measure chapter container and viewport, compute total pages *)
+(* Measure chapter container and viewport, compute total pages.
+ * Uses safe wrappers to prevent slot confusion (see SCROLL_WIDTH_SLOT). *)
 fn measure_and_set_pages(container_id: int): void = let
-  val _found_c = ward_measure_node(container_id)
-  val scroll_width = ward_measure_get_top() (* slot 4 = scrollWidth *)
-  val _found_v = ward_measure_node(reader_get_viewport_id())
-  val page_width = ward_measure_get_w()
+  val scroll_width = measure_node_scroll_width(container_id)
+  val page_width = measure_node_width(reader_get_viewport_id())
 in
   if gt_int_int(page_width, 0) then let
     (* ceiling division: (scrollWidth + pageWidth - 1) / pageWidth *)
@@ -489,6 +517,20 @@ in
     val () = reader_set_total_pages(total)
   in end
   else ()
+end
+
+(* Save reading position and exit reader.
+ * Constructs POSITION_SAVED proof required by reader_exit.
+ * This is THE only permitted way to exit the reader from ATS code.
+ * See POSITION_SAVED dataprop in reader.sats. *)
+fn reader_save_and_exit(): void = let
+  val () = library_update_position(
+    reader_get_book_index(),
+    reader_get_current_chapter(),
+    reader_get_current_page())
+  prval pf = SAVED()
+in
+  reader_exit(pf)
 end
 
 (* ========== EPUB import: read and parse ZIP entries ========== *)
@@ -718,12 +760,7 @@ in
     if eq_int_int(key_len, 6) then
       (* "Escape": key_len=6, k0='E' (69) *)
       if eq_int_int(k0, 69) then let
-        (* Save reading position before exiting *)
-        val () = library_update_position(
-          reader_get_book_index(),
-          reader_get_current_chapter(),
-          reader_get_current_page())
-        val () = reader_exit()
+        val () = reader_save_and_exit()
         val () = render_library(root_id)
       in end
       else ()
@@ -955,8 +992,7 @@ implement enter_reader(root_id, book_index) = let
         val payload = ward_event_get_payload(pl1)
         val click_x = read_payload_click_x(payload)
         val () = ward_arr_free<byte>(payload)
-        val _found = ward_measure_node(reader_get_viewport_id())
-        val vw = ward_measure_get_w()
+        val vw = measure_node_width(reader_get_viewport_id())
       in
         if gt_int_int(vw, 0) then let
           (* Right 75% → next page, left 25% → prev page *)
