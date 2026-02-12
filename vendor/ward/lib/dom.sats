@@ -40,21 +40,21 @@ fun ward_dom_stream_end
 (* --- Stream ops (7) --- *)
 
 fun ward_dom_stream_create_element
-  {l:agz}{tl:pos | tl + 10 <= WARD_DOM_BUF_CAP}
+  {l:agz}{tl:pos | tl + 10 <= WARD_DOM_BUF_CAP; tl < 256}
   (stream: ward_dom_stream(l),
    node_id: int, parent_id: int,
    tag: ward_safe_text(tl), tag_len: int tl)
   : ward_dom_stream(l)
 
 fun ward_dom_stream_set_text
-  {l:agz}{lb:agz}{tl:nat | tl + 7 <= WARD_DOM_BUF_CAP}
+  {l:agz}{lb:agz}{tl:nat | tl + 7 <= WARD_DOM_BUF_CAP; tl < 65536}
   (stream: ward_dom_stream(l),
    node_id: int,
    text: !ward_arr_borrow(byte, lb, tl), text_len: int tl)
   : ward_dom_stream(l)
 
 fun ward_dom_stream_set_attr
-  {l:agz}{lb:agz}{nl:pos}{vl:nat | nl + vl + 8 <= WARD_DOM_BUF_CAP}
+  {l:agz}{lb:agz}{nl:pos | nl < 256}{vl:nat | nl + vl + 8 <= WARD_DOM_BUF_CAP; vl < 65536}
   (stream: ward_dom_stream(l),
    node_id: int,
    attr_name: ward_safe_text(nl), name_len: int nl,
@@ -62,7 +62,7 @@ fun ward_dom_stream_set_attr
   : ward_dom_stream(l)
 
 fun ward_dom_stream_set_style
-  {l:agz}{lb:agz}{vl:nat | vl + 13 <= WARD_DOM_BUF_CAP}
+  {l:agz}{lb:agz}{vl:nat | vl + 13 <= WARD_DOM_BUF_CAP; vl < 65536}
   (stream: ward_dom_stream(l),
    node_id: int,
    value: !ward_arr_borrow(byte, lb, vl), value_len: int vl)
@@ -81,13 +81,13 @@ fun ward_dom_stream_remove_child
 (* --- Safe text stream variants (no borrow needed) --- *)
 
 fun ward_dom_stream_set_safe_text
-  {l:agz}{tl:nat | tl + 7 <= WARD_DOM_BUF_CAP}
+  {l:agz}{tl:nat | tl + 7 <= WARD_DOM_BUF_CAP; tl < 65536}
   (stream: ward_dom_stream(l), node_id: int,
    text: ward_safe_text(tl), text_len: int tl)
   : ward_dom_stream(l)
 
 fun ward_dom_stream_set_attr_safe
-  {l:agz}{nl:pos}{vl:nat | nl + vl + 8 <= WARD_DOM_BUF_CAP}
+  {l:agz}{nl:pos | nl < 256}{vl:nat | nl + vl + 8 <= WARD_DOM_BUF_CAP; vl < 65536}
   (stream: ward_dom_stream(l), node_id: int,
    attr_name: ward_safe_text(nl), name_len: int nl,
    value: ward_safe_text(vl), value_len: int vl)

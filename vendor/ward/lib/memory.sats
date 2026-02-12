@@ -172,8 +172,12 @@ fun ward_int2byte{i:nat | i < 256}(i: int i): byte
    ============================================================ *)
 
 fun ward_arr_write_byte
-  {l:agz}{n:nat}{i:nat | i < n}
-  (arr: !ward_arr(byte, l, n), i: int i, v: int): void
+  {l:agz}{n:nat}{i:nat | i < n}{v:nat | v < 256}
+  (arr: !ward_arr(byte, l, n), i: int i, v: int v): void
+
+fun ward_arr_write_u16le
+  {l:agz}{n:nat}{i:nat | i + 2 <= n}{v:nat | v < 65536}
+  (arr: !ward_arr(byte, l, n), i: int i, v: int v): void
 
 fun ward_arr_write_i32
   {l:agz}{n:nat}{i:nat | i + 4 <= n}

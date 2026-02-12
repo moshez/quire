@@ -162,7 +162,7 @@ ward_int2byte{i}(i) = _proven_int2byte(i)
  *)
 
 implement
-ward_arr_write_byte{l}{n}{i}(arr, i, v) =
+ward_arr_write_byte{l}{n}{i}{v}(arr, i, v) =
   $extfcall(void, "ward_set_byte", arr, i, v)
 
 implement
@@ -189,5 +189,12 @@ ward_bridge_recv{n}(stash_id, len) = let
   val p = _ward_malloc_bytes(len)
   val () = _ward_js_stash_read(stash_id, p, len)
 in p end
+
+implement
+ward_arr_write_u16le{l}{n}{i}{v}(arr, i, v) = let
+  val v0 : int = v
+  val () = $extfcall(void, "ward_set_byte", arr, i, v0)
+  val () = $extfcall(void, "ward_set_byte", arr, i + 1, v0 / 256)
+in () end
 
 end (* local *)

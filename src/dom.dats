@@ -999,7 +999,7 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
         if tl > 0 then
           if is_whitespace_only(tree, text_start, text_len, tlen) then
             loop(st, tree, text_start + text_len, len, parent, tlen, has_child)
-          else if tl + 7 <= 262144 then
+          else if tl < 65536 then
             if has_child > 0 then let
               (* TEXT_RENDER_SAFE: parent has existing children.
                * Wrap text in <span> to prevent set_text from destroying them. *)
@@ -1063,6 +1063,7 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
         val vl = g1ofg0(val_len)
       in
         if vl > 0 then
+          if vl < 65536 then
           if attr_st_len + vl + 8 <= 262144 then let
             val val_arr = ward_arr_alloc<byte>(vl)
             val _ = copy_arr_bytes(val_arr, tree, val_start, val_len)
@@ -1075,6 +1076,8 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
             emit_attrs(st, nid, tree, val_start + val_len, count - 1, tlen)
           end
           else (* attr value too large for DOM buffer — skip *)
+            emit_attrs(st, nid, tree, val_start + val_len, count - 1, tlen)
+          else (* attr value >= 65536 — skip *)
             emit_attrs(st, nid, tree, val_start + val_len, count - 1, tlen)
         else (* empty attr value — skip *)
           emit_attrs(st, nid, tree, val_start, count - 1, tlen)

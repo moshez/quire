@@ -343,7 +343,7 @@ fn set_text_cstr {l:agz}
   val tl = g1ofg0(text_len)
 in
   if tl > 0 then
-    if tl + 7 <= 262144 then let
+    if tl < 65536 then let
       val arr = ward_arr_alloc<byte>(tl)
       val _ = fill_text(arr, text_id)
       val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
@@ -358,7 +358,7 @@ end
 
 (* ========== Helper: set attribute with C string value ========== *)
 
-fn set_attr_cstr {l:agz}{nl:pos}
+fn set_attr_cstr {l:agz}{nl:pos | nl < 256}
   (s: ward_dom_stream(l), nid: int,
    aname: ward_safe_text(nl), nl_v: int nl,
    text_id: int, text_len: int)
@@ -366,6 +366,7 @@ fn set_attr_cstr {l:agz}{nl:pos}
   val vl = g1ofg0(text_len)
 in
   if vl > 0 then
+    if vl < 65536 then
     if nl_v + vl + 8 <= 262144 then let
       val arr = ward_arr_alloc<byte>(vl)
       val _ = fill_text(arr, text_id)
@@ -375,6 +376,7 @@ in
       val arr = ward_arr_thaw<byte>(frozen)
       val () = ward_arr_free<byte>(arr)
     in s end
+    else s
     else s
   else s
 end
@@ -387,7 +389,7 @@ fn set_text_from_sbuf {l:agz}
   val len1 = g1ofg0(len)
 in
   if len1 > 0 then
-    if len1 + 7 <= 262144 then let
+    if len1 < 65536 then let
       val arr = ward_arr_alloc<byte>(len1)
       val () = copy_from_sbuf(arr, len1)
       val @(frozen, borrow) = ward_arr_freeze<byte>(arr)

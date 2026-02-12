@@ -200,6 +200,7 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define atspre_g0int_lte_int(x, y) ((x) <= (y))
 #define atspre_g0int_eq_int(x, y) ((x) == (y))
 #define atspre_g0int_mul_int(x, y) ((x) * (y))
+#define atspre_g1int_div_int(x, y) ((x) / (y))
 
 /* Prelude functions not in freestanding mode since CATS files are suppressed */
 #define atspre_byte2int0(b) ((int)(b))
