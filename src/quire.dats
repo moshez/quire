@@ -601,6 +601,73 @@ end
 
 (* ========== Render book cards into library list ========== *)
 
+(* Render "Ch X Pg Y" into a ward_arr(48) and set as text on node.
+ * Falls back to "Not started" if ch=0 and pg=0. *)
+fn render_position_text {l:agz}
+  (s: ward_dom_stream(l), nid: int, ch: int, pg: int)
+  : ward_dom_stream(l) =
+  if eq_int_int(ch, 0) then
+    if eq_int_int(pg, 0) then
+      set_text_cstr(s, nid, TEXT_NOT_STARTED, 11)
+    else let
+      (* Build "Ch 1 Pg Y" *)
+      val arr = ward_arr_alloc<byte>(48)
+      val () = ward_arr_set<byte>(arr, 0, _byte(char2int1('C')))
+      val () = ward_arr_set<byte>(arr, 1, _byte(char2int1('h')))
+      val () = ward_arr_set<byte>(arr, 2, _byte(32))
+      val ch_digits = itoa_to_arr(arr, ch + 1, 3)
+      val p = 3 + ch_digits
+      val () = ward_arr_set<byte>(arr, _idx48(p), _byte(32))
+      val () = ward_arr_set<byte>(arr, _idx48(p + 1), _byte(char2int1('P')))
+      val () = ward_arr_set<byte>(arr, _idx48(p + 2), _byte(char2int1('g')))
+      val () = ward_arr_set<byte>(arr, _idx48(p + 3), _byte(32))
+      val pg_digits = itoa_to_arr(arr, pg + 1, p + 4)
+      val total_len = p + 4 + pg_digits
+      val tl = g1ofg0(total_len)
+    in
+      if tl > 0 then
+        if tl < 48 then let
+          val @(used, rest) = ward_arr_split<byte>(arr, tl)
+          val () = ward_arr_free<byte>(rest)
+          val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+          val s = ward_dom_stream_set_text(s, nid, borrow, tl)
+          val () = ward_arr_drop<byte>(frozen, borrow)
+          val used = ward_arr_thaw<byte>(frozen)
+          val () = ward_arr_free<byte>(used)
+        in s end
+        else let val () = ward_arr_free<byte>(arr) in s end
+      else let val () = ward_arr_free<byte>(arr) in s end
+    end
+  else let
+    (* Build "Ch X Pg Y" *)
+    val arr = ward_arr_alloc<byte>(48)
+    val () = ward_arr_set<byte>(arr, 0, _byte(char2int1('C')))
+    val () = ward_arr_set<byte>(arr, 1, _byte(char2int1('h')))
+    val () = ward_arr_set<byte>(arr, 2, _byte(32))
+    val ch_digits = itoa_to_arr(arr, ch + 1, 3)
+    val p = 3 + ch_digits
+    val () = ward_arr_set<byte>(arr, _idx48(p), _byte(32))
+    val () = ward_arr_set<byte>(arr, _idx48(p + 1), _byte(char2int1('P')))
+    val () = ward_arr_set<byte>(arr, _idx48(p + 2), _byte(char2int1('g')))
+    val () = ward_arr_set<byte>(arr, _idx48(p + 3), _byte(32))
+    val pg_digits = itoa_to_arr(arr, pg + 1, p + 4)
+    val total_len = p + 4 + pg_digits
+    val tl = g1ofg0(total_len)
+  in
+    if tl > 0 then
+      if tl < 48 then let
+        val @(used, rest) = ward_arr_split<byte>(arr, tl)
+        val () = ward_arr_free<byte>(rest)
+        val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+        val s = ward_dom_stream_set_text(s, nid, borrow, tl)
+        val () = ward_arr_drop<byte>(frozen, borrow)
+        val used = ward_arr_thaw<byte>(frozen)
+        val () = ward_arr_free<byte>(used)
+      in s end
+      else let val () = ward_arr_free<byte>(arr) in s end
+    else let val () = ward_arr_free<byte>(arr) in s end
+  end
+
 fn render_library_with_books {l:agz}
   (s: ward_dom_stream(l), list_id: int)
   : ward_dom_stream(l) = let
@@ -628,7 +695,7 @@ fn render_library_with_books {l:agz}
       val pos_id = dom_next_id()
       val s = ward_dom_stream_create_element(s, pos_id, card_id, tag_div(), 3)
       val s = ward_dom_stream_set_attr_safe(s, pos_id, attr_class(), 5, cls_book_position(), 13)
-      val s = set_text_cstr(s, pos_id, TEXT_NOT_STARTED, 11)
+      val s = render_position_text(s, pos_id, library_get_chapter(i), library_get_page(i))
 
       val btn_id = dom_next_id()
       val () = reader_set_btn_id(i, btn_id)
