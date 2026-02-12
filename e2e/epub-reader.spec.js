@@ -81,44 +81,75 @@ test.describe('EPUB Reader E2E', () => {
     await expect(chapterContainer).toBeVisible();
     await expect(chapterContainer).toContainText('mountain path', { timeout: 5000 });
 
+    // Verify substantial content rendered (not just a heading + truncated line)
+    const textLen = await chapterContainer.evaluate(el => el.textContent.length);
+    expect(textLen).toBeGreaterThan(200);
+
+    // Verify multiple paragraph elements rendered
+    const pCount = await page.locator('.chapter-container p').count();
+    expect(pCount).toBeGreaterThan(1);
+
+    // Verify multi-page content: scrollWidth should exceed visible width
+    const dims = await chapterContainer.evaluate(el => ({
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+    }));
+    expect(dims.scrollWidth).toBeGreaterThan(dims.clientWidth);
+
     // --- Flip pages forward using click zones ---
     const viewport = page.viewportSize();
     const rightZoneX = viewport.width - 50;
     const leftZoneX = 50;
-    const centerX = viewport.width / 2;
     const centerY = viewport.height / 2;
+
+    // Capture initial transform (should be 'none' or translateX(0))
+    const transformInitial = await chapterContainer.evaluate(
+      el => getComputedStyle(el).transform
+    );
 
     // Click right zone to go to next page
     await page.mouse.click(rightZoneX, centerY);
     await page.waitForTimeout(500);
     await screenshot(page, '04-reader-page-forward');
 
-    // Verify transform changed (page actually moved)
+    // Verify transform CHANGED from initial (page actually moved)
     const transformAfterForward = await chapterContainer.evaluate(
       el => getComputedStyle(el).transform
     );
-    expect(transformAfterForward).not.toBe('none');
+    expect(transformAfterForward).not.toBe(transformInitial);
 
-    // Click right zone again
+    // Click right zone again — transform should change again
+    const transformBeforeSecond = transformAfterForward;
     await page.mouse.click(rightZoneX, centerY);
     await page.waitForTimeout(500);
     await screenshot(page, '05-reader-page-forward2');
+
+    const transformAfterSecond = await chapterContainer.evaluate(
+      el => getComputedStyle(el).transform
+    );
+    expect(transformAfterSecond).not.toBe(transformBeforeSecond);
 
     // --- Flip back using left click zone ---
     await page.mouse.click(leftZoneX, centerY);
     await page.waitForTimeout(500);
     await screenshot(page, '06-reader-page-back');
 
+    const transformAfterBack = await chapterContainer.evaluate(
+      el => getComputedStyle(el).transform
+    );
+    // After going back, transform should match the first forward position
+    expect(transformAfterBack).toBe(transformAfterForward);
+
     // --- Keyboard navigation ---
     await page.keyboard.press('ArrowRight');
     await page.waitForTimeout(500);
     await screenshot(page, '07-reader-arrow-right');
 
-    // Verify keyboard navigation also applies transform
+    // Verify keyboard navigation changes transform
     const transformAfterArrow = await chapterContainer.evaluate(
       el => getComputedStyle(el).transform
     );
-    expect(transformAfterArrow).not.toBe('none');
+    expect(transformAfterArrow).not.toBe(transformAfterBack);
 
     await page.keyboard.press('ArrowLeft');
     await page.waitForTimeout(500);
@@ -136,10 +167,10 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 10000 });
     await screenshot(page, '13-library-after-reading');
 
-    // Verify reading position was saved
+    // Verify reading position was saved (must NOT be "Not started")
     const posAfterRead = page.locator('.book-position');
     await expect(posAfterRead).toBeVisible();
     const posText = await posAfterRead.textContent();
-    expect(posText === 'Not started' || posText.includes('Ch ')).toBeTruthy();
+    expect(posText).not.toBe('Not started');
   });
 });

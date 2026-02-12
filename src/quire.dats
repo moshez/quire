@@ -479,7 +479,7 @@ end
 (* Measure chapter container and viewport, compute total pages *)
 fn measure_and_set_pages(container_id: int): void = let
   val _found_c = ward_measure_node(container_id)
-  val scroll_width = ward_measure_get_left() (* slot 5 = scrollWidth *)
+  val scroll_width = ward_measure_get_top() (* slot 4 = scrollWidth *)
   val _found_v = ward_measure_node(reader_get_viewport_id())
   val page_width = ward_measure_get_w()
 in
@@ -718,6 +718,11 @@ in
     if eq_int_int(key_len, 6) then
       (* "Escape": key_len=6, k0='E' (69) *)
       if eq_int_int(k0, 69) then let
+        (* Save reading position before exiting *)
+        val () = library_update_position(
+          reader_get_book_index(),
+          reader_get_current_chapter(),
+          reader_get_current_page())
         val () = reader_exit()
         val () = render_library(root_id)
       in end
