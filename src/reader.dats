@@ -1,13 +1,240 @@
-(* reader.dats - Three-chapter sliding window implementation
+(* reader.dats - Reader module implementation
  *
- * All reader functions are implemented in quire_runtime.c and linked
- * via "mac#" declarations in reader.sats. This file exists only as
- * the ATS2 compilation unit.
+ * All reader state is in app_state (linear datavtype).
+ * Each function does app_state_load → use → app_state_store.
  *)
 
 #define ATS_DYNLOADFLAG 0
 
+#include "share/atspre_staload.hats"
 staload "./reader.sats"
+staload "./app_state.sats"
 staload "./dom.sats"
 
-(* All implementations provided by quire_runtime.c via mac# linkage *)
+(* Freestanding arithmetic *)
+extern fun gte_int_int(a: int, b: int): bool = "mac#quire_gte"
+extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
+extern fun lt_int_int(a: int, b: int): bool = "mac#quire_lt"
+extern fun sub_int_int(a: int, b: int): int = "mac#quire_sub"
+extern fun add_int_int(a: int, b: int): int = "mac#quire_add"
+overload + with add_int_int of 10
+overload - with sub_int_int of 10
+
+(* Runtime-checked non-negative *)
+extern castfn _checked_nat(x: int): [n:nat] int n
+extern castfn _checked_pos(x: int): [n:pos] int n
+
+implement reader_init() = let
+  val st = app_state_load()
+  val () = app_set_rdr_active(st, 0)
+  val () = app_set_rdr_book_index(st, 0 - 1)
+  val () = app_set_rdr_current_chapter(st, 0)
+  val () = app_set_rdr_current_page(st, 0)
+  val () = app_set_rdr_total_pages(st, 1)
+  val () = app_state_store(st)
+in end
+
+implement reader_enter(root_id, container_hide_id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_active(st, 1)
+  val () = app_set_rdr_root_id(st, root_id)
+  val () = app_state_store(st)
+in end
+
+implement reader_exit(pf) = let
+  prval SAVED() = pf
+  val st = app_state_load()
+  val () = app_set_rdr_active(st, 0)
+  val () = app_set_rdr_book_index(st, 0 - 1)
+  val () = app_set_rdr_current_chapter(st, 0)
+  val () = app_set_rdr_current_page(st, 0)
+  val () = app_set_rdr_total_pages(st, 1)
+  val () = app_state_store(st)
+in end
+
+implement reader_is_active() = let
+  val st = app_state_load()
+  val v = app_get_rdr_active(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_get_current_chapter() = let
+  val st = app_state_load()
+  val v = app_get_rdr_current_chapter(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_get_current_page() = let
+  val st = app_state_load()
+  val v = app_get_rdr_current_page(st)
+  val () = app_state_store(st)
+in
+  if v >= 0 then _checked_nat(v)
+  else _checked_nat(0)
+end
+
+implement reader_get_total_pages() = let
+  val st = app_state_load()
+  val v = app_get_rdr_total_pages(st)
+  val () = app_state_store(st)
+in
+  if v > 0 then _checked_pos(v)
+  else _checked_pos(1)
+end
+
+implement reader_get_chapter_count() = let
+  val st = app_state_load()
+  val v = app_get_epub_spine_count(st)
+  val () = app_state_store(st)
+in
+  if v >= 0 then _checked_nat(v)
+  else _checked_nat(0)
+end
+
+implement reader_next_page() = let
+  val st = app_state_load()
+  val pg = app_get_rdr_current_page(st)
+  val total = app_get_rdr_total_pages(st)
+in
+  if lt_int_int(pg, total - 1) then let
+    val () = app_set_rdr_current_page(st, pg + 1)
+    val () = app_state_store(st)
+  in end
+  else let
+    val () = app_state_store(st)
+  in end
+end
+
+implement reader_prev_page() = let
+  val st = app_state_load()
+  val pg = app_get_rdr_current_page(st)
+in
+  if gt_int_int(pg, 0) then let
+    val () = app_set_rdr_current_page(st, pg - 1)
+    val () = app_state_store(st)
+  in end
+  else let
+    val () = app_state_store(st)
+  in end
+end
+
+implement reader_go_to_page(page) = let
+  val st = app_state_load()
+  val total = app_get_rdr_total_pages(st)
+in
+  if gte_int_int(page, 0) then
+    if lt_int_int(page, total) then let
+      val () = app_set_rdr_current_page(st, page)
+      val () = app_state_store(st)
+    in end
+    else let val () = app_state_store(st) in end
+  else let val () = app_state_store(st) in end
+end
+
+implement reader_go_to_chapter{ch,t}(chapter_index, total_chapters) = let
+  val st = app_state_load()
+  val spine = app_get_epub_spine_count(st)
+  val ci = g0ofg1(chapter_index)
+in
+  if gte_int_int(ci, 0) then
+    if lt_int_int(ci, spine) then let
+      val () = app_set_rdr_current_chapter(st, ci)
+      val () = app_set_rdr_current_page(st, 0)
+      val () = app_state_store(st)
+    in end
+    else let val () = app_state_store(st) in end
+  else let val () = app_state_store(st) in end
+end
+
+(* Stub implementations — not yet fully wired *)
+implement reader_on_chapter_loaded(len) = ()
+implement reader_on_chapter_blob_loaded(handle, size) = ()
+implement reader_get_viewport_width() = 0
+implement reader_get_page_indicator_id() = 0
+implement reader_update_page_display() = ()
+implement reader_is_loading() = 0
+implement reader_remeasure_all() = ()
+implement reader_show_toc() = ()
+implement reader_hide_toc() = ()
+implement reader_toggle_toc() = ()
+implement reader_is_toc_visible() = false
+implement reader_get_toc_id() = 0
+implement reader_get_progress_bar_id() = 0
+implement reader_get_toc_index_for_node(node_id) = 0 - 1
+implement reader_on_toc_click(node_id) = ()
+implement reader_get_back_btn_id() = _checked_nat(0)
+
+implement reader_enter_at(root_id, container_hide_id, chapter, page) = let
+  val () = reader_enter(root_id, container_hide_id)
+  val st = app_state_load()
+  val () = app_set_rdr_current_chapter(st, chapter)
+  val () = app_set_rdr_current_page(st, page)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_viewport_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_viewport_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_viewport_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_viewport_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_set_container_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_container_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_container_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_container_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_book_index(idx) = let
+  val st = app_state_load()
+  val () = app_set_rdr_book_index(st, idx)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_book_index() = let
+  val st = app_state_load()
+  val v = app_get_rdr_book_index(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_file_handle(h) = let
+  val st = app_state_load()
+  val () = app_set_rdr_file_handle(st, h)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_file_handle() = let
+  val st = app_state_load()
+  val v = app_get_rdr_file_handle(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_btn_id(book_index, node_id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_btn_id(st, book_index, node_id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_btn_id(book_index) = let
+  val st = app_state_load()
+  val v = app_get_rdr_btn_id(st, book_index)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_total_pages(n) = let
+  val st = app_state_load()
+  val v = if gt_int_int(n, 0) then n else 1
+  val () = app_set_rdr_total_pages(st, v)
+  val () = app_state_store(st)
+in end

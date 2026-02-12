@@ -20,12 +20,18 @@ datavtype app_state_impl =
       zip_entry_count = int,
       zip_file_handle = int,
       zip_name_offset = int,
+      zip_entries = ptr,
+      zip_name_buf = ptr,
       library_count = int,
       lib_save_pending = int,
       lib_load_pending = int,
       lib_meta_save_pending = int,
       lib_meta_load_pending = int,
       lib_meta_load_index = int,
+      library_books = ptr,
+      string_buffer = ptr,
+      fetch_buffer = ptr,
+      diff_buffer = ptr,
       stg_font_size = int,
       stg_font_family = int,
       stg_theme = int,
@@ -50,10 +56,50 @@ datavtype app_state_impl =
       stg_disp_lh = int,
       stg_disp_mg = int,
       stg_save_pend = int,
-      stg_load_pend = int
+      stg_load_pend = int,
+      rdr_active = int,
+      rdr_book_index = int,
+      rdr_current_chapter = int,
+      rdr_current_page = int,
+      rdr_total_pages = int,
+      rdr_viewport_id = int,
+      rdr_container_id = int,
+      rdr_root_id = int,
+      rdr_file_handle = int,
+      rdr_btn_ids = ptr,
+      epub_spine_count = int,
+      epub_title = ptr,
+      epub_title_len = int,
+      epub_author = ptr,
+      epub_author_len = int,
+      epub_book_id = ptr,
+      epub_book_id_len = int,
+      epub_opf_path = ptr,
+      epub_opf_path_len = int,
+      epub_opf_dir_len = int,
+      epub_state = int,
+      epub_spine_path_buf = ptr,
+      epub_spine_path_offsets = ptr,
+      epub_spine_path_lens = ptr,
+      epub_spine_path_count = int,
+      epub_spine_path_pos = int
     }
 
 assume app_state = app_state_impl
+
+(* Bump allocator — never freed. Zero-initialized by calloc. *)
+extern fun _calloc(n: int, sz: int): ptr = "mac#calloc"
+
+(* Byte-level access on raw ptr — macros in quire_prelude.h *)
+extern fun buf_get_u8(p: ptr, off: int): int = "mac#"
+extern fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#"
+
+(* Int array access on raw ptr — macros in quire_prelude.h *)
+extern fun buf_get_i32(p: ptr, idx: int): int = "mac#"
+extern fun buf_set_i32(p: ptr, idx: int, v: int): void = "mac#"
+
+(* Allocate btn_ids array: 32 ints × 4 bytes = 128 bytes *)
+fn _rdr_btn_alloc(): ptr = _calloc(32, 4)
 
 implement app_state_init() =
   APP_STATE @{
@@ -61,12 +107,18 @@ implement app_state_init() =
     zip_entry_count = 0,
     zip_file_handle = 0,
     zip_name_offset = 0,
+    zip_entries = _calloc(256 * 7, 4),
+    zip_name_buf = _calloc(1, 8192),
     library_count = 0,
     lib_save_pending = 0,
     lib_load_pending = 0,
     lib_meta_save_pending = 0,
     lib_meta_load_pending = 0,
     lib_meta_load_index = 0 - 1,
+    library_books = _calloc(32 * 150, 4),
+    string_buffer = _calloc(1, 4096),
+    fetch_buffer = _calloc(1, 16384),
+    diff_buffer = _calloc(1, 4096),
     stg_font_size = 18,
     stg_font_family = 0,
     stg_theme = 0,
@@ -91,7 +143,33 @@ implement app_state_init() =
     stg_disp_lh = 0,
     stg_disp_mg = 0,
     stg_save_pend = 0,
-    stg_load_pend = 0
+    stg_load_pend = 0,
+    rdr_active = 0,
+    rdr_book_index = 0 - 1,
+    rdr_current_chapter = 0,
+    rdr_current_page = 0,
+    rdr_total_pages = 1,
+    rdr_viewport_id = 0,
+    rdr_container_id = 0,
+    rdr_root_id = 0,
+    rdr_file_handle = 0,
+    rdr_btn_ids = _rdr_btn_alloc(),
+    epub_spine_count = 0,
+    epub_title = _calloc(1, 256),
+    epub_title_len = 0,
+    epub_author = _calloc(1, 256),
+    epub_author_len = 0,
+    epub_book_id = _calloc(1, 64),
+    epub_book_id_len = 0,
+    epub_opf_path = _calloc(1, 256),
+    epub_opf_path_len = 0,
+    epub_opf_dir_len = 0,
+    epub_state = 0,
+    epub_spine_path_buf = _calloc(1, 4096),
+    epub_spine_path_offsets = _calloc(32, 4),
+    epub_spine_path_lens = _calloc(32, 4),
+    epub_spine_path_count = 0,
+    epub_spine_path_pos = 0
   }
 
 implement app_state_fini(st) = let
@@ -146,6 +224,82 @@ implement app_set_zip_name_offset(st, v) = let
   prval () = fold@(st)
 in end
 
+(* ========== ZIP array storage (ext# wrappers) ========== *)
+
+(* ZIP entries: 256 entries × 7 ints each, stored as flat int array.
+ * Entry i has fields at indices i*7+0..i*7+6:
+ *   0=file_handle, 1=name_offset, 2=name_len, 3=compression,
+ *   4=compressed_size, 5=uncompressed_size, 6=local_header_offset *)
+
+extern fun _zip_entry_file_handle(i: int): int = "ext#_zip_entry_file_handle"
+extern fun _zip_entry_name_offset(i: int): int = "ext#_zip_entry_name_offset"
+extern fun _zip_entry_name_len(i: int): int = "ext#_zip_entry_name_len"
+extern fun _zip_entry_compression(i: int): int = "ext#_zip_entry_compression"
+extern fun _zip_entry_compressed_size(i: int): int = "ext#_zip_entry_compressed_size"
+extern fun _zip_entry_uncompressed_size(i: int): int = "ext#_zip_entry_uncompressed_size"
+extern fun _zip_entry_local_offset(i: int): int = "ext#_zip_entry_local_offset"
+extern fun _zip_name_char(off: int): int = "ext#_zip_name_char"
+extern fun _zip_name_buf_put(off: int, byte_val: int): int = "ext#_zip_name_buf_put"
+extern fun _zip_store_entry_at(idx: int, fh: int, no: int, nl: int,
+  comp: int, cs: int, us: int, lo: int): int = "ext#_zip_store_entry_at"
+
+fn _zip_get_entries_ptr(): ptr = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val p = r.zip_entries
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in p end
+
+fn _zip_get_name_buf_ptr(): ptr = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val p = r.zip_name_buf
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in p end
+
+implement _zip_entry_file_handle(i) = buf_get_i32(_zip_get_entries_ptr(), i * 7 + 0)
+implement _zip_entry_name_offset(i) = buf_get_i32(_zip_get_entries_ptr(), i * 7 + 1)
+implement _zip_entry_name_len(i) = buf_get_i32(_zip_get_entries_ptr(), i * 7 + 2)
+implement _zip_entry_compression(i) = buf_get_i32(_zip_get_entries_ptr(), i * 7 + 3)
+implement _zip_entry_compressed_size(i) = buf_get_i32(_zip_get_entries_ptr(), i * 7 + 4)
+implement _zip_entry_uncompressed_size(i) = buf_get_i32(_zip_get_entries_ptr(), i * 7 + 5)
+implement _zip_entry_local_offset(i) = buf_get_i32(_zip_get_entries_ptr(), i * 7 + 6)
+
+implement _zip_name_char(off) = let
+  val p = _zip_get_name_buf_ptr()
+in
+  if off >= 0 then
+    if off < 8192 then buf_get_u8(p, off)
+    else 0
+  else 0
+end
+
+implement _zip_name_buf_put(off, byte_val) =
+  if off >= 0 then
+    if off < 8192 then let
+      val () = buf_set_u8(_zip_get_name_buf_ptr(), off, byte_val)
+    in 1 end
+    else 0
+  else 0
+
+implement _zip_store_entry_at(idx, fh, no, nl, comp, cs, us, lo) =
+  if idx >= 0 then
+    if idx < 256 then let
+      val p = _zip_get_entries_ptr()
+      val base = idx * 7
+      val () = buf_set_i32(p, base + 0, fh)
+      val () = buf_set_i32(p, base + 1, no)
+      val () = buf_set_i32(p, base + 2, nl)
+      val () = buf_set_i32(p, base + 3, comp)
+      val () = buf_set_i32(p, base + 4, cs)
+      val () = buf_set_i32(p, base + 5, us)
+      val () = buf_set_i32(p, base + 6, lo)
+    in 1 end
+    else 0
+  else 0
+
 (* ========== Library state ========== *)
 
 implement app_get_library_count(st) = let
@@ -189,6 +343,18 @@ implement app_get_lib_meta_load_index(st) = let
 implement app_set_lib_meta_load_index(st, v) = let
   val @APP_STATE(r) = st val () = r.lib_meta_load_index := v
   prval () = fold@(st) in end
+implement app_get_library_books(st) = let
+  val @APP_STATE(r) = st val v = r.library_books
+  prval () = fold@(st) in v end
+implement app_get_string_buffer(st) = let
+  val @APP_STATE(r) = st val v = r.string_buffer
+  prval () = fold@(st) in v end
+implement app_get_fetch_buffer(st) = let
+  val @APP_STATE(r) = st val v = r.fetch_buffer
+  prval () = fold@(st) in v end
+implement app_get_diff_buffer(st) = let
+  val @APP_STATE(r) = st val v = r.diff_buffer
+  prval () = fold@(st) in v end
 
 (* ========== C-callable wrappers for library module ========== *)
 
@@ -232,6 +398,23 @@ implement _app_lib_meta_load_idx() = let val st = app_state_load()
   val v = app_get_lib_meta_load_index(st) val () = app_state_store(st) in v end
 implement _app_set_lib_meta_load_idx(v) = let val st = app_state_load()
   val () = app_set_lib_meta_load_index(st, v) val () = app_state_store(st) in end
+extern fun _app_lib_books_ptr(): ptr = "ext#_app_lib_books_ptr"
+implement _app_lib_books_ptr() = let val st = app_state_load()
+  val v = app_get_library_books(st) val () = app_state_store(st) in v end
+
+(* ========== Buffer ext# wrappers ========== *)
+(* These replace the static buffers in quire_runtime.c.
+ * Buffers are calloc'd in app_state_init and stored as ptr fields. *)
+
+extern fun _get_string_buffer_ptr(): ptr = "ext#get_string_buffer_ptr"
+implement _get_string_buffer_ptr() = let val st = app_state_load()
+  val v = app_get_string_buffer(st) val () = app_state_store(st) in v end
+extern fun _get_fetch_buffer_ptr(): ptr = "ext#get_fetch_buffer_ptr"
+implement _get_fetch_buffer_ptr() = let val st = app_state_load()
+  val v = app_get_fetch_buffer(st) val () = app_state_store(st) in v end
+extern fun _get_diff_buffer_ptr(): ptr = "ext#get_diff_buffer_ptr"
+implement _get_diff_buffer_ptr() = let val st = app_state_load()
+  val v = app_get_diff_buffer(st) val () = app_state_store(st) in v end
 
 (* ========== Settings state ========== *)
 
@@ -390,6 +573,157 @@ implement app_set_stg_load_pend(st, v) = let
   val @APP_STATE(r) = st val () = r.stg_load_pend := v
   prval () = fold@(st) in end
 
+(* ========== Reader state ========== *)
+
+implement app_get_rdr_active(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_active
+  prval () = fold@(st) in v end
+implement app_set_rdr_active(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_active := v
+  prval () = fold@(st) in end
+implement app_get_rdr_book_index(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_book_index
+  prval () = fold@(st) in v end
+implement app_set_rdr_book_index(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_book_index := v
+  prval () = fold@(st) in end
+implement app_get_rdr_current_chapter(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_current_chapter
+  prval () = fold@(st) in v end
+implement app_set_rdr_current_chapter(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_current_chapter := v
+  prval () = fold@(st) in end
+implement app_get_rdr_current_page(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_current_page
+  prval () = fold@(st) in v end
+implement app_set_rdr_current_page(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_current_page := v
+  prval () = fold@(st) in end
+implement app_get_rdr_total_pages(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_total_pages
+  prval () = fold@(st) in v end
+implement app_set_rdr_total_pages(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_total_pages := v
+  prval () = fold@(st) in end
+implement app_get_rdr_viewport_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_viewport_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_viewport_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_viewport_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_container_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_container_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_container_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_container_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_root_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_root_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_root_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_root_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_file_handle(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_file_handle
+  prval () = fold@(st) in v end
+implement app_set_rdr_file_handle(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_file_handle := v
+  prval () = fold@(st) in end
+
+implement app_get_rdr_btn_id(st, idx) = let
+  val @APP_STATE(r) = st
+  val v = if idx >= 0 then
+            if idx < 32 then buf_get_i32(r.rdr_btn_ids, idx)
+            else 0 - 1
+          else 0 - 1
+  prval () = fold@(st)
+in v end
+implement app_set_rdr_btn_id(st, idx, v) = let
+  val @APP_STATE(r) = st
+  val () = if idx >= 0 then
+             if idx < 32 then buf_set_i32(r.rdr_btn_ids, idx, v)
+  prval () = fold@(st)
+in end
+
+(* ========== EPUB spine count ========== *)
+
+implement app_get_epub_spine_count(st) = let
+  val @APP_STATE(r) = st val v = r.epub_spine_count
+  prval () = fold@(st) in v end
+implement app_set_epub_spine_count(st, v) = let
+  val @APP_STATE(r) = st val () = r.epub_spine_count := v
+  prval () = fold@(st) in end
+
+implement app_get_epub_title(st) = let
+  val @APP_STATE(r) = st val v = r.epub_title
+  prval () = fold@(st) in v end
+implement app_get_epub_title_len(st) = let
+  val @APP_STATE(r) = st val v = r.epub_title_len
+  prval () = fold@(st) in v end
+implement app_set_epub_title_len(st, v) = let
+  val @APP_STATE(r) = st val () = r.epub_title_len := v
+  prval () = fold@(st) in end
+implement app_get_epub_author(st) = let
+  val @APP_STATE(r) = st val v = r.epub_author
+  prval () = fold@(st) in v end
+implement app_get_epub_author_len(st) = let
+  val @APP_STATE(r) = st val v = r.epub_author_len
+  prval () = fold@(st) in v end
+implement app_set_epub_author_len(st, v) = let
+  val @APP_STATE(r) = st val () = r.epub_author_len := v
+  prval () = fold@(st) in end
+implement app_get_epub_book_id(st) = let
+  val @APP_STATE(r) = st val v = r.epub_book_id
+  prval () = fold@(st) in v end
+implement app_get_epub_book_id_len(st) = let
+  val @APP_STATE(r) = st val v = r.epub_book_id_len
+  prval () = fold@(st) in v end
+implement app_set_epub_book_id_len(st, v) = let
+  val @APP_STATE(r) = st val () = r.epub_book_id_len := v
+  prval () = fold@(st) in end
+implement app_get_epub_opf_path(st) = let
+  val @APP_STATE(r) = st val v = r.epub_opf_path
+  prval () = fold@(st) in v end
+implement app_get_epub_opf_path_len(st) = let
+  val @APP_STATE(r) = st val v = r.epub_opf_path_len
+  prval () = fold@(st) in v end
+implement app_set_epub_opf_path_len(st, v) = let
+  val @APP_STATE(r) = st val () = r.epub_opf_path_len := v
+  prval () = fold@(st) in end
+implement app_get_epub_opf_dir_len(st) = let
+  val @APP_STATE(r) = st val v = r.epub_opf_dir_len
+  prval () = fold@(st) in v end
+implement app_set_epub_opf_dir_len(st, v) = let
+  val @APP_STATE(r) = st val () = r.epub_opf_dir_len := v
+  prval () = fold@(st) in end
+implement app_get_epub_state(st) = let
+  val @APP_STATE(r) = st val v = r.epub_state
+  prval () = fold@(st) in v end
+implement app_set_epub_state(st, v) = let
+  val @APP_STATE(r) = st val () = r.epub_state := v
+  prval () = fold@(st) in end
+implement app_get_epub_spine_path_buf(st) = let
+  val @APP_STATE(r) = st val v = r.epub_spine_path_buf
+  prval () = fold@(st) in v end
+implement app_get_epub_spine_path_offsets(st) = let
+  val @APP_STATE(r) = st val v = r.epub_spine_path_offsets
+  prval () = fold@(st) in v end
+implement app_get_epub_spine_path_lens(st) = let
+  val @APP_STATE(r) = st val v = r.epub_spine_path_lens
+  prval () = fold@(st) in v end
+implement app_get_epub_spine_path_count(st) = let
+  val @APP_STATE(r) = st val v = r.epub_spine_path_count
+  prval () = fold@(st) in v end
+implement app_set_epub_spine_path_count(st, v) = let
+  val @APP_STATE(r) = st val () = r.epub_spine_path_count := v
+  prval () = fold@(st) in end
+implement app_get_epub_spine_path_pos(st) = let
+  val @APP_STATE(r) = st val v = r.epub_spine_path_pos
+  prval () = fold@(st) in v end
+implement app_set_epub_spine_path_pos(st, v) = let
+  val @APP_STATE(r) = st val () = r.epub_spine_path_pos := v
+  prval () = fold@(st) in end
+
 (* ========== C-callable wrappers for settings module ========== *)
 
 extern fun _app_stg_font_size(): int = "ext#_app_stg_font_size"
@@ -543,6 +877,85 @@ implement _app_stg_load_pend() = let val st = app_state_load()
   val v = app_get_stg_load_pend(st) val () = app_state_store(st) in v end
 implement _app_set_stg_load_pend(v) = let val st = app_state_load()
   val () = app_set_stg_load_pend(st, v) val () = app_state_store(st) in end
+
+(* ========== C-callable wrappers for epub fields ========== *)
+
+extern fun _app_epub_spine_count(): int = "ext#_app_epub_spine_count"
+extern fun _app_set_epub_spine_count(v: int): void = "ext#_app_set_epub_spine_count"
+extern fun _app_epub_title_ptr(): ptr = "ext#_app_epub_title_ptr"
+extern fun _app_epub_title_len(): int = "ext#_app_epub_title_len"
+extern fun _app_set_epub_title_len(v: int): void = "ext#_app_set_epub_title_len"
+extern fun _app_epub_author_ptr(): ptr = "ext#_app_epub_author_ptr"
+extern fun _app_epub_author_len(): int = "ext#_app_epub_author_len"
+extern fun _app_set_epub_author_len(v: int): void = "ext#_app_set_epub_author_len"
+extern fun _app_epub_book_id_ptr(): ptr = "ext#_app_epub_book_id_ptr"
+extern fun _app_epub_book_id_len(): int = "ext#_app_epub_book_id_len"
+extern fun _app_set_epub_book_id_len(v: int): void = "ext#_app_set_epub_book_id_len"
+extern fun _app_epub_opf_path_ptr(): ptr = "ext#_app_epub_opf_path_ptr"
+extern fun _app_epub_opf_path_len(): int = "ext#_app_epub_opf_path_len"
+extern fun _app_set_epub_opf_path_len(v: int): void = "ext#_app_set_epub_opf_path_len"
+extern fun _app_epub_opf_dir_len(): int = "ext#_app_epub_opf_dir_len"
+extern fun _app_set_epub_opf_dir_len(v: int): void = "ext#_app_set_epub_opf_dir_len"
+extern fun _app_epub_state(): int = "ext#_app_epub_state"
+extern fun _app_set_epub_state(v: int): void = "ext#_app_set_epub_state"
+extern fun _app_epub_spine_path_buf(): ptr = "ext#_app_epub_spine_path_buf"
+extern fun _app_epub_spine_path_offsets(): ptr = "ext#_app_epub_spine_path_offsets"
+extern fun _app_epub_spine_path_lens(): ptr = "ext#_app_epub_spine_path_lens"
+extern fun _app_epub_spine_path_count(): int = "ext#_app_epub_spine_path_count"
+extern fun _app_set_epub_spine_path_count(v: int): void = "ext#_app_set_epub_spine_path_count"
+extern fun _app_epub_spine_path_pos(): int = "ext#_app_epub_spine_path_pos"
+extern fun _app_set_epub_spine_path_pos(v: int): void = "ext#_app_set_epub_spine_path_pos"
+
+implement _app_epub_spine_count() = let val st = app_state_load()
+  val v = app_get_epub_spine_count(st) val () = app_state_store(st) in v end
+implement _app_set_epub_spine_count(v) = let val st = app_state_load()
+  val () = app_set_epub_spine_count(st, v) val () = app_state_store(st) in end
+implement _app_epub_title_ptr() = let val st = app_state_load()
+  val v = app_get_epub_title(st) val () = app_state_store(st) in v end
+implement _app_epub_title_len() = let val st = app_state_load()
+  val v = app_get_epub_title_len(st) val () = app_state_store(st) in v end
+implement _app_set_epub_title_len(v) = let val st = app_state_load()
+  val () = app_set_epub_title_len(st, v) val () = app_state_store(st) in end
+implement _app_epub_author_ptr() = let val st = app_state_load()
+  val v = app_get_epub_author(st) val () = app_state_store(st) in v end
+implement _app_epub_author_len() = let val st = app_state_load()
+  val v = app_get_epub_author_len(st) val () = app_state_store(st) in v end
+implement _app_set_epub_author_len(v) = let val st = app_state_load()
+  val () = app_set_epub_author_len(st, v) val () = app_state_store(st) in end
+implement _app_epub_book_id_ptr() = let val st = app_state_load()
+  val v = app_get_epub_book_id(st) val () = app_state_store(st) in v end
+implement _app_epub_book_id_len() = let val st = app_state_load()
+  val v = app_get_epub_book_id_len(st) val () = app_state_store(st) in v end
+implement _app_set_epub_book_id_len(v) = let val st = app_state_load()
+  val () = app_set_epub_book_id_len(st, v) val () = app_state_store(st) in end
+implement _app_epub_opf_path_ptr() = let val st = app_state_load()
+  val v = app_get_epub_opf_path(st) val () = app_state_store(st) in v end
+implement _app_epub_opf_path_len() = let val st = app_state_load()
+  val v = app_get_epub_opf_path_len(st) val () = app_state_store(st) in v end
+implement _app_set_epub_opf_path_len(v) = let val st = app_state_load()
+  val () = app_set_epub_opf_path_len(st, v) val () = app_state_store(st) in end
+implement _app_epub_opf_dir_len() = let val st = app_state_load()
+  val v = app_get_epub_opf_dir_len(st) val () = app_state_store(st) in v end
+implement _app_set_epub_opf_dir_len(v) = let val st = app_state_load()
+  val () = app_set_epub_opf_dir_len(st, v) val () = app_state_store(st) in end
+implement _app_epub_state() = let val st = app_state_load()
+  val v = app_get_epub_state(st) val () = app_state_store(st) in v end
+implement _app_set_epub_state(v) = let val st = app_state_load()
+  val () = app_set_epub_state(st, v) val () = app_state_store(st) in end
+implement _app_epub_spine_path_buf() = let val st = app_state_load()
+  val v = app_get_epub_spine_path_buf(st) val () = app_state_store(st) in v end
+implement _app_epub_spine_path_offsets() = let val st = app_state_load()
+  val v = app_get_epub_spine_path_offsets(st) val () = app_state_store(st) in v end
+implement _app_epub_spine_path_lens() = let val st = app_state_load()
+  val v = app_get_epub_spine_path_lens(st) val () = app_state_store(st) in v end
+implement _app_epub_spine_path_count() = let val st = app_state_load()
+  val v = app_get_epub_spine_path_count(st) val () = app_state_store(st) in v end
+implement _app_set_epub_spine_path_count(v) = let val st = app_state_load()
+  val () = app_set_epub_spine_path_count(st, v) val () = app_state_store(st) in end
+implement _app_epub_spine_path_pos() = let val st = app_state_load()
+  val v = app_get_epub_spine_path_pos(st) val () = app_state_store(st) in v end
+implement _app_set_epub_spine_path_pos(v) = let val st = app_state_load()
+  val () = app_set_epub_spine_path_pos(st, v) val () = app_state_store(st) in end
 
 (* ========== Listener table stash ========== *)
 

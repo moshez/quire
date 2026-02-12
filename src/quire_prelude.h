@@ -12,6 +12,11 @@
 #ifndef QUIRE_PRELUDE_H
 #define QUIRE_PRELUDE_H
 
+/* calloc — ward's malloc already zeroes memory, so calloc is just malloc(n*sz).
+ * Needed because freestanding mode has no <stdlib.h> declaration.
+ * malloc is already declared in ward's runtime.h (included before this). */
+static inline void *calloc(int n, int sz) { return malloc(n * sz); }
+
 /* ATS2 abstract type erasure — absvtype app_state erases to ptr */
 #define app_state atstype_ptrk
 
@@ -136,9 +141,9 @@
 /* Buffer accessors (implemented in quire_runtime.c).
  * ATS2 mac# can generate unsigned char* or void* depending on module.
  * Use unsigned char* to match epub.dats generated code. */
-extern unsigned char *get_string_buffer_ptr(void);
-extern unsigned char *get_fetch_buffer_ptr(void);
-extern unsigned char *get_diff_buffer_ptr(void);
+extern void *get_string_buffer_ptr(void);
+extern void *get_fetch_buffer_ptr(void);
+extern void *get_diff_buffer_ptr(void);
 #define quire_get_byte(p, off) ((int)(((unsigned char*)(p))[(off)]))
 
 /* DOM next-node-id — REMOVED: now in app_state.dats (ATS2 datavtype) */
@@ -156,6 +161,7 @@ extern int _app_lib_meta_load_pend(void);
 extern void _app_set_lib_meta_load_pend(int v);
 extern int _app_lib_meta_load_idx(void);
 extern void _app_set_lib_meta_load_idx(int v);
+extern void* _app_lib_books_ptr(void);
 
 /* C-callable app_state accessors for settings module */
 extern int _app_stg_font_size(void);
@@ -209,7 +215,50 @@ extern void _app_set_stg_save_pend(int v);
 extern int _app_stg_load_pend(void);
 extern void _app_set_stg_load_pend(int v);
 
-/* Zip entry accessors (implemented in quire_runtime.c) */
+/* (Zip entry accessors moved to pure ATS2 in app_state.dats) */
+
+/* (copy_to_arr and fill_text moved to pure ATS2) */
+
+/* Bounds-checked byte read from ward_arr (erased to ptr at runtime).
+ * Returns byte value if 0 <= off < len, else 0. */
+#ifndef _ward_arr_byte
+#define _ward_arr_byte(arr, off, len) \
+  (((off) >= 0 && (off) < (len)) ? ((int)((unsigned char*)(arr))[(off)]) : 0)
+#endif
+
+/* Bounds-checked byte write to ward_arr (erased to ptr at runtime).
+ * Writes val to arr[off] if 0 <= off < len, else no-op. */
+#ifndef _ward_arr_set_byte
+#define _ward_arr_set_byte(arr, off, len, val) \
+  do { if ((off) >= 0 && (off) < (len)) ((unsigned char*)(arr))[(off)] = (unsigned char)(val); } while(0)
+#endif
+
+/* Int array access on raw ptr (for btn_ids etc.) */
+#define buf_get_i32(p, idx) (((int*)(p))[(idx)])
+#define buf_set_i32(p, idx, v) (((int*)(p))[(idx)] = (v))
+
+/* Bitwise operations (may also be in ward runtime.h) */
+#ifndef quire_bor
+#define quire_bor(a, b) ((int)((unsigned int)(a) | (unsigned int)(b)))
+#endif
+#ifndef quire_bsl
+#define quire_bsl(a, n) ((int)((unsigned int)(a) << (n)))
+#endif
+#ifndef quire_band
+#define quire_band(a, b) ((int)((unsigned int)(a) & (unsigned int)(b)))
+#endif
+#ifndef quire_bsr
+#define quire_bsr(a, n) ((int)((unsigned int)(a) >> (n)))
+#endif
+
+/* ZIP module functions (zip.sats — implemented in zip.dats, mac# linkage) */
+extern int zip_open(int file_handle, int file_size);
+extern int zip_get_entry(int index, void *entry);
+extern int zip_find_entry(void *name_ptr, int name_len);
+extern int zip_get_data_offset(int index);
+
+/* ZIP internal accessors (implemented in app_state.dats via ext#,
+ * called from zip.dats via mac#) */
 extern int _zip_entry_file_handle(int i);
 extern int _zip_entry_name_offset(int i);
 extern int _zip_entry_name_len(int i);
@@ -222,74 +271,8 @@ extern int _zip_name_buf_put(int off, int byte_val);
 extern int _zip_store_entry_at(int idx, int fh, int no, int nl,
   int comp, int cs, int us, int lo);
 
-/* DOM lookup tables and copy (used by dom.dats tree renderer) */
-extern int lookup_tag(void *base, int offset, int name_len);
-extern int lookup_attr(void *base, int offset, int name_len);
-extern int _copy_to_arr(void *dst, void *src, int offset, int count);
-
-/* Text constant filler (implemented in quire_runtime.c) */
-extern int _fill_text(void *arr, int text_id);
-
-/* Bounds-checked byte read from ward_arr (erased to ptr at runtime).
- * Returns byte value if 0 <= off < len, else 0. */
-#ifndef _ward_arr_byte
-#define _ward_arr_byte(arr, off, len) \
-  (((off) >= 0 && (off) < (len)) ? ((int)((unsigned char*)(arr))[(off)]) : 0)
-#endif
-
-/* Bitwise operations (may also be in ward runtime.h) */
-#ifndef quire_bor
-#define quire_bor(a, b) ((int)((unsigned int)(a) | (unsigned int)(b)))
-#endif
-#ifndef quire_bsl
-#define quire_bsl(a, n) ((int)((unsigned int)(a) << (n)))
-#endif
-
-/* ZIP module functions (zip.sats — implemented in zip.dats, mac# linkage) */
-extern int zip_open(int file_handle, int file_size);
-extern int zip_get_entry(int index, void *entry);
-extern int zip_find_entry(void *name_ptr, int name_len);
-extern int zip_get_data_offset(int index);
-
-/* EPUB module (implemented in quire_runtime.c) */
-extern int epub_parse_container_bytes(void *buf, int len);
-extern int epub_parse_opf_bytes(void *buf, int len);
-extern void* epub_get_opf_path_ptr(void);
-extern int epub_get_opf_path_len(void);
-extern void* get_str_container_ptr(void);
-
-/* String buffer copy (implemented in quire_runtime.c) */
-extern void _copy_from_sbuf(void *dst, int len);
-
-/* Spine path accessors (implemented in quire_runtime.c) */
-extern void* epub_get_spine_path_ptr(int index);
-extern int epub_get_spine_path_len(int index);
-
-/* EPUB module functions (epub.sats — implemented in quire_runtime.c) */
-extern void epub_init(void);
-extern int epub_start_import(int file_input_node_id);
-extern int epub_get_state(void);
-extern int epub_get_progress(void);
-extern int epub_get_error(int buf_offset);
-extern int epub_get_title(int buf_offset);
-extern int epub_get_author(int buf_offset);
-extern int epub_get_book_id(int buf_offset);
-extern int epub_get_chapter_count(void);
-extern int epub_get_chapter_key(int chapter_index, int buf_offset);
-extern void epub_continue(void);
-extern void epub_on_file_open(int handle, int size);
-extern void epub_on_decompress(int blob_handle, int size);
-extern void epub_on_db_open(int success);
-extern void epub_on_db_put(int success);
-extern void epub_cancel(void);
-extern int epub_get_toc_count(void);
-extern int epub_get_toc_label(int toc_index, int buf_offset);
-extern int epub_get_toc_chapter(int toc_index);
-extern int epub_get_toc_level(int toc_index);
-extern int epub_get_chapter_title(int spine_index, int buf_offset);
-extern int epub_serialize_metadata(void);
-extern int epub_restore_metadata(int len);
-extern void epub_reset(void);
+/* (EPUB module moved to pure ATS2 in epub.dats) */
+/* (copy_from_sbuf moved to pure ATS2 in quire.dats) */
 
 /* Library module functions (library.sats — implemented in quire_runtime.c) */
 extern void library_init(void);
@@ -318,49 +301,69 @@ extern int library_is_save_pending(void);
 extern int library_is_load_pending(void);
 extern int library_is_metadata_pending(void);
 
-/* Reader module functions (reader.sats — implemented in quire_runtime.c) */
-extern void reader_init(void);
-extern void reader_enter(int root_id, int container_hide_id);
-extern void reader_exit(void);
-extern int reader_is_active(void);
-extern int reader_get_current_chapter(void);
-extern int reader_get_current_page(void);
-extern int reader_get_total_pages(void);
-extern int reader_get_chapter_count(void);
-extern void reader_next_page(void);
-extern void reader_prev_page(void);
-extern void reader_go_to_page(int page);
-extern void reader_on_chapter_loaded(int len);
-extern void reader_on_chapter_blob_loaded(int handle, int size);
-extern int reader_get_viewport_id(void);
-extern int reader_get_viewport_width(void);
-extern int reader_get_page_indicator_id(void);
-extern void reader_update_page_display(void);
-extern int reader_is_loading(void);
-extern void reader_remeasure_all(void);
-extern void reader_go_to_chapter(int chapter_index, int total_chapters);
-extern void reader_show_toc(void);
-extern void reader_hide_toc(void);
-extern void reader_toggle_toc(void);
-extern int reader_is_toc_visible(void);
-extern int reader_get_toc_id(void);
-extern int reader_get_progress_bar_id(void);
-extern int reader_get_toc_index_for_node(int node_id);
-extern void reader_on_toc_click(int node_id);
-extern void reader_enter_at(int root_id, int container_hide_id, int chapter, int page);
-extern int reader_get_back_btn_id(void);
-
-/* Extra reader accessors for quire.dats orchestration */
-extern void reader_set_viewport_id(int id);
-extern void reader_set_container_id(int id);
-extern int reader_get_container_id(void);
-extern void reader_set_book_index(int idx);
-extern int reader_get_book_index(void);
-extern void reader_set_file_handle(int h);
-extern int reader_get_file_handle(void);
-extern void reader_set_btn_id(int book_index, int node_id);
-extern int reader_get_btn_id(int book_index);
-extern int reader_set_total_pages(int n);
+/* (Reader module moved to pure ATS2 in reader.dats) */
 extern int read_payload_click_x(void *arr);
+extern void ward_parse_html_stash(void *p);
+extern void *ward_parse_html_get_ptr(void);
+
+/* C-callable epub field accessors (implemented in app_state.dats via ext#) */
+extern int _app_epub_spine_count(void);
+extern void _app_set_epub_spine_count(int v);
+extern void* _app_epub_title_ptr(void);
+extern int _app_epub_title_len(void);
+extern void _app_set_epub_title_len(int v);
+extern void* _app_epub_author_ptr(void);
+extern int _app_epub_author_len(void);
+extern void _app_set_epub_author_len(int v);
+extern void* _app_epub_book_id_ptr(void);
+extern int _app_epub_book_id_len(void);
+extern void _app_set_epub_book_id_len(int v);
+extern void* _app_epub_opf_path_ptr(void);
+extern int _app_epub_opf_path_len(void);
+extern void _app_set_epub_opf_path_len(int v);
+extern int _app_epub_opf_dir_len(void);
+extern void _app_set_epub_opf_dir_len(int v);
+extern int _app_epub_state(void);
+extern void _app_set_epub_state(int v);
+extern void* _app_epub_spine_path_buf(void);
+extern void* _app_epub_spine_path_offsets(void);
+extern void* _app_epub_spine_path_lens(void);
+extern int _app_epub_spine_path_count(void);
+extern void _app_set_epub_spine_path_count(int v);
+extern int _app_epub_spine_path_pos(void);
+extern void _app_set_epub_spine_path_pos(int v);
+
+/* EPUB module functions (implemented in epub.dats via ext#) */
+extern void epub_init(void);
+extern int epub_start_import(int file_input_node_id);
+extern int epub_get_state(void);
+extern int epub_get_progress(void);
+extern int epub_get_error(int buf_offset);
+extern int epub_get_title(int buf_offset);
+extern int epub_get_author(int buf_offset);
+extern int epub_get_book_id(int buf_offset);
+extern int epub_get_chapter_count(void);
+extern int epub_get_chapter_key(int chapter_index, int buf_offset);
+extern void epub_continue(void);
+extern void epub_on_file_open(int handle, int size);
+extern void epub_on_decompress(int blob_handle, int size);
+extern void epub_on_db_open(int success);
+extern void epub_on_db_put(int success);
+extern void epub_cancel(void);
+extern int epub_get_toc_count(void);
+extern int epub_get_toc_label(int toc_index, int buf_offset);
+extern int epub_get_toc_chapter(int toc_index);
+extern int epub_get_toc_level(int toc_index);
+extern int epub_get_chapter_title(int spine_index, int buf_offset);
+extern int epub_serialize_metadata(void);
+extern int epub_restore_metadata(int len);
+extern void epub_reset(void);
+extern int epub_parse_container_bytes(void *buf, int len);
+extern int epub_parse_opf_bytes(void *buf, int len);
+extern void* epub_get_opf_path_ptr(void);
+extern int epub_get_opf_path_len(void);
+extern void* get_str_container_ptr(void);
+extern void* epub_get_spine_path_ptr(int index);
+extern int epub_get_spine_path_len(int index);
 
 #endif /* QUIRE_PRELUDE_H */

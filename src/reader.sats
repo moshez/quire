@@ -124,146 +124,79 @@ dataprop POSITION_SAVED() = | SAVED()
 (* ========== Module Functions ========== *)
 
 (* Initialize reader module *)
-fun reader_init(): void = "mac#"
+fun reader_init(): void
 
-(* Enter reader mode - creates three chapter containers *)
-fun reader_enter(root_id: int, container_hide_id: int): void = "mac#"
+(* Enter reader mode *)
+fun reader_enter(root_id: int, container_hide_id: int): void
 
-(* Exit reader mode — requires proof that position was saved.
- * Proof parameter is erased at runtime (C signature unchanged). *)
-fun reader_exit(pf: POSITION_SAVED()): void = "mac#"
+(* Exit reader mode — requires proof that position was saved. *)
+fun reader_exit(pf: POSITION_SAVED()): void
 
 (* Check if reader is active *)
-fun reader_is_active(): int = "mac#"
+fun reader_is_active(): int
 
 (* Get current chapter index *)
-fun reader_get_current_chapter(): int = "mac#"
+fun reader_get_current_chapter(): int
 
-(* Get current page within chapter
- * Returns page number (0-indexed), guaranteed >= 0 *)
-fun reader_get_current_page(): [p:nat] int(p) = "mac#"
+(* Get current page (0-indexed, >= 0) *)
+fun reader_get_current_page(): [p:nat] int(p)
 
-(* Get total pages in current chapter
- * Returns page count, guaranteed >= 1
- * CORRECTNESS: Internally maintains PAGE_COUNT_CORRECT proof that count
- * was computed correctly using ceiling division *)
-fun reader_get_total_pages(): [p:pos] int(p) = "mac#"
+(* Get total pages (>= 1) *)
+fun reader_get_total_pages(): [p:pos] int(p)
 
-(* Get total chapter count
- * Returns count, guaranteed >= 0 *)
-fun reader_get_chapter_count(): [n:nat] int(n) = "mac#"
+(* Get total chapter count (>= 0) *)
+fun reader_get_chapter_count(): [n:nat] int(n)
 
-(* Navigate to next page - may cross chapter boundary *)
-fun reader_next_page(): void = "mac#"
+(* Navigate to next/previous page *)
+fun reader_next_page(): void
+fun reader_prev_page(): void
 
-(* Navigate to previous page - may cross chapter boundary *)
-fun reader_prev_page(): void = "mac#"
+(* Navigate to specific page *)
+fun reader_go_to_page(page: int): void
 
-(* Navigate to specific page in current chapter *)
-fun reader_go_to_page(page: int): void = "mac#"
+(* Chapter data callbacks (stubs for now) *)
+fun reader_on_chapter_loaded(len: int): void
+fun reader_on_chapter_blob_loaded(handle: int, size: int): void
 
-(* Handle chapter data loaded from IndexedDB (small, in fetch buffer) *)
-fun reader_on_chapter_loaded(len: int): void = "mac#"
+(* Viewport and page indicator *)
+fun reader_get_viewport_id(): int
+fun reader_get_viewport_width(): int
+fun reader_get_page_indicator_id(): int
+fun reader_update_page_display(): void
+fun reader_is_loading(): int
+fun reader_remeasure_all(): void
 
-(* Handle chapter data loaded from IndexedDB (large, as blob) *)
-fun reader_on_chapter_blob_loaded(handle: int, size: int): void = "mac#"
+(* ========== M13: Navigation UI ========== *)
 
-(* Get viewport ID (for event handling) *)
-fun reader_get_viewport_id(): int = "mac#"
-
-(* Get viewport width (for click zone calculation) *)
-fun reader_get_viewport_width(): int = "mac#"
-
-(* Get page indicator ID *)
-fun reader_get_page_indicator_id(): int = "mac#"
-
-(* Update page display *)
-fun reader_update_page_display(): void = "mac#"
-
-(* Check if any chapter is loading *)
-fun reader_is_loading(): int = "mac#"
-
-(* M14: Re-measure all chapter slots after settings change *)
-fun reader_remeasure_all(): void = "mac#"
-
-(* ========== M13: Navigation UI with Functional Correctness ========== *)
-(*
- * Proof architecture:
- * - Internal proofs verify correctness at compile time
- * - Public API is simple - proofs managed internally by the module
- * - AT_CHAPTER proves navigation landed on correct chapter
- * - TOC_MAPS proves lookup returned correct index
- * - TOC_STATE proves state transitions are valid
- *)
-
-(* Go to specific chapter.
- * Internally produces AT_CHAPTER proof verifying we view the requested chapter.
- * Caller provides bounds proof via dependent types. *)
 fun reader_go_to_chapter
   {ch,t:nat | ch < t}
-  ( chapter_index: int(ch)
-  , total_chapters: int(t)
-  ) : void = "mac#"
+  (chapter_index: int(ch), total_chapters: int(t)): void
 
-(* Show TOC - only succeeds if currently hidden (verified internally) *)
-fun reader_show_toc(): void = "mac#"
+fun reader_show_toc(): void
+fun reader_hide_toc(): void
+fun reader_toggle_toc(): void
+fun reader_is_toc_visible(): bool
+fun reader_get_toc_id(): int
+fun reader_get_progress_bar_id(): int
+fun reader_get_toc_index_for_node(node_id: int): int
+fun reader_on_toc_click(node_id: int): void
 
-(* Hide TOC - only succeeds if currently visible (verified internally) *)
-fun reader_hide_toc(): void = "mac#"
+(* ========== M15: Resume Position ========== *)
 
-(* Toggle TOC - internally manages state transitions with proofs *)
-fun reader_toggle_toc(): void = "mac#"
-
-(* Check if TOC is visible *)
-fun reader_is_toc_visible(): bool = "mac#"
-
-(* Get TOC overlay ID *)
-fun reader_get_toc_id(): int = "mac#"
-
-(* Get progress bar ID *)
-fun reader_get_progress_bar_id(): int = "mac#"
-
-(* Look up TOC index from node ID.
- * Returns index if found (with internal TOC_MAPS proof), -1 if not found. *)
-fun reader_get_toc_index_for_node(node_id: int): int = "mac#"
-
-(* Handle TOC entry click - internally verifies correct chapter navigation *)
-fun reader_on_toc_click(node_id: int): void = "mac#"
-
-(* ========== M15: Resume Position and Navigation Proofs ========== *)
-
-(* Resume position correctness proof.
- * RESUME_AT_CORRECT(chapter, page) proves that after reader_enter_at:
- * - The reader loads chapter `chapter` (not some other chapter)
- * - After the chapter finishes loading, the display scrolls to page `page`
- *   (or the last page if `page` exceeds the chapter's page count)
- *
- * This is THE key correctness property for reading position persistence:
- * when the user reopens a book, they see the same chapter and page where
- * they left off.
- *
- * NOTE: Proof is documentary - runtime checks in on_chapter_loaded and
- * on_chapter_blob_loaded verify resume_page application. *)
 absprop RESUME_AT_CORRECT(chapter: int, page: int)
 
-(* M15: Enter reader at specific chapter and page for resume.
- * Sets up reader DOM and navigates to the saved position.
- *
- * CORRECTNESS:
- * - chapter is loaded as the current slot's chapter
- * - page is saved as reader_resume_page and applied after chapter loads
- * - If chapter >= epub_get_chapter_count(), chapter 0 is loaded instead
- * - If page >= measured page count, the last page is shown
- * Internally documents RESUME_AT_CORRECT(chapter, page) and delegates
- * to reader_enter for DOM setup, then load_chapter_into_slot for the
- * target chapter. *)
-fun reader_enter_at(root_id: int, container_hide_id: int, chapter: int, page: int): void = "mac#"
+fun reader_enter_at(root_id: int, container_hide_id: int, chapter: int, page: int): void
+fun reader_get_back_btn_id(): [id:nat] int(id)
 
-(* M15: Get back button node ID.
- * Returns the DOM node ID of the back button created by reader_enter.
- * Returns 0 if reader is not active (no back button exists).
- *
- * CORRECTNESS: The returned ID is THE node ID assigned to the back button
- * during reader_enter, ensuring click events on this ID correctly trigger
- * exit_reader_to_library. *)
-fun reader_get_back_btn_id(): [id:nat] int(id) = "mac#"
+(* ========== Extra accessors (for quire.dats orchestration) ========== *)
+
+fun reader_set_viewport_id(id: int): void
+fun reader_set_container_id(id: int): void
+fun reader_get_container_id(): int
+fun reader_set_book_index(idx: int): void
+fun reader_get_book_index(): int
+fun reader_set_file_handle(h: int): void
+fun reader_get_file_handle(): int
+fun reader_set_btn_id(book_index: int, node_id: int): void
+fun reader_get_btn_id(book_index: int): int
+fun reader_set_total_pages(n: int): void
