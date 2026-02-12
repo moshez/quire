@@ -1,1416 +1,1108 @@
-(* quire.dats - Quire e-reader main module
+(* quire.dats — Quire application entry point
  *
- * EPUB import pipeline with type-checked DOM operations.
- * M9: File input, import progress, book title display.
- * M14: Reader settings integration.
- * M15: Book library - list, delete, resume position.
+ * Library view: renders import button and book cards.
+ * Reader view: loads chapter from ZIP, decompresses, parses HTML, renders.
+ * Navigation: click zones and keyboard (ArrowRight/Left, Space, Escape).
  *)
 
 #define ATS_DYNLOADFLAG 0
 
-staload "quire.sats"
-staload "dom.sats"
-staload "epub.sats"
-staload "reader.sats"
-staload "settings.sats"
-staload "library.sats"
+#include "share/atspre_staload.hats"
+staload "./quire.sats"
+staload "./app_state.sats"
+staload "./dom.sats"
+staload "./zip.sats"
+staload "./epub.sats"
+staload "./library.sats"
+staload "./reader.sats"
+staload "./../vendor/ward/lib/memory.sats"
+staload "./../vendor/ward/lib/dom.sats"
+staload "./../vendor/ward/lib/listener.sats"
+staload "./../vendor/ward/lib/file.sats"
+staload "./../vendor/ward/lib/promise.sats"
+staload "./../vendor/ward/lib/decompress.sats"
+staload "./../vendor/ward/lib/xml.sats"
+staload "./../vendor/ward/lib/dom_read.sats"
+staload _ = "./../vendor/ward/lib/memory.dats"
+staload _ = "./../vendor/ward/lib/dom.dats"
+staload _ = "./../vendor/ward/lib/listener.dats"
+staload _ = "./../vendor/ward/lib/file.dats"
+staload _ = "./../vendor/ward/lib/promise.dats"
+staload _ = "./../vendor/ward/lib/decompress.dats"
+staload _ = "./../vendor/ward/lib/xml.dats"
+staload _ = "./../vendor/ward/lib/dom_read.dats"
 
-%{^
-/* String literals for DOM operations */
-static const char str_quire[] = "Quire";
-static const char str_div[] = "div";
-static const char str_input[] = "input";
-static const char str_label[] = "label";
-static const char str_for[] = "for";
-static const char str_h1[] = "h1";
-static const char str_h2[] = "h2";
-static const char str_p[] = "p";
-static const char str_class[] = "class";
-static const char str_type[] = "type";
-static const char str_file[] = "file";
-static const char str_accept[] = "accept";
-static const char str_epub_accept[] = ".epub,application/epub+zip";
-static const char str_id_attr[] = "id";
-static const char str_hidden[] = "hidden";
-static const char str_container[] = "container";
-static const char str_import_btn[] = "import-btn";
-static const char str_file_input[] = "file-input";
-static const char str_progress_div[] = "progress-div";
-static const char str_title_div[] = "title-div";
-static const char str_import_text[] = "Import EPUB";
-static const char str_importing[] = "Importing...";
-static const char str_error_prefix[] = "Error: ";
-static const char str_by[] = " by ";
-static const char str_chapters_suffix[] = " chapters";
-static const char str_style[] = "style";
+(* ========== Freestanding arithmetic ========== *)
 
-/* M15: Library view strings */
-static const char str_library_list[] = "library-list";
-static const char str_book_card[] = "book-card";
-static const char str_book_title[] = "book-title";
-static const char str_book_author[] = "book-author";
-static const char str_book_position[] = "book-position";
-static const char str_book_actions[] = "book-actions";
-static const char str_read_btn[] = "read-btn";
-static const char str_delete_btn[] = "delete-btn";
-static const char str_read_text[] = "Read";
-static const char str_delete_text[] = "Delete";
-static const char str_not_started[] = "Not started";
-static const char str_ch_space[] = "Ch ";
-static const char str_comma_pg[] = ", page ";
-static const char str_of_space[] = " of ";
-static const char str_empty_lib[] = "No books yet. Import an EPUB to get started.";
+extern fun add_int_int(a: int, b: int): int = "mac#quire_add"
+extern fun sub_int_int(a: int, b: int): int = "mac#quire_sub"
+extern fun gte_int_int(a: int, b: int): bool = "mac#quire_gte"
+extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
+extern fun lt_int_int(a: int, b: int): bool = "mac#quire_lt"
+extern fun eq_int_int(a: int, b: int): bool = "mac#quire_eq"
+extern fun neq_int_int(a: int, b: int): bool = "mac#quire_neq"
+extern fun mul_int_int(a: int, b: int): int = "mac#quire_mul"
+extern fun div_int_int(a: int, b: int): int = "mac#quire_div"
+extern fun mod_int_int(a: int, b: int): int = "mac#quire_mod"
+(* g1-level comparison: preserves static info for dependent array bounds *)
+extern fun gt1_int_int {a,b:int} (a: int a, b: int b): bool(a > b) = "mac#quire_gt"
+overload + with add_int_int of 10
+overload - with sub_int_int of 10
 
-/* M15: App states
+(* Runtime-checked positive: used after verifying x > 0 at runtime *)
+extern castfn _checked_pos(x: int): [n:pos] int n
+
+(* ========== Text constant IDs (match _text_table in quire_runtime.c) ========== *)
+
+#define TEXT_NO_BOOKS 0
+#define TEXT_EPUB_EXT 1
+#define TEXT_NOT_STARTED 2
+#define TEXT_READ 3
+
+(* C helpers *)
+extern fun fill_text {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), text_id: int): int = "mac#_fill_text"
+extern fun copy_from_sbuf {l:agz}{n:pos}
+  (dst: !ward_arr(byte, l, n), len: int n): void = "mac#_copy_from_sbuf"
+
+(* EPUB parsing helpers (implemented in quire_runtime.c) *)
+extern fun epub_parse_container_bytes {l:agz}{n:pos}
+  (buf: !ward_arr(byte, l, n), len: int n): int = "mac#"
+extern fun epub_parse_opf_bytes {l:agz}{n:pos}
+  (buf: !ward_arr(byte, l, n), len: int n): int = "mac#"
+extern fun epub_get_opf_path_ptr(): ptr = "mac#"
+extern fun epub_get_opf_path_len(): int = "mac#"
+extern fun get_str_container_ptr(): ptr = "mac#"
+
+(* Spine path accessors *)
+extern fun epub_get_spine_path_ptr(index: int): ptr = "mac#"
+extern fun epub_get_spine_path_len(index: int): int = "mac#"
+
+(* Reader extra accessors (implemented in quire_runtime.c) *)
+extern fun reader_set_viewport_id(id: int): void = "mac#"
+extern fun reader_set_container_id(id: int): void = "mac#"
+extern fun reader_get_container_id(): int = "mac#"
+extern fun reader_set_book_index(idx: int): void = "mac#"
+extern fun reader_get_book_index(): int = "mac#"
+extern fun reader_set_file_handle(h: int): void = "mac#"
+extern fun reader_get_file_handle(): int = "mac#"
+extern fun reader_set_btn_id(book_index: int, node_id: int): void = "mac#"
+extern fun reader_get_btn_id(book_index: int): int = "mac#"
+extern fun reader_set_total_pages(n: int): void = "mac#"
+
+(* ========== Measurement correctness ========== *)
+
+(* SCROLL_WIDTH_SLOT: proves that scrollWidth lives in ward measurement slot 4.
+ * ward_measure_get_top() reads slot 4 = el.scrollWidth.
+ * ward_measure_get_left() reads slot 5 = el.scrollHeight.
+ * The names are confusing — this dataprop ensures quire code uses the correct slot.
  *
- * FUNCTIONAL CORRECTNESS: App state machine with valid transitions.
- * APP_STATE_VALID(s) proves s is one of the defined states.
- * Valid transitions (documented by APP_STATE_TRANSITION):
- *
- *   INIT -> LOADING_DB           (init opens IndexedDB)
- *   LOADING_DB -> LOADING_LIB    (DB opened, load library index)
- *   LOADING_DB -> LIBRARY        (DB failed, show empty library)
- *   LOADING_LIB -> LIBRARY       (library loaded, show it)
- *   LIBRARY -> IMPORTING         (user selected file)
- *   LIBRARY -> LOADING_BOOK      (user clicked Read on book card)
- *   IMPORTING -> LIBRARY         (import complete + saved, or error)
- *   LOADING_BOOK -> READING      (metadata restored, enter reader)
- *   READING -> LIBRARY           (user pressed back/Escape)
- *
- * No other transitions are valid. Each transition is guarded by
- * checking app_state before assignment. */
-#define APP_STATE_INIT          0
-#define APP_STATE_LOADING_DB    1
-#define APP_STATE_LOADING_LIB   2
-#define APP_STATE_LIBRARY       3
-#define APP_STATE_IMPORTING     4
-#define APP_STATE_LOADING_BOOK  5
-#define APP_STATE_READING       6
-
-/* CSS buffer for building stylesheet dynamically */
-static char css_buffer[12288];
-static int css_buffer_len = 0;
-
-/* Helper: append string to CSS buffer */
-static void css_append(const char* str) {
-    while (*str && css_buffer_len < 12287) {
-        css_buffer[css_buffer_len++] = *str++;
-    }
-    css_buffer[css_buffer_len] = 0;
-}
-
-/* Helper: append a class rule */
-static void css_class_rule(const char* class_name, const char* properties) {
-    css_append(".");
-    css_append(class_name);
-    css_append("{");
-    css_append(properties);
-    css_append("}");
-}
-
-/* Helper: append a rule with selector */
-static void css_rule(const char* selector, const char* properties) {
-    css_append(selector);
-    css_append("{");
-    css_append(properties);
-    css_append("}");
-}
-
-/* Build the complete stylesheet */
-static void build_css(void) {
-    css_buffer_len = 0;
-
-    /* Base page setup */
-    css_rule("html,body", "margin:0;padding:0;height:100%;width:100%;overflow:hidden;"
-             "font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"
-             "background:#fafaf8;color:#2a2a2a");
-
-    /* Loading state */
-    css_rule("#loading", "display:flex;flex-direction:column;align-items:center;justify-content:center;"
-             "height:100vh;font-size:1.25rem;color:#666");
-
-    /* Hidden utility */
-    css_class_rule(str_hidden, "display:none!important");
-
-    /* Main container */
-    css_class_rule(str_container, "display:flex;flex-direction:column;align-items:center;"
-                   "min-height:100vh;padding:2rem;box-sizing:border-box;overflow-y:auto");
-
-    /* Title heading */
-    css_rule(".container h1", "font-size:2.5rem;font-weight:300;color:#333;margin:0 0 1.5rem 0");
-
-    /* Hidden file input */
-    css_rule("input[type=file].hidden", "position:absolute;width:1px;height:1px;padding:0;margin:-1px;"
-             "overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0");
-
-    /* Import button */
-    css_class_rule(str_import_btn, "display:inline-block;padding:0.875rem 2rem;font-size:1rem;font-weight:500;"
-                   "color:#fff;background:#4a7c59;border:none;border-radius:0.5rem;cursor:pointer;"
-                   "transition:background 0.2s,transform 0.1s;user-select:none;margin-bottom:1.5rem");
-    css_append("."); css_append(str_import_btn); css_append(":hover{background:#3d6b4a}");
-    css_append("."); css_append(str_import_btn); css_append(":active{transform:scale(0.98)}");
-
-    /* Progress display */
-    css_class_rule(str_progress_div, "margin-top:0.5rem;margin-bottom:1rem;font-size:0.875rem;color:#666;min-height:1.25rem");
-
-    /* Title/book info display */
-    css_class_rule(str_title_div, "margin-top:1rem;font-size:1.125rem;color:#333;text-align:center;"
-                   "max-width:80%;word-wrap:break-word");
-
-    /* M15: Library list */
-    css_class_rule(str_library_list, "width:100%;max-width:600px;margin:0 auto");
-
-    /* M15: Book card */
-    css_class_rule(str_book_card, "background:#fff;border:1px solid #e0e0e0;border-radius:0.5rem;"
-                   "padding:1rem 1.25rem;margin-bottom:0.75rem;display:flex;flex-direction:column;gap:0.25rem");
-
-    /* M15: Book title in card */
-    css_class_rule(str_book_title, "font-size:1.1rem;font-weight:500;color:#333");
-
-    /* M15: Book author in card */
-    css_class_rule(str_book_author, "font-size:0.875rem;color:#666");
-
-    /* M15: Book position in card */
-    css_class_rule(str_book_position, "font-size:0.8rem;color:#999;margin-top:0.125rem");
-
-    /* M15: Book actions row */
-    css_class_rule(str_book_actions, "display:flex;gap:0.5rem;margin-top:0.5rem;justify-content:flex-end");
-
-    /* Read button */
-    css_class_rule(str_read_btn, "display:inline-block;padding:0.5rem 1.25rem;font-size:0.875rem;font-weight:500;"
-                   "color:#fff;background:#3b6ea5;border:none;border-radius:0.375rem;cursor:pointer;"
-                   "transition:background 0.2s,transform 0.1s;user-select:none");
-    css_append("."); css_append(str_read_btn); css_append(":hover{background:#2d5a8a}");
-    css_append("."); css_append(str_read_btn); css_append(":active{transform:scale(0.98)}");
-
-    /* M15: Delete button */
-    css_class_rule(str_delete_btn, "display:inline-block;padding:0.5rem 1rem;font-size:0.875rem;font-weight:400;"
-                   "color:#c0392b;background:transparent;border:1px solid #e0e0e0;border-radius:0.375rem;"
-                   "cursor:pointer;transition:background 0.2s,border-color 0.2s;user-select:none");
-    css_append("."); css_append(str_delete_btn); css_append(":hover{background:#fef0ef;border-color:#c0392b}");
-
-    /* M15: Empty library message */
-    css_append(".empty-lib{color:#999;font-size:0.95rem;text-align:center;padding:2rem 0}");
-
-    /* M14: CSS variables for reader settings */
-    css_rule(":root", "--font-size:18px;--font-family:Georgia,serif;--line-height:1.6;"
-             "--margin:2rem;--bg-color:#fafaf8;--text-color:#2a2a2a");
-
-    /* Reader viewport */
-    css_append(".reader-viewport{position:fixed;top:0;left:0;width:100vw;height:100vh;"
-               "overflow:hidden;background:var(--bg-color)}");
-
-    /* Chapter container with CSS columns */
-    css_append(".chapter-container{column-width:100vw;column-gap:0;column-fill:auto;"
-               "height:calc(100vh - calc(var(--margin) * 2));padding:var(--margin);box-sizing:border-box;"
-               "overflow:visible;font-family:var(--font-family);font-size:var(--font-size);"
-               "line-height:var(--line-height);color:var(--text-color);background:var(--bg-color)}");
-
-    /* Chapter content styling */
-    css_append(".chapter-container h1,.chapter-container h2,.chapter-container h3,"
-               ".chapter-container h4,.chapter-container h5,.chapter-container h6"
-               "{margin-top:1em;margin-bottom:0.5em;line-height:1.3}");
-
-    css_append(".chapter-container p{margin:0 0 1em 0;text-align:justify;hyphens:auto}");
-    css_append(".chapter-container img{max-width:100%;height:auto;display:block;margin:1em auto}");
-    css_append(".chapter-container a{color:#4a7c59;text-decoration:none}");
-    css_append(".chapter-container a:hover{text-decoration:underline}");
-
-    /* Page indicator styling */
-    css_append(".page-indicator{position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);"
-               "padding:0.5rem 1rem;background:rgba(0,0,0,0.6);color:#fff;border-radius:0.25rem;"
-               "font-size:0.875rem;font-family:system-ui,-apple-system,sans-serif;z-index:100;"
-               "pointer-events:none}");
-
-    /* Progress bar styling */
-    css_append(".progress-bar{position:fixed;top:0;left:0;width:100%;height:4px;"
-               "background:rgba(0,0,0,0.1);z-index:100}");
-    css_append(".progress-fill{height:100%;background:#4a7c59;transition:width 0.3s ease}");
-
-    /* TOC overlay styling */
-    css_append(".toc-overlay{position:fixed;top:0;left:0;width:100%;height:100%;"
-               "background:rgba(250,250,248,0.98);z-index:200;display:flex;flex-direction:column;"
-               "font-family:system-ui,-apple-system,sans-serif}");
-    css_append(".toc-header{display:flex;justify-content:space-between;align-items:center;"
-               "padding:1.5rem 2rem;border-bottom:1px solid #e0e0e0;font-size:1.25rem;font-weight:500}");
-    css_append(".toc-close{cursor:pointer;font-size:1.5rem;color:#666;padding:0.5rem;"
-               "border-radius:50%;transition:background 0.2s}");
-    css_append(".toc-close:hover{background:rgba(0,0,0,0.1)}");
-    css_append(".toc-list{flex:1;overflow-y:auto;padding:1rem 0}");
-    css_append(".toc-entry{padding:0.75rem 2rem;cursor:pointer;border-bottom:1px solid #f0f0f0;"
-               "transition:background 0.2s;color:#333}");
-    css_append(".toc-entry:hover{background:rgba(74,124,89,0.1)}");
-    css_append(".toc-entry.nested{padding-left:3.5rem;font-size:0.9rem;color:#666}");
-
-    /* Settings overlay styling */
-    css_append(".settings-overlay{position:fixed;top:0;left:0;width:100%;height:100%;"
-               "background:rgba(0,0,0,0.5);z-index:300;display:flex;align-items:center;"
-               "justify-content:center;font-family:system-ui,-apple-system,sans-serif}");
-    css_append(".settings-modal{background:#fff;border-radius:0.75rem;width:90%;max-width:400px;"
-               "box-shadow:0 4px 20px rgba(0,0,0,0.15);overflow:hidden}");
-    css_append(".settings-header{display:flex;justify-content:space-between;align-items:center;"
-               "padding:1.25rem 1.5rem;border-bottom:1px solid #e0e0e0;font-size:1.125rem;font-weight:600}");
-    css_append(".settings-close{cursor:pointer;font-size:1.5rem;color:#666;padding:0.25rem 0.5rem;"
-               "border-radius:4px;transition:background 0.2s}");
-    css_append(".settings-close:hover{background:rgba(0,0,0,0.1)}");
-    css_append(".settings-body{padding:1rem 1.5rem}");
-    css_append(".settings-row{display:flex;justify-content:space-between;align-items:center;"
-               "padding:0.75rem 0;border-bottom:1px solid #f0f0f0}");
-    css_append(".settings-row:last-child{border-bottom:none}");
-    css_append(".settings-label{font-size:0.9rem;color:#333}");
-    css_append(".settings-controls{display:flex;align-items:center;gap:0.5rem}");
-    css_append(".settings-btn{padding:0.5rem 0.75rem;background:#f0f0f0;border:none;border-radius:4px;"
-               "cursor:pointer;font-size:0.875rem;color:#333;transition:background 0.2s;min-width:2.5rem;"
-               "text-align:center;user-select:none}");
-    css_append(".settings-btn:hover{background:#e0e0e0}");
-    css_append(".settings-btn.active{background:#4a7c59;color:#fff}");
-    css_append(".settings-btn.active:hover{background:#3d6b4a}");
-    css_append(".settings-value{min-width:3.5rem;text-align:center;font-size:0.9rem;color:#333}");
-
-    /* M15: Back button styling */
-    css_append(".back-btn{position:fixed;top:1rem;left:1rem;width:2.5rem;height:2.5rem;"
-               "display:flex;align-items:center;justify-content:center;"
-               "background:rgba(0,0,0,0.5);color:#fff;border-radius:50%;cursor:pointer;"
-               "font-size:1.25rem;z-index:150;transition:background 0.2s;user-select:none;"
-               "font-family:system-ui,-apple-system,sans-serif}");
-    css_append(".back-btn:hover{background:rgba(0,0,0,0.7)}");
-}
-
-extern unsigned char* get_fetch_buffer_ptr(void);
-extern unsigned char* get_string_buffer_ptr(void);
-extern unsigned char* get_event_buffer_ptr(void);
-
-/* EPUB functions */
-extern void epub_init(void);
-extern int epub_start_import(int file_input_node_id);
-extern int epub_get_state(void);
-extern int epub_get_progress(void);
-extern int epub_get_error(int buf_offset);
-extern int epub_get_title(int buf_offset);
-extern int epub_get_author(int buf_offset);
-extern int epub_get_book_id(int buf_offset);
-extern int epub_get_chapter_count(void);
-extern int epub_get_chapter_key(int chapter_index, int buf_offset);
-extern void epub_on_file_open(int handle, int size);
-extern void epub_on_decompress(int blob_handle, int size);
-extern void epub_on_db_open(int success);
-extern void epub_on_db_put(int success);
-extern void epub_reset(void);
-
-/* Bridge imports */
-extern void js_kv_get(void* store_ptr, int store_len, void* key_ptr, int key_len);
-extern void js_kv_open(void* name_ptr, int name_len, int version, void* stores_ptr, int stores_len);
-extern void js_set_inner_html_from_blob(int node_id, int blob_handle);
-extern void js_blob_free(int handle);
-extern int js_measure_node(int node_id);
-
-/* DOM functions */
-extern void dom_init(void);
-extern void* dom_root_proof(void);
-extern void* dom_create_element(void*, int, int, void*, int);
-extern void* dom_set_text(void*, int, void*, int);
-extern void* dom_set_text_offset(void*, int, int, int);
-extern void* dom_set_attr(void*, int, void*, int, void*, int);
-extern void* dom_set_inner_html(void*, int, int, int);
-extern void dom_remove_child(void*, int);
-extern int dom_next_id(void);
-extern void dom_drop_proof(void*);
-
-/* Reader module functions */
-extern void reader_init(void);
-extern void reader_enter(int root_id, int container_hide_id);
-extern void reader_enter_at(int root_id, int container_hide_id, int chapter, int page);
-extern void reader_exit(void);
-extern int reader_is_active(void);
-extern int reader_get_viewport_width(void);
-extern void reader_next_page(void);
-extern void reader_prev_page(void);
-extern void reader_go_to_page(int page);
-extern int reader_get_total_pages(void);
-extern int reader_get_current_chapter(void);
-extern int reader_get_current_page(void);
-extern void reader_on_chapter_loaded(int len);
-extern void reader_on_chapter_blob_loaded(int handle, int size);
-extern int reader_get_back_btn_id(void);
-extern void reader_toggle_toc(void);
-extern void reader_hide_toc(void);
-extern int reader_is_toc_visible(void);
-extern int reader_get_toc_index_for_node(int node_id);
-extern void reader_on_toc_click(int node_id);
-
-/* Settings module functions */
-extern void settings_init(void);
-extern void settings_set_root_id(int id);
-extern int settings_is_visible(void);
-extern void settings_show(void);
-extern void settings_hide(void);
-extern void settings_toggle(void);
-extern int settings_handle_click(int node_id);
-extern void settings_load(void);
-extern void settings_on_load_complete(int len);
-extern void settings_on_save_complete(int success);
-extern int settings_is_save_pending(void);
-extern int settings_is_load_pending(void);
-
-/* Library module functions */
-extern void library_init(void);
-extern int library_get_count(void);
-extern int library_get_title(int index, int buf_offset);
-extern int library_get_author(int index, int buf_offset);
-extern int library_get_book_id(int index, int buf_offset);
-extern int library_get_chapter(int index);
-extern int library_get_page(int index);
-extern int library_get_spine_count(int index);
-extern int library_add_book(void);
-extern void library_remove_book(int index);
-extern void library_update_position(int index, int chapter, int page);
-extern int library_find_book_by_id(void);
-extern void library_save(void);
-extern void library_load(void);
-extern void library_on_load_complete(int len);
-extern void library_on_save_complete(int success);
-extern void library_save_book_metadata(void);
-extern void library_load_book_metadata(int index);
-extern void library_on_metadata_load_complete(int len);
-extern void library_on_metadata_save_complete(int success);
-extern int library_is_save_pending(void);
-extern int library_is_load_pending(void);
-extern int library_is_metadata_pending(void);
-
-/* Read event from event buffer */
-static int get_event_type(void) {
-    unsigned char* buf = get_event_buffer_ptr();
-    return buf[0];
-}
-
-static int get_event_node_id(void) {
-    unsigned char* buf = get_event_buffer_ptr();
-    return buf[1] | (buf[2] << 8) | (buf[3] << 16) | (buf[4] << 24);
-}
-
-static int get_event_data1(void) {
-    unsigned char* buf = get_event_buffer_ptr();
-    return buf[5] | (buf[6] << 8) | (buf[7] << 16) | (buf[8] << 24);
-}
-
-static int get_event_data2(void) {
-    unsigned char* buf = get_event_buffer_ptr();
-    return buf[9] | (buf[10] << 8) | (buf[11] << 16) | (buf[12] << 24);
-}
-
-/* Helper to copy text to fetch buffer */
-static int copy_text_to_fetch(const char* text, int len) {
-    unsigned char* buf = get_fetch_buffer_ptr();
-    for (int i = 0; i < len && i < 16384; i++) {
-        buf[i] = text[i];
-    }
-    return len;
-}
-
-/* Helper to append integer to buffer */
-static int append_int(unsigned char* buf, int pos, int value) {
-    if (value >= 100) {
-        buf[pos++] = '0' + (value / 100);
-        buf[pos++] = '0' + ((value / 10) % 10);
-        buf[pos++] = '0' + (value % 10);
-    } else if (value >= 10) {
-        buf[pos++] = '0' + (value / 10);
-        buf[pos++] = '0' + (value % 10);
-    } else {
-        buf[pos++] = '0' + value;
-    }
-    return pos;
-}
-
-/* Node IDs */
-static int root_id = 1;
-static int container_id = 0;
-static int file_input_id = 0;
-static int import_btn_id = 0;
-static int progress_id = 0;
-static int title_id = 0;
-static int library_list_id = 0;
-
-/* M15: Per-book card node IDs (read and delete buttons).
- *
- * FUNCTIONAL CORRECTNESS: Book card node ID mapping.
- * BOOK_CARD_MAPS(node_id, book_index, card_count) proves that:
- * - book_read_ids[i] is THE read button for library book index i
- * - book_delete_ids[i] is THE delete button for library book index i
- * - 0 <= i < card_count <= MAX_BOOK_READ_IDS
- *
- * Constructed by rebuild_library_list() which assigns node IDs
- * in order: for each book i, book_read_ids[i] = dom_next_id().
- * Consumed by process_event_impl click handler which looks up
- * the matching index for a clicked node_id.
- *
- * This mapping guarantees that clicking "Read" on book 3's card
- * opens book 3 (not book 2 or 4), and clicking "Delete" on book 3's
- * card removes book 3 from the library. */
-#define MAX_BOOK_READ_IDS 32
-#define MAX_BOOK_DELETE_IDS 32
-static int book_read_ids[MAX_BOOK_READ_IDS];
-static int book_delete_ids[MAX_BOOK_DELETE_IDS];
-static int book_card_count = 0;
-
-/* App state */
-static int app_state = 0;  /* APP_STATE_INIT */
-static int import_in_progress = 0;
-static int last_progress = -1;
-static int current_book_index = -1;  /* Index of book being read */
-
-/* Forward declarations */
-static void show_library(void);
-static void rebuild_library_list(void);
-static void enter_reader_for_book(int book_index);
-static void exit_reader_to_library(void);
-static void handle_import_complete(void);
-
-/* Get CSS buffer pointer and length */
-static void* get_css_buffer(void) { return css_buffer; }
-static int get_css_len(void) { return css_buffer_len; }
-
-/* String getters */
-void* get_str_quire(void) { return (void*)str_quire; }
-void* get_str_div(void) { return (void*)str_div; }
-void* get_str_input(void) { return (void*)str_input; }
-void* get_str_label(void) { return (void*)str_label; }
-void* get_str_for(void) { return (void*)str_for; }
-void* get_str_h1(void) { return (void*)str_h1; }
-void* get_str_p(void) { return (void*)str_p; }
-void* get_str_class(void) { return (void*)str_class; }
-void* get_str_type(void) { return (void*)str_type; }
-void* get_str_file(void) { return (void*)str_file; }
-void* get_str_accept(void) { return (void*)str_accept; }
-void* get_str_epub_accept(void) { return (void*)str_epub_accept; }
-void* get_str_id_attr(void) { return (void*)str_id_attr; }
-void* get_str_hidden(void) { return (void*)str_hidden; }
-void* get_str_container(void) { return (void*)str_container; }
-void* get_str_import_btn(void) { return (void*)str_import_btn; }
-void* get_str_file_input(void) { return (void*)str_file_input; }
-void* get_str_progress_div(void) { return (void*)str_progress_div; }
-void* get_str_title_div(void) { return (void*)str_title_div; }
-void* get_str_import_text(void) { return (void*)str_import_text; }
-void* get_str_style(void) { return (void*)str_style; }
-int get_container_id(void) { return container_id; }
-int get_file_input_id(void) { return file_input_id; }
-int get_import_btn_id(void) { return import_btn_id; }
-int get_progress_id(void) { return progress_id; }
-int get_title_id(void) { return title_id; }
-void set_container_id(int id) { container_id = id; }
-void set_file_input_id(int id) { file_input_id = id; }
-void set_import_btn_id(int id) { import_btn_id = id; }
-void set_progress_id(int id) { progress_id = id; }
-void set_title_id(int id) { title_id = id; }
-int get_import_in_progress(void) { return import_in_progress; }
-void set_import_in_progress(int v) { import_in_progress = v; }
-
-/* App state accessors for ATS code.
- * Every set_app_state call in ATS code must be accompanied by an
- * APP_STATE_TRANSITION proof construction. */
-int get_app_state(void) { return app_state; }
-void set_app_state(int s) { app_state = s; }
-
-/* Inject styles into document */
-void inject_styles(void) {
-    unsigned char* fetch_buf = get_fetch_buffer_ptr();
-
-    if (css_buffer_len == 0) {
-        build_css();
-    }
-
-    for (int i = 0; i < css_buffer_len && i < 16384; i++) {
-        fetch_buf[i] = css_buffer[i];
-    }
-
-    void* pf = dom_root_proof();
-    int style_id = dom_next_id();
-    void* pf_style = dom_create_element(pf, root_id, style_id, (void*)str_style, 5);
-    dom_set_inner_html(pf_style, style_id, 0, css_buffer_len);
-    dom_drop_proof(pf_style);
-    dom_drop_proof(pf);
-}
-
-/* Update progress display during import */
-void update_progress_display(void) {
-    int progress = epub_get_progress();
-    if (progress == last_progress) return;
-    last_progress = progress;
-
-    unsigned char* buf = get_fetch_buffer_ptr();
-    int len = 0;
-
-    const char* importing = str_importing;
-    while (*importing && len < 16380) {
-        buf[len++] = *importing++;
-    }
-    buf[len++] = ' ';
-
-    len = append_int(buf, len, progress);
-    buf[len++] = '%';
-
-    void* pf = dom_root_proof();
-    dom_set_text_offset(pf, progress_id, 0, len);
-    dom_drop_proof(pf);
-}
-
-/* Show import error */
-void show_import_error(void) {
-    unsigned char* buf = get_fetch_buffer_ptr();
-    unsigned char* str_buf = get_string_buffer_ptr();
-    int len = 0;
-
-    const char* prefix = str_error_prefix;
-    while (*prefix && len < 16380) {
-        buf[len++] = *prefix++;
-    }
-
-    int error_len = epub_get_error(0);
-    for (int i = 0; i < error_len && len < 16380; i++) {
-        buf[len++] = str_buf[i];
-    }
-
-    void* pf = dom_root_proof();
-    dom_set_text_offset(pf, progress_id, 0, len);
-    dom_drop_proof(pf);
-}
-
-/* M15: Build and display the library list.
- *
- * FUNCTIONAL CORRECTNESS: Establishes BOOK_CARD_MAPS for all books.
- * For each book i in 0..count-1:
- * - book_read_ids[i] = dom_next_id() assigned during card creation
- * - book_delete_ids[i] = dom_next_id() assigned during card creation
- * - Title, author, position displayed are from library_get_title/author/etc(i)
- *   which return THE data for book i (verified by BOOK_IN_LIBRARY).
- * - book_card_count is set to min(count, MAX_BOOK_READ_IDS)
- *
- * The sequential assignment (i=0 gets first pair of IDs, i=1 gets next, etc.)
- * ensures the mapping is bijective: each button maps to exactly one book. */
-static void rebuild_library_list(void) {
-    unsigned char* buf = get_fetch_buffer_ptr();
-    unsigned char* str_buf = get_string_buffer_ptr();
-    void* pf = dom_root_proof();
-
-    /* Remove old library list if exists */
-    if (library_list_id > 0) {
-        dom_remove_child(pf, library_list_id);
-        library_list_id = 0;
-    }
-
-    /* Create library list container */
-    int list_id = dom_next_id();
-    library_list_id = list_id;
-    void* pf_list = dom_create_element(pf, container_id, list_id, (void*)str_div, 3);
-    pf_list = dom_set_attr(pf_list, list_id, (void*)str_class, 5,
-                           (void*)str_library_list, 12);
-
-    int count = library_get_count();
-    book_card_count = 0;
-
-    if (count == 0) {
-        /* Show empty library message */
-        int empty_id = dom_next_id();
-        void* pf_empty = dom_create_element(pf_list, list_id, empty_id, (void*)str_p, 1);
-        pf_empty = dom_set_attr(pf_empty, empty_id, (void*)str_class, 5,
-                                (void*)"empty-lib", 9);
-        int len = 0;
-        const char* msg = str_empty_lib;
-        while (*msg && len < 200) buf[len++] = *msg++;
-        dom_set_text_offset(pf_empty, empty_id, 0, len);
-        dom_drop_proof(pf_empty);
-    } else {
-        for (int i = 0; i < count && i < MAX_BOOK_READ_IDS; i++) {
-            /* Create book card */
-            int card_id = dom_next_id();
-            void* pf_card = dom_create_element(pf_list, list_id, card_id, (void*)str_div, 3);
-            pf_card = dom_set_attr(pf_card, card_id, (void*)str_class, 5,
-                                   (void*)str_book_card, 9);
-
-            /* Title */
-            int title_nid = dom_next_id();
-            void* pf_title = dom_create_element(pf_card, card_id, title_nid, (void*)str_div, 3);
-            pf_title = dom_set_attr(pf_title, title_nid, (void*)str_class, 5,
-                                    (void*)str_book_title, 10);
-            int tlen = library_get_title(i, 0);
-            if (tlen > 0) {
-                for (int j = 0; j < tlen && j < 200; j++) buf[j] = str_buf[j];
-                dom_set_text_offset(pf_title, title_nid, 0, tlen);
-            }
-            dom_drop_proof(pf_title);
-
-            /* Author */
-            int author_nid = dom_next_id();
-            void* pf_author = dom_create_element(pf_card, card_id, author_nid, (void*)str_div, 3);
-            pf_author = dom_set_attr(pf_author, author_nid, (void*)str_class, 5,
-                                     (void*)str_book_author, 11);
-            int alen = library_get_author(i, 0);
-            if (alen > 0) {
-                int len = 0;
-                const char* by = str_by;
-                /* skip leading space in " by " */
-                by++;
-                while (*by && len < 200) buf[len++] = *by++;
-                for (int j = 0; j < alen && len < 400; j++) buf[len++] = str_buf[j];
-                dom_set_text_offset(pf_author, author_nid, 0, len);
-            }
-            dom_drop_proof(pf_author);
-
-            /* Position */
-            int pos_nid = dom_next_id();
-            void* pf_pos = dom_create_element(pf_card, card_id, pos_nid, (void*)str_div, 3);
-            pf_pos = dom_set_attr(pf_pos, pos_nid, (void*)str_class, 5,
-                                  (void*)str_book_position, 13);
-            {
-                int ch = library_get_chapter(i);
-                int pg = library_get_page(i);
-                int sc = library_get_spine_count(i);
-                int len = 0;
-
-                if (ch == 0 && pg == 0) {
-                    const char* ns = str_not_started;
-                    while (*ns && len < 200) buf[len++] = *ns++;
-                } else {
-                    const char* ch_s = str_ch_space;
-                    while (*ch_s && len < 200) buf[len++] = *ch_s++;
-                    len = append_int(buf, len, ch + 1);
-                    const char* of_s = str_of_space;
-                    while (*of_s && len < 200) buf[len++] = *of_s++;
-                    len = append_int(buf, len, sc);
-                    const char* pg_s = str_comma_pg;
-                    while (*pg_s && len < 200) buf[len++] = *pg_s++;
-                    len = append_int(buf, len, pg + 1);
-                }
-                dom_set_text_offset(pf_pos, pos_nid, 0, len);
-            }
-            dom_drop_proof(pf_pos);
-
-            /* Actions row */
-            int acts_nid = dom_next_id();
-            void* pf_acts = dom_create_element(pf_card, card_id, acts_nid, (void*)str_div, 3);
-            pf_acts = dom_set_attr(pf_acts, acts_nid, (void*)str_class, 5,
-                                   (void*)str_book_actions, 12);
-
-            /* Read button */
-            int read_nid = dom_next_id();
-            book_read_ids[i] = read_nid;
-            void* pf_read = dom_create_element(pf_acts, acts_nid, read_nid, (void*)str_label, 5);
-            pf_read = dom_set_attr(pf_read, read_nid, (void*)str_class, 5,
-                                   (void*)str_read_btn, 8);
-            {
-                int len = 0;
-                const char* txt = str_read_text;
-                while (*txt && len < 20) buf[len++] = *txt++;
-                dom_set_text_offset(pf_read, read_nid, 0, len);
-            }
-            dom_drop_proof(pf_read);
-
-            /* Delete button */
-            int del_nid = dom_next_id();
-            book_delete_ids[i] = del_nid;
-            void* pf_del = dom_create_element(pf_acts, acts_nid, del_nid, (void*)str_label, 5);
-            pf_del = dom_set_attr(pf_del, del_nid, (void*)str_class, 5,
-                                  (void*)str_delete_btn, 10);
-            {
-                int len = 0;
-                const char* txt = str_delete_text;
-                while (*txt && len < 20) buf[len++] = *txt++;
-                dom_set_text_offset(pf_del, del_nid, 0, len);
-            }
-            dom_drop_proof(pf_del);
-
-            dom_drop_proof(pf_acts);
-            dom_drop_proof(pf_card);
-            book_card_count++;
-        }
-    }
-
-    dom_drop_proof(pf_list);
-    dom_drop_proof(pf);
-}
-
-/* M15: Show library view (creates full UI) */
-static void show_library(void) {
-    unsigned char* buf = get_fetch_buffer_ptr();
-    void* pf = dom_root_proof();
-
-    /* Unhide container if hidden */
-    pf = dom_set_attr(pf, container_id, (void*)str_class, 5, (void*)str_container, 9);
-
-    /* Clear progress and title text */
-    dom_set_text_offset(pf, progress_id, 0, 0);
-    dom_set_text_offset(pf, title_id, 0, 0);
-
-    dom_drop_proof(pf);
-
-    /* Build library list */
-    rebuild_library_list();
-
-    /* TRANSITION: Multiple valid transitions lead here:
-     *   LOADING_LIB_TO_LIBRARY(2, 3)
-     *   LOADING_DB_TO_LIBRARY(1, 3)
-     *   IMPORTING_TO_LIBRARY(4, 3)
-     *   READING_TO_LIBRARY(6, 3)
-     * show_library() is a terminal transition to LIBRARY state. */
-    app_state = APP_STATE_LIBRARY;
-}
-
-/* M15: Enter reader for a specific book.
- *
- * FUNCTIONAL CORRECTNESS:
- * - book_index is verified against library_get_count() (BOOK_IN_LIBRARY)
- * - current_book_index is set to book_index, creating a binding between
- *   the reader session and THE correct book
- * - library_load_book_metadata(book_index) loads THE metadata for this book
- *   (key constructed from book_id at this index)
- * - State transition: LIBRARY -> LOADING_BOOK (APP_STATE_TRANSITION) */
-static void enter_reader_for_book(int book_index) {
-    if (book_index < 0 || book_index >= library_get_count()) return;
-
-    current_book_index = book_index;
-    app_state = APP_STATE_LOADING_BOOK;  // TRANSITION: LIBRARY_TO_LOADING_BOOK(3, 5)
-
-    /* Load book metadata from IndexedDB */
-    library_load_book_metadata(book_index);
-}
-
-/* M15: Exit reader back to library.
- *
- * FUNCTIONAL CORRECTNESS:
- * - Saves reading position via library_update_position using
- *   reader_get_current_chapter/page which return THE current position
- * - library_save() persists the updated position (async)
- * - State transition: READING -> LIBRARY (APP_STATE_TRANSITION)
- * - reader_exit() cleans up reader DOM state */
-static void exit_reader_to_library(void) {
-    /* Save current reading position */
-    if (current_book_index >= 0) {
-        int ch = reader_get_current_chapter();
-        int pg = reader_get_current_page();
-        library_update_position(current_book_index, ch, pg);
-
-        /* Save library index (async) */
-        library_save();
-    }
-
-    /* Remove reader DOM elements */
-    void* pf = dom_root_proof();
-
-    /* Remove viewport, page indicator, progress bar, back button */
-    int back_id = reader_get_back_btn_id();
-    if (back_id > 0) dom_remove_child(pf, back_id);
-
-    dom_drop_proof(pf);
-
-    reader_exit();
-    current_book_index = -1;
-    app_state = APP_STATE_LIBRARY;  // TRANSITION: READING_TO_LIBRARY(6, 3)
-
-    /* Show library view */
-    show_library();
-}
-
-/* M15: Handle import completion - add to library and save.
- *
- * FUNCTIONAL CORRECTNESS:
- * - library_add_book() reads from epub module state which is in DONE state
- *   (verified by epub_get_state() == 8 in handle_state_after_op)
- * - Deduplication: if book already exists, returns existing index
- * - library_save_book_metadata() serializes THE current epub state
- *   (METADATA_ROUNDTRIP guarantees correct restore on next load)
- * - Eventual state transition: IMPORTING -> LIBRARY after async saves */
-static void handle_import_complete(void) {
-    import_in_progress = 0;
-
-    /* Add book to library */
-    int idx = library_add_book();
-
-    /* Save book metadata to IDB */
-    library_save_book_metadata();
-
-    /* We need to wait for metadata save, then save library index */
-    /* Metadata save is async; we handle it in on_kv_complete */
-}
-
-/* M15: Handle state transitions after async EPUB operations */
-static void handle_state_after_op(void) {
-    int state = epub_get_state();
-    if (state == 99) {  /* Error */
-        show_import_error();
-        import_in_progress = 0;
-        app_state = APP_STATE_LIBRARY;  // TRANSITION: IMPORTING_TO_LIBRARY(4, 3) [error path]
-    } else if (state == 6 || state == 7) {  /* Still processing */
-        update_progress_display();
-    } else if (state == 8) {  /* Done */
-        handle_import_complete();
-    }
-}
-
-/* M15: String constants for IDB */
-static const char str_quire_db[] = "quire";
-static const char str_stores[] = "books,chapters,resources,settings";
-
-/* String constant accessors for open_db (ATS code) */
-void* get_str_quire_db(void) { return (void*)str_quire_db; }
-void* get_str_stores(void) { return (void*)str_stores; }
-
-/* process_event implementation */
-void process_event_impl(void) {
-    int event_type = get_event_type();
-    int node_id = get_event_node_id();
-    int data1 = get_event_data1();
-    int data2 = get_event_data2();
-
-    /* Click events */
-    if (event_type == 1) {
-        /* Settings modal takes priority */
-        if (settings_is_visible()) {
-            if (settings_handle_click(node_id)) return;
-            settings_hide();
-            return;
-        }
-
-        /* M15: Back button in reader mode */
-        if (reader_is_active() && node_id == reader_get_back_btn_id()) {
-            exit_reader_to_library();
-            return;
-        }
-
-        /* M15: Book read buttons in library view */
-        if (app_state == APP_STATE_LIBRARY) {
-            for (int i = 0; i < book_card_count; i++) {
-                if (node_id == book_read_ids[i]) {
-                    enter_reader_for_book(i);
-                    return;
-                }
-                if (node_id == book_delete_ids[i]) {
-                    library_remove_book(i);
-                    library_save();
-                    rebuild_library_list();
-                    return;
-                }
-            }
-        }
-
-        /* Reader click zones */
-        int vw = reader_get_viewport_width();
-        if (reader_is_active() && vw > 0) {
-            if (reader_is_toc_visible()) {
-                int toc_index = reader_get_toc_index_for_node(node_id);
-                if (toc_index >= 0) {
-                    reader_on_toc_click(node_id);
-                    return;
-                }
-                reader_hide_toc();
-                return;
-            }
-
-            int click_x = data1;
-            int zone_left = vw / 5;
-            int zone_right = vw - zone_left;
-
-            if (click_x < zone_left) {
-                reader_prev_page();
-            } else if (click_x > zone_right) {
-                reader_next_page();
-            } else {
-                reader_toggle_toc();
-            }
-        }
-    }
-
-    /* Input events (file selected) */
-    if (event_type == 2) {
-        if (node_id == file_input_id && !import_in_progress) {
-            import_in_progress = 1;
-            app_state = APP_STATE_IMPORTING;  // TRANSITION: LIBRARY_TO_IMPORTING(3, 4)
-
-            /* Show import progress */
-            unsigned char* buf = get_fetch_buffer_ptr();
-            int len = 0;
-            const char* importing = str_importing;
-            while (*importing && len < 100) buf[len++] = *importing++;
-            void* pf = dom_root_proof();
-            dom_set_text_offset(pf, progress_id, 0, len);
-            dom_drop_proof(pf);
-
-            epub_start_import(node_id);
-        }
-    }
-
-    /* Keyboard events in reader mode */
-    if (event_type == 4 && reader_is_active()) {
-        int key_code = data1;
-
-        if (key_code == 27 && settings_is_visible()) {
-            settings_hide();
-            return;
-        }
-
-        /* M15: Escape exits reader if nothing else is open */
-        if (key_code == 27 && !reader_is_toc_visible() && !settings_is_visible()) {
-            exit_reader_to_library();
-            return;
-        }
-
-        if (key_code == 83 && !reader_is_toc_visible()) {
-            settings_toggle();
-            return;
-        }
-
-        if (settings_is_visible()) return;
-
-        switch (key_code) {
-            case 27:
-                if (reader_is_toc_visible()) reader_hide_toc();
-                break;
-            case 84:
-                reader_toggle_toc();
-                break;
-            case 37: case 33:
-                if (!reader_is_toc_visible()) reader_prev_page();
-                break;
-            case 39: case 34: case 32:
-                if (!reader_is_toc_visible()) reader_next_page();
-                break;
-            case 36:
-                if (!reader_is_toc_visible()) reader_go_to_page(0);
-                break;
-            case 35:
-                if (!reader_is_toc_visible()) reader_go_to_page(reader_get_total_pages() - 1);
-                break;
-        }
-    }
-}
-
-/* Async callback: file open */
-void on_file_open_impl(int handle, int size) {
-    epub_on_file_open(handle, size);
-    int state = epub_get_state();
-    if (state == 99) {
-        show_import_error();
-        import_in_progress = 0;
-        app_state = APP_STATE_LIBRARY;  // TRANSITION: IMPORTING_TO_LIBRARY(4, 3) [error]
-    }
-}
-
-/* Async callback: decompress */
-void on_decompress_impl(int handle, int size) {
-    epub_on_decompress(handle, size);
-    handle_state_after_op();
-}
-
-/* Async callback: kv put complete.
- *
- * FUNCTIONAL CORRECTNESS: Callback dispatch correctness.
- * CALLBACK_DISPATCH_CORRECT proves that each async completion callback
- * is routed to THE correct handler based on pending operation state.
- *
- * Dispatch priority (checked in order):
- * 1. settings_is_save_pending() -> settings_on_save_complete
- * 2. library_is_metadata_pending() -> library_on_metadata_save_complete
- * 3. library_is_save_pending() -> library_on_save_complete
- * 4. (default) -> epub_on_db_put (during import)
- *
- * Correctness relies on the invariant that at most ONE pending flag
- * is set at any time. This is maintained because:
- * - Each async operation sets its flag before calling js_kv_put
- * - The completion handler clears the flag before starting new ops
- * - Only one kv_put is in flight at a time (JS bridge serializes) */
-void on_kv_complete_impl(int success) {
-    /* Settings save takes priority */
-    if (settings_is_save_pending()) {
-        settings_on_save_complete(success);
-        return;
-    }
-    /* Library metadata save */
-    if (library_is_metadata_pending()) {
-        library_on_metadata_save_complete(success);
-        /* After metadata save, save library index */
-        library_save();
-        return;
-    }
-    /* Library index save */
-    if (library_is_save_pending()) {
-        library_on_save_complete(success);
-        /* If we just finished import+save, show library */
-        if (app_state == APP_STATE_IMPORTING) {
-            app_state = APP_STATE_LIBRARY;  // TRANSITION: IMPORTING_TO_LIBRARY(4, 3) [save done]
-            show_library();
-        }
-        return;
-    }
-    /* EPUB import put */
-    epub_on_db_put(success);
-    handle_state_after_op();
-}
-
-/* Async callback: kv open complete */
-void on_kv_open_impl(int success) {
-    if (app_state == APP_STATE_LOADING_DB) {
-        if (success) {
-            /* DB opened, now load library index */
-            app_state = APP_STATE_LOADING_LIB;  // TRANSITION: LOADING_DB_TO_LOADING_LIB(1, 2)
-            library_load();
-        } else {
-            /* DB failed to open, show empty library */
-            app_state = APP_STATE_LIBRARY;  // TRANSITION: LOADING_DB_TO_LIBRARY(1, 3)
-            show_library();
-        }
-        return;
-    }
-    /* During import, forward to epub */
-    epub_on_db_open(success);
-    int state = epub_get_state();
-    if (state == 99) {
-        show_import_error();
-        import_in_progress = 0;
-        app_state = APP_STATE_LIBRARY;  // TRANSITION: IMPORTING_TO_LIBRARY(4, 3) [error]
-    }
-}
-
-/* Async callback: kv get complete.
- *
- * FUNCTIONAL CORRECTNESS: Callback dispatch correctness.
- * Dispatch priority (checked in order):
- * 1. settings_is_load_pending() -> settings_on_load_complete
- * 2. library_is_load_pending() -> library_on_load_complete
- * 3. library_is_metadata_pending() -> library_on_metadata_load_complete
- * 4. reader_is_active() -> reader_on_chapter_loaded
- *
- * Same single-pending-flag invariant as on_kv_complete_impl.
- * After metadata load, enters reader at saved position using
- * library_get_chapter/page to retrieve THE correct position
- * for the selected book. */
-void on_kv_get_complete_impl(int len) {
-    /* Settings load */
-    if (settings_is_load_pending()) {
-        settings_on_load_complete(len);
-        return;
-    }
-    /* Library index load */
-    if (library_is_load_pending()) {
-        library_on_load_complete(len);
-        if (app_state == APP_STATE_LOADING_LIB) {
-            /* Library loaded, show it */
-            show_library();
-            /* Load settings */
-            settings_load();
-        }
-        return;
-    }
-    /* Library metadata load */
-    if (library_is_metadata_pending()) {
-        library_on_metadata_load_complete(len);
-        if (app_state == APP_STATE_LOADING_BOOK && current_book_index >= 0) {
-            /* Metadata restored, enter reader */
-            int ch = library_get_chapter(current_book_index);
-            int pg = library_get_page(current_book_index);
-            app_state = APP_STATE_READING;  // TRANSITION: LOADING_BOOK_TO_READING(5, 6)
-            if (ch > 0 || pg > 0) {
-                reader_enter_at(root_id, container_id, ch, pg);
-            } else {
-                reader_enter(root_id, container_id);
-            }
-        }
-        return;
-    }
-    /* Reader chapter load */
-    if (reader_is_active()) {
-        reader_on_chapter_loaded(len);
-    }
-}
-
-/* Async callback: kv get blob complete */
-void on_kv_get_blob_complete_impl(int handle, int size) {
-    if (reader_is_active()) {
-        reader_on_chapter_blob_loaded(handle, size);
-    }
-}
-%}
-
-(* ========== M15: App State Machine Proofs ========== *)
-
-(* App state validity proof.
- * APP_STATE_VALID(s) proves state s is one of the defined app states.
- * Prevents invalid state values at compile time. *)
-dataprop APP_STATE_VALID(state: int) =
-  | APP_INIT_STATE(0)
-  | APP_LOADING_DB_STATE(1)
-  | APP_LOADING_LIB_STATE(2)
-  | APP_LIBRARY_STATE(3)
-  | APP_IMPORTING_STATE(4)
-  | APP_LOADING_BOOK_STATE(5)
-  | APP_READING_STATE(6)
-
-(* App state transition proof.
- * APP_STATE_TRANSITION(from, to) proves that transitioning from state `from`
- * to state `to` is a valid state machine transition.
- *
- * BUG PREVENTED: open_db() originally called js_kv_open() without setting
- * app_state = APP_STATE_LOADING_DB. When on_kv_open_complete fired, the
- * check `app_state == APP_STATE_LOADING_DB` failed (still INIT), so the
- * library never loaded. The documentary proof existed but wasn't enforced.
- *
- * ENFORCEMENT: Functions that perform state transitions in ATS code should
- * construct and consume proof witnesses. For C block transitions, the
- * transition must be documented with a comment citing this dataprop.
- * Each C block that sets app_state MUST have a comment:
- *   // TRANSITION: APP_STATE_TRANSITION(from, to)
- * This ensures code review catches missing transitions. *)
-dataprop APP_STATE_TRANSITION(from: int, to: int) =
-  | INIT_TO_LOADING_DB(0, 1)
-  | LOADING_DB_TO_LOADING_LIB(1, 2)
-  | LOADING_DB_TO_LIBRARY(1, 3)
-  | LOADING_LIB_TO_LIBRARY(2, 3)
-  | LIBRARY_TO_IMPORTING(3, 4)
-  | LIBRARY_TO_LOADING_BOOK(3, 5)
-  | IMPORTING_TO_LIBRARY(4, 3)
-  | LOADING_BOOK_TO_READING(5, 6)
-  | READING_TO_LIBRARY(6, 3)
-
-(* Book card node ID mapping proof.
- * BOOK_CARD_MAPS(node_id, book_index, card_count) proves that
- * node_id is THE read or delete button for book at book_index,
- * where 0 <= book_index < card_count.
- *
- * Constructed by rebuild_library_list, consumed by process_event_impl.
- * NOTE: Proof is documentary - runtime loop scan verifies mapping. *)
-dataprop BOOK_CARD_MAPS(node_id: int, book_index: int, card_count: int) =
-  | {n:int} {i,c:nat | i < c} CARD_FOR_BOOK(n, i, c)
-
-(* Async callback dispatch proof.
- * CALLBACK_ROUTED(handler_id) proves that an async completion was
- * routed to handler handler_id based on pending flags.
- * handler_id: 0=settings, 1=library_metadata, 2=library_index,
- *             3=epub_import, 4=reader_chapter
- *
- * NOTE: Proof is documentary - pending flag checks verify routing. *)
-dataprop CALLBACK_ROUTED(handler_id: int) =
-  | ROUTE_SETTINGS(0)
-  | ROUTE_LIB_METADATA(1)
-  | ROUTE_LIB_INDEX(2)
-  | ROUTE_EPUB_IMPORT(3)
-  | ROUTE_READER_CHAPTER(4)
-
-(* External ATS function declarations *)
-extern fun get_str_quire(): ptr = "mac#"
-extern fun get_str_div(): ptr = "mac#"
-extern fun get_str_input(): ptr = "mac#"
-extern fun get_str_label(): ptr = "mac#"
-extern fun get_str_for(): ptr = "mac#"
-extern fun get_str_h1(): ptr = "mac#"
-extern fun get_str_p(): ptr = "mac#"
-extern fun get_str_class(): ptr = "mac#"
-extern fun get_str_type(): ptr = "mac#"
-extern fun get_str_file(): ptr = "mac#"
-extern fun get_str_accept(): ptr = "mac#"
-extern fun get_str_epub_accept(): ptr = "mac#"
-extern fun get_str_id_attr(): ptr = "mac#"
-extern fun get_str_hidden(): ptr = "mac#"
-extern fun get_str_container(): ptr = "mac#"
-extern fun get_str_import_btn(): ptr = "mac#"
-extern fun get_str_file_input(): ptr = "mac#"
-extern fun get_str_progress_div(): ptr = "mac#"
-extern fun get_str_title_div(): ptr = "mac#"
-extern fun get_str_import_text(): ptr = "mac#"
-extern fun get_str_style(): ptr = "mac#"
-extern fun get_css_buffer(): ptr = "mac#"
-extern fun get_css_len(): int = "mac#"
-extern fun build_css(): void = "mac#"
-extern fun inject_styles(): void = "mac#"
-extern fun copy_text_to_fetch(text: ptr, len: int): int = "mac#"
-extern fun get_event_type(): int = "mac#"
-extern fun get_event_node_id(): int = "mac#"
-extern fun get_container_id(): int = "mac#"
-extern fun get_file_input_id(): int = "mac#"
-extern fun get_import_btn_id(): int = "mac#"
-extern fun get_progress_id(): int = "mac#"
-extern fun get_title_id(): int = "mac#"
-extern fun set_container_id(id: int): void = "mac#"
-extern fun set_file_input_id(id: int): void = "mac#"
-extern fun set_import_btn_id(id: int): void = "mac#"
-extern fun set_progress_id(id: int): void = "mac#"
-extern fun set_title_id(id: int): void = "mac#"
-extern fun get_import_in_progress(): int = "mac#"
-extern fun set_import_in_progress(v: int): void = "mac#"
-extern fun update_progress_display(): void = "mac#"
-extern fun show_import_error(): void = "mac#"
-
-(* M12: ATS extern for reader_init *)
-extern fun reader_init_ats(): void = "mac#reader_init"
-
-(* M14: ATS extern for settings_init *)
-extern fun settings_init_ats(): void = "mac#settings_init"
-extern fun settings_set_root_id_ats(id: int): void = "mac#settings_set_root_id"
-
-(* M15: ATS extern for library_init *)
-extern fun library_init_ats(): void = "mac#library_init"
-
-(* App state accessors — used to enforce APP_STATE_TRANSITION from ATS *)
-extern fun get_app_state(): int = "mac#"
-extern fun set_app_state(s: int): void = "mac#"
-
-(* String constants for open_db *)
-extern fun get_str_quire_db(): ptr = "mac#"
-extern fun get_str_stores(): ptr = "mac#"
-
-(* Bridge import for opening IndexedDB *)
-extern fun js_kv_open(name_ptr: ptr, name_len: int, version: int,
-                      stores_ptr: ptr, stores_len: int): void = "mac#"
-
-(* Open IndexedDB for library and book data.
- * ENFORCED PROOF: Constructs INIT_TO_LOADING_DB(0, 1) at compile time,
- * guaranteeing that app_state is set to LOADING_DB BEFORE the async
- * js_kv_open call.
- *
- * BUG PREVENTED: Original C version forgot to set app_state before
- * js_kv_open. When on_kv_open_complete fired, it checked for
- * APP_STATE_LOADING_DB but found INIT, so library never loaded.
- *
- * TEST MADE PASS-BY-CONSTRUCTION:
- *   test_open_db_sets_state_before_async — The ATS type system ensures
- *   set_app_state(1) happens textually before js_kv_open. *)
-fn open_db(): void = let
-    (* Construct transition proof — this is the ENFORCED version of
-     * the documentary comment that was in the C code. *)
-    prval _pf_transition = INIT_TO_LOADING_DB()
-
-    (* Set state BEFORE async call — the proof above witnesses
-     * that this is a valid transition from INIT(0) to LOADING_DB(1). *)
-    val () = set_app_state(1) (* APP_STATE_LOADING_DB *)
+ * BUG PREVENTED: measure_and_set_pages used ward_measure_get_left (scrollHeight)
+ * instead of ward_measure_get_top (scrollWidth), giving total_pages=1 always. *)
+dataprop SCROLL_WIDTH_SLOT(slot: int) =
+  | SLOT_4(4)
+
+(* Safe wrapper: measures a node and returns its scrollWidth.
+ * Abstracts over ward's confusing slot naming.
+ * Constructs SCROLL_WIDTH_SLOT(4) proof to document correctness. *)
+fn measure_node_scroll_width(node_id: int): int = let
+  val _found = ward_measure_node(node_id)
+  prval _ = SLOT_4()  (* proof: we read slot 4 = scrollWidth *)
+in
+  ward_measure_get_top()  (* slot 4 = el.scrollWidth *)
+end
+
+(* Safe wrapper: measures a node and returns its element width.
+ * Uses slot 2 = el.width from getBoundingClientRect. *)
+fn measure_node_width(node_id: int): int = let
+  val _found = ward_measure_node(node_id)
+in
+  ward_measure_get_w()  (* slot 2 = rect.width *)
+end
+
+(* Read f64 clientX from click payload, return as int — irreducibly C *)
+extern fun read_payload_click_x {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n)): int = "mac#"
+
+(* Castfn for indices proven in-bounds at runtime but not by solver.
+ * Used for ward_arr(byte, l, 48) where max write index is 35. *)
+extern castfn _idx48(x: int): [i:nat | i < 48] int i
+
+(* Safe byte conversion: value must be 0-255.
+ * For static chars: use char2int1('x') which carries the static value.
+ * For computed digits: 48 + (v % 10) is always 48-57 — in range. *)
+extern castfn _byte {c:int | 0 <= c; c <= 255} (c: int c): byte
+
+(* ========== CSS class safe text builders ========== *)
+
+fn cls_import_btn(): ward_safe_text(10) = let
+  val b = ward_text_build(10)
+  val b = ward_text_putc(b, 0, char2int1('i'))
+  val b = ward_text_putc(b, 1, char2int1('m'))
+  val b = ward_text_putc(b, 2, char2int1('p'))
+  val b = ward_text_putc(b, 3, char2int1('o'))
+  val b = ward_text_putc(b, 4, char2int1('r'))
+  val b = ward_text_putc(b, 5, char2int1('t'))
+  val b = ward_text_putc(b, 6, 45) (* '-' *)
+  val b = ward_text_putc(b, 7, char2int1('b'))
+  val b = ward_text_putc(b, 8, char2int1('t'))
+  val b = ward_text_putc(b, 9, char2int1('n'))
+in ward_text_done(b) end
+
+fn cls_library_list(): ward_safe_text(12) = let
+  val b = ward_text_build(12)
+  val b = ward_text_putc(b, 0, char2int1('l'))
+  val b = ward_text_putc(b, 1, char2int1('i'))
+  val b = ward_text_putc(b, 2, char2int1('b'))
+  val b = ward_text_putc(b, 3, char2int1('r'))
+  val b = ward_text_putc(b, 4, char2int1('a'))
+  val b = ward_text_putc(b, 5, char2int1('r'))
+  val b = ward_text_putc(b, 6, char2int1('y'))
+  val b = ward_text_putc(b, 7, 45) (* '-' *)
+  val b = ward_text_putc(b, 8, char2int1('l'))
+  val b = ward_text_putc(b, 9, char2int1('i'))
+  val b = ward_text_putc(b, 10, char2int1('s'))
+  val b = ward_text_putc(b, 11, char2int1('t'))
+in ward_text_done(b) end
+
+fn cls_empty_lib(): ward_safe_text(9) = let
+  val b = ward_text_build(9)
+  val b = ward_text_putc(b, 0, char2int1('e'))
+  val b = ward_text_putc(b, 1, char2int1('m'))
+  val b = ward_text_putc(b, 2, char2int1('p'))
+  val b = ward_text_putc(b, 3, char2int1('t'))
+  val b = ward_text_putc(b, 4, char2int1('y'))
+  val b = ward_text_putc(b, 5, 45) (* '-' *)
+  val b = ward_text_putc(b, 6, char2int1('l'))
+  val b = ward_text_putc(b, 7, char2int1('i'))
+  val b = ward_text_putc(b, 8, char2int1('b'))
+in ward_text_done(b) end
+
+fn st_file(): ward_safe_text(4) = let
+  val b = ward_text_build(4)
+  val b = ward_text_putc(b, 0, char2int1('f'))
+  val b = ward_text_putc(b, 1, char2int1('i'))
+  val b = ward_text_putc(b, 2, char2int1('l'))
+  val b = ward_text_putc(b, 3, char2int1('e'))
+in ward_text_done(b) end
+
+fn evt_change(): ward_safe_text(6) = let
+  val b = ward_text_build(6)
+  val b = ward_text_putc(b, 0, char2int1('c'))
+  val b = ward_text_putc(b, 1, char2int1('h'))
+  val b = ward_text_putc(b, 2, char2int1('a'))
+  val b = ward_text_putc(b, 3, char2int1('n'))
+  val b = ward_text_putc(b, 4, char2int1('g'))
+  val b = ward_text_putc(b, 5, char2int1('e'))
+in ward_text_done(b) end
+
+fn evt_click(): ward_safe_text(5) = let
+  val b = ward_text_build(5)
+  val b = ward_text_putc(b, 0, char2int1('c'))
+  val b = ward_text_putc(b, 1, char2int1('l'))
+  val b = ward_text_putc(b, 2, char2int1('i'))
+  val b = ward_text_putc(b, 3, char2int1('c'))
+  val b = ward_text_putc(b, 4, char2int1('k'))
+in ward_text_done(b) end
+
+fn evt_keydown(): ward_safe_text(7) = let
+  val b = ward_text_build(7)
+  val b = ward_text_putc(b, 0, char2int1('k'))
+  val b = ward_text_putc(b, 1, char2int1('e'))
+  val b = ward_text_putc(b, 2, char2int1('y'))
+  val b = ward_text_putc(b, 3, char2int1('d'))
+  val b = ward_text_putc(b, 4, char2int1('o'))
+  val b = ward_text_putc(b, 5, char2int1('w'))
+  val b = ward_text_putc(b, 6, char2int1('n'))
+in ward_text_done(b) end
+
+fn cls_book_card(): ward_safe_text(9) = let
+  val b = ward_text_build(9)
+  val b = ward_text_putc(b, 0, char2int1('b'))
+  val b = ward_text_putc(b, 1, char2int1('o'))
+  val b = ward_text_putc(b, 2, char2int1('o'))
+  val b = ward_text_putc(b, 3, char2int1('k'))
+  val b = ward_text_putc(b, 4, 45)
+  val b = ward_text_putc(b, 5, char2int1('c'))
+  val b = ward_text_putc(b, 6, char2int1('a'))
+  val b = ward_text_putc(b, 7, char2int1('r'))
+  val b = ward_text_putc(b, 8, char2int1('d'))
+in ward_text_done(b) end
+
+fn cls_book_title(): ward_safe_text(10) = let
+  val b = ward_text_build(10)
+  val b = ward_text_putc(b, 0, char2int1('b'))
+  val b = ward_text_putc(b, 1, char2int1('o'))
+  val b = ward_text_putc(b, 2, char2int1('o'))
+  val b = ward_text_putc(b, 3, char2int1('k'))
+  val b = ward_text_putc(b, 4, 45)
+  val b = ward_text_putc(b, 5, char2int1('t'))
+  val b = ward_text_putc(b, 6, char2int1('i'))
+  val b = ward_text_putc(b, 7, char2int1('t'))
+  val b = ward_text_putc(b, 8, char2int1('l'))
+  val b = ward_text_putc(b, 9, char2int1('e'))
+in ward_text_done(b) end
+
+fn cls_book_author(): ward_safe_text(11) = let
+  val b = ward_text_build(11)
+  val b = ward_text_putc(b, 0, char2int1('b'))
+  val b = ward_text_putc(b, 1, char2int1('o'))
+  val b = ward_text_putc(b, 2, char2int1('o'))
+  val b = ward_text_putc(b, 3, char2int1('k'))
+  val b = ward_text_putc(b, 4, 45)
+  val b = ward_text_putc(b, 5, char2int1('a'))
+  val b = ward_text_putc(b, 6, char2int1('u'))
+  val b = ward_text_putc(b, 7, char2int1('t'))
+  val b = ward_text_putc(b, 8, char2int1('h'))
+  val b = ward_text_putc(b, 9, char2int1('o'))
+  val b = ward_text_putc(b, 10, char2int1('r'))
+in ward_text_done(b) end
+
+fn cls_book_position(): ward_safe_text(13) = let
+  val b = ward_text_build(13)
+  val b = ward_text_putc(b, 0, char2int1('b'))
+  val b = ward_text_putc(b, 1, char2int1('o'))
+  val b = ward_text_putc(b, 2, char2int1('o'))
+  val b = ward_text_putc(b, 3, char2int1('k'))
+  val b = ward_text_putc(b, 4, 45)
+  val b = ward_text_putc(b, 5, char2int1('p'))
+  val b = ward_text_putc(b, 6, char2int1('o'))
+  val b = ward_text_putc(b, 7, char2int1('s'))
+  val b = ward_text_putc(b, 8, char2int1('i'))
+  val b = ward_text_putc(b, 9, char2int1('t'))
+  val b = ward_text_putc(b, 10, char2int1('i'))
+  val b = ward_text_putc(b, 11, char2int1('o'))
+  val b = ward_text_putc(b, 12, char2int1('n'))
+in ward_text_done(b) end
+
+fn cls_read_btn(): ward_safe_text(8) = let
+  val b = ward_text_build(8)
+  val b = ward_text_putc(b, 0, char2int1('r'))
+  val b = ward_text_putc(b, 1, char2int1('e'))
+  val b = ward_text_putc(b, 2, char2int1('a'))
+  val b = ward_text_putc(b, 3, char2int1('d'))
+  val b = ward_text_putc(b, 4, 45)
+  val b = ward_text_putc(b, 5, char2int1('b'))
+  val b = ward_text_putc(b, 6, char2int1('t'))
+  val b = ward_text_putc(b, 7, char2int1('n'))
+in ward_text_done(b) end
+
+(* "reader-viewport" = 15 chars *)
+fn cls_reader_viewport(): ward_safe_text(15) = let
+  val b = ward_text_build(15)
+  val b = ward_text_putc(b, 0, char2int1('r'))
+  val b = ward_text_putc(b, 1, char2int1('e'))
+  val b = ward_text_putc(b, 2, char2int1('a'))
+  val b = ward_text_putc(b, 3, char2int1('d'))
+  val b = ward_text_putc(b, 4, char2int1('e'))
+  val b = ward_text_putc(b, 5, char2int1('r'))
+  val b = ward_text_putc(b, 6, 45) (* '-' *)
+  val b = ward_text_putc(b, 7, char2int1('v'))
+  val b = ward_text_putc(b, 8, char2int1('i'))
+  val b = ward_text_putc(b, 9, char2int1('e'))
+  val b = ward_text_putc(b, 10, char2int1('w'))
+  val b = ward_text_putc(b, 11, char2int1('p'))
+  val b = ward_text_putc(b, 12, char2int1('o'))
+  val b = ward_text_putc(b, 13, char2int1('r'))
+  val b = ward_text_putc(b, 14, char2int1('t'))
+in ward_text_done(b) end
+
+(* "chapter-container" = 17 chars *)
+fn cls_chapter_container(): ward_safe_text(17) = let
+  val b = ward_text_build(17)
+  val b = ward_text_putc(b, 0, char2int1('c'))
+  val b = ward_text_putc(b, 1, char2int1('h'))
+  val b = ward_text_putc(b, 2, char2int1('a'))
+  val b = ward_text_putc(b, 3, char2int1('p'))
+  val b = ward_text_putc(b, 4, char2int1('t'))
+  val b = ward_text_putc(b, 5, char2int1('e'))
+  val b = ward_text_putc(b, 6, char2int1('r'))
+  val b = ward_text_putc(b, 7, 45) (* '-' *)
+  val b = ward_text_putc(b, 8, char2int1('c'))
+  val b = ward_text_putc(b, 9, char2int1('o'))
+  val b = ward_text_putc(b, 10, char2int1('n'))
+  val b = ward_text_putc(b, 11, char2int1('t'))
+  val b = ward_text_putc(b, 12, char2int1('a'))
+  val b = ward_text_putc(b, 13, char2int1('i'))
+  val b = ward_text_putc(b, 14, char2int1('n'))
+  val b = ward_text_putc(b, 15, char2int1('e'))
+  val b = ward_text_putc(b, 16, char2int1('r'))
+in ward_text_done(b) end
+
+(* tabindex value "0" = 1 char *)
+fn val_zero(): ward_safe_text(1) = let
+  val b = ward_text_build(1)
+  val b = ward_text_putc(b, 0, 48) (* '0' *)
+in ward_text_done(b) end
+
+(* ========== Helper: set text content from C string constant ========== *)
+
+fn set_text_cstr {l:agz}
+  (s: ward_dom_stream(l), nid: int, text_id: int, text_len: int)
+  : ward_dom_stream(l) = let
+  val tl = g1ofg0(text_len)
+in
+  if tl > 0 then
+    if tl < 65536 then let
+      val arr = ward_arr_alloc<byte>(tl)
+      val _ = fill_text(arr, text_id)
+      val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+      val s = ward_dom_stream_set_text(s, nid, borrow, tl)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val arr = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(arr)
+    in s end
+    else s
+  else s
+end
+
+(* ========== Helper: set attribute with C string value ========== *)
+
+fn set_attr_cstr {l:agz}{nl:pos | nl < 256}
+  (s: ward_dom_stream(l), nid: int,
+   aname: ward_safe_text(nl), nl_v: int nl,
+   text_id: int, text_len: int)
+  : ward_dom_stream(l) = let
+  val vl = g1ofg0(text_len)
+in
+  if vl > 0 then
+    if vl < 65536 then
+    if nl_v + vl + 8 <= 262144 then let
+      val arr = ward_arr_alloc<byte>(vl)
+      val _ = fill_text(arr, text_id)
+      val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+      val s = ward_dom_stream_set_attr(s, nid, aname, nl_v, borrow, vl)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val arr = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(arr)
+    in s end
+    else s
+    else s
+  else s
+end
+
+(* ========== Helper: set text content from string buffer ========== *)
+
+fn set_text_from_sbuf {l:agz}
+  (s: ward_dom_stream(l), nid: int, len: int)
+  : ward_dom_stream(l) = let
+  val len1 = g1ofg0(len)
+in
+  if len1 > 0 then
+    if len1 < 65536 then let
+      val arr = ward_arr_alloc<byte>(len1)
+      val () = copy_from_sbuf(arr, len1)
+      val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+      val s = ward_dom_stream_set_text(s, nid, borrow, len1)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val arr = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(arr)
+    in s end
+    else s
+  else s
+end
+
+(* ========== Page navigation helpers ========== *)
+
+(* Write non-negative int as decimal digits into ward_arr at offset.
+ * Returns number of digits written. Array must be >= 48 bytes.
+ * Digit bytes are 48-57 ('0'-'9') — always valid for int2byte0.
+ * NOTE: mod_int_int returns plain int so solver can't verify range;
+ * the invariant 0 <= (v%10) <= 9 holds by definition of modulo. *)
+fn itoa_to_arr {l:agz}
+  (arr: !ward_arr(byte, l, 48), v: int, offset: int): int = let
+  fun count_digits(x: int, acc: int): int =
+    if gt_int_int(x, 0) then count_digits(div_int_int(x, 10), acc + 1)
+    else acc
+in
+  if gt_int_int(1, v) then let
+    val () = ward_arr_set<byte>(arr, _idx48(offset),
+      _byte(char2int1('0')))
+  in 1 end
+  else let
+    val ndigits = count_digits(v, 0)
+    fun write_rev {l:agz}
+      (arr: !ward_arr(byte, l, 48), x: int, pos: int): void =
+      if gt_int_int(x, 0) then let
+        val digit = mod_int_int(x, 10)
+        (* digit is 0-9, so 48+digit is 48-57 — within byte range *)
+        val () = ward_arr_set<byte>(arr, _idx48(pos), int2byte0(48 + digit))
+      in write_rev(arr, div_int_int(x, 10), pos - 1) end
+      else ()
+    val () = write_rev(arr, v, offset + ndigits - 1)
+  in ndigits end
+end
+
+(* Build "transform:translateX(-Npx)" in a ward_arr(48).
+ * Returns total bytes written. Max: 22 prefix + 10 digits + 3 suffix = 35.
+ * Static chars use char2int1 + _byte — constraint-solver verified. *)
+fn build_transform_arr {l:agz}
+  (arr: !ward_arr(byte, l, 48), page: int, page_width: int): int = let
+  val pixel_offset = mul_int_int(page, page_width)
+  (* "transform:translateX(-" — 22 bytes, all verified via char2int1 *)
+  val () = ward_arr_set<byte>(arr, 0, _byte(char2int1('t')))
+  val () = ward_arr_set<byte>(arr, 1, _byte(char2int1('r')))
+  val () = ward_arr_set<byte>(arr, 2, _byte(char2int1('a')))
+  val () = ward_arr_set<byte>(arr, 3, _byte(char2int1('n')))
+  val () = ward_arr_set<byte>(arr, 4, _byte(char2int1('s')))
+  val () = ward_arr_set<byte>(arr, 5, _byte(char2int1('f')))
+  val () = ward_arr_set<byte>(arr, 6, _byte(char2int1('o')))
+  val () = ward_arr_set<byte>(arr, 7, _byte(char2int1('r')))
+  val () = ward_arr_set<byte>(arr, 8, _byte(char2int1('m')))
+  val () = ward_arr_set<byte>(arr, 9, _byte(58))  (* ':' — char2int1 can't parse punctuation *)
+  val () = ward_arr_set<byte>(arr, 10, _byte(char2int1('t')))
+  val () = ward_arr_set<byte>(arr, 11, _byte(char2int1('r')))
+  val () = ward_arr_set<byte>(arr, 12, _byte(char2int1('a')))
+  val () = ward_arr_set<byte>(arr, 13, _byte(char2int1('n')))
+  val () = ward_arr_set<byte>(arr, 14, _byte(char2int1('s')))
+  val () = ward_arr_set<byte>(arr, 15, _byte(char2int1('l')))
+  val () = ward_arr_set<byte>(arr, 16, _byte(char2int1('a')))
+  val () = ward_arr_set<byte>(arr, 17, _byte(char2int1('t')))
+  val () = ward_arr_set<byte>(arr, 18, _byte(char2int1('e')))
+  val () = ward_arr_set<byte>(arr, 19, _byte(char2int1('X')))
+  val () = ward_arr_set<byte>(arr, 20, _byte(40))  (* '(' *)
+  val () = ward_arr_set<byte>(arr, 21, _byte(45))  (* '-' *)
+  (* decimal digits *)
+  val ndigits = itoa_to_arr(arr, pixel_offset, 22)
+  val pos = 22 + ndigits
+  (* "px)" — 3 bytes *)
+  val () = ward_arr_set<byte>(arr, _idx48(pos), _byte(char2int1('p')))
+  val () = ward_arr_set<byte>(arr, _idx48(pos + 1), _byte(char2int1('x')))
+  val () = ward_arr_set<byte>(arr, _idx48(pos + 2), _byte(41))  (* ')' *)
+in pos + 3 end
+
+(* Apply CSS transform to scroll chapter container to current page.
+ * Uses measure_node_width wrapper for clarity. *)
+fn apply_page_transform(container_id: int): void = let
+  val page_width = measure_node_width(reader_get_viewport_id())
+in
+  if gt_int_int(page_width, 0) then let
+    val cur_page = reader_get_current_page()
+    val arr = ward_arr_alloc<byte>(48)
+    val slen = build_transform_arr(arr, cur_page, page_width)
+    (* Split arr to exact length for set_style *)
+    val slen1 = g1ofg0(slen)
   in
-    (* Now safe to call async: on_kv_open_complete will see LOADING_DB *)
-    js_kv_open(get_str_quire_db(), 5, 1, get_str_stores(), 33)
+    if slen1 > 0 then
+      if slen1 <= 48 then let
+        val @(used, rest) = ward_arr_split<byte>(arr, slen1)
+        val () = ward_arr_free<byte>(rest)
+        val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+        val dom = ward_dom_init()
+        val s = ward_dom_stream_begin(dom)
+        val s = ward_dom_stream_set_style(s, container_id, borrow, slen1)
+        val dom = ward_dom_stream_end(s)
+        val () = ward_dom_fini(dom)
+        val () = ward_arr_drop<byte>(frozen, borrow)
+        val used = ward_arr_thaw<byte>(frozen)
+        val () = ward_arr_free<byte>(used)
+      in end
+      else let
+        val () = ward_arr_free<byte>(arr)
+      in end
+    else let
+      val () = ward_arr_free<byte>(arr)
+    in end
+  end
+  else ()
+end
+
+(* Measure chapter container and viewport, compute total pages.
+ * Uses safe wrappers to prevent slot confusion (see SCROLL_WIDTH_SLOT). *)
+fn measure_and_set_pages(container_id: int): void = let
+  val scroll_width = measure_node_scroll_width(container_id)
+  val page_width = measure_node_width(reader_get_viewport_id())
+in
+  if gt_int_int(page_width, 0) then let
+    (* ceiling division: (scrollWidth + pageWidth - 1) / pageWidth *)
+    val total = div_int_int(scroll_width + page_width - 1, page_width)
+    val () = reader_set_total_pages(total)
+  in end
+  else ()
+end
+
+(* Save reading position and exit reader.
+ * Constructs POSITION_SAVED proof required by reader_exit.
+ * This is THE only permitted way to exit the reader from ATS code.
+ * See POSITION_SAVED dataprop in reader.sats. *)
+fn reader_save_and_exit(): void = let
+  val () = library_update_position(
+    reader_get_book_index(),
+    reader_get_current_chapter(),
+    reader_get_current_page())
+  prval pf = SAVED()
+in
+  reader_exit(pf)
+end
+
+(* ========== EPUB import: read and parse ZIP entries ========== *)
+
+fn epub_read_container(handle: int): int = let
+  val idx = zip_find_entry(get_str_container_ptr(), 22)
+in
+  if gt_int_int(0, idx) then 0
+  else let
+    var entry: zip_entry
+    val found = zip_get_entry(idx, entry)
+  in
+    if eq_int_int(found, 0) then 0
+    else let
+      val usize = entry.uncompressed_size
+    in
+      if gt_int_int(1, usize) then 0
+      else if gt_int_int(usize, 16384) then 0
+      else let
+        val data_off = zip_get_data_offset(idx)
+      in
+        if gt_int_int(0, data_off) then 0
+        else let
+          val usize1 = _checked_pos(usize)
+          val arr = ward_arr_alloc<byte>(usize1)
+          val _rd = ward_file_read(handle, data_off, arr, usize1)
+          val result = epub_parse_container_bytes(arr, usize1)
+          val () = ward_arr_free<byte>(arr)
+        in result end
+      end
+    end
+  end
+end
+
+fn epub_read_opf(handle: int): int = let
+  val opf_ptr = epub_get_opf_path_ptr()
+  val opf_len = epub_get_opf_path_len()
+  val idx = zip_find_entry(opf_ptr, opf_len)
+in
+  if gt_int_int(0, idx) then 0
+  else let
+    var entry: zip_entry
+    val found = zip_get_entry(idx, entry)
+  in
+    if eq_int_int(found, 0) then 0
+    else let
+      val usize = entry.uncompressed_size
+    in
+      if gt_int_int(1, usize) then 0
+      else if gt_int_int(usize, 16384) then 0
+      else let
+        val data_off = zip_get_data_offset(idx)
+      in
+        if gt_int_int(0, data_off) then 0
+        else let
+          val usize1 = _checked_pos(usize)
+          val arr = ward_arr_alloc<byte>(usize1)
+          val _rd = ward_file_read(handle, data_off, arr, usize1)
+          val result = epub_parse_opf_bytes(arr, usize1)
+          val () = ward_arr_free<byte>(arr)
+        in result end
+      end
+    end
+  end
+end
+
+(* ========== Render book cards into library list ========== *)
+
+(* Render "Ch X Pg Y" into a ward_arr(48) and set as text on node.
+ * Falls back to "Not started" if ch=0 and pg=0. *)
+fn render_position_text {l:agz}
+  (s: ward_dom_stream(l), nid: int, ch: int, pg: int)
+  : ward_dom_stream(l) =
+  if eq_int_int(ch, 0) then
+    if eq_int_int(pg, 0) then
+      set_text_cstr(s, nid, TEXT_NOT_STARTED, 11)
+    else let
+      (* Build "Ch 1 Pg Y" *)
+      val arr = ward_arr_alloc<byte>(48)
+      val () = ward_arr_set<byte>(arr, 0, _byte(char2int1('C')))
+      val () = ward_arr_set<byte>(arr, 1, _byte(char2int1('h')))
+      val () = ward_arr_set<byte>(arr, 2, _byte(32))
+      val ch_digits = itoa_to_arr(arr, ch + 1, 3)
+      val p = 3 + ch_digits
+      val () = ward_arr_set<byte>(arr, _idx48(p), _byte(32))
+      val () = ward_arr_set<byte>(arr, _idx48(p + 1), _byte(char2int1('P')))
+      val () = ward_arr_set<byte>(arr, _idx48(p + 2), _byte(char2int1('g')))
+      val () = ward_arr_set<byte>(arr, _idx48(p + 3), _byte(32))
+      val pg_digits = itoa_to_arr(arr, pg + 1, p + 4)
+      val total_len = p + 4 + pg_digits
+      val tl = g1ofg0(total_len)
+    in
+      if tl > 0 then
+        if tl < 48 then let
+          val @(used, rest) = ward_arr_split<byte>(arr, tl)
+          val () = ward_arr_free<byte>(rest)
+          val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+          val s = ward_dom_stream_set_text(s, nid, borrow, tl)
+          val () = ward_arr_drop<byte>(frozen, borrow)
+          val used = ward_arr_thaw<byte>(frozen)
+          val () = ward_arr_free<byte>(used)
+        in s end
+        else let val () = ward_arr_free<byte>(arr) in s end
+      else let val () = ward_arr_free<byte>(arr) in s end
+    end
+  else let
+    (* Build "Ch X Pg Y" *)
+    val arr = ward_arr_alloc<byte>(48)
+    val () = ward_arr_set<byte>(arr, 0, _byte(char2int1('C')))
+    val () = ward_arr_set<byte>(arr, 1, _byte(char2int1('h')))
+    val () = ward_arr_set<byte>(arr, 2, _byte(32))
+    val ch_digits = itoa_to_arr(arr, ch + 1, 3)
+    val p = 3 + ch_digits
+    val () = ward_arr_set<byte>(arr, _idx48(p), _byte(32))
+    val () = ward_arr_set<byte>(arr, _idx48(p + 1), _byte(char2int1('P')))
+    val () = ward_arr_set<byte>(arr, _idx48(p + 2), _byte(char2int1('g')))
+    val () = ward_arr_set<byte>(arr, _idx48(p + 3), _byte(32))
+    val pg_digits = itoa_to_arr(arr, pg + 1, p + 4)
+    val total_len = p + 4 + pg_digits
+    val tl = g1ofg0(total_len)
+  in
+    if tl > 0 then
+      if tl < 48 then let
+        val @(used, rest) = ward_arr_split<byte>(arr, tl)
+        val () = ward_arr_free<byte>(rest)
+        val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+        val s = ward_dom_stream_set_text(s, nid, borrow, tl)
+        val () = ward_arr_drop<byte>(frozen, borrow)
+        val used = ward_arr_thaw<byte>(frozen)
+        val () = ward_arr_free<byte>(used)
+      in s end
+      else let val () = ward_arr_free<byte>(arr) in s end
+    else let val () = ward_arr_free<byte>(arr) in s end
   end
 
-(* Initialize the application UI *)
-implement init() = let
-    val () = dom_init()
-    val () = epub_init()
-    val () = reader_init_ats()
-    val () = settings_init_ats()
-    val () = settings_set_root_id_ats(1)
-    val () = library_init_ats()
+fn render_library_with_books {l:agz}
+  (s: ward_dom_stream(l), list_id: int)
+  : ward_dom_stream(l) = let
+  val s = ward_dom_stream_remove_children(s, list_id)
+  val count = library_get_count()
+  fun loop {l:agz}(s: ward_dom_stream(l), i: int, n: int): ward_dom_stream(l) =
+    if gte_int_int(i, n) then s
+    else let
+      val card_id = dom_next_id()
+      val s = ward_dom_stream_create_element(s, card_id, list_id, tag_div(), 3)
+      val s = ward_dom_stream_set_attr_safe(s, card_id, attr_class(), 5, cls_book_card(), 9)
 
-    (* Get root proof *)
-    val pf_root = dom_root_proof()
+      val title_id = dom_next_id()
+      val s = ward_dom_stream_create_element(s, title_id, card_id, tag_div(), 3)
+      val s = ward_dom_stream_set_attr_safe(s, title_id, attr_class(), 5, cls_book_title(), 10)
+      val title_len = library_get_title(i, 0)
+      val s = set_text_from_sbuf(s, title_id, title_len)
 
-    (* Clear loading text BEFORE injecting styles.
-     * dom_set_text_offset with len=0 sets textContent='', which removes
-     * all children.  Must happen before inject_styles adds <style>. *)
-    val pf_root = dom_set_text_offset(pf_root, 1, 0, 0)
-    val () = dom_drop_proof(pf_root)
+      val author_id = dom_next_id()
+      val s = ward_dom_stream_create_element(s, author_id, card_id, tag_div(), 3)
+      val s = ward_dom_stream_set_attr_safe(s, author_id, attr_class(), 5, cls_book_author(), 11)
+      val author_len = library_get_author(i, 0)
+      val s = set_text_from_sbuf(s, author_id, author_len)
 
-    (* Inject CSS styles into document *)
-    val () = inject_styles()
+      val pos_id = dom_next_id()
+      val s = ward_dom_stream_create_element(s, pos_id, card_id, tag_div(), 3)
+      val s = ward_dom_stream_set_attr_safe(s, pos_id, attr_class(), 5, cls_book_position(), 13)
+      val s = render_position_text(s, pos_id, library_get_chapter(i), library_get_page(i))
 
-    (* Re-acquire root proof after inject_styles *)
-    val pf_root = dom_root_proof()
+      val btn_id = dom_next_id()
+      val () = reader_set_btn_id(i, btn_id)
+      val s = ward_dom_stream_create_element(s, btn_id, card_id, tag_button(), 6)
+      val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5, cls_read_btn(), 8)
+      val s = set_text_cstr(s, btn_id, TEXT_READ, 4)
+    in loop(s, i + 1, n) end
+in loop(s, 0, count) end
 
-    (* Create container div — all dom_set_attr_checked calls below
-     * consume a VALID_ATTR_NAME proof, enforcing Bug #3 prevention
-     * at compile time. *)
-    val cid = dom_next_id()
-    val () = set_container_id(cid)
-    val pf_container = dom_create_element(pf_root, 1, cid, get_str_div(), 3)
-    val pf_container = dom_set_attr_checked(lemma_attr_class(),
-                                     pf_container, cid,
-                                     get_str_class(), 5,
-                                     get_str_container(), 9)
+(* ========== Chapter loading ========== *)
 
-    (* Create title heading *)
-    val tid = dom_next_id()
-    val pf_title_h = dom_create_element(pf_container, cid, tid, get_str_h1(), 2)
-    val _len = copy_text_to_fetch(get_str_quire(), 5)
-    val pf_title_h = dom_set_text_offset(pf_title_h, tid, 0, 5)
-    val () = dom_drop_proof(pf_title_h)
-
-    (* Create hidden file input *)
-    val fid = dom_next_id()
-    val () = set_file_input_id(fid)
-    val pf_file = dom_create_element(pf_container, cid, fid, get_str_input(), 5)
-    val pf_file = dom_set_attr_checked(lemma_attr_type(),
-                                pf_file, fid,
-                                get_str_type(), 4,
-                                get_str_file(), 4)
-    val pf_file = dom_set_attr_checked(lemma_attr_accept(),
-                                pf_file, fid,
-                                get_str_accept(), 6,
-                                get_str_epub_accept(), 26)
-    val pf_file = dom_set_attr_checked(lemma_attr_class(),
-                                pf_file, fid,
-                                get_str_class(), 5,
-                                get_str_hidden(), 6)
-    val pf_file = dom_set_attr_checked(lemma_attr_id(),
-                                pf_file, fid,
-                                get_str_id_attr(), 2,
-                                get_str_file_input(), 10)
-    val () = dom_drop_proof(pf_file)
-
-    (* Create import button (label for file input) *)
-    val bid = dom_next_id()
-    val () = set_import_btn_id(bid)
-    val pf_btn = dom_create_element(pf_container, cid, bid, get_str_label(), 5)
-    val pf_btn = dom_set_attr_checked(lemma_attr_class(),
-                               pf_btn, bid,
-                               get_str_class(), 5,
-                               get_str_import_btn(), 10)
-    val pf_btn = dom_set_attr_checked(lemma_attr_for(),
-                               pf_btn, bid,
-                               get_str_for(), 3,
-                               get_str_file_input(), 10)
-    val _len = copy_text_to_fetch(get_str_import_text(), 11)
-    val pf_btn = dom_set_text_offset(pf_btn, bid, 0, 11)
-    val () = dom_drop_proof(pf_btn)
-
-    (* Create progress display *)
-    val pid = dom_next_id()
-    val () = set_progress_id(pid)
-    val pf_prog = dom_create_element(pf_container, cid, pid, get_str_p(), 1)
-    val pf_prog = dom_set_attr_checked(lemma_attr_class(),
-                                pf_prog, pid,
-                                get_str_class(), 5,
-                                get_str_progress_div(), 12)
-    val () = dom_drop_proof(pf_prog)
-
-    (* Create title display area (reused for import status) *)
-    val did = dom_next_id()
-    val () = set_title_id(did)
-    val pf_tdiv = dom_create_element(pf_container, cid, did, get_str_p(), 1)
-    val pf_tdiv = dom_set_attr_checked(lemma_attr_class(),
-                                pf_tdiv, did,
-                                get_str_class(), 5,
-                                get_str_title_div(), 9)
-    val () = dom_drop_proof(pf_tdiv)
-
-    (* Clean up proofs *)
-    val () = dom_drop_proof(pf_container)
-    val () = dom_drop_proof(pf_root)
+fn load_chapter(file_handle: int, chapter_idx: int, container_id: int): void = let
+  val path_len = epub_get_spine_path_len(chapter_idx)
+in
+  if gt_int_int(path_len, 0) then let
+    val path_ptr = epub_get_spine_path_ptr(chapter_idx)
+    val zip_idx = zip_find_entry(path_ptr, path_len)
   in
-    (* M15: Open database and load library.
-     * State transition: INIT -> LOADING_DB (APP_STATE_TRANSITION).
-     * on_kv_open_complete will handle the DB open result and
-     * continue the startup sequence: LOADING_DB -> LOADING_LIB -> LIBRARY. *)
-    open_db()
+    if gte_int_int(zip_idx, 0) then let
+      var entry: zip_entry
+      val found = zip_get_entry(zip_idx, entry)
+    in
+      if gt_int_int(found, 0) then let
+        val compression = entry.compression
+        val compressed_size = entry.compressed_size
+        val uncompressed_size = entry.uncompressed_size
+        val data_off = zip_get_data_offset(zip_idx)
+      in
+        if gt_int_int(data_off, 0) then
+          if eq_int_int(compression, 8) then let
+            (* Deflated — async decompression *)
+            val cs1 = (if gt_int_int(compressed_size, 0) then compressed_size else 1): int
+            val cs_pos = _checked_pos(cs1)
+            val arr = ward_arr_alloc<byte>(cs_pos)
+            val _rd = ward_file_read(file_handle, data_off, arr, cs_pos)
+            val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+            val p = ward_decompress(borrow, cs_pos, 2) (* deflate-raw *)
+            val () = ward_arr_drop<byte>(frozen, borrow)
+            val arr = ward_arr_thaw<byte>(frozen)
+            val () = ward_arr_free<byte>(arr)
+            val saved_cid = container_id
+            val p2 = ward_promise_then<int><int>(p,
+              llam (blob_handle: int): ward_promise_pending(int) => let
+                val dlen = ward_decompress_get_len()
+              in
+                if gt_int_int(dlen, 0) then let
+                  val dl = _checked_pos(dlen)
+                  val arr2 = ward_arr_alloc<byte>(dl)
+                  val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
+                  val () = ward_blob_free(blob_handle)
+                  val @(frozen2, borrow2) = ward_arr_freeze<byte>(arr2)
+                  val sax_len = ward_xml_parse_html(borrow2, dl)
+                  val () = ward_arr_drop<byte>(frozen2, borrow2)
+                  val arr2 = ward_arr_thaw<byte>(frozen2)
+                  val () = ward_arr_free<byte>(arr2)
+                in
+                  if gt_int_int(sax_len, 0) then let
+                    val sl = _checked_pos(sax_len)
+                    val sax_buf = ward_xml_get_result(sl)
+                    val dom = ward_dom_init()
+                    val s = ward_dom_stream_begin(dom)
+                    val s = render_tree(s, saved_cid, sax_buf, sl)
+                    val dom = ward_dom_stream_end(s)
+                    val () = ward_dom_fini(dom)
+                    val () = ward_arr_free<byte>(sax_buf)
+                    val () = measure_and_set_pages(saved_cid)
+                  in ward_promise_return<int>(0) end
+                  else ward_promise_return<int>(0)
+                end
+                else let
+                  val () = ward_blob_free(blob_handle)
+                in ward_promise_return<int>(0) end
+              end)
+            val () = ward_promise_discard<int>(p2)
+          in end
+          else if eq_int_int(compression, 0) then let
+            (* Stored — read directly, no decompression needed *)
+            val us1 = (if gt_int_int(uncompressed_size, 0)
+              then uncompressed_size else 1): int
+            val us_pos = _checked_pos(us1)
+            val arr = ward_arr_alloc<byte>(us_pos)
+            val _rd = ward_file_read(file_handle, data_off, arr, us_pos)
+            val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+            val sax_len = ward_xml_parse_html(borrow, us_pos)
+            val () = ward_arr_drop<byte>(frozen, borrow)
+            val arr = ward_arr_thaw<byte>(frozen)
+            val () = ward_arr_free<byte>(arr)
+          in
+            if gt_int_int(sax_len, 0) then let
+              val sl = _checked_pos(sax_len)
+              val sax_buf = ward_xml_get_result(sl)
+              val dom = ward_dom_init()
+              val s = ward_dom_stream_begin(dom)
+              val s = render_tree(s, container_id, sax_buf, sl)
+              val dom = ward_dom_stream_end(s)
+              val () = ward_dom_fini(dom)
+              val () = ward_arr_free<byte>(sax_buf)
+              val () = measure_and_set_pages(container_id)
+            in end
+            else ()
+          end
+          else () (* unsupported compression method *)
+        else ()
+      end
+      else ()
+    end
+    else ()
   end
+  else ()
+end
 
-(* C implementations for callbacks *)
-extern fun process_event_impl(): void = "mac#"
-extern fun on_file_open_impl(handle: int, size: int): void = "mac#"
-extern fun on_decompress_impl(handle: int, size: int): void = "mac#"
-extern fun on_kv_complete_impl(success: int): void = "mac#"
-extern fun on_kv_open_impl(success: int): void = "mac#"
-extern fun on_kv_get_complete_impl(len: int): void = "mac#"
-extern fun on_kv_get_blob_complete_impl(handle: int, size: int): void = "mac#"
+(* ========== Forward declarations for mutual recursion ========== *)
 
-implement process_event() = process_event_impl()
+extern fun render_library(root_id: int): void
+extern fun enter_reader(root_id: int, book_index: int): void
+
+(* ========== Reader keyboard handler ========== *)
+
+fn on_reader_keydown(payload_len: int, root_id: int): void = let
+  val pl = g1ofg0(payload_len)
+in
+  (* Keydown payload: [u8:keyLen][bytes:key][u8:flags]
+   * Minimum payload sizes: Space=3, Escape=8, ArrowLeft=11, ArrowRight=12 *)
+  if gt1_int_int(pl, 2) then let
+    val payload = ward_event_get_payload(pl)
+    val key_len = byte2int0(ward_arr_get<byte>(payload, 0))
+    val k0 = byte2int0(ward_arr_get<byte>(payload, 1))
+    val () = ward_arr_free<byte>(payload)
+    val cid = reader_get_container_id()
+  in
+    if eq_int_int(key_len, 6) then
+      (* "Escape": key_len=6, k0='E' (69) *)
+      if eq_int_int(k0, 69) then let
+        val () = reader_save_and_exit()
+        val () = render_library(root_id)
+      in end
+      else ()
+    else if eq_int_int(key_len, 10) then
+      (* "ArrowRight": key_len=10, k0='A' (65) *)
+      if eq_int_int(k0, 65) then let
+        val () = reader_next_page()
+        val () = apply_page_transform(cid)
+      in end
+      else ()
+    else if eq_int_int(key_len, 9) then
+      (* "ArrowLeft": key_len=9, k0='A' (65) *)
+      if eq_int_int(k0, 65) then let
+        val () = reader_prev_page()
+        val () = apply_page_transform(cid)
+      in end
+      else ()
+    else if eq_int_int(key_len, 1) then
+      (* " " (Space): key_len=1, k0=' ' (32) *)
+      if eq_int_int(k0, 32) then let
+        val () = reader_next_page()
+        val () = apply_page_transform(cid)
+      in end
+      else ()
+    else ()
+  end
+  else ()
+end
+
+(* ========== Render library view ========== *)
+
+implement render_library(root_id) = let
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+  val s = ward_dom_stream_remove_children(s, root_id)
+
+  (* Import button: <label class="import-btn">Import<input ...></label> *)
+  val label_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, label_id, root_id, tag_label(), 5)
+  val s = ward_dom_stream_set_attr_safe(s, label_id, attr_class(), 5, cls_import_btn(), 10)
+
+  val import_st = let
+    val b = ward_text_build(6)
+    val b = ward_text_putc(b, 0, 73) (* 'I' *)
+    val b = ward_text_putc(b, 1, char2int1('m'))
+    val b = ward_text_putc(b, 2, char2int1('p'))
+    val b = ward_text_putc(b, 3, char2int1('o'))
+    val b = ward_text_putc(b, 4, char2int1('r'))
+    val b = ward_text_putc(b, 5, char2int1('t'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, label_id, import_st, 6)
+
+  val input_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, input_id, label_id, tag_input(), 5)
+  val s = ward_dom_stream_set_attr_safe(s, input_id, attr_type(), 4, st_file(), 4)
+  val s = set_attr_cstr(s, input_id, attr_accept(), 6, TEXT_EPUB_EXT, 5)
+
+  (* Library list *)
+  val list_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, list_id, root_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, list_id, attr_class(), 5, cls_library_list(), 12)
+
+  val count = library_get_count()
+in
+  if gt_int_int(count, 0) then let
+    (* Render book cards *)
+    val s = render_library_with_books(s, list_id)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+
+    (* Register change listener on file input *)
+    val saved_input_id = input_id
+    val saved_list_id = list_id
+    val saved_root = root_id
+    val () = ward_add_event_listener(
+      input_id, evt_change(), 6, 1,
+      lam (_payload_len: int): int => let
+        val p = ward_file_open(saved_input_id)
+        val p2 = ward_promise_then<int><int>(p,
+          llam (handle: int): ward_promise_pending(int) => let
+            val file_size = ward_file_get_size()
+            val _nentries = zip_open(handle, file_size)
+            val ok1 = epub_read_container(handle)
+            val ok2 = (if gt_int_int(ok1, 0)
+              then epub_read_opf(handle) else 0): int
+            val _book_idx = (if gt_int_int(ok2, 0)
+              then library_add_book() else 0 - 1): int
+            val () = reader_set_file_handle(handle)
+            val dom = ward_dom_init()
+            val s = ward_dom_stream_begin(dom)
+            val s = render_library_with_books(s, saved_list_id)
+            val dom = ward_dom_stream_end(s)
+            val () = ward_dom_fini(dom)
+          in ward_promise_return<int>(0) end)
+        val () = ward_promise_discard<int>(p2)
+      in 0 end
+    )
+
+    (* Register click listeners on read buttons *)
+    fun reg_btns(i: int, n: int, root: int): void =
+      if gte_int_int(i, n) then ()
+      else let
+        val btn_id = reader_get_btn_id(i)
+        val book_idx = i
+        val saved_r = root
+      in
+        if gt_int_int(btn_id, 0) then let
+          val () = ward_add_event_listener(
+            btn_id, evt_click(), 5, 2 + i,
+            lam (_pl: int): int => let
+              val () = enter_reader(saved_r, book_idx)
+            in 0 end
+          )
+        in reg_btns(i + 1, n, root) end
+        else reg_btns(i + 1, n, root)
+      end
+    val () = reg_btns(0, count, root_id)
+  in end
+  else let
+    (* Empty library message *)
+    val empty_id = dom_next_id()
+    val s = ward_dom_stream_create_element(s, empty_id, list_id, tag_div(), 3)
+    val s = ward_dom_stream_set_attr_safe(s, empty_id, attr_class(), 5, cls_empty_lib(), 9)
+    val s = set_text_cstr(s, empty_id, TEXT_NO_BOOKS, 12)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+
+    (* Register change listener on file input *)
+    val saved_input_id = input_id
+    val saved_list_id = list_id
+    val saved_root = root_id
+    val () = ward_add_event_listener(
+      input_id, evt_change(), 6, 1,
+      lam (_payload_len: int): int => let
+        val p = ward_file_open(saved_input_id)
+        val p2 = ward_promise_then<int><int>(p,
+          llam (handle: int): ward_promise_pending(int) => let
+            val file_size = ward_file_get_size()
+            val _nentries = zip_open(handle, file_size)
+            val ok1 = epub_read_container(handle)
+            val ok2 = (if gt_int_int(ok1, 0)
+              then epub_read_opf(handle) else 0): int
+            val _book_idx = (if gt_int_int(ok2, 0)
+              then library_add_book() else 0 - 1): int
+            val () = reader_set_file_handle(handle)
+            val dom = ward_dom_init()
+            val s = ward_dom_stream_begin(dom)
+            val s = render_library_with_books(s, saved_list_id)
+            val dom = ward_dom_stream_end(s)
+            val () = ward_dom_fini(dom)
+
+            (* Register click listeners on newly rendered read buttons *)
+            val btn_count = library_get_count()
+            fun reg_new_btns(i: int, n: int, root: int): void =
+              if gte_int_int(i, n) then ()
+              else let
+                val bid = reader_get_btn_id(i)
+                val bidx = i
+                val sr = root
+              in
+                if gt_int_int(bid, 0) then let
+                  val () = ward_add_event_listener(
+                    bid, evt_click(), 5, 2 + i,
+                    lam (_pl2: int): int => let
+                      val () = enter_reader(sr, bidx)
+                    in 0 end
+                  )
+                in reg_new_btns(i + 1, n, root) end
+                else reg_new_btns(i + 1, n, root)
+              end
+            val () = reg_new_btns(0, btn_count, saved_root)
+          in ward_promise_return<int>(0) end)
+        val () = ward_promise_discard<int>(p2)
+      in 0 end
+    )
+  in end
+end
+
+(* ========== Enter reader view ========== *)
+
+implement enter_reader(root_id, book_index) = let
+  val () = reader_enter(root_id, 0)
+  val () = reader_set_book_index(book_index)
+  val file_handle = reader_get_file_handle()
+
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+  val s = ward_dom_stream_remove_children(s, root_id)
+
+  (* Create .reader-viewport with tabindex="0" for keyboard focus *)
+  val viewport_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, viewport_id, root_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, viewport_id, attr_class(), 5,
+    cls_reader_viewport(), 15)
+  val s = ward_dom_stream_set_attr_safe(s, viewport_id, attr_tabindex(), 8,
+    val_zero(), 1)
+
+  (* Create .chapter-container *)
+  val container_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, container_id, viewport_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, container_id, attr_class(), 5,
+    cls_chapter_container(), 17)
+
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
+
+  (* Store IDs *)
+  val () = reader_set_viewport_id(viewport_id)
+  val () = reader_set_container_id(container_id)
+
+  (* Register keydown listener on viewport *)
+  val saved_root = root_id
+  val () = ward_add_event_listener(
+    viewport_id, evt_keydown(), 7, 50,
+    lam (payload_len: int): int => let
+      val () = on_reader_keydown(payload_len, saved_root)
+    in 0 end
+  )
+
+  (* Register click listener on viewport for page navigation *)
+  val saved_container = container_id
+  val () = ward_add_event_listener(
+    viewport_id, evt_click(), 5, 51,
+    lam (pl: int): int => let
+      val pl1 = g1ofg0(pl)
+    in
+      if gt1_int_int(pl1, 19) then let
+        (* Click payload: f64 clientX (0-7), f64 clientY (8-15), i32 target (16-19) *)
+        val payload = ward_event_get_payload(pl1)
+        val click_x = read_payload_click_x(payload)
+        val () = ward_arr_free<byte>(payload)
+        val vw = measure_node_width(reader_get_viewport_id())
+      in
+        if gt_int_int(vw, 0) then let
+          (* Right 75% → next page, left 25% → prev page *)
+          val threshold = div_int_int(vw, 4)
+        in
+          if gt_int_int(click_x, threshold) then let
+            val () = reader_next_page()
+            val () = apply_page_transform(saved_container)
+          in 0 end
+          else let
+            val () = reader_prev_page()
+            val () = apply_page_transform(saved_container)
+          in 0 end
+        end
+        else 0
+      end
+      else 0
+    end
+  )
+
+  (* Load first chapter *)
+  val () = load_chapter(file_handle, 0, container_id)
+in end
+
+(* ========== Entry point ========== *)
+
+implement ward_node_init(root_id) = let
+  val st = app_state_init()
+  val () = app_state_register(st)
+  val () = render_library(root_id)
+in end
+
+(* Legacy callback stubs *)
+implement init() = ()
+implement process_event() = ()
 implement on_fetch_complete(status, len) = ()
 implement on_timer_complete(callback_id) = ()
-implement on_file_open_complete(handle, size) = on_file_open_impl(handle, size)
-implement on_decompress_complete(handle, size) = on_decompress_impl(handle, size)
-implement on_kv_complete(success) = on_kv_complete_impl(success)
-implement on_kv_get_complete(len) = on_kv_get_complete_impl(len)
-implement on_kv_get_blob_complete(handle, size) = on_kv_get_blob_complete_impl(handle, size)
+implement on_file_open_complete(handle, size) = ()
+implement on_decompress_complete(handle, size) = ()
+implement on_kv_complete(success) = ()
+implement on_kv_get_complete(len) = ()
+implement on_kv_get_blob_complete(handle, size) = ()
 implement on_clipboard_copy_complete(success) = ()
-implement on_kv_open_complete(success) = on_kv_open_impl(success)
+implement on_kv_open_complete(success) = ()

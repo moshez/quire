@@ -11,10 +11,13 @@
   <link rel="apple-touch-icon" href="/icon-192.png">
 </head>
 <body>
-  <div id="loading" data-wasm data-node-id="1">Loading...</div>
+  <div id="app">Loading...</div>
   <script type="module">
-    import { initBridge } from './bridge.js';
-    await initBridge('quire.wasm');
+    import { loadWard } from './vendor/ward/lib/ward_bridge.mjs';
+    const root = document.getElementById('app');
+    const resp = await fetch('quire.wasm');
+    const bytes = await resp.arrayBuffer();
+    await loadWard(bytes, root);
   </script>
   <script>
     if ('serviceWorker' in navigator) {

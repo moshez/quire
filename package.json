@@ -4,7 +4,7 @@
   "description": "PWA e-reader with ATS2/WASM and generic JS bridge",
   "type": "module",
   "scripts": {
-    "test": "vitest run --exclude 'e2e/**'",
+    "test": "vitest run",
     "serve": "serve ."
   },
   "devDependencies": {

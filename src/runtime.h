@@ -163,8 +163,13 @@ extern unsigned char* get_string_buffer_ptr(void);
 extern void js_apply_diffs(void);
 
 /* DOM next-node-id state (used by dom.dats via extern fun) */
-extern unsigned int get_dom_next_node_id(void);
-extern void set_dom_next_node_id(unsigned int v);
+extern int get_dom_next_node_id(void);
+extern int set_dom_next_node_id(int v);
+
+/* DOM lookup tables and copy (used by dom.dats tree renderer) */
+extern int lookup_tag(void *base, int offset, int name_len);
+extern int lookup_attr(void *base, int offset, int name_len);
+extern int _copy_to_arr(void *dst, void *src, int offset, int count);
 
 /* Byte-level memory access for ATS2 freestanding (no prelude).
  * These are the irreducible primitives that ATS2 cannot express
@@ -176,19 +181,30 @@ extern void set_dom_next_node_id(unsigned int v);
 
 /* Bitwise operations for ATS2 freestanding (no prelude) */
 #define quire_band(a, b) ((int)((unsigned int)(a) & (unsigned int)(b)))
+#define quire_bor(a, b) ((int)((unsigned int)(a) | (unsigned int)(b)))
+#define quire_bsl(a, n) ((int)((unsigned int)(a) << (n)))
 #define quire_bsr(a, n) ((int)((unsigned int)(a) >> (n)))
 #define quire_int2uint(x) ((unsigned int)(x))
+#define quire_byte2int(b) ((int)(unsigned char)(b))
+
+/* Bounds-checked byte read from ward_arr (erased to ptr at runtime).
+ * Returns byte value if 0 <= off < len, else 0. */
+#define _ward_arr_byte(arr, off, len) \
+  (((off) >= 0 && (off) < (len)) ? ((int)((unsigned char*)(arr))[(off)]) : 0)
 
 /* Integer arithmetic for ATS2 freestanding (replaces prelude templates) */
 #define quire_add(a, b) ((a) + (b))
 #define quire_mul(a, b) ((a) * (b))
 #define quire_gte(a, b) ((a) >= (b))
 #define quire_gt(a, b) ((a) > (b))
+#define quire_lt(a, b) ((a) < (b))
+#define quire_lte(a, b) ((a) <= (b))
 #define quire_eq(a, b) ((a) == (b))
 #define quire_neq(a, b) ((a) != (b))
 #define quire_ptr_eq(a, b) ((a) == (b))
 #define quire_sub(a, b) ((a) - (b))
 #define quire_neg(a) (-(a))
+#define quire_ptr_add(p, n) ((void*)((unsigned char*)(p) + (n)))
 
 /* Null pointer for proof construction */
 #define quire_null_ptr() ((void*)0)

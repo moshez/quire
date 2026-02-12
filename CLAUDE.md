@@ -33,6 +33,8 @@ When completing a milestone from quire-design.md §8:
 3. **All UI logic in WASM** — bridge forwards events and applies diffs
 4. **WASM owns node IDs** — assigned via CREATE_ELEMENT diffs
 5. **Dependent types enforce correctness** — if it compiles, diffs are valid
+6. **Never work around ward bugs** — if ward (vendor/ward/) has a bug, STOP and give the user a bug report instead of working around it. Do not patch vendor/ files or add workarounds in quire code. The user will report the issue upstream and have it fixed.
+7. **Minimize C code** — Any function added to C (`quire_runtime.c`, `quire_prelude.h`) must be accompanied by a justification that includes: (a) external research (links, references) showing that this operation is conventionally done in C rather than a type-safe language (e.g., IEEE 754 reinterpretation, hardware intrinsics), (b) what alternative ATS2-only solutions were tried and why they don't work, (c) what the trade-offs are, and (d) why the C implementation is safe (e.g., no truncation, no overflow, no aliasing). Prefer ATS2 with ward_arr over C global buffers. If an algorithm can be expressed with ward_arr_set/get, div/mod, and existing extern funs, it belongs in ATS2.
 
 ## Type Safety Requirements
 
@@ -383,6 +385,34 @@ should use only compile-time string constants and document which constructor app
 dom_set_attr(pf, id, (void*)str_class, 5, (void*)str_value, val_len);
 ```
 
+### 4. set_text Destroying Sibling/Child Nodes (TEXT_RENDER_SAFE)
+
+**Bug**: `ward_dom_stream_set_text` sets `textContent`, which REPLACES all
+existing children with a single text node. In parsed HTML SAX output,
+whitespace text nodes appear between sibling elements (from XHTML
+indentation), and the parser may split large text into multiple TEXT nodes.
+Calling `set_text` on a parent that already has children destroys them.
+
+**Root cause**: `render_tree`'s TEXT handler called `set_text(parent, ...)`
+unconditionally. Whitespace text between `<h1>` and `<p>` wiped the `<h1>`.
+Non-whitespace text after element children wiped all siblings.
+
+**Fix (ENFORCED)**: `render_tree` tracks `has_child` (0 or 1) per scope:
+- `has_child=0`: parent has no DOM children. `set_text(parent)` is safe.
+- `has_child=1`: parent has existing children. TEXT is wrapped in a `<span>`
+  and `set_text` is called on the span, not the parent.
+- Whitespace-only TEXT nodes are always skipped (optimization).
+- `has_child` transitions 0→1 after any TEXT or ELEMENT_OPEN creates a
+  DOM node. Entering a child scope resets to 0.
+
+See `TEXT_RENDER_SAFE` dataprop in dom.sats and `SIBLING_CONTINUATION`
+invariant (prevents the first-element-only bug in loop recursion shape).
+
+**Proof obligation**: Any code that calls `set_text` on a node must ensure
+no existing children will be destroyed. In `render_tree`, the `has_child`
+parameter structurally enforces this. New code adding `set_text` calls must
+document which invariant guarantees safety.
+
 ### Guidelines for New Code
 
 1. **Prefer ATS over C blocks**: ATS type checking catches proof violations
@@ -415,6 +445,14 @@ dom_set_attr(pf, id, (void*)str_class, 5, (void*)str_value, val_len);
 7. **Single pending flag invariant**: At most one async pending flag
    (`settings_is_save_pending`, `library_is_metadata_pending`, etc.) may
    be active at any time. See `SINGLE_PENDING` dataprop in library.sats.
+
+8. **Every bug fix must add a preventing proof or invariant**: When fixing a bug,
+   don't just fix the code — add a dataprop, absprop, or documented structural
+   invariant that makes the same class of bug impossible to reintroduce. If the
+   invariant can be encoded as a dataprop (data values, state transitions, bounds),
+   use a dataprop. If it's structural (recursion shape, continuation pattern),
+   document it as a formal invariant in the `.sats` file with the specific bug
+   class it prevents. This is standard operating procedure for all bug fixes.
 
 ### Proof Architecture
 

@@ -1,337 +1,368 @@
-(* zip.dats - ZIP file parser implementation
+(* zip.dats - ZIP file parser implementation — pure ATS2
  *
  * Parses ZIP central directory to enumerate entries.
- * Uses js_file_read_chunk from bridge to read file data.
+ * All byte-level parsing done via ward_arr_get<byte>.
+ * Entry storage kept in quire_runtime.c as module-private statics.
  *)
 
 #define ATS_DYNLOADFLAG 0
 
-staload "zip.sats"
+#include "share/atspre_staload.hats"
+staload "./zip.sats"
+staload "./app_state.sats"
+staload "./../vendor/ward/lib/memory.sats"
+staload "./../vendor/ward/lib/file.sats"
+staload _ = "./../vendor/ward/lib/memory.dats"
+staload _ = "./../vendor/ward/lib/file.dats"
 
-%{^
-/* ZIP file parsing implementation
- *
- * ZIP format (simplified for EPUB):
- * - End of Central Directory (EOCD) at end of file: signature 0x06054b50
- * - Central Directory: list of file headers
- * - Local file headers + compressed data throughout file
- *
- * Strategy:
- * 1. Find EOCD by searching backwards from end of file
- * 2. Parse EOCD to get central directory offset
- * 3. Parse central directory to build entry list
- * 4. For each entry, data offset = local_header_offset + local_header_size
- */
+(* ========== Freestanding arithmetic ========== *)
 
-#include <stdint.h>
+extern fun add_int_int(a: int, b: int): int = "mac#quire_add"
+extern fun sub_int_int(a: int, b: int): int = "mac#quire_sub"
+extern fun gte_int_int(a: int, b: int): bool = "mac#quire_gte"
+extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
+extern fun eq_int_int(a: int, b: int): bool = "mac#quire_eq"
+extern fun neq_int_int(a: int, b: int): bool = "mac#quire_neq"
+extern fun bor(a: int, b: int): int = "mac#quire_bor"
+extern fun bsl(a: int, b: int): int = "mac#quire_bsl"
+overload + with add_int_int of 10
+overload - with sub_int_int of 10
 
-extern unsigned char* get_fetch_buffer_ptr(void);
-extern unsigned char* get_string_buffer_ptr(void);
+(* Bounds-checked byte read directly from ward_arr.
+ * ward_arr erases to ptr at runtime; macro does the bounds check. *)
+extern fun ward_arr_byte {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), off: int, len: int n): int = "mac#_ward_arr_byte"
 
-/* Bridge import for reading file chunks */
-extern int js_file_read_chunk(int handle, int offset, int length);
+(* Runtime-checked positive: used after verifying x > 0 at runtime. *)
+extern castfn _checked_pos(x: int): [n:pos] int n
 
-/* Maximum entries we can handle */
-#define MAX_ZIP_ENTRIES 256
+(* Runtime-checked bounded count *)
+extern castfn _checked_bounded(x: int): [n:nat | n <= 256] int n
 
-/* ZIP signatures */
-#define EOCD_SIGNATURE 0x06054b50
-#define CD_SIGNATURE   0x02014b50
-#define LOCAL_SIGNATURE 0x04034b50
+(* ========== C storage accessors (quire_runtime.c) ========== *)
 
-/* Entry storage */
-typedef struct {
-    int file_handle;
-    int name_offset;        /* offset in our name buffer */
-    int name_len;
-    int compression;
-    int compressed_size;
-    int uncompressed_size;
-    int local_header_offset;
-} zip_entry_t;
+(* Array-backed storage stays in C — only arrays, not simple int globals *)
+extern fun _zip_entry_file_handle(i: int): int = "mac#"
+extern fun _zip_entry_name_offset(i: int): int = "mac#"
+extern fun _zip_entry_name_len(i: int): int = "mac#"
+extern fun _zip_entry_compression(i: int): int = "mac#"
+extern fun _zip_entry_compressed_size(i: int): int = "mac#"
+extern fun _zip_entry_uncompressed_size(i: int): int = "mac#"
+extern fun _zip_entry_local_offset(i: int): int = "mac#"
+extern fun _zip_name_char(off: int): int = "mac#"
+extern fun _zip_name_buf_put(off: int, byte_val: int): int = "mac#"
 
-static zip_entry_t entries[MAX_ZIP_ENTRIES];
-static int entry_count = 0;
-static int current_file_handle = 0;
+(* Store entry at a specific index — caller manages count via app_state *)
+extern fun _zip_store_entry_at(idx: int, fh: int, no: int, nl: int,
+  comp: int, cs: int, us: int, lo: int): int = "mac#"
 
-/* Name buffer - stores all entry names concatenated */
-#define NAME_BUFFER_SIZE 8192
-static char name_buffer[NAME_BUFFER_SIZE];
-static int name_buffer_offset = 0;
+extern fun quire_get_byte(p: ptr, off: int): int = "mac#"
 
-/* Read uint16 little-endian from buffer */
-static uint16_t read_u16(const unsigned char* buf) {
-    return (uint16_t)buf[0] | ((uint16_t)buf[1] << 8);
-}
+(* ========== App state wrappers for ZIP int fields ========== *)
 
-/* Read uint32 little-endian from buffer */
-static uint32_t read_u32(const unsigned char* buf) {
-    return (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) |
-           ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24);
-}
+fn _get_zip_count(): int = let
+  val st = app_state_load()
+  val c = app_get_zip_entry_count(st)
+  val () = app_state_store(st)
+in c end
 
-/* Find EOCD record by searching backwards
- * Returns offset of EOCD or -1 if not found */
-static int find_eocd(int file_handle, int file_size) {
-    unsigned char* buf = get_fetch_buffer_ptr();
+fn _set_zip_count(v: int): void = let
+  val st = app_state_load()
+  val () = app_set_zip_entry_count(st, v)
+  val () = app_state_store(st)
+in end
 
-    /* EOCD is at least 22 bytes, search in last 64KB + 22 bytes */
-    int search_size = file_size < 65558 ? file_size : 65558;
-    int search_start = file_size - search_size;
+fn _get_zip_handle(): int = let
+  val st = app_state_load()
+  val h = app_get_zip_file_handle(st)
+  val () = app_state_store(st)
+in h end
 
-    /* Read the search region */
-    int read_len = js_file_read_chunk(file_handle, search_start, search_size);
-    if (read_len <= 22) return -1;
+fn _set_zip_handle(h: int): void = let
+  val st = app_state_load()
+  val () = app_set_zip_file_handle(st, h)
+  val () = app_state_store(st)
+in end
 
-    /* Search backwards for EOCD signature */
-    for (int i = read_len - 22; i >= 0; i--) {
-        if (read_u32(buf + i) == EOCD_SIGNATURE) {
-            return search_start + i;
-        }
+fn _get_zip_name_off(): int = let
+  val st = app_state_load()
+  val o = app_get_zip_name_offset(st)
+  val () = app_state_store(st)
+in o end
+
+fn _advance_zip_name(n: int): void = let
+  val st = app_state_load()
+  val o = app_get_zip_name_offset(st)
+  val () = app_set_zip_name_offset(st, o + n)
+  val () = app_state_store(st)
+in end
+
+fn _zip_reset_state(): void = let
+  val st = app_state_load()
+  val () = app_set_zip_entry_count(st, 0)
+  val () = app_set_zip_file_handle(st, 0)
+  val () = app_set_zip_name_offset(st, 0)
+  val () = app_state_store(st)
+in end
+
+(* ========== ZIP signature constants ========== *)
+
+(* Proof implementations — constraint solver verifies the equalities.
+ * If any decimal is wrong, the build fails here. *)
+primplement lemma_eocd_sig() = ()
+primplement lemma_cd_sig() = ()
+primplement lemma_local_sig() = ()
+
+#define EOCD_SIG  101010256  (* 0x06054b50 = LE_U32(80,75,5,6) — verified by lemma_eocd_sig *)
+#define CD_SIG     33639248  (* 0x02014b50 = LE_U32(80,75,1,2) — verified by lemma_cd_sig *)
+#define LOCAL_SIG  67324752  (* 0x04034b50 = LE_U32(80,75,3,4) — verified by lemma_local_sig *)
+
+(* ========== Multi-byte reading from ward_arr ========== *)
+
+fn arr_u16 {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), off: int, len: int n): int = let
+  val b0 = ward_arr_byte(arr, off, len)
+  val b1 = ward_arr_byte(arr, off + 1, len)
+in bor(b0, bsl(b1, 8)) end
+
+fn arr_u32 {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), off: int, len: int n): int = let
+  val b0 = ward_arr_byte(arr, off, len)
+  val b1 = ward_arr_byte(arr, off + 1, len)
+  val b2 = ward_arr_byte(arr, off + 2, len)
+  val b3 = ward_arr_byte(arr, off + 3, len)
+in bor(bor(b0, bsl(b1, 8)), bor(bsl(b2, 16), bsl(b3, 24))) end
+
+(* ========== ZIP parsing functions (pure ATS2) ========== *)
+
+(* Find EOCD by searching backwards. Returns file offset or -1. *)
+fn find_eocd {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), read_len: int n, search_start: int): int = let
+  fun loop {l:agz}{n:pos}
+    (arr: !ward_arr(byte, l, n), i: int, len: int n, ss: int): int =
+    if gt_int_int(0, i) then 0 - 1
+    else if eq_int_int(arr_u32(arr, i, len), EOCD_SIG) then ss + i
+    else loop(arr, i - 1, len, ss)
+in
+  if gt_int_int(22, read_len) then 0 - 1
+  else loop(arr, read_len - 22, read_len, search_start)
+end
+
+(* Parse EOCD. Returns (cd_offset, entry_count) or (-1, 0). *)
+fn parse_eocd {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), read_len: int n): @(int, int) =
+  if gt_int_int(22, read_len) then @(0 - 1, 0)
+  else if neq_int_int(arr_u32(arr, 0, read_len), EOCD_SIG) then @(0 - 1, 0)
+  else @(arr_u32(arr, 16, read_len), arr_u16(arr, 10, read_len))
+
+(* Parse one CD entry from buffer. Stores via C storage if valid.
+ * Returns total header size or 0 on error. *)
+fn parse_cd_entry {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), read_len: int n, file_handle: int): int =
+  if gt_int_int(46, read_len) then 0
+  else if neq_int_int(arr_u32(arr, 0, read_len), CD_SIG) then 0
+  else let
+    val compression = arr_u16(arr, 10, read_len)
+    val compressed_size = arr_u32(arr, 20, read_len)
+    val uncompressed_size = arr_u32(arr, 24, read_len)
+    val name_len = arr_u16(arr, 28, read_len)
+    val extra_len = arr_u16(arr, 30, read_len)
+    val comment_len = arr_u16(arr, 32, read_len)
+    val local_offset = arr_u32(arr, 42, read_len)
+    val name_buf_off = _get_zip_name_off()
+    val entry_count = _get_zip_count()
+  in
+    if gt_int_int(1, name_len) then 46 + extra_len + comment_len
+    else if gte_int_int(name_buf_off + name_len, 8192) then
+      46 + name_len + extra_len + comment_len
+    else if gte_int_int(entry_count, 256) then
+      46 + name_len + extra_len + comment_len
+    else if gt_int_int(46 + name_len, read_len) then
+      46 + name_len + extra_len + comment_len
+    else let
+      (* Copy name bytes from arr to name buffer *)
+      fun copy_name {l:agz}{n:pos}
+        (arr: !ward_arr(byte, l, n), j: int, nlen: int,
+         dest_off: int, alen: int n): void =
+        if gte_int_int(j, nlen) then ()
+        else let
+          val b = ward_arr_byte(arr, 46 + j, alen)
+          val _ = _zip_name_buf_put(dest_off + j, b)
+        in copy_name(arr, j + 1, nlen, dest_off, alen) end
+      val () = copy_name(arr, 0, name_len, name_buf_off, read_len)
+      val _ = _zip_store_entry_at(entry_count, file_handle, name_buf_off,
+                name_len, compression, compressed_size, uncompressed_size,
+                local_offset)
+      val () = _set_zip_count(entry_count + 1)
+      val () = _advance_zip_name(name_len)
+    in 46 + name_len + extra_len + comment_len end
+  end
+
+(* Parse local file header. Returns data offset or -1. *)
+fn parse_local_header {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), read_len: int n, local_offset: int): int =
+  if gt_int_int(30, read_len) then 0 - 1
+  else if neq_int_int(arr_u32(arr, 0, read_len), LOCAL_SIG) then 0 - 1
+  else let
+    val name_len = arr_u16(arr, 26, read_len)
+    val extra_len = arr_u16(arr, 28, read_len)
+  in local_offset + 30 + name_len + extra_len end
+
+(* ========== Public API implementations ========== *)
+
+implement zip_init() = _zip_reset_state()
+
+implement zip_open(file_handle, file_size) = let
+  val () = zip_init()
+  val () = _set_zip_handle(file_handle)
+  val search_size = (if file_size < 65558 then file_size else 65558): int
+in
+  if gt_int_int(1, search_size) then _checked_bounded(0)
+  else let
+    val search_start = file_size - search_size
+    val sz = _checked_pos(search_size)
+    val buf = ward_arr_alloc<byte>(sz)
+    val _read_len = ward_file_read(file_handle, search_start, buf, sz)
+    val eocd_file_offset = find_eocd(buf, sz, search_start)
+    val () = ward_arr_free<byte>(buf)
+  in
+    if gt_int_int(0, eocd_file_offset) then _checked_bounded(0)
+    else let
+      val arr2 = ward_arr_alloc<byte>(22)
+      val eocd_len = ward_file_read(file_handle, eocd_file_offset, arr2, 22)
+      val @(cd_offset, expected_count) = parse_eocd(arr2, 22)
+      val () = ward_arr_free<byte>(arr2)
+    in
+      if gt_int_int(0, cd_offset) then _checked_bounded(0)
+      else let
+        fun loop(handle: int, offset: int, remaining: int): void =
+          if gt_int_int(1, remaining) then ()
+          else if gte_int_int(_get_zip_count(), 256) then ()
+          else let
+            val arr3 = ward_arr_alloc<byte>(512)
+            val rlen = ward_file_read(handle, offset, arr3, 512)
+            val entry_size = parse_cd_entry(arr3, 512, handle)
+            val () = ward_arr_free<byte>(arr3)
+          in
+            if gt_int_int(1, entry_size) then ()
+            else loop(handle, offset + entry_size, remaining - 1)
+          end
+        val () = loop(file_handle, cd_offset, expected_count)
+      in _checked_bounded(_get_zip_count()) end
+    end
+  end
+end
+
+implement zip_get_entry(index, entry) = let
+  val count = _get_zip_count()
+  fun set_default(entry: &zip_entry? >> zip_entry): void =
+    entry := @{
+      file_handle = 0, name_offset = 0, name_len = 0,
+      compression = 0, compressed_size = 0, uncompressed_size = 0,
+      local_header_offset = 0
     }
-    return -1;
-}
-
-/* Parse EOCD record and return central directory offset */
-static int parse_eocd(int file_handle, int eocd_offset, int* out_entry_count) {
-    unsigned char* buf = get_fetch_buffer_ptr();
-
-    /* Read EOCD record (22 bytes minimum) */
-    int read_len = js_file_read_chunk(file_handle, eocd_offset, 22);
-    if (read_len < 22) return -1;
-
-    /* Verify signature */
-    if (read_u32(buf) != EOCD_SIGNATURE) return -1;
-
-    /* EOCD layout:
-     * +0: signature (4)
-     * +4: disk number (2)
-     * +6: disk with CD (2)
-     * +8: entries on disk (2)
-     * +10: total entries (2)
-     * +12: CD size (4)
-     * +16: CD offset (4)
-     * +20: comment length (2)
-     */
-    *out_entry_count = read_u16(buf + 10);
-    return (int)read_u32(buf + 16);
-}
-
-/* Parse central directory entries */
-static int parse_central_directory(int file_handle, int cd_offset, int expected_count) {
-    unsigned char* buf = get_fetch_buffer_ptr();
-    int offset = cd_offset;
-
-    entry_count = 0;
-    name_buffer_offset = 0;
-
-    for (int i = 0; i < expected_count && entry_count < MAX_ZIP_ENTRIES; i++) {
-        /* Read central directory file header (46 bytes minimum) */
-        int read_len = js_file_read_chunk(file_handle, offset, 46);
-        if (read_len < 46) break;
-
-        /* Verify signature */
-        if (read_u32(buf) != CD_SIGNATURE) break;
-
-        /* CD header layout:
-         * +0: signature (4)
-         * +4: version made by (2)
-         * +6: version needed (2)
-         * +8: flags (2)
-         * +10: compression (2)
-         * +12: mod time (2)
-         * +14: mod date (2)
-         * +16: crc32 (4)
-         * +20: compressed size (4)
-         * +24: uncompressed size (4)
-         * +28: file name length (2)
-         * +30: extra field length (2)
-         * +32: comment length (2)
-         * +34: disk number (2)
-         * +36: internal attrs (2)
-         * +38: external attrs (4)
-         * +42: local header offset (4)
-         */
-        int compression = read_u16(buf + 10);
-        int compressed_size = (int)read_u32(buf + 20);
-        int uncompressed_size = (int)read_u32(buf + 24);
-        int name_len = read_u16(buf + 28);
-        int extra_len = read_u16(buf + 30);
-        int comment_len = read_u16(buf + 32);
-        int local_offset = (int)read_u32(buf + 42);
-
-        /* Read filename */
-        if (name_len > 0 && name_buffer_offset + name_len < NAME_BUFFER_SIZE) {
-            read_len = js_file_read_chunk(file_handle, offset + 46, name_len);
-            if (read_len >= name_len) {
-                for (int j = 0; j < name_len; j++) {
-                    name_buffer[name_buffer_offset + j] = buf[j];
-                }
-
-                /* Store entry */
-                entries[entry_count].file_handle = file_handle;
-                entries[entry_count].name_offset = name_buffer_offset;
-                entries[entry_count].name_len = name_len;
-                entries[entry_count].compression = compression;
-                entries[entry_count].compressed_size = compressed_size;
-                entries[entry_count].uncompressed_size = uncompressed_size;
-                entries[entry_count].local_header_offset = local_offset;
-
-                entry_count++;
-                name_buffer_offset += name_len;
-            }
-        }
-
-        /* Move to next entry */
-        offset += 46 + name_len + extra_len + comment_len;
+in
+  if gt_int_int(0, index) then let val () = set_default(entry) in 0 end
+  else if gte_int_int(index, count) then let val () = set_default(entry) in 0 end
+  else let
+    val () = entry := @{
+      file_handle = _zip_entry_file_handle(index),
+      name_offset = _zip_entry_name_offset(index),
+      name_len = _zip_entry_name_len(index),
+      compression = _zip_entry_compression(index),
+      compressed_size = _zip_entry_compressed_size(index),
+      uncompressed_size = _zip_entry_uncompressed_size(index),
+      local_header_offset = _zip_entry_local_offset(index)
     }
+  in 1 end
+end
 
-    return entry_count;
-}
+implement zip_get_entry_name(index, buf_offset) = let
+  val count = _get_zip_count()
+  extern castfn _to_nat(x: int): [n:nat] int n
+in
+  if gt_int_int(0, index) then _to_nat(0)
+  else if gte_int_int(index, count) then _to_nat(0)
+  else _to_nat(_zip_entry_name_len(index))
+end
 
-/* Get data offset by reading local file header to determine its size */
-static int get_data_offset_impl(int index) {
-    if (index < 0 || index >= entry_count) return -1;
+implement zip_entry_name_ends_with(index, suffix_ptr, suffix_len) = let
+  val count = _get_zip_count()
+in
+  if gt_int_int(0, index) then 0
+  else if gte_int_int(index, count) then 0
+  else let
+    val name_len = _zip_entry_name_len(index)
+  in
+    if gt_int_int(suffix_len, name_len) then 0
+    else let
+      val name_off = _zip_entry_name_offset(index)
+      val start = name_len - suffix_len
 
-    unsigned char* buf = get_fetch_buffer_ptr();
-    int local_offset = entries[index].local_header_offset;
+      fun cmp(i: int): int =
+        if gte_int_int(i, suffix_len) then 1
+        else let
+          val c1 = _zip_name_char(name_off + start + i)
+          val c2 = quire_get_byte(suffix_ptr, i)
+          (* Case-insensitive *)
+          val c1 = (if gte_int_int(c1, 65) then
+            (if gt_int_int(91, c1) then c1 + 32 else c1) else c1): int
+          val c2 = (if gte_int_int(c2, 65) then
+            (if gt_int_int(91, c2) then c2 + 32 else c2) else c2): int
+        in
+          if eq_int_int(c1, c2) then cmp(i + 1) else 0
+        end
+    in cmp(0) end
+  end
+end
 
-    /* Read local file header (30 bytes minimum) */
-    int read_len = js_file_read_chunk(entries[index].file_handle, local_offset, 30);
-    if (read_len < 30) return -1;
+implement zip_entry_name_equals(index, name_ptr, name_len) = let
+  val count = _get_zip_count()
+in
+  if gt_int_int(0, index) then 0
+  else if gte_int_int(index, count) then 0
+  else let
+    val entry_name_len = _zip_entry_name_len(index)
+  in
+    if neq_int_int(entry_name_len, name_len) then 0
+    else let
+      val name_off = _zip_entry_name_offset(index)
+      fun cmp(i: int): int =
+        if gte_int_int(i, name_len) then 1
+        else let
+          val c1 = _zip_name_char(name_off + i)
+          val c2 = quire_get_byte(name_ptr, i)
+        in
+          if eq_int_int(c1, c2) then cmp(i + 1) else 0
+        end
+    in cmp(0) end
+  end
+end
 
-    /* Verify signature */
-    if (read_u32(buf) != LOCAL_SIGNATURE) return -1;
+implement zip_find_entry(name_ptr, name_len) = let
+  val count = _get_zip_count()
+  fun search(i: int): int =
+    if gte_int_int(i, count) then 0 - 1
+    else if gt_int_int(zip_entry_name_equals(i, name_ptr, name_len), 0) then i
+    else search(i + 1)
+in search(0) end
 
-    /* Local header layout:
-     * +0: signature (4)
-     * +4: version needed (2)
-     * +6: flags (2)
-     * +8: compression (2)
-     * +10: mod time (2)
-     * +12: mod date (2)
-     * +14: crc32 (4)
-     * +18: compressed size (4)
-     * +22: uncompressed size (4)
-     * +26: file name length (2)
-     * +28: extra field length (2)
-     */
-    int name_len = read_u16(buf + 26);
-    int extra_len = read_u16(buf + 28);
+implement zip_get_data_offset(index) = let
+  val count = _get_zip_count()
+in
+  if gt_int_int(0, index) then 0 - 1
+  else if gte_int_int(index, count) then 0 - 1
+  else let
+    val local_off = _zip_entry_local_offset(index)
+    val handle = _zip_entry_file_handle(index)
+    val arr = ward_arr_alloc<byte>(30)
+    val rlen = ward_file_read(handle, local_off, arr, 30)
+    val result = parse_local_header(arr, 30, local_off)
+    val () = ward_arr_free<byte>(arr)
+  in result end
+end
 
-    return local_offset + 30 + name_len + extra_len;
-}
+implement zip_get_entry_count() =
+  _checked_bounded(_get_zip_count())
 
-/* Public API */
-
-void zip_init(void) {
-    entry_count = 0;
-    name_buffer_offset = 0;
-    current_file_handle = 0;
-}
-
-int zip_open(int file_handle, int file_size) {
-    zip_init();
-    current_file_handle = file_handle;
-
-    /* Find EOCD */
-    int eocd_offset = find_eocd(file_handle, file_size);
-    if (eocd_offset < 0) return 0;
-
-    /* Parse EOCD to get CD location */
-    int expected_count = 0;
-    int cd_offset = parse_eocd(file_handle, eocd_offset, &expected_count);
-    if (cd_offset < 0) return 0;
-
-    /* Parse central directory */
-    return parse_central_directory(file_handle, cd_offset, expected_count);
-}
-
-int zip_get_entry(int index, void* entry_ptr) {
-    if (index < 0 || index >= entry_count) return 0;
-
-    /* Copy entry data to output struct
-     * Layout matches zip_entry typedef in ATS */
-    int* out = (int*)entry_ptr;
-    out[0] = entries[index].file_handle;
-    out[1] = entries[index].name_offset;
-    out[2] = entries[index].name_len;
-    out[3] = entries[index].compression;
-    out[4] = entries[index].compressed_size;
-    out[5] = entries[index].uncompressed_size;
-    out[6] = entries[index].local_header_offset;
-
-    return 1;
-}
-
-int zip_get_entry_name(int index, int buf_offset) {
-    if (index < 0 || index >= entry_count) return 0;
-
-    unsigned char* buf = get_string_buffer_ptr();
-    int name_offset = entries[index].name_offset;
-    int name_len = entries[index].name_len;
-
-    for (int i = 0; i < name_len && buf_offset + i < 4096; i++) {
-        buf[buf_offset + i] = name_buffer[name_offset + i];
-    }
-
-    return name_len;
-}
-
-int zip_entry_name_ends_with(int index, void* suffix_ptr, int suffix_len) {
-    if (index < 0 || index >= entry_count) return 0;
-
-    int name_len = entries[index].name_len;
-    if (suffix_len > name_len) return 0;
-
-    const char* suffix = (const char*)suffix_ptr;
-    int name_offset = entries[index].name_offset;
-    int start = name_len - suffix_len;
-
-    for (int i = 0; i < suffix_len; i++) {
-        char c1 = name_buffer[name_offset + start + i];
-        char c2 = suffix[i];
-        /* Case-insensitive comparison */
-        if (c1 >= 'A' && c1 <= 'Z') c1 += 32;
-        if (c2 >= 'A' && c2 <= 'Z') c2 += 32;
-        if (c1 != c2) return 0;
-    }
-    return 1;
-}
-
-int zip_entry_name_equals(int index, void* name_ptr, int name_len) {
-    if (index < 0 || index >= entry_count) return 0;
-    if (entries[index].name_len != name_len) return 0;
-
-    const char* name = (const char*)name_ptr;
-    int entry_offset = entries[index].name_offset;
-
-    for (int i = 0; i < name_len; i++) {
-        if (name_buffer[entry_offset + i] != name[i]) return 0;
-    }
-    return 1;
-}
-
-int zip_find_entry(void* name_ptr, int name_len) {
-    for (int i = 0; i < entry_count; i++) {
-        if (zip_entry_name_equals(i, name_ptr, name_len)) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-int zip_get_data_offset(int index) {
-    return get_data_offset_impl(index);
-}
-
-int zip_get_entry_count(void) {
-    return entry_count;
-}
-
-void zip_close(void) {
-    entry_count = 0;
-    name_buffer_offset = 0;
-    current_file_handle = 0;
-}
-%}
+implement zip_close() = zip_init()

@@ -1,254 +1,235 @@
-(* dom.sats - Type-level DOM model with proofs
+(* dom.sats — Quire DOM convenience layer over ward
  *
- * Freestanding ATS2 version: works without prelude.
- * Uses abstract types to track node existence at compile time.
- * The C implementation erases these at runtime.
+ * Provides pre-built ward_safe_text constants for UI tags and attributes,
+ * a node ID allocator, and a tree renderer for parsed HTML binary.
+ * All DOM operations go through ward's diff protocol.
  *)
 
-staload "buf.sats"
+staload "./../vendor/ward/lib/memory.sats"
+staload "./../vendor/ward/lib/dom.sats"
 
-(* Op codes matching bridge protocol (quire-design.md §2.3.5) *)
-#define OP_SET_TEXT       1
-#define OP_SET_ATTR       2
-#define OP_SET_TRANSFORM  3
-#define OP_CREATE_ELEMENT 4
-#define OP_REMOVE_CHILD   5
-#define OP_SET_INNER_HTML 6
-
-(* Valid opcode proof.
- * VALID_OPCODE(op) proves op is one of the defined bridge opcodes.
- * Only constructors for the 6 protocol opcodes exist, making it
- * impossible to emit a diff with an arbitrary integer opcode.
- *
- * TEST MADE PASS-BY-CONSTRUCTION:
- *   test_opcodes_match_protocol — Only valid opcodes (1-6) can be
- *   passed to dom_emit_diff; compile rejects any other value. *)
-dataprop VALID_OPCODE(opc: int) =
-  | OPCODE_SET_TEXT(1)
-  | OPCODE_SET_ATTR(2)
-  | OPCODE_SET_TRANSFORM(3)
-  | OPCODE_CREATE_ELEMENT(4)
-  | OPCODE_REMOVE_CHILD(5)
-  | OPCODE_SET_INNER_HTML(6)
-
-(* Abstract type representing proof that a node exists.
- * id = the node ID, parent = parent node ID
- * These are compile-time only - erased to void* at runtime *)
-abstype node_proof(id: int, parent: int) = ptr
-
-(* Initialize the DOM module - call once at startup *)
-fun dom_init(): void = "mac#"
-
-(* Create a new element
- * parent_pf: proof that parent exists (borrowed, not consumed)
- * Returns: proof that child exists *)
-fun dom_create_element
-  {parent:int} {grandparent:int} {child:int | child > 0} {tl:nat | tl <= SBUF_CAP}
-  ( parent_pf: node_proof(parent, grandparent)
-  , parent_id: int parent
-  , child_id: int child
-  , tag_ptr: ptr
-  , tag_len: int tl
-  ) : node_proof(child, parent) = "mac#"
-
-(* Remove a child element
- * Takes ownership of proof - cannot be used after this *)
-fun dom_remove_child
-  {id:int} {parent:int}
-  ( pf: node_proof(id, parent)
-  , id: int id
-  ) : void = "mac#"
-
-(* Set text content of a node
- * pf: proof that node exists (borrowed) *)
-fun dom_set_text
-  {id:int} {parent:int} {tl:nat | tl <= FBUF_CAP}
-  ( pf: node_proof(id, parent)
-  , id: int id
-  , text_ptr: ptr
-  , text_len: int tl
-  ) : node_proof(id, parent) = "mac#"
-
-(* Set text content using offset into fetch buffer *)
-fun dom_set_text_offset
-  {id:int} {parent:int}
-  ( pf: node_proof(id, parent)
-  , id: int id
-  , fetch_offset: int
-  , fetch_len: int
-  ) : node_proof(id, parent) = "mac#"
-
-(* ========== Attribute Name Safety ========== *)
-
-(* Valid HTML attribute name proof.
- * VALID_ATTR_NAME(n) proves a string of length n is a known-valid
- * HTML attribute name. Only constructors for known names exist.
- *
- * BUG PREVENTED: Without this proof, the shared string buffer could
- * contain arbitrary data (e.g., a book title leaked from a corrupted
- * buffer) that gets passed as an attribute name, causing DOM exceptions
- * like "'A Tal' is not a valid attribute name."
- *
- * ROOT CAUSE ANALYSIS: The string buffer is shared between SET_ATTR
- * diffs and other operations. If a pending SET_ATTR diff's string data
- * is overwritten before the bridge flushes it, the bridge reads garbage
- * as the attribute name. The VALID_ATTR_NAME proof ensures that only
- * compile-time-constant names are used, preventing dynamic data from
- * leaking into attribute names even under buffer corruption. *)
-dataprop VALID_ATTR_NAME(n: int) =
-  | ATTR_CLASS(5)           (* "class" *)
-  | ATTR_ID(2)              (* "id" *)
-  | ATTR_TYPE(4)            (* "type" *)
-  | ATTR_FOR(3)             (* "for" *)
-  | ATTR_ACCEPT(6)          (* "accept" *)
-  | ATTR_HREF(4)            (* "href" *)
-  | ATTR_SRC(3)             (* "src" *)
-  | ATTR_STYLE(5)           (* "style" *)
-  | ATTR_ROLE(4)            (* "role" *)
-  | ATTR_TABINDEX(8)        (* "tabindex" *)
-
-(* Set an attribute on a node.
- * Requires VALID_ATTR_NAME(nl) proof, ensuring name_ptr points to a
- * known-valid HTML attribute name. Buffer bounds are enforced:
- * name_len + val_len <= STRING_BUFFER_SIZE.
- *
- * C callers bypass ATS type checking — the proof is erased and the
- * C signature is unchanged. C blocks must use only compile-time
- * string constants for attribute names. *)
-fun dom_set_attr
-  {id:int} {parent:int} {nl:nat | nl <= SBUF_CAP} {vl:nat | nl + vl <= SBUF_CAP}
-  ( pf_attr: VALID_ATTR_NAME(nl)
-  , pf: node_proof(id, parent)
-  , id: int id
-  , name_ptr: ptr
-  , name_len: int nl
-  , val_ptr: ptr
-  , val_len: int vl
-  ) : node_proof(id, parent) = "mac#"
-
-(* Set an attribute on a node — backward-compatible alias.
- * Now that dom_set_attr itself requires VALID_ATTR_NAME,
- * this is a pure passthrough. Kept for existing callers. *)
-fun dom_set_attr_checked
-  {id:int} {parent:int} {nl:nat | nl <= SBUF_CAP} {vl:nat | nl + vl <= SBUF_CAP}
-  ( pf_attr: VALID_ATTR_NAME(nl)
-  , pf: node_proof(id, parent)
-  , id: int id
-  , name_ptr: ptr
-  , name_len: int nl
-  , val_ptr: ptr
-  , val_len: int vl
-  ) : node_proof(id, parent) = "mac#"
-
-(* Set CSS transform on a node *)
-fun dom_set_transform
-  {id:int} {parent:int}
-  ( pf: node_proof(id, parent)
-  , id: int id
-  , x: int
-  , y: int
-  ) : node_proof(id, parent) = "mac#"
-
-(* Set innerHTML of a node *)
-fun dom_set_inner_html
-  {id:int} {parent:int}
-  ( pf: node_proof(id, parent)
-  , id: int id
-  , fetch_offset: int
-  , fetch_len: int
-  ) : node_proof(id, parent) = "mac#"
+(* ========== Node ID allocator ========== *)
 
 (* Get next available node ID and increment counter *)
-fun dom_next_id(): [n:int | n > 0] int n = "mac#"
+fun dom_next_id(): [n:int | n > 0] int n
 
-(* Bootstrap: create proof for the root loading div (node ID 1)
- * This is the only way to create a node_proof without dom_create_element.
- * The root node is pre-registered by the bridge from HTML. *)
-fun dom_root_proof(): node_proof(1, 0) = "mac#"
+(* ========== Pre-built safe text: UI tags ========== *)
 
-(* Discard a proof - use when you're done with a node but not removing it *)
-fun dom_drop_proof
-  {id:int} {parent:int}
-  ( pf: node_proof(id, parent)
-  ) : void = "mac#"
+fun tag_div(): ward_safe_text(3)
+fun tag_span(): ward_safe_text(4)
+fun tag_button(): ward_safe_text(6)
+fun tag_style(): ward_safe_text(5)
+fun tag_h1(): ward_safe_text(2)
+fun tag_h2(): ward_safe_text(2)
+fun tag_h3(): ward_safe_text(2)
+fun tag_p(): ward_safe_text(1)
+fun tag_input(): ward_safe_text(5)
+fun tag_label(): ward_safe_text(5)
+fun tag_select(): ward_safe_text(6)
+fun tag_option(): ward_safe_text(6)
+fun tag_a(): ward_safe_text(1)
+fun tag_img(): ward_safe_text(3)
 
-(* ========== Shared Buffer Flush Protocol ========== *)
+(* ========== Pre-built safe text: EPUB content tags ========== *)
 
-(* BUFFER_FLUSHED(true) proves all pending diffs have been flushed
- * and the string/fetch buffers are safe to rewrite.
+fun tag_b(): ward_safe_text(1)
+fun tag_i(): ward_safe_text(1)
+fun tag_u(): ward_safe_text(1)
+fun tag_s(): ward_safe_text(1)
+fun tag_q(): ward_safe_text(1)
+fun tag_em(): ward_safe_text(2)
+fun tag_br(): ward_safe_text(2)
+fun tag_hr(): ward_safe_text(2)
+fun tag_li(): ward_safe_text(2)
+fun tag_dd(): ward_safe_text(2)
+fun tag_dl(): ward_safe_text(2)
+fun tag_dt(): ward_safe_text(2)
+fun tag_ol(): ward_safe_text(2)
+fun tag_ul(): ward_safe_text(2)
+fun tag_td(): ward_safe_text(2)
+fun tag_th(): ward_safe_text(2)
+fun tag_tr(): ward_safe_text(2)
+fun tag_h4(): ward_safe_text(2)
+fun tag_h5(): ward_safe_text(2)
+fun tag_h6(): ward_safe_text(2)
+fun tag_pre(): ward_safe_text(3)
+fun tag_sub(): ward_safe_text(3)
+fun tag_sup(): ward_safe_text(3)
+fun tag_var(): ward_safe_text(3)
+fun tag_wbr(): ward_safe_text(3)
+fun tag_nav(): ward_safe_text(3)
+fun tag_kbd(): ward_safe_text(3)
+fun tag_code(): ward_safe_text(4)
+fun tag_mark(): ward_safe_text(4)
+fun tag_cite(): ward_safe_text(4)
+fun tag_abbr(): ward_safe_text(4)
+fun tag_dfn(): ward_safe_text(3)
+fun tag_main(): ward_safe_text(4)
+fun tag_time(): ward_safe_text(4)
+fun tag_ruby(): ward_safe_text(4)
+fun tag_aside(): ward_safe_text(5)
+fun tag_small(): ward_safe_text(5)
+fun tag_table(): ward_safe_text(5)
+fun tag_thead(): ward_safe_text(5)
+fun tag_tbody(): ward_safe_text(5)
+fun tag_tfoot(): ward_safe_text(5)
+fun tag_strong(): ward_safe_text(6)
+fun tag_figure(): ward_safe_text(6)
+fun tag_footer(): ward_safe_text(6)
+fun tag_header(): ward_safe_text(6)
+fun tag_section(): ward_safe_text(7)
+fun tag_article(): ward_safe_text(7)
+fun tag_details(): ward_safe_text(7)
+fun tag_summary(): ward_safe_text(7)
+fun tag_caption(): ward_safe_text(7)
+fun tag_blockquote(): ward_safe_text(10)
+fun tag_figcaption(): ward_safe_text(10)
+
+(* SVG *)
+fun tag_svg(): ward_safe_text(3)
+fun tag_g(): ward_safe_text(1)
+fun tag_path(): ward_safe_text(4)
+fun tag_circle(): ward_safe_text(6)
+fun tag_rect(): ward_safe_text(4)
+fun tag_line(): ward_safe_text(4)
+fun tag_polyline(): ward_safe_text(8)
+fun tag_polygon(): ward_safe_text(7)
+fun tag_text(): ward_safe_text(4)
+fun tag_tspan(): ward_safe_text(5)
+fun tag_use(): ward_safe_text(3)
+fun tag_defs(): ward_safe_text(4)
+fun tag_image(): ward_safe_text(5)
+fun tag_symbol(): ward_safe_text(6)
+fun tag_title(): ward_safe_text(5)
+fun tag_desc(): ward_safe_text(4)
+
+(* MathML *)
+fun tag_math(): ward_safe_text(4)
+fun tag_mi(): ward_safe_text(2)
+fun tag_mn(): ward_safe_text(2)
+fun tag_mo(): ward_safe_text(2)
+fun tag_mrow(): ward_safe_text(4)
+fun tag_msup(): ward_safe_text(4)
+fun tag_msub(): ward_safe_text(4)
+fun tag_mfrac(): ward_safe_text(5)
+fun tag_msqrt(): ward_safe_text(5)
+fun tag_mroot(): ward_safe_text(5)
+fun tag_mover(): ward_safe_text(5)
+fun tag_munder(): ward_safe_text(6)
+fun tag_mtable(): ward_safe_text(6)
+fun tag_mtr(): ward_safe_text(3)
+fun tag_mtd(): ward_safe_text(3)
+fun tag_rp(): ward_safe_text(2)
+fun tag_rt(): ward_safe_text(2)
+
+(* ========== Pre-built safe text: attributes ========== *)
+
+fun attr_class(): ward_safe_text(5)
+fun attr_id(): ward_safe_text(2)
+fun attr_type(): ward_safe_text(4)
+fun attr_for(): ward_safe_text(3)
+fun attr_accept(): ward_safe_text(6)
+fun attr_href(): ward_safe_text(4)
+fun attr_src(): ward_safe_text(3)
+fun attr_alt(): ward_safe_text(3)
+fun attr_title(): ward_safe_text(5)
+fun attr_width(): ward_safe_text(5)
+fun attr_height(): ward_safe_text(6)
+fun attr_lang(): ward_safe_text(4)
+fun attr_dir(): ward_safe_text(3)
+fun attr_role(): ward_safe_text(4)
+fun attr_tabindex(): ward_safe_text(8)
+fun attr_colspan(): ward_safe_text(7)
+fun attr_rowspan(): ward_safe_text(7)
+fun attr_xmlns(): ward_safe_text(5)
+fun attr_d(): ward_safe_text(1)
+fun attr_fill(): ward_safe_text(4)
+fun attr_stroke(): ward_safe_text(6)
+fun attr_cx(): ward_safe_text(2)
+fun attr_cy(): ward_safe_text(2)
+fun attr_r(): ward_safe_text(1)
+fun attr_x(): ward_safe_text(1)
+fun attr_y(): ward_safe_text(1)
+fun attr_transform(): ward_safe_text(9)
+fun attr_viewBox(): ward_safe_text(7)
+fun attr_aria_label(): ward_safe_text(10)
+fun attr_aria_hidden(): ward_safe_text(11)
+fun attr_name(): ward_safe_text(4)
+fun attr_value(): ward_safe_text(5)
+
+(* ========== Tag/Attribute lookup from raw bytes ========== *)
+
+(* Look up a tag name from raw bytes. Returns safe_text index or -1.
+ * Used by the tree renderer to match parsed HTML tag bytes to
+ * pre-built ward_safe_text constants. *)
+fun lookup_tag {lb:agz}{n:pos}
+  (tree: !ward_arr(byte, lb, n), offset: int, name_len: int): int = "mac#"
+
+(* Look up an attribute name from raw bytes. Returns index or -1. *)
+fun lookup_attr {lb:agz}{n:pos}
+  (tree: !ward_arr(byte, lb, n), offset: int, name_len: int): int = "mac#"
+
+(* Get a tag safe_text by index (returned by lookup_tag).
+ * All tags are <= 10 chars, so n + 10 <= 4096 holds. *)
+fun get_tag_by_index(idx: int): [n:pos | n <= 10] @(ward_safe_text(n), int n)
+
+(* Get an attr safe_text by index (returned by lookup_attr).
+ * All attrs are <= 11 chars, so n <= 11 holds. *)
+fun get_attr_by_index(idx: int): [n:pos | n <= 11] @(ward_safe_text(n), int n)
+
+(* ========== Tree renderer ========== *)
+
+(* TEXT_RENDER_SAFE invariant (prevents set_text from destroying existing children):
  *
- * CRITICAL INVARIANT: dom_set_attr and dom_create_element write data
- * to the shared string buffer and emit diffs that reference it.
- * If ANY code modifies the string buffer before the diff is flushed
- * by the bridge, the bridge reads corrupted data.
+ * ward_dom_stream_set_text sets textContent, REPLACING all existing children
+ * with a single text node. render_tree tracks has_child (0 or 1) per scope:
  *
- * BUG PREVENTED: rebuild_library_list() called dom_set_attr (writing
- * "class" to string buffer), then library_get_title() (overwriting
- * string buffer with book title), then dom_set_text_offset (which
- * flushed the SET_ATTR diff). The bridge read "A Tal" (first 5 bytes
- * of title) as the attribute name instead of "class".
+ *   has_child=0: parent has no DOM children yet.
+ *     set_text(parent) is safe — nothing to destroy.
+ *   has_child=1: parent has at least one DOM child (text or element).
+ *     TEXT must be wrapped in <span>; set_text called on span, not parent.
  *
- * FIX: dom_set_attr and dom_create_element now flush their diffs
- * immediately after emitting them (via trailing js_apply_diffs call),
- * ensuring string buffer data is consumed before it can be corrupted.
+ * Transitions: has_child goes 0→1 after any TEXT or ELEMENT_OPEN creates
+ * a DOM child. Entering a child scope resets to 0. Skipping whitespace-only
+ * text or unknown elements does NOT change has_child (no DOM node created).
  *
- * ENFORCEMENT: New code that writes to shared buffers between DOM
- * operations must call js_apply_diffs() first to flush pending diffs.
- * In ATS code, this is enforced by the node_proof linear type —
- * each DOM operation consumes and returns the proof, preventing
- * interleaved buffer writes. In C blocks, this must be manually
- * verified. *)
-absprop BUFFER_FLUSHED(flushed: bool)
+ * Bug classes prevented:
+ * - Whitespace text between <h1> and <p> wiping <h1> via set_text
+ * - Non-whitespace text after element children wiping siblings
+ * - Split large text fragments where second set_text wipes first
+ * - Mixed inline content (text + elements) losing text or elements
+ *)
+dataprop TEXT_RENDER_SAFE(has_child: int) =
+  | TEXT_ON_EMPTY(0)  (* no children yet — set_text on parent is safe *)
 
-(* Diff count bounds proof.
- * DIFF_COUNT_BOUNDED(count, max) proves count <= max where max = 255.
- * The diff buffer uses a uint8 count, so at most 255 diffs per frame.
+(* SIBLING_CONTINUATION invariant (prevents render_tree first-element-only bug):
  *
- * TEST MADE PASS-BY-CONSTRUCTION:
- *   test_diff_count_bounded — dom_emit_diff silently drops if count >= 255. *)
-dataprop DIFF_COUNT_BOUNDED(count: int, max: int) =
-  | {c,m:nat | c <= m} BOUNDED_DIFFS(c, m)
-
-(* Diff entry bounds proof.
- * DIFF_ENTRY_SAFE(count) proves writing a 16-byte entry at position
- * (4 + count * 16) stays within DIFF_BUFFER_SIZE (4096).
- * Max valid count = 254: 4 + 254*16 + 16 = 4084 <= 4096.
+ * The render_tree loop must process ALL sibling elements under a parent.
+ * Every branch in the loop must either:
+ * (a) call loop() recursively to continue processing the next sibling, OR
+ * (b) return @(st, pos) ONLY when opc = ELEMENT_CLOSE (returning to parent)
+ *     or pos >= len (buffer exhausted)
  *
- * TEST MADE PASS-BY-CONSTRUCTION:
- *   test_diff_entry_within_buffer — dom_emit_diff only writes when
- *   DIFF_ENTRY_SAFE(count) is provable, connecting the count >= 255
- *   runtime check to the buffer size. *)
-dataprop DIFF_ENTRY_SAFE(count: int) =
-  | {c:nat | 4 + c * 16 + 16 <= 4096} SAFE_DIFF_ENTRY(c)
+ * Bug class prevented: returning after processing one known element causes
+ * all subsequent siblings to be silently dropped (e.g., <h1> renders but
+ * sibling <p> elements are never visited).
+ *
+ * This is documented rather than encoded as dataprop because the invariant
+ * is structural (about recursion shape) rather than about data values.
+ * The correct pattern for each SAX opcode:
+ *   ELEMENT_OPEN (known):   create element, process children, then loop()
+ *   ELEMENT_OPEN (unknown): skip_element, then loop()
+ *   TEXT:                    render text, then loop()
+ *   ELEMENT_CLOSE:           return @(st, pos) — only valid exit
+ *)
 
-(* ========== Low-level C primitives (freestanding, no prelude) ========== *)
-
-(* Bitwise operations — ATS2 has no bitwise ops without prelude *)
-fun quire_band(a: int, b: int): int = "mac#"
-fun quire_bsr(a: int, n: int): int = "mac#"
-fun quire_int2uint(x: int): int = "mac#"
-
-(* Null pointer for proof construction *)
-fun quire_null_ptr(): ptr = "mac#"
-
-(* DOM next-node-id state accessors (variable in runtime.c) *)
-fun get_dom_next_node_id(): int = "mac#"
-fun set_dom_next_node_id(v: int): void = "mac#"
-
-(* Bridge flush — consumes pending diffs *)
-fun js_apply_diffs(): void = "mac#"
-
-(* Zero-cost cast: construct node_proof from ptr at compile time *)
-castfn __make_proof {id:int} {parent:int} (x: ptr): node_proof(id, parent)
-
-(* ========== Proof helper functions ========== *)
-
-(* Construct VALID_ATTR_NAME proofs for known attribute names.
- * These are the ONLY way to obtain VALID_ATTR_NAME proofs,
- * ensuring only compile-time-constant names are used. *)
-praxi lemma_attr_class(): VALID_ATTR_NAME(5) (* "class" *)
-praxi lemma_attr_id(): VALID_ATTR_NAME(2)    (* "id" *)
-praxi lemma_attr_type(): VALID_ATTR_NAME(4)  (* "type" *)
-praxi lemma_attr_for(): VALID_ATTR_NAME(3)   (* "for" *)
-praxi lemma_attr_accept(): VALID_ATTR_NAME(6) (* "accept" *)
-praxi lemma_attr_style(): VALID_ATTR_NAME(5) (* "style" *)
+(* Walk parsed HTML tree binary and emit DOM nodes via ward stream.
+ * parent_id: parent DOM node for emitted elements
+ * tree: pointer to parsed tree binary (from wardJsParseHtml)
+ * tree_len: length of binary data
+ * Returns the stream after all emissions. Caller manages begin/end. *)
+fun render_tree
+  {l:agz}{lb:agz}{n:pos}
+  (stream: ward_dom_stream(l), parent_id: int,
+   tree: !ward_arr(byte, lb, n), tree_len: int n)
+  : ward_dom_stream(l)

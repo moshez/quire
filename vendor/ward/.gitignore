@@ -1,0 +1,4 @@
+build/
+*.o
+.ipynb_checkpoints/
+node_modules/

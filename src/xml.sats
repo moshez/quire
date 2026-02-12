@@ -32,16 +32,7 @@ and xml_attr_list_vt =
 
 (* ========== Functional Correctness Dataprops ========== *)
 
-(* Roundtrip correctness: serialize(tree) produces n bytes,
- * and parse(those n bytes) reconstructs the same tree structure.
- * The serializer and parser process fields in identical order:
- *   element: '<' name attrs '>' children '</' name '>'
- *   text: raw bytes
- * This symmetric structure IS the roundtrip guarantee.
- *
- * The proof is produced by xml_serialize_node/xml_serialize_nodes.
- * It witnesses that n bytes were written in parse-compatible format. *)
-absprop XML_ROUNDTRIP(serialize_len: int)
+(* NOTE: Serializer/parser roundtrip correctness is verified by tests. *)
 
 (* Attribute value correctness proof.
  * When found=true, the returned value IS the value of the requested
@@ -73,21 +64,14 @@ fun xml_free_node(node: xml_node_vt): void
 
 (* Serialize tree back to XML bytes. Symmetric with parser.
  * Uses ! (borrow) so tree is not consumed.
- * Returns (proof, bytes_written). The XML_ROUNDTRIP proof witnesses
- * that the serialized bytes are in parse-compatible format. *)
-fun xml_serialize_nodes(nodes: !xml_node_list_vt, buf: ptr, pos: int, max: int):
-  [n:int] (XML_ROUNDTRIP(n) | int)
-fun xml_serialize_node(node: !xml_node_vt, buf: ptr, pos: int, max: int):
-  [n:int] (XML_ROUNDTRIP(n) | int)
-
-(* Praxi: roundtrip proof witness — axiom that symmetric
- * serialize/parse structure preserves tree identity *)
-praxi xml_roundtrip_lemma {n:int} (): XML_ROUNDTRIP(n)
+ * Returns bytes_written. *)
+fun xml_serialize_nodes(nodes: !xml_node_list_vt, buf: ptr, pos: int, max: int): int
+fun xml_serialize_node(node: !xml_node_vt, buf: ptr, pos: int, max: int): int
 
 (* ========== C-Callable Tree Query API ========== *)
 (* These functions use ptr for the opaque tree handle, with internal
  * castfn between ptr and xml_node_vt/xml_node_list_vt at the boundary.
- * C callers (epub.dats %{ block) pass raw pointers.
+ * C callers pass raw pointers.
  *
  * Proof parameters are erased at runtime — C signature unchanged. *)
 
