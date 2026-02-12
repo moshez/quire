@@ -766,153 +766,199 @@ fn rd_u16 {lb:agz}{n:pos}
   val b1 = ward_arr_byte(tree, off + 1, len)
 in bor(b0, bsl(b1, 8)) end
 
+(* Bounds-checked byte write to ward_arr (erased to ptr at runtime).
+ * Mirrors ward_arr_byte (read). Both use runtime bounds checks. *)
+extern fun ward_arr_set_byte {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), off: int, len: int n, v: int): void = "mac#_ward_arr_set_byte"
+
 (* Copy bytes between ward_arrs. Both erase to ptr at runtime.
- * Copies count bytes from src[src_off..] to dst[0..count-1].
- * Implemented by _copy_to_arr in quire_runtime.c. *)
-extern fun copy_arr_bytes {la:agz}{na:pos}{lb:agz}{nb:pos}
-  (dst: !ward_arr(byte, la, na), src: !ward_arr(byte, lb, nb),
-   src_off: int, count: int): int = "mac#_copy_to_arr"
+ * Copies count bytes from src[src_off..] to dst[0..count-1]. *)
+fn copy_arr_bytes {la:agz}{na:pos}{lb:agz}{nb:pos}
+  (dst: !ward_arr(byte, la, na), dlen: int na,
+   src: !ward_arr(byte, lb, nb), slen: int nb,
+   src_off: int, count: int): void = let
+  fun loop(dst: !ward_arr(byte, la, na), dlen: int na,
+           src: !ward_arr(byte, lb, nb), slen: int nb,
+           src_off: int, i: int, count: int): void =
+    if i < count then let
+      val b = ward_arr_byte(src, src_off + i, slen)
+      val () = ward_arr_set_byte(dst, i, dlen, b)
+    in loop(dst, dlen, src, slen, src_off, i + 1, count) end
+in loop(dst, dlen, src, slen, src_off, 0, count) end
+
+(* ========== Tag/Attribute lookup — static table + ATS2 loop ========== *)
+
+(* Justification for C data tables (CLAUDE.md Rule 7 "Minimize C code"):
+ * (a) ATS2 if-else dispatch generated 5314 lines of C with 300 local variables,
+ *     crashing V8's WASM compiler. Static arrays are the standard C approach for
+ *     lookup tables and cannot be expressed in ATS2 freestanding mode.
+ * (b) The ATS2 decision tree was tried and works correctly but generates too-large
+ *     WASM. A loop calling get_tag_by_index would allocate 99 ward_safe_text objects.
+ * (c) Trade-off: ~40 lines of read-only C data vs. V8 crash on real-world pages.
+ * (d) Safety: const arrays, no mutation, no aliasing. Lookup logic is in ATS2. *)
+
+%{^
+/* Tag name lookup table -- 99 HTML/SVG/MathML tags (384 bytes of name data).
+ * Indices match get_tag_by_index. */
+static const unsigned char _tag_names[] =
+  "div" "span" "button" "style" "h1" "h2" "h3" "p"
+  "input" "label" "select" "option" "a" "img" "b" "i" "u" "s" "q"
+  "em" "br" "hr" "li" "dd" "dl" "dt" "ol" "ul" "td" "th" "tr"
+  "h4" "h5" "h6" "pre" "sub" "sup" "var" "wbr" "nav" "kbd"
+  "code" "mark" "cite" "abbr" "dfn" "main" "time" "ruby"
+  "aside" "small" "table" "thead" "tbody" "tfoot"
+  "strong" "figure" "footer" "header"
+  "section" "article" "details" "summary" "caption"
+  "blockquote" "figcaption"
+  "svg" "g" "path" "circle" "rect" "line" "polyline" "polygon"
+  "text" "tspan" "use" "defs" "image" "symbol" "title" "desc"
+  "math" "mi" "mn" "mo" "mrow" "msup" "msub"
+  "mfrac" "msqrt" "mroot" "mover" "munder" "mtable"
+  "mtr" "mtd" "rp" "rt";
+static const unsigned short _tag_offsets[99] = {
+  0,3,7,13,18,20,22,24,25,30,35,41,47,48,51,52,53,54,55,
+  56,58,60,62,64,66,68,70,72,74,76,78,80,82,84,86,89,92,
+  95,98,101,104,107,111,115,119,123,126,130,134,138,143,148,
+  153,158,163,168,174,180,186,192,199,206,213,220,227,237,247,
+  250,251,255,261,265,269,277,284,288,293,296,300,305,311,316,
+  320,324,326,328,330,334,338,342,347,352,357,362,368,374,377,
+  380,382};
+static const unsigned char _tag_lens[99] = {
+  3,4,6,5,2,2,2,1,5,5,6,6,1,3,1,1,1,1,1,
+  2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,
+  3,3,3,3,4,4,4,4,3,4,4,4,5,5,5,
+  5,5,5,6,6,6,6,7,7,7,7,7,10,10,3,
+  1,4,6,4,4,8,7,4,5,3,4,5,6,5,4,
+  4,2,2,2,4,4,4,5,5,5,5,6,6,3,3,
+  2,2};
+#define _tag_table_byte(i, j) ((int)_tag_names[_tag_offsets[i] + (j)])
+#define _tag_table_len(i) ((int)_tag_lens[i])
+
+/* Attribute name lookup table -- 32 HTML/SVG attributes (148 bytes). */
+static const unsigned char _attr_names[] =
+  "class" "id" "type" "for" "accept" "href" "src" "alt" "title" "width"
+  "height" "lang" "dir" "role" "tabindex" "colspan" "rowspan" "xmlns"
+  "d" "fill" "stroke" "cx" "cy" "r" "x" "y"
+  "transform" "viewBox" "aria-label" "aria-hidden" "name" "value";
+static const unsigned short _attr_offsets[32] = {
+  0,5,7,11,14,20,24,27,30,35,40,46,50,53,57,65,
+  72,79,84,85,89,95,97,99,100,101,102,111,118,128,139,143};
+static const unsigned char _attr_lens[32] = {
+  5,2,4,3,6,4,3,3,5,5,6,4,3,4,8,7,
+  7,5,1,4,6,2,2,1,1,1,9,7,10,11,4,5};
+#define _attr_table_byte(i, j) ((int)_attr_names[_attr_offsets[i] + (j)])
+#define _attr_table_len(i) ((int)_attr_lens[i])
+
+/* Cached safe text builders — allocate once, reuse on subsequent calls.
+ * ward_safe_text is ptr to malloc'd buffer of character bytes.
+ * ward_text_build = malloc, ward_text_putc = buf[i] = c, ward_text_done = nop.
+ * This C loop replaces 1000+ lines of ATS2 existential-unpacking C code. */
+static void* _tag_text_cache[99];
+static void* _attr_text_cache[32];
+static void* _build_tag_text(int idx) {
+  void* p = _tag_text_cache[idx];
+  if (p) return p;
+  int len = _tag_lens[idx], off = _tag_offsets[idx];
+  unsigned char* buf = (unsigned char*)malloc(len);
+  for (int i = 0; i < len; i++) buf[i] = _tag_names[off + i];
+  _tag_text_cache[idx] = buf;
+  return buf;
+}
+static void* _build_attr_text(int idx) {
+  void* p = _attr_text_cache[idx];
+  if (p) return p;
+  int len = _attr_lens[idx], off = _attr_offsets[idx];
+  unsigned char* buf = (unsigned char*)malloc(len);
+  for (int i = 0; i < len; i++) buf[i] = _attr_names[off + i];
+  _attr_text_cache[idx] = buf;
+  return buf;
+}
+%}
+
+extern fun _tag_table_byte(idx: int, pos: int): int = "mac#"
+extern fun _tag_table_len(idx: int): int = "mac#"
+extern fun _attr_table_byte(idx: int, pos: int): int = "mac#"
+extern fun _attr_table_len(idx: int): int = "mac#"
+extern fun _build_tag_text(idx: int): ptr = "mac#"
+extern fun _build_attr_text(idx: int): ptr = "mac#"
+
+(* Safe cast: C helpers build valid ward_safe_text buffers (malloc + byte copy).
+ * All table bytes satisfy SAFE_CHAR (a-z, A-Z, 0-9, -). *)
+extern castfn _ptr_as_safe_text {n:pos} (p: ptr): ward_safe_text(n)
+
+implement lookup_tag{lb}{n}(tree, tlen, offset, name_len) = let
+  fun cmp(tree: !ward_arr(byte, lb, n), tlen: int n,
+          off: int, idx: int, nlen: int, j: int): bool =
+    if j >= nlen then true
+    else if ward_arr_byte(tree, off + j, tlen) = _tag_table_byte(idx, j)
+    then cmp(tree, tlen, off, idx, nlen, j + 1)
+    else false
+  fun loop(tree: !ward_arr(byte, lb, n), tlen: int n,
+           off: int, nlen: int, i: int): int =
+    if i >= 99 then 0 - 1
+    else if _tag_table_len(i) = nlen then
+      if cmp(tree, tlen, off, i, nlen, 0) then i
+      else loop(tree, tlen, off, nlen, i + 1)
+    else loop(tree, tlen, off, nlen, i + 1)
+in loop(tree, tlen, offset, name_len, 0) end
+
+implement lookup_attr{lb}{n}(tree, tlen, offset, name_len) = let
+  fun cmp(tree: !ward_arr(byte, lb, n), tlen: int n,
+          off: int, idx: int, nlen: int, j: int): bool =
+    if j >= nlen then true
+    else if ward_arr_byte(tree, off + j, tlen) = _attr_table_byte(idx, j)
+    then cmp(tree, tlen, off, idx, nlen, j + 1)
+    else false
+  fun loop(tree: !ward_arr(byte, lb, n), tlen: int n,
+           off: int, nlen: int, i: int): int =
+    if i >= 32 then 0 - 1
+    else if _attr_table_len(i) = nlen then
+      if cmp(tree, tlen, off, i, nlen, 0) then i
+      else loop(tree, tlen, off, nlen, i + 1)
+    else loop(tree, tlen, off, nlen, i + 1)
+in loop(tree, tlen, offset, name_len, 0) end
+
 
 (* ========== Lookup dispatch via index ========== *)
 
-(* These dispatch functions call the correct tag/attr builder based on index.
- * The index comes from lookup_tag/lookup_attr which maps bytes to table entries.
- * Each builder returns a ward_safe_text — the only way to create one. *)
+(* C helpers _build_tag_text/_build_attr_text (in %{^ above) allocate+fill the
+ * safe text buffer from static data tables with caching. The ATS2 side only
+ * dispatches on length to satisfy the existential [n:pos | n <= 10/11].
+ * Justification for castfn: C builds identical buffers to ward_text_build/putc/done
+ * (malloc + byte copy), all bytes satisfy SAFE_CHAR. *)
 
-implement get_tag_by_index(idx) =
-  if idx = 0 then @(tag_div(), 3)
-  else if idx = 1 then @(tag_span(), 4)
-  else if idx = 2 then @(tag_button(), 6)
-  else if idx = 3 then @(tag_style(), 5)
-  else if idx = 4 then @(tag_h1(), 2)
-  else if idx = 5 then @(tag_h2(), 2)
-  else if idx = 6 then @(tag_h3(), 2)
-  else if idx = 7 then @(tag_p(), 1)
-  else if idx = 8 then @(tag_input(), 5)
-  else if idx = 9 then @(tag_label(), 5)
-  else if idx = 10 then @(tag_select(), 6)
-  else if idx = 11 then @(tag_option(), 6)
-  else if idx = 12 then @(tag_a(), 1)
-  else if idx = 13 then @(tag_img(), 3)
-  else if idx = 14 then @(tag_b(), 1)
-  else if idx = 15 then @(tag_i(), 1)
-  else if idx = 16 then @(tag_u(), 1)
-  else if idx = 17 then @(tag_s(), 1)
-  else if idx = 18 then @(tag_q(), 1)
-  else if idx = 19 then @(tag_em(), 2)
-  else if idx = 20 then @(tag_br(), 2)
-  else if idx = 21 then @(tag_hr(), 2)
-  else if idx = 22 then @(tag_li(), 2)
-  else if idx = 23 then @(tag_dd(), 2)
-  else if idx = 24 then @(tag_dl(), 2)
-  else if idx = 25 then @(tag_dt(), 2)
-  else if idx = 26 then @(tag_ol(), 2)
-  else if idx = 27 then @(tag_ul(), 2)
-  else if idx = 28 then @(tag_td(), 2)
-  else if idx = 29 then @(tag_th(), 2)
-  else if idx = 30 then @(tag_tr(), 2)
-  else if idx = 31 then @(tag_h4(), 2)
-  else if idx = 32 then @(tag_h5(), 2)
-  else if idx = 33 then @(tag_h6(), 2)
-  else if idx = 34 then @(tag_pre(), 3)
-  else if idx = 35 then @(tag_sub(), 3)
-  else if idx = 36 then @(tag_sup(), 3)
-  else if idx = 37 then @(tag_var(), 3)
-  else if idx = 38 then @(tag_wbr(), 3)
-  else if idx = 39 then @(tag_nav(), 3)
-  else if idx = 40 then @(tag_kbd(), 3)
-  else if idx = 41 then @(tag_code(), 4)
-  else if idx = 42 then @(tag_mark(), 4)
-  else if idx = 43 then @(tag_cite(), 4)
-  else if idx = 44 then @(tag_abbr(), 4)
-  else if idx = 45 then @(tag_dfn(), 3)
-  else if idx = 46 then @(tag_main(), 4)
-  else if idx = 47 then @(tag_time(), 4)
-  else if idx = 48 then @(tag_ruby(), 4)
-  else if idx = 49 then @(tag_aside(), 5)
-  else if idx = 50 then @(tag_small(), 5)
-  else if idx = 51 then @(tag_table(), 5)
-  else if idx = 52 then @(tag_thead(), 5)
-  else if idx = 53 then @(tag_tbody(), 5)
-  else if idx = 54 then @(tag_tfoot(), 5)
-  else if idx = 55 then @(tag_strong(), 6)
-  else if idx = 56 then @(tag_figure(), 6)
-  else if idx = 57 then @(tag_footer(), 6)
-  else if idx = 58 then @(tag_header(), 6)
-  else if idx = 59 then @(tag_section(), 7)
-  else if idx = 60 then @(tag_article(), 7)
-  else if idx = 61 then @(tag_details(), 7)
-  else if idx = 62 then @(tag_summary(), 7)
-  else if idx = 63 then @(tag_caption(), 7)
-  else if idx = 64 then @(tag_blockquote(), 10)
-  else if idx = 65 then @(tag_figcaption(), 10)
-  else if idx = 66 then @(tag_svg(), 3)
-  else if idx = 67 then @(tag_g(), 1)
-  else if idx = 68 then @(tag_path(), 4)
-  else if idx = 69 then @(tag_circle(), 6)
-  else if idx = 70 then @(tag_rect(), 4)
-  else if idx = 71 then @(tag_line(), 4)
-  else if idx = 72 then @(tag_polyline(), 8)
-  else if idx = 73 then @(tag_polygon(), 7)
-  else if idx = 74 then @(tag_text(), 4)
-  else if idx = 75 then @(tag_tspan(), 5)
-  else if idx = 76 then @(tag_use(), 3)
-  else if idx = 77 then @(tag_defs(), 4)
-  else if idx = 78 then @(tag_image(), 5)
-  else if idx = 79 then @(tag_symbol(), 6)
-  else if idx = 80 then @(tag_title(), 5)
-  else if idx = 81 then @(tag_desc(), 4)
-  else if idx = 82 then @(tag_math(), 4)
-  else if idx = 83 then @(tag_mi(), 2)
-  else if idx = 84 then @(tag_mn(), 2)
-  else if idx = 85 then @(tag_mo(), 2)
-  else if idx = 86 then @(tag_mrow(), 4)
-  else if idx = 87 then @(tag_msup(), 4)
-  else if idx = 88 then @(tag_msub(), 4)
-  else if idx = 89 then @(tag_mfrac(), 5)
-  else if idx = 90 then @(tag_msqrt(), 5)
-  else if idx = 91 then @(tag_mroot(), 5)
-  else if idx = 92 then @(tag_mover(), 5)
-  else if idx = 93 then @(tag_munder(), 6)
-  else if idx = 94 then @(tag_mtable(), 6)
-  else if idx = 95 then @(tag_mtr(), 3)
-  else if idx = 96 then @(tag_mtd(), 3)
-  else if idx = 97 then @(tag_rp(), 2)
-  else @(tag_rt(), 2)  (* idx = 98 *)
+implement get_tag_by_index(idx) = let
+  val p = _build_tag_text(idx)
+  val len = _tag_table_len(idx)
+in
+  if len = 1 then @(_ptr_as_safe_text{1}(p), 1)
+  else if len = 2 then @(_ptr_as_safe_text{2}(p), 2)
+  else if len = 3 then @(_ptr_as_safe_text{3}(p), 3)
+  else if len = 4 then @(_ptr_as_safe_text{4}(p), 4)
+  else if len = 5 then @(_ptr_as_safe_text{5}(p), 5)
+  else if len = 6 then @(_ptr_as_safe_text{6}(p), 6)
+  else if len = 7 then @(_ptr_as_safe_text{7}(p), 7)
+  else if len = 8 then @(_ptr_as_safe_text{8}(p), 8)
+  else (* 10 *) @(_ptr_as_safe_text{10}(p), 10)
+end
 
-implement get_attr_by_index(idx) =
-  if idx = 0 then @(attr_class(), 5)
-  else if idx = 1 then @(attr_id(), 2)
-  else if idx = 2 then @(attr_type(), 4)
-  else if idx = 3 then @(attr_for(), 3)
-  else if idx = 4 then @(attr_accept(), 6)
-  else if idx = 5 then @(attr_href(), 4)
-  else if idx = 6 then @(attr_src(), 3)
-  else if idx = 7 then @(attr_alt(), 3)
-  else if idx = 8 then @(attr_title(), 5)
-  else if idx = 9 then @(attr_width(), 5)
-  else if idx = 10 then @(attr_height(), 6)
-  else if idx = 11 then @(attr_lang(), 4)
-  else if idx = 12 then @(attr_dir(), 3)
-  else if idx = 13 then @(attr_role(), 4)
-  else if idx = 14 then @(attr_tabindex(), 8)
-  else if idx = 15 then @(attr_colspan(), 7)
-  else if idx = 16 then @(attr_rowspan(), 7)
-  else if idx = 17 then @(attr_xmlns(), 5)
-  else if idx = 18 then @(attr_d(), 1)
-  else if idx = 19 then @(attr_fill(), 4)
-  else if idx = 20 then @(attr_stroke(), 6)
-  else if idx = 21 then @(attr_cx(), 2)
-  else if idx = 22 then @(attr_cy(), 2)
-  else if idx = 23 then @(attr_r(), 1)
-  else if idx = 24 then @(attr_x(), 1)
-  else if idx = 25 then @(attr_y(), 1)
-  else if idx = 26 then @(attr_transform(), 9)
-  else if idx = 27 then @(attr_viewBox(), 7)
-  else if idx = 28 then @(attr_aria_label(), 10)
-  else if idx = 29 then @(attr_aria_hidden(), 11)
-  else if idx = 30 then @(attr_name(), 4)
-  else @(attr_value(), 5) (* idx = 31 *)
+implement get_attr_by_index(idx) = let
+  val p = _build_attr_text(idx)
+  val len = _attr_table_len(idx)
+in
+  if len = 1 then @(_ptr_as_safe_text{1}(p), 1)
+  else if len = 2 then @(_ptr_as_safe_text{2}(p), 2)
+  else if len = 3 then @(_ptr_as_safe_text{3}(p), 3)
+  else if len = 4 then @(_ptr_as_safe_text{4}(p), 4)
+  else if len = 5 then @(_ptr_as_safe_text{5}(p), 5)
+  else if len = 6 then @(_ptr_as_safe_text{6}(p), 6)
+  else if len = 7 then @(_ptr_as_safe_text{7}(p), 7)
+  else if len = 8 then @(_ptr_as_safe_text{8}(p), 8)
+  else if len = 9 then @(_ptr_as_safe_text{9}(p), 9)
+  else if len = 10 then @(_ptr_as_safe_text{10}(p), 10)
+  else (* 11 *) @(_ptr_as_safe_text{11}(p), 11)
+end
+
 
 (* ========== Tree renderer ========== *)
 
@@ -960,7 +1006,7 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
     in
       if opc = 1 then let (* ELEMENT_OPEN *)
         val tag_len = ward_arr_byte(tree, pos + 1, tlen)
-        val tag_idx = lookup_tag(tree, pos + 2, tag_len)
+        val tag_idx = lookup_tag(tree, tlen, pos + 2, tag_len)
         val attr_off = pos + 2 + tag_len
         val attr_count = ward_arr_byte(tree, attr_off, tlen)
         val after_attrs = skip_attrs(tree, attr_off + 1, attr_count, tlen)
@@ -1007,7 +1053,7 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
               val st = ward_dom_stream_create_element(
                 st, span_id, parent, tag_span(), 4)
               val text_arr = ward_arr_alloc<byte>(tl)
-              val _ = copy_arr_bytes(text_arr, tree, text_start, text_len)
+              val () = copy_arr_bytes(text_arr, tl, tree, tlen, text_start, text_len)
               val @(frozen, borrow) = ward_arr_freeze<byte>(text_arr)
               val st = ward_dom_stream_set_text(st, span_id, borrow, tl)
               val () = ward_arr_drop<byte>(frozen, borrow)
@@ -1019,7 +1065,7 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
             else let
               (* TEXT_RENDER_SAFE: no children yet — set_text on parent is safe *)
               val text_arr = ward_arr_alloc<byte>(tl)
-              val _ = copy_arr_bytes(text_arr, tree, text_start, text_len)
+              val () = copy_arr_bytes(text_arr, tl, tree, tlen, text_start, text_len)
               val @(frozen, borrow) = ward_arr_freeze<byte>(text_arr)
               val st = ward_dom_stream_set_text(st, parent, borrow, tl)
               val () = ward_arr_drop<byte>(frozen, borrow)
@@ -1053,7 +1099,7 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
     if count <= 0 then st
     else let
       val name_len = ward_arr_byte(tree, pos, tlen)
-      val attr_idx = lookup_attr(tree, pos + 1, name_len)
+      val attr_idx = lookup_attr(tree, tlen, pos + 1, name_len)
       val val_off = pos + 1 + name_len
       val val_len = rd_u16(tree, val_off, tlen)
       val val_start = val_off + 2
@@ -1066,7 +1112,7 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
           if vl < 65536 then
           if attr_st_len + vl + 8 <= 262144 then let
             val val_arr = ward_arr_alloc<byte>(vl)
-            val _ = copy_arr_bytes(val_arr, tree, val_start, val_len)
+            val () = copy_arr_bytes(val_arr, vl, tree, tlen, val_start, val_len)
             val @(frozen, borrow) = ward_arr_freeze<byte>(val_arr)
             val st = ward_dom_stream_set_attr(st, nid, attr_st, attr_st_len, borrow, vl)
             val () = ward_arr_drop<byte>(frozen, borrow)

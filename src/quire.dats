@@ -15,11 +15,13 @@ staload "./zip.sats"
 staload "./epub.sats"
 staload "./library.sats"
 staload "./reader.sats"
+staload "./buf.sats"
 staload "./../vendor/ward/lib/memory.sats"
 staload "./../vendor/ward/lib/dom.sats"
 staload "./../vendor/ward/lib/listener.sats"
 staload "./../vendor/ward/lib/file.sats"
 staload "./../vendor/ward/lib/promise.sats"
+staload "./../vendor/ward/lib/event.sats"
 staload "./../vendor/ward/lib/decompress.sats"
 staload "./../vendor/ward/lib/xml.sats"
 staload "./../vendor/ward/lib/dom_read.sats"
@@ -28,6 +30,7 @@ staload _ = "./../vendor/ward/lib/dom.dats"
 staload _ = "./../vendor/ward/lib/listener.dats"
 staload _ = "./../vendor/ward/lib/file.dats"
 staload _ = "./../vendor/ward/lib/promise.dats"
+staload _ = "./../vendor/ward/lib/event.dats"
 staload _ = "./../vendor/ward/lib/decompress.dats"
 staload _ = "./../vendor/ward/lib/xml.dats"
 staload _ = "./../vendor/ward/lib/dom_read.dats"
@@ -52,18 +55,75 @@ overload - with sub_int_int of 10
 (* Runtime-checked positive: used after verifying x > 0 at runtime *)
 extern castfn _checked_pos(x: int): [n:pos] int n
 
-(* ========== Text constant IDs (match _text_table in quire_runtime.c) ========== *)
+(* ========== Text constant IDs ========== *)
 
 #define TEXT_NO_BOOKS 0
 #define TEXT_EPUB_EXT 1
 #define TEXT_NOT_STARTED 2
 #define TEXT_READ 3
 
-(* C helpers *)
-extern fun fill_text {l:agz}{n:pos}
-  (arr: !ward_arr(byte, l, n), text_id: int): int = "mac#_fill_text"
-extern fun copy_from_sbuf {l:agz}{n:pos}
-  (dst: !ward_arr(byte, l, n), len: int n): void = "mac#_copy_from_sbuf"
+(* ========== Byte-level helpers (pure ATS2) ========== *)
+
+(* Bounds-checked byte write to ward_arr *)
+extern fun ward_arr_set_byte {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), off: int, len: int n, v: int): void = "mac#_ward_arr_set_byte"
+
+(* Fill ward_arr with text constant bytes.
+ * "No books yet"(12), ".epub"(5), "Not started"(11), "Read"(4) *)
+fn fill_text {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), alen: int n, text_id: int): void =
+  if text_id = 0 then let (* "No books yet" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 78)   (* N *)
+    val () = ward_arr_set_byte(arr, 1, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 2, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 3, alen, 98)   (* b *)
+    val () = ward_arr_set_byte(arr, 4, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 5, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 6, alen, 107)  (* k *)
+    val () = ward_arr_set_byte(arr, 7, alen, 115)  (* s *)
+    val () = ward_arr_set_byte(arr, 8, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 9, alen, 121)  (* y *)
+    val () = ward_arr_set_byte(arr, 10, alen, 101) (* e *)
+    val () = ward_arr_set_byte(arr, 11, alen, 116) (* t *)
+  in end
+  else if text_id = 1 then let (* ".epub" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 46)   (* . *)
+    val () = ward_arr_set_byte(arr, 1, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 2, alen, 112)  (* p *)
+    val () = ward_arr_set_byte(arr, 3, alen, 117)  (* u *)
+    val () = ward_arr_set_byte(arr, 4, alen, 98)   (* b *)
+  in end
+  else if text_id = 2 then let (* "Not started" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 78)   (* N *)
+    val () = ward_arr_set_byte(arr, 1, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 2, alen, 116)  (* t *)
+    val () = ward_arr_set_byte(arr, 3, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 4, alen, 115)  (* s *)
+    val () = ward_arr_set_byte(arr, 5, alen, 116)  (* t *)
+    val () = ward_arr_set_byte(arr, 6, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 7, alen, 114)  (* r *)
+    val () = ward_arr_set_byte(arr, 8, alen, 116)  (* t *)
+    val () = ward_arr_set_byte(arr, 9, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 10, alen, 100) (* d *)
+  in end
+  else let (* text_id = 3: "Read" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 82)   (* R *)
+    val () = ward_arr_set_byte(arr, 1, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 2, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 3, alen, 100)  (* d *)
+  in end
+
+(* Copy len bytes from string_buffer to ward_arr *)
+fn copy_from_sbuf {l:agz}{n:pos}
+  (dst: !ward_arr(byte, l, n), len: int n): void = let
+  val sbuf = get_string_buffer_ptr()
+  fun loop(dst: !ward_arr(byte, l, n), dlen: int n,
+           sbuf: ptr, i: int, count: int): void =
+    if i < count then let
+      val b = buf_get_u8(sbuf, i)
+      val () = ward_arr_set_byte(dst, i, dlen, b)
+    in loop(dst, dlen, sbuf, i + 1, count) end
+in loop(dst, len, sbuf, 0, len) end
 
 (* EPUB parsing helpers (implemented in quire_runtime.c) *)
 extern fun epub_parse_container_bytes {l:agz}{n:pos}
@@ -77,18 +137,6 @@ extern fun get_str_container_ptr(): ptr = "mac#"
 (* Spine path accessors *)
 extern fun epub_get_spine_path_ptr(index: int): ptr = "mac#"
 extern fun epub_get_spine_path_len(index: int): int = "mac#"
-
-(* Reader extra accessors (implemented in quire_runtime.c) *)
-extern fun reader_set_viewport_id(id: int): void = "mac#"
-extern fun reader_set_container_id(id: int): void = "mac#"
-extern fun reader_get_container_id(): int = "mac#"
-extern fun reader_set_book_index(idx: int): void = "mac#"
-extern fun reader_get_book_index(): int = "mac#"
-extern fun reader_set_file_handle(h: int): void = "mac#"
-extern fun reader_get_file_handle(): int = "mac#"
-extern fun reader_set_btn_id(book_index: int, node_id: int): void = "mac#"
-extern fun reader_get_btn_id(book_index: int): int = "mac#"
-extern fun reader_set_total_pages(n: int): void = "mac#"
 
 (* ========== Measurement correctness ========== *)
 
@@ -345,7 +393,7 @@ in
   if tl > 0 then
     if tl < 65536 then let
       val arr = ward_arr_alloc<byte>(tl)
-      val _ = fill_text(arr, text_id)
+      val () = fill_text(arr, tl, text_id)
       val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
       val s = ward_dom_stream_set_text(s, nid, borrow, tl)
       val () = ward_arr_drop<byte>(frozen, borrow)
@@ -369,7 +417,7 @@ in
     if vl < 65536 then
     if nl_v + vl + 8 <= 262144 then let
       val arr = ward_arr_alloc<byte>(vl)
-      val _ = fill_text(arr, text_id)
+      val () = fill_text(arr, vl, text_id)
       val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
       val s = ward_dom_stream_set_attr(s, nid, aname, nl_v, borrow, vl)
       val () = ward_arr_drop<byte>(frozen, borrow)
@@ -911,19 +959,27 @@ in
         val p2 = ward_promise_then<int><int>(p,
           llam (handle: int): ward_promise_pending(int) => let
             val file_size = ward_file_get_size()
-            val _nentries = zip_open(handle, file_size)
-            val ok1 = epub_read_container(handle)
-            val ok2 = (if gt_int_int(ok1, 0)
-              then epub_read_opf(handle) else 0): int
-            val _book_idx = (if gt_int_int(ok2, 0)
-              then library_add_book() else 0 - 1): int
             val () = reader_set_file_handle(handle)
-            val dom = ward_dom_init()
-            val s = ward_dom_stream_begin(dom)
-            val s = render_library_with_books(s, saved_list_id)
-            val dom = ward_dom_stream_end(s)
-            val () = ward_dom_fini(dom)
-          in ward_promise_return<int>(0) end)
+            (* Async break: yield to event loop to reset V8 call stack.
+             * Chrome renderer stack is ~864KB; the synchronous EPUB
+             * import chain exceeds this with ext# wrapper overhead. *)
+            val break_p = ward_timer_set(0)
+            val sh = handle val sfs = file_size val sli = saved_list_id
+          in ward_promise_then<int><int>(break_p,
+            llam (_unused: int): ward_promise_pending(int) => let
+              val _nentries = zip_open(sh, sfs)
+              val ok1 = epub_read_container(sh)
+              val ok2 = (if gt_int_int(ok1, 0)
+                then epub_read_opf(sh) else 0): int
+              val _book_idx = (if gt_int_int(ok2, 0)
+                then library_add_book() else 0 - 1): int
+              val dom = ward_dom_init()
+              val s = ward_dom_stream_begin(dom)
+              val s = render_library_with_books(s, sli)
+              val dom = ward_dom_stream_end(s)
+              val () = ward_dom_fini(dom)
+            in ward_promise_return<int>(0) end)
+          end)
         val () = ward_promise_discard<int>(p2)
       in 0 end
     )
@@ -968,40 +1024,47 @@ in
         val p2 = ward_promise_then<int><int>(p,
           llam (handle: int): ward_promise_pending(int) => let
             val file_size = ward_file_get_size()
-            val _nentries = zip_open(handle, file_size)
-            val ok1 = epub_read_container(handle)
-            val ok2 = (if gt_int_int(ok1, 0)
-              then epub_read_opf(handle) else 0): int
-            val _book_idx = (if gt_int_int(ok2, 0)
-              then library_add_book() else 0 - 1): int
             val () = reader_set_file_handle(handle)
-            val dom = ward_dom_init()
-            val s = ward_dom_stream_begin(dom)
-            val s = render_library_with_books(s, saved_list_id)
-            val dom = ward_dom_stream_end(s)
-            val () = ward_dom_fini(dom)
+            (* Async break: yield to event loop to reset V8 call stack *)
+            val break_p = ward_timer_set(0)
+            val sh = handle val sfs = file_size
+            val sli = saved_list_id val sr = saved_root
+          in ward_promise_then<int><int>(break_p,
+            llam (_unused: int): ward_promise_pending(int) => let
+              val _nentries = zip_open(sh, sfs)
+              val ok1 = epub_read_container(sh)
+              val ok2 = (if gt_int_int(ok1, 0)
+                then epub_read_opf(sh) else 0): int
+              val _book_idx = (if gt_int_int(ok2, 0)
+                then library_add_book() else 0 - 1): int
+              val dom = ward_dom_init()
+              val s = ward_dom_stream_begin(dom)
+              val s = render_library_with_books(s, sli)
+              val dom = ward_dom_stream_end(s)
+              val () = ward_dom_fini(dom)
 
-            (* Register click listeners on newly rendered read buttons *)
-            val btn_count = library_get_count()
-            fun reg_new_btns(i: int, n: int, root: int): void =
-              if gte_int_int(i, n) then ()
-              else let
-                val bid = reader_get_btn_id(i)
-                val bidx = i
-                val sr = root
-              in
-                if gt_int_int(bid, 0) then let
-                  val () = ward_add_event_listener(
-                    bid, evt_click(), 5, 2 + i,
-                    lam (_pl2: int): int => let
-                      val () = enter_reader(sr, bidx)
-                    in 0 end
-                  )
-                in reg_new_btns(i + 1, n, root) end
-                else reg_new_btns(i + 1, n, root)
-              end
-            val () = reg_new_btns(0, btn_count, saved_root)
-          in ward_promise_return<int>(0) end)
+              (* Register click listeners on newly rendered read buttons *)
+              val btn_count = library_get_count()
+              fun reg_new_btns(i: int, n: int, root: int): void =
+                if gte_int_int(i, n) then ()
+                else let
+                  val bid = reader_get_btn_id(i)
+                  val bidx = i
+                  val sroot = root
+                in
+                  if gt_int_int(bid, 0) then let
+                    val () = ward_add_event_listener(
+                      bid, evt_click(), 5, 2 + i,
+                      lam (_pl2: int): int => let
+                        val () = enter_reader(sroot, bidx)
+                      in 0 end
+                    )
+                  in reg_new_btns(i + 1, n, root) end
+                  else reg_new_btns(i + 1, n, root)
+                end
+              val () = reg_new_btns(0, btn_count, sr)
+            in ward_promise_return<int>(0) end)
+          end)
         val () = ward_promise_discard<int>(p2)
       in 0 end
     )

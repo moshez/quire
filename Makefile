@@ -11,7 +11,7 @@ WASM_LD  := wasm-ld
 WARD_DIR := vendor/ward/lib
 
 # WASM compilation flags
-WASM_CFLAGS := --target=wasm32 -O2 -nostdlib -ffreestanding \
+WASM_CFLAGS := --target=wasm32 -O2 -flto -nostdlib -ffreestanding \
   -I$(WARD_DIR)/../exerciser/wasm_stubs \
   -I$(PATSHOME) -I$(PATSHOME)/ccomp/runtime \
   -D_ATS_CCOMP_HEADER_NONE_ \
@@ -21,8 +21,8 @@ WASM_CFLAGS := --target=wasm32 -O2 -nostdlib -ffreestanding \
   -include $(WARD_DIR)/runtime.h \
   -include src/quire_prelude.h
 
-WASM_LDFLAGS := --no-entry --allow-undefined \
-  -z stack-size=65536 --initial-memory=16777216 --max-memory=268435456
+WASM_LDFLAGS := --no-entry --allow-undefined --lto-O2 \
+  -z stack-size=262144 --initial-memory=16777216 --max-memory=268435456
 
 # WASM exports for bridge protocol
 WASM_EXPORTS := \
@@ -86,7 +86,7 @@ ALL_C_GEN   := $(WARD_C_GEN) $(QUIRE_C_GEN)
 # Object files
 WARD_OBJS   := $(patsubst build/%.c,build/%.o,$(WARD_C_GEN))
 QUIRE_OBJS  := $(patsubst build/%.c,build/%.o,$(QUIRE_C_GEN))
-ALL_OBJS    := $(WARD_OBJS) $(QUIRE_OBJS) build/ward_runtime.o build/quire_runtime.o
+ALL_OBJS    := $(WARD_OBJS) $(QUIRE_OBJS) build/ward_runtime.o
 
 # Default target
 all: build/quire.wasm
@@ -113,9 +113,6 @@ build/%_dats.o: build/%_dats.c $(WARD_DIR)/runtime.h | build
 	$(CLANG) $(WASM_CFLAGS) -c -o $@ $<
 
 build/ward_runtime.o: $(WARD_DIR)/runtime.c $(WARD_DIR)/runtime.h | build
-	$(CLANG) $(WASM_CFLAGS) -c -o $@ $<
-
-build/quire_runtime.o: src/quire_runtime.c $(WARD_DIR)/runtime.h | build
 	$(CLANG) $(WASM_CFLAGS) -c -o $@ $<
 
 # --- Link ---

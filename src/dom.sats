@@ -160,14 +160,15 @@ fun attr_value(): ward_safe_text(5)
 (* ========== Tag/Attribute lookup from raw bytes ========== *)
 
 (* Look up a tag name from raw bytes. Returns safe_text index or -1.
+ * Uses static C data tables + ATS2 loop (compact WASM).
  * Used by the tree renderer to match parsed HTML tag bytes to
  * pre-built ward_safe_text constants. *)
 fun lookup_tag {lb:agz}{n:pos}
-  (tree: !ward_arr(byte, lb, n), offset: int, name_len: int): int = "mac#"
+  (tree: !ward_arr(byte, lb, n), tlen: int n, offset: int, name_len: int): int
 
 (* Look up an attribute name from raw bytes. Returns index or -1. *)
 fun lookup_attr {lb:agz}{n:pos}
-  (tree: !ward_arr(byte, lb, n), offset: int, name_len: int): int = "mac#"
+  (tree: !ward_arr(byte, lb, n), tlen: int n, offset: int, name_len: int): int
 
 (* Get a tag safe_text by index (returned by lookup_tag).
  * All tags are <= 10 chars, so n + 10 <= 4096 holds. *)

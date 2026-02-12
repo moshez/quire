@@ -22,6 +22,16 @@ async function screenshot(page, name) {
 test.describe('EPUB Reader E2E', () => {
 
   test('import epub, read, and flip pages', async ({ page }) => {
+    // Capture errors and console messages for debugging WASM crashes
+    const errors = [];
+    const consoleMessages = [];
+    page.on('pageerror', err => errors.push(err.message));
+    page.on('console', msg => consoleMessages.push(`[${msg.type()}] ${msg.text()}`));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED. Errors:', errors);
+      console.error('Console messages:', consoleMessages);
+    });
+
     // Generate a 3-chapter EPUB with enough text for multiple pages
     const epubBuffer = createEpub({
       title: 'A Tale of Testing',
