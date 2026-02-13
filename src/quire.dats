@@ -8,7 +8,6 @@
 #define ATS_DYNLOADFLAG 0
 
 #include "share/atspre_staload.hats"
-staload UN = "prelude/SATS/unsafe.sats"
 staload "./quire.sats"
 staload "./app_state.sats"
 staload "./dom.sats"
@@ -819,7 +818,7 @@ in
                   val () = ward_blob_free(blob_handle)
                 in ward_promise_return<int>(0) end
               end)
-            val _ = $UN.castvwtp0{ptr}(p2) (* forget — node stays alive in chain *)
+            val () = ward_promise_discard<int>(p2)
           in end
           else if eq_int_int(compression, 0) then let
             (* Stored — read directly, no decompression needed *)
@@ -983,7 +982,7 @@ in
               val () = ward_dom_fini(dom)
             in ward_promise_return<int>(0) end)
           end)
-        val _ = $UN.castvwtp0{ptr}(p2) (* forget — node stays alive in chain *)
+        val () = ward_promise_discard<int>(p2)
       in 0 end
     )
 
@@ -1068,7 +1067,7 @@ in
               val () = reg_new_btns(0, btn_count, sr)
             in ward_promise_return<int>(0) end)
           end)
-        val _ = $UN.castvwtp0{ptr}(p2) (* forget — node stays alive in chain *)
+        val () = ward_promise_discard<int>(p2)
       in 0 end
     )
   in end
