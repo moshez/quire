@@ -12,8 +12,29 @@
  *)
 
 (* ========== Buffer Capacities (type-level) ========== *)
+(* Bridge-shared buffers *)
 stadef SBUF_CAP = 4096     (* string buffer capacity *)
 stadef FBUF_CAP = 16384    (* fetch buffer capacity *)
+stadef DBUF_CAP = 4096     (* diff buffer capacity *)
+
+(* EPUB metadata buffers *)
+stadef EPUB_TITLE_CAP = 256
+stadef EPUB_AUTHOR_CAP = 256
+stadef EPUB_BOOKID_CAP = 64
+stadef EPUB_OPF_CAP = 256
+stadef EPUB_SPINE_BUF_CAP = 4096
+stadef EPUB_SPINE_OFF_CAP = 128   (* 32 entries × 4 bytes *)
+stadef EPUB_SPINE_LEN_CAP = 128   (* 32 entries × 4 bytes *)
+
+(* Library storage *)
+stadef LIB_BOOKS_CAP = 19200      (* 32 books × 150 ints × 4 bytes *)
+
+(* ZIP storage *)
+stadef ZIP_ENTRIES_CAP = 7168     (* 256 entries × 7 ints × 4 bytes *)
+stadef ZIP_NAMEBUF_CAP = 8192
+
+(* Reader button IDs *)
+stadef RDR_BTNS_CAP = 128        (* 32 ints × 4 bytes *)
 
 (* ========== Buffer Size Constants (dynamic-level) ========== *)
 #define STRING_BUFFER_SIZE 4096

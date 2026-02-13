@@ -4,8 +4,10 @@
  * Threaded through functions as a parameter; stored in the
  * callback registry context across async boundaries.
  *
- * No mutable globals. No C code.
+ * No mutable globals. No C code. No ptr in any declaration.
  *)
+
+staload "./buf.sats"
 
 absvtype app_state = ptr
 
@@ -48,12 +50,7 @@ fun app_get_lib_meta_load_pending(st: !app_state): int
 fun app_set_lib_meta_load_pending(st: !app_state, v: int): void
 fun app_get_lib_meta_load_index(st: !app_state): int
 fun app_set_lib_meta_load_index(st: !app_state, v: int): void
-fun app_get_library_books(st: !app_state): ptr
-
-(* Buffer pointers — bridge shared memory *)
-fun app_get_string_buffer(st: !app_state): ptr
-fun app_get_fetch_buffer(st: !app_state): ptr
-fun app_get_diff_buffer(st: !app_state): ptr
+(* Library books — internal, no cross-module ptr access *)
 
 (* Settings values *)
 fun app_get_stg_font_size(st: !app_state): int
@@ -140,25 +137,19 @@ fun app_set_rdr_btn_id(st: !app_state, idx: int, v: int): void
 (* EPUB state *)
 fun app_get_epub_spine_count(st: !app_state): int
 fun app_set_epub_spine_count(st: !app_state, v: int): void
-fun app_get_epub_title(st: !app_state): ptr
+(* EPUB scalar accessors — no ptr returns *)
 fun app_get_epub_title_len(st: !app_state): int
 fun app_set_epub_title_len(st: !app_state, v: int): void
-fun app_get_epub_author(st: !app_state): ptr
 fun app_get_epub_author_len(st: !app_state): int
 fun app_set_epub_author_len(st: !app_state, v: int): void
-fun app_get_epub_book_id(st: !app_state): ptr
 fun app_get_epub_book_id_len(st: !app_state): int
 fun app_set_epub_book_id_len(st: !app_state, v: int): void
-fun app_get_epub_opf_path(st: !app_state): ptr
 fun app_get_epub_opf_path_len(st: !app_state): int
 fun app_set_epub_opf_path_len(st: !app_state, v: int): void
 fun app_get_epub_opf_dir_len(st: !app_state): int
 fun app_set_epub_opf_dir_len(st: !app_state, v: int): void
 fun app_get_epub_state(st: !app_state): int
 fun app_set_epub_state(st: !app_state, v: int): void
-fun app_get_epub_spine_path_buf(st: !app_state): ptr
-fun app_get_epub_spine_path_offsets(st: !app_state): ptr
-fun app_get_epub_spine_path_lens(st: !app_state): ptr
 fun app_get_epub_spine_path_count(st: !app_state): int
 fun app_set_epub_spine_path_count(st: !app_state, v: int): void
 fun app_get_epub_spine_path_pos(st: !app_state): int
@@ -182,7 +173,7 @@ fun _app_lib_meta_load_pend(): int
 fun _app_set_lib_meta_load_pend(v: int): void
 fun _app_lib_meta_load_idx(): int
 fun _app_set_lib_meta_load_idx(v: int): void
-fun _app_lib_books_ptr(): ptr
+fun _app_lib_books_buf(): sized_buf(LIB_BOOKS_CAP)
 
 (* Settings accessors *)
 fun _app_stg_font_size(): int
@@ -236,28 +227,28 @@ fun _app_set_stg_save_pend(v: int): void
 fun _app_stg_load_pend(): int
 fun _app_set_stg_load_pend(v: int): void
 
-(* EPUB accessors *)
+(* EPUB accessors — sized_buf for buffer pointers *)
 fun _app_epub_spine_count(): int
 fun _app_set_epub_spine_count(v: int): void
-fun _app_epub_title_ptr(): ptr
+fun _app_epub_title_buf(): sized_buf(EPUB_TITLE_CAP)
 fun _app_epub_title_len(): int
 fun _app_set_epub_title_len(v: int): void
-fun _app_epub_author_ptr(): ptr
+fun _app_epub_author_buf(): sized_buf(EPUB_AUTHOR_CAP)
 fun _app_epub_author_len(): int
 fun _app_set_epub_author_len(v: int): void
-fun _app_epub_book_id_ptr(): ptr
+fun _app_epub_book_id_buf(): sized_buf(EPUB_BOOKID_CAP)
 fun _app_epub_book_id_len(): int
 fun _app_set_epub_book_id_len(v: int): void
-fun _app_epub_opf_path_ptr(): ptr
+fun _app_epub_opf_path_buf(): sized_buf(EPUB_OPF_CAP)
 fun _app_epub_opf_path_len(): int
 fun _app_set_epub_opf_path_len(v: int): void
 fun _app_epub_opf_dir_len(): int
 fun _app_set_epub_opf_dir_len(v: int): void
 fun _app_epub_state(): int
 fun _app_set_epub_state(v: int): void
-fun _app_epub_spine_path_buf(): ptr
-fun _app_epub_spine_path_offsets(): ptr
-fun _app_epub_spine_path_lens(): ptr
+fun _app_epub_spine_path_buf(): sized_buf(EPUB_SPINE_BUF_CAP)
+fun _app_epub_spine_path_offsets(): sized_buf(EPUB_SPINE_OFF_CAP)
+fun _app_epub_spine_path_lens(): sized_buf(EPUB_SPINE_LEN_CAP)
 fun _app_epub_spine_path_count(): int
 fun _app_set_epub_spine_path_count(v: int): void
 fun _app_epub_spine_path_pos(): int

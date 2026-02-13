@@ -23,6 +23,10 @@ extern fun buf_get_i32(p: ptr, idx: int): int = "mac#buf_get_i32"
 extern fun buf_set_i32(p: ptr, idx: int, v: int): void = "mac#buf_set_i32"
 extern fun get_string_buffer_ptr(): ptr = "mac#get_string_buffer_ptr"
 
+(* Convert sized_buf back to ptr for internal helpers.
+ * sized_buf(cap) erases to ptr at runtime; this is a no-op cast. *)
+extern castfn _sbuf_ptr {n:nat} (b: sized_buf(n)): ptr
+
 (* Borrow ward_arr as ptr for module-internal use.
  * ward_arr erases to ptr at runtime; this is a no-op cast. *)
 fn _borrow_ptr {l:agz}{n:pos}
@@ -323,24 +327,24 @@ implement epub_get_error(_) = 0
 implement epub_start_import(_) = 0
 
 implement epub_get_title(buf_offset) = let
-  val tptr = _app_epub_title_ptr()
+  val tptr = _app_epub_title_buf()
   val tlen = _app_epub_title_len()
   val sbuf = get_string_buffer_ptr()
-  val () = _copy_bytes(sbuf, buf_offset, tptr, 0, tlen)
+  val () = _copy_bytes(sbuf, buf_offset, _sbuf_ptr(tptr), 0, tlen)
 in tlen end
 
 implement epub_get_author(buf_offset) = let
-  val aptr = _app_epub_author_ptr()
+  val aptr = _app_epub_author_buf()
   val alen = _app_epub_author_len()
   val sbuf = get_string_buffer_ptr()
-  val () = _copy_bytes(sbuf, buf_offset, aptr, 0, alen)
+  val () = _copy_bytes(sbuf, buf_offset, _sbuf_ptr(aptr), 0, alen)
 in alen end
 
 implement epub_get_book_id(buf_offset) = let
-  val bptr = _app_epub_book_id_ptr()
+  val bptr = _app_epub_book_id_buf()
   val blen = _app_epub_book_id_len()
   val sbuf = get_string_buffer_ptr()
-  val () = _copy_bytes(sbuf, buf_offset, bptr, 0, blen)
+  val () = _copy_bytes(sbuf, buf_offset, _sbuf_ptr(bptr), 0, blen)
 in blen end
 
 implement epub_get_chapter_count() = let
@@ -406,13 +410,13 @@ in
       if lte_int_int(path_len, 0) then 0
       else if gte_int_int(path_len, 256) then 0
       else let
-        val opf_ptr = _app_epub_opf_path_ptr()
-        val () = _copy_bytes(opf_ptr, 0, buf, pos, path_len)
+        val opf_ptr = _app_epub_opf_path_buf()
+        val () = _copy_bytes(_sbuf_ptr(opf_ptr), 0, buf, pos, path_len)
         val () = _app_set_epub_opf_path_len(path_len)
         (* Extract directory prefix up to and including last '/' *)
         fun find_last_slash(i: int, last: int): int =
           if gte_int_int(i, path_len) then last
-          else if eq_int_int(buf_get_u8(opf_ptr, i), 47) then find_last_slash(i + 1, i) (* 47 = '/' *)
+          else if eq_int_int(sbuf_get_u8(opf_ptr, i), 47) then find_last_slash(i + 1, i) (* 47 = '/' *)
           else find_last_slash(i + 1, last)
         val last_slash = find_last_slash(0, 0 - 1)
       in
@@ -446,8 +450,8 @@ in
     if gte_int_int(tend, 0) then let
       val tlen0 = tend - tstart
       val tlen = if gt_int_int(tlen0, 255) then 255 else tlen0
-      val tptr = _app_epub_title_ptr()
-      val () = _copy_bytes(tptr, 0, buf, tstart, tlen)
+      val tptr = _app_epub_title_buf()
+      val () = _copy_bytes(_sbuf_ptr(tptr), 0, buf, tstart, tlen)
     in _app_set_epub_title_len(tlen) end
   end
 end
@@ -465,8 +469,8 @@ in
     if gte_int_int(aend, 0) then let
       val alen0 = aend - astart
       val alen = if gt_int_int(alen0, 255) then 255 else alen0
-      val aptr = _app_epub_author_ptr()
-      val () = _copy_bytes(aptr, 0, buf, astart, alen)
+      val aptr = _app_epub_author_buf()
+      val () = _copy_bytes(_sbuf_ptr(aptr), 0, buf, astart, alen)
     in _app_set_epub_author_len(alen) end
   end
 end
@@ -487,8 +491,8 @@ in
       if gte_int_int(id_end, 0) then let
         val id_len0 = id_end - id_start
         val id_len = if gt_int_int(id_len0, 63) then 63 else id_len0
-        val bptr = _app_epub_book_id_ptr()
-        val () = _copy_bytes(bptr, 0, buf, id_start, id_len)
+        val bptr = _app_epub_book_id_buf()
+        val () = _copy_bytes(_sbuf_ptr(bptr), 0, buf, id_start, id_len)
       in _app_set_epub_book_id_len(id_len) end
     end
   end
@@ -515,7 +519,7 @@ implement _opf_resolve_spine(buf, len, spine_count) = let
   val ndl_item = needle_item()
   val ndl_mid = needle_id()
   val ndl_href = needle_href()
-  val opf_ptr = _app_epub_opf_path_ptr()
+  val opf_ptr = _app_epub_opf_path_buf()
   val opf_dir_len = _app_epub_opf_dir_len()
   val sp_buf = _app_epub_spine_path_buf()
   val sp_offsets = _app_epub_spine_path_offsets()
@@ -581,10 +585,10 @@ implement _opf_resolve_spine(buf, len, spine_count) = let
                       else if gt_int_int(sp_pos + full_len, 4096) then
                         resolve_spine(si + 1, ir_pos + 9, sp_count, sp_pos)
                       else let
-                        val () = _copy_bytes(sp_buf, sp_pos, opf_ptr, 0, opf_dir_len)
-                        val () = _copy_bytes(sp_buf, sp_pos + opf_dir_len, buf, href_start, href_len)
-                        val () = buf_set_i32(sp_offsets, sp_count, sp_pos)
-                        val () = buf_set_i32(sp_lens, sp_count, full_len)
+                        val () = _copy_bytes(_sbuf_ptr(sp_buf), sp_pos, _sbuf_ptr(opf_ptr), 0, opf_dir_len)
+                        val () = _copy_bytes(_sbuf_ptr(sp_buf), sp_pos + opf_dir_len, buf, href_start, href_len)
+                        val () = sbuf_set_i32(sp_offsets, sp_count, sp_pos)
+                        val () = sbuf_set_i32(sp_lens, sp_count, full_len)
                       in
                         resolve_spine(si + 1, ir_pos + 9, sp_count + 1, sp_pos + full_len)
                       end
@@ -618,10 +622,10 @@ end
 (* ========== Path copy accessors (no raw ptr exposure) ========== *)
 
 implement epub_copy_opf_path(buf_offset) = let
-  val optr = _app_epub_opf_path_ptr()
+  val optr = _app_epub_opf_path_buf()
   val olen = _app_epub_opf_path_len()
   val sbuf = get_string_buffer_ptr()
-  val () = _copy_bytes(sbuf, buf_offset, optr, 0, olen)
+  val () = _copy_bytes(sbuf, buf_offset, _sbuf_ptr(optr), 0, olen)
 in _checked_nat(olen) end
 
 implement epub_copy_container_path(buf_offset) = let
@@ -639,8 +643,8 @@ implement epub_copy_spine_path(pf | index, _count, buf_offset) = let
   val sp_buf = _app_epub_spine_path_buf()
   val sp_offsets = _app_epub_spine_path_offsets()
   val sp_lens = _app_epub_spine_path_lens()
-  val off = buf_get_i32(sp_offsets, index)
-  val len = buf_get_i32(sp_lens, index)
+  val off = sbuf_get_i32(sp_offsets, index)
+  val len = sbuf_get_i32(sp_lens, index)
   val sbuf = get_string_buffer_ptr()
-  val () = _copy_bytes(sbuf, buf_offset, sp_buf, off, len)
+  val () = _copy_bytes(sbuf, buf_offset, _sbuf_ptr(sp_buf), off, len)
 in _checked_pos(len) end
