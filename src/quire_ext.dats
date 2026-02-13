@@ -2,26 +2,15 @@
 
 #define ATS_DYNLOADFLAG 0
 
+#include "share/atspre_staload.hats"
 staload "./../vendor/ward/lib/memory.sats"
+staload _ = "./../vendor/ward/lib/memory.dats"
 staload "./quire_ext.sats"
 
-(* ========== Primitives ========== *)
-
-extern fun sub_int_int(a: int, b: int): int = "mac#quire_sub"
-extern fun eq_int_int(a: int, b: int): bool = "mac#quire_eq"
-extern fun lt_int_int(a: int, b: int): bool = "mac#quire_lt"
-extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
-overload - with sub_int_int of 10
-
-extern fun buf_get_u8(p: ptr, off: int): int = "mac#"
-extern fun bor_int_int(a: int, b: int): int = "mac#quire_bor"
-extern fun bsl_int_int(a: int, n: int): int = "mac#quire_bsl"
-extern fun band_int_int(a: int, b: int): int = "mac#quire_band"
-extern fun bsr_int_int(a: int, n: int): int = "mac#quire_bsr"
+staload "./arith.sats"
 
 (* Ward listener table — used for parse stash storage *)
 extern fun ward_listener_set(id: int, ctx: ptr): void = "mac#"
-extern fun ward_listener_get(id: int): ptr = "mac#"
 
 #define PARSE_STASH_SLOT 126
 
@@ -32,9 +21,6 @@ extern fun ward_listener_get(id: int): ptr = "mac#"
 
 extern fun ward_parse_html_stash_impl(p: ptr): void = "ext#ward_parse_html_stash"
 implement ward_parse_html_stash_impl(p) = ward_listener_set(PARSE_STASH_SLOT, p)
-
-extern fun ward_parse_html_get_ptr_impl(): ptr = "ext#ward_parse_html_get_ptr"
-implement ward_parse_html_get_ptr_impl() = ward_listener_get(PARSE_STASH_SLOT)
 
 (* ========== IEEE 754 f64 → int extraction ========== *)
 (* Reads LE f64 from bytes 0-7 of the payload, returns integer part.
@@ -52,11 +38,10 @@ implement ward_parse_html_get_ptr_impl() = ward_listener_get(PARSE_STASH_SLOT)
  *   result = top13 >> (12 - exp)
  *)
 
-extern fun read_payload_click_x_impl(arr: ptr): int = "ext#read_payload_click_x"
-implement read_payload_click_x_impl(arr) = let
-  val b5 = buf_get_u8(arr, 5)
-  val b6 = buf_get_u8(arr, 6)
-  val b7 = buf_get_u8(arr, 7)
+implement read_payload_click_x(arr) = let
+  val b5 = byte2int0(ward_arr_get<byte>(arr, 5))
+  val b6 = byte2int0(ward_arr_get<byte>(arr, 6))
+  val b7 = byte2int0(ward_arr_get<byte>(arr, 7))
   val exp_raw = bor_int_int(bsl_int_int(band_int_int(b7, 127), 4),
                             bsr_int_int(b6, 4))
 in

@@ -10,21 +10,14 @@
 staload "./buf.sats"
 staload "./xml.sats"
 
-(* ========== Integer arithmetic for freestanding mode ========== *)
-extern fun add_int_int(a: int, b: int): int = "mac#quire_add"
-extern fun mul_int_int(a: int, b: int): int = "mac#quire_mul"
-extern fun gte_int_int(a: int, b: int): bool = "mac#quire_gte"
-extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
-overload + with add_int_int of 10
-overload * with mul_int_int of 10
+staload "./arith.sats"
 
-extern fun quire_null_ptr(): ptr = "mac#"
+(* Module-private raw ptr buffer access — stays within xml.dats.
+ * xml.dats operates on fetch buffer ptr from epub module. *)
+extern fun buf_get_u8(p: ptr, off: int): int = "mac#buf_get_u8"
+extern fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#buf_set_u8"
+extern fun ptr_add_int(p: ptr, n: int): ptr = "mac#atspre_add_ptr0_bsz"
 
-(* Equality and inequality — avoid prelude templates *)
-extern fun sub_int_int(a: int, b: int): int = "mac#quire_sub"
-extern fun eq_int_int(a: int, b: int): bool = "mac#quire_eq"
-extern fun neq_int_int(a: int, b: int): bool = "mac#quire_neq"
-extern fun eq_ptr_ptr(a: ptr, b: ptr): bool = "mac#quire_ptr_eq"
 (* Cast functions for linear type borrowing — all at top level *)
 extern castfn ptr_to_nodes(p: ptr): xml_node_list_vt
 extern castfn nodes_to_ptr(ns: xml_node_list_vt): ptr
@@ -299,9 +292,11 @@ implement xml_free_nodes(nodes) =
     in xml_free_nodes(rest) end
 
 (* ========== Serializer ========== *)
+(* Uses algebraic pattern matching instead of null pointer checks.
+ * Borrow-reborrow pattern: borrow → extract ptr → put back → create
+ * new linear from ptr → recurse with ! borrow → put back. *)
 
-extern fun serialize_nodes_h(nodes_ptr: ptr, buf: ptr, pos: int, max: int): int
-extern fun serialize_attrs_h(attrs_ptr: ptr, buf: ptr, pos: int, max: int): int
+extern fun serialize_attrs_b(attrs: !xml_attr_list_vt, buf: ptr, pos: int, max: int): int
 
 implement xml_serialize_node(node, buf, pos, max) = let
   val np = node_borrow_ptr(node)
@@ -314,11 +309,15 @@ in
       val () = copy_bytes(name, 0, buf, p, nlen, max)
       val p = p + nlen
       val ap = attrs_borrow_ptr(attrs)
-      val p = serialize_attrs_h(ap, buf, p, max)
+      val a2 = ptr_to_attrs(ap)
+      val p = serialize_attrs_b(a2, buf, p, max)
+      val _ = attrs_to_ptr(a2)
       val () = if gt_int_int(max, p) then buf_set_u8(buf, p, 62)
       val p = p + 1
       val cp = nodes_borrow_ptr(children)
-      val p = serialize_nodes_h(cp, buf, p, max)
+      val c2 = ptr_to_nodes(cp)
+      val p = xml_serialize_nodes(c2, buf, p, max)
+      val _ = nodes_to_ptr(c2)
       val () = if gt_int_int(max, p) then buf_set_u8(buf, p, 60)
       val p = p + 1
       val () = if gt_int_int(max, p) then buf_set_u8(buf, p, 47)
@@ -334,246 +333,54 @@ in
     in pos + tlen end
 end
 
-implement serialize_nodes_h(nodes_ptr, buf, pos, max) =
-  if eq_ptr_ptr(nodes_ptr, quire_null_ptr()) then pos
-  else let
-    val nodes = ptr_to_nodes(nodes_ptr)
-  in case+ nodes of
-    | xml_nodes_nil() => let val _ = nodes_to_ptr(nodes) in pos end
-    | xml_nodes_cons(node, rest) => let
-        val np = node_borrow_ptr(node)
-        val rp = nodes_borrow_ptr(rest)
-        val _ = nodes_to_ptr(nodes)
-        val node3 = ptr_to_node(np)
-        val p = xml_serialize_node(node3, buf, pos, max)
-        val _ = node_to_ptr(node3)
-      in serialize_nodes_h(rp, buf, p, max) end
-  end
-
-implement serialize_attrs_h(attrs_ptr, buf, pos, max) =
-  if eq_ptr_ptr(attrs_ptr, quire_null_ptr()) then pos
-  else let
-    val attrs = ptr_to_attrs(attrs_ptr)
-  in case+ attrs of
-    | xml_attrs_nil() => let val _ = attrs_to_ptr(attrs) in pos end
-    | xml_attrs_cons(name, nlen, vp, vlen, rest) => let
-        val () = if gt_int_int(max, pos) then buf_set_u8(buf, pos, 32)
-        val p = pos + 1
-        val () = copy_bytes(name, 0, buf, p, nlen, max)
-        val p = p + nlen
-        val () = if gt_int_int(max, p) then buf_set_u8(buf, p, 61)
-        val p = p + 1
-        val () = if gt_int_int(max, p) then buf_set_u8(buf, p, 34)
-        val p = p + 1
-        val () = copy_bytes(vp, 0, buf, p, vlen, max)
-        val p = p + vlen
-        val () = if gt_int_int(max, p) then buf_set_u8(buf, p, 34)
-        val p = p + 1
-        val rp = attrs_borrow_ptr(rest)
-        val _ = attrs_to_ptr(attrs)
-      in serialize_attrs_h(rp, buf, p, max) end
-  end
-
 implement xml_serialize_nodes(nodes, buf, pos, max) = let
   val np = nodes_borrow_ptr(nodes)
-in serialize_nodes_h(np, buf, pos, max) end
+  val nodes2 = ptr_to_nodes(np)
+in
+  case+ nodes2 of
+  | xml_nodes_nil() => let
+      val _ = nodes_to_ptr(nodes2)
+    in pos end
+  | xml_nodes_cons(node, rest) => let
+      val np2 = node_borrow_ptr(node)
+      val rp2 = nodes_borrow_ptr(rest)
+      val _ = nodes_to_ptr(nodes2)
+      val n3 = ptr_to_node(np2)
+      val p = xml_serialize_node(n3, buf, pos, max)
+      val _ = node_to_ptr(n3)
+      val r3 = ptr_to_nodes(rp2)
+      val p2 = xml_serialize_nodes(r3, buf, p, max)
+      val _ = nodes_to_ptr(r3)
+    in p2 end
+end
 
-(* ========== C-Callable Query API ========== *)
+implement serialize_attrs_b(attrs, buf, pos, max) = let
+  val ap = attrs_borrow_ptr(attrs)
+  val attrs2 = ptr_to_attrs(ap)
+in
+  case+ attrs2 of
+  | xml_attrs_nil() => let
+      val _ = attrs_to_ptr(attrs2)
+    in pos end
+  | xml_attrs_cons(name, nlen, vp, vlen, rest) => let
+      val () = if gt_int_int(max, pos) then buf_set_u8(buf, pos, 32)
+      val p = pos + 1
+      val () = copy_bytes(name, 0, buf, p, nlen, max)
+      val p = p + nlen
+      val () = if gt_int_int(max, p) then buf_set_u8(buf, p, 61)
+      val p = p + 1
+      val () = if gt_int_int(max, p) then buf_set_u8(buf, p, 34)
+      val p = p + 1
+      val () = copy_bytes(vp, 0, buf, p, vlen, max)
+      val p = p + vlen
+      val () = if gt_int_int(max, p) then buf_set_u8(buf, p, 34)
+      val p = p + 1
+      val rp = attrs_borrow_ptr(rest)
+      val _ = attrs_to_ptr(attrs2)
+      val r2 = ptr_to_attrs(rp)
+      val p2 = serialize_attrs_b(r2, buf, p, max)
+      val _ = attrs_to_ptr(r2)
+    in p2 end
+end
 
-implement xml_parse(data_len) = let
-  val data = get_fetch_buffer_ptr()
-  val nodes = xml_parse_document(data, data_len)
-in nodes_to_ptr(nodes) end
-
-implement xml_free_tree(tree) = let
-  val nodes = ptr_to_nodes(tree)
-in xml_free_nodes(nodes) end
-
-extern fun find_in_list_h(list_ptr: ptr, name: ptr, name_len: int): ptr
-extern fun find_in_node_h(node_ptr: ptr, name: ptr, name_len: int): ptr
-
-implement find_in_list_h(list_ptr, name, name_len) =
-  if eq_ptr_ptr(list_ptr, quire_null_ptr()) then quire_null_ptr()
-  else let
-    val nodes = ptr_to_nodes(list_ptr)
-  in case+ nodes of
-    | xml_nodes_nil() => let val _ = nodes_to_ptr(nodes) in quire_null_ptr() end
-    | xml_nodes_cons(node, rest) => let
-        val np = node_borrow_ptr(node)
-        val rp = nodes_borrow_ptr(rest)
-        val _ = nodes_to_ptr(nodes)
-        val result = find_in_node_h(np, name, name_len)
-      in
-        if eq_ptr_ptr(result, quire_null_ptr()) then find_in_list_h(rp, name, name_len)
-        else result
-      end
-  end
-
-implement find_in_node_h(node_ptr, name, name_len) =
-  if eq_ptr_ptr(node_ptr, quire_null_ptr()) then quire_null_ptr()
-  else let
-    val node = ptr_to_node(node_ptr)
-  in case+ node of
-    | xml_element_vt(ename, elen, _, children) => let
-        val cp = nodes_borrow_ptr(children)
-        val _ = node_to_ptr(node)
-      in
-        if eq_int_int(elen, name_len) then
-          if bytes_equal(ename, 0, name, name_len) then node_ptr
-          else find_in_list_h(cp, name, name_len)
-        else find_in_list_h(cp, name, name_len)
-      end
-    | xml_text_vt(_, _) => let val _ = node_to_ptr(node) in quire_null_ptr() end
-  end
-
-implement xml_find_element(tree, name, name_len) =
-  find_in_list_h(tree, name, name_len)
-
-implement xml_first_child(node_ptr) =
-  if eq_ptr_ptr(node_ptr, quire_null_ptr()) then quire_null_ptr()
-  else let
-    val node = ptr_to_node(node_ptr)
-  in case+ node of
-    | xml_element_vt(_, _, _, children) => let
-        val cp = nodes_borrow_ptr(children)
-        val _ = node_to_ptr(node)
-      in cp end
-    | xml_text_vt(_, _) => let val _ = node_to_ptr(node) in quire_null_ptr() end
-  end
-
-implement xml_next_sibling(cursor) =
-  if eq_ptr_ptr(cursor, quire_null_ptr()) then quire_null_ptr()
-  else let
-    val nodes = ptr_to_nodes(cursor)
-  in case+ nodes of
-    | xml_nodes_nil() => let val _ = nodes_to_ptr(nodes) in quire_null_ptr() end
-    | xml_nodes_cons(_, rest) => let
-        val rp = nodes_borrow_ptr(rest)
-        val _ = nodes_to_ptr(nodes)
-      in rp end
-  end
-
-implement xml_node_at(cursor) =
-  if eq_ptr_ptr(cursor, quire_null_ptr()) then quire_null_ptr()
-  else let
-    val nodes = ptr_to_nodes(cursor)
-  in case+ nodes of
-    | xml_nodes_nil() => let val _ = nodes_to_ptr(nodes) in quire_null_ptr() end
-    | xml_nodes_cons(node, _) => let
-        val np = node_borrow_ptr(node)
-        val _ = nodes_to_ptr(nodes)
-      in np end
-  end
-
-implement xml_node_is_element(node_ptr) =
-  if eq_ptr_ptr(node_ptr, quire_null_ptr()) then 0
-  else let val node = ptr_to_node(node_ptr) in
-    case+ node of
-    | xml_element_vt(_, _, _, _) => let val _ = node_to_ptr(node) in 1 end
-    | xml_text_vt(_, _) => let val _ = node_to_ptr(node) in 0 end
-  end
-
-implement xml_node_name_is(node_ptr, name, name_len) =
-  if eq_ptr_ptr(node_ptr, quire_null_ptr()) then let
-    (* Proof: null node — name cannot match *)
-    prval _ = NAME_DIFFERS()
-  in 0 end
-  else let val node = ptr_to_node(node_ptr) in
-    case+ node of
-    | xml_element_vt(ename, elen, _, _) => let
-        val r = if eq_int_int(elen, name_len) then
-          if bytes_equal(ename, 0, name, name_len) then let
-            (* Proof: compared against THE element's actual name field *)
-            prval _ = NAME_MATCHES()
-          in 1 end else let
-            prval _ = NAME_DIFFERS()
-          in 0 end
-        else let
-          prval _ = NAME_DIFFERS()
-        in 0 end
-        val _ = node_to_ptr(node)
-      in r end
-    | xml_text_vt(_, _) => let
-        prval _ = NAME_DIFFERS()
-        val _ = node_to_ptr(node)
-      in 0 end
-  end
-
-extern fun find_attr_h(attrs_ptr: ptr, name: ptr, name_len: int, buf_offset: int): int
-
-implement xml_node_get_attr(node_ptr, name, name_len, buf_offset) =
-  if eq_ptr_ptr(node_ptr, quire_null_ptr()) then 0
-  else let val node = ptr_to_node(node_ptr) in
-    case+ node of
-    | xml_element_vt(_, _, attrs, _) => let
-        val ap = attrs_borrow_ptr(attrs)
-        val _ = node_to_ptr(node)
-      in find_attr_h(ap, name, name_len, buf_offset) end
-    | xml_text_vt(_, _) => let val _ = node_to_ptr(node) in 0 end
-  end
-
-implement find_attr_h(attrs_ptr, name, name_len, buf_offset) =
-  if eq_ptr_ptr(attrs_ptr, quire_null_ptr()) then let
-    (* Proof: exhausted attribute list — attribute not found *)
-    prval _ = ATTR_NOT_FOUND()
-  in 0 end
-  else let val attrs = ptr_to_attrs(attrs_ptr) in
-    case+ attrs of
-    | xml_attrs_nil() => let
-        prval _ = ATTR_NOT_FOUND()
-        val _ = attrs_to_ptr(attrs)
-      in 0 end
-    | xml_attrs_cons(an, anl, av, avl, rest) => let
-        val rp = attrs_borrow_ptr(rest)
-        val _ = attrs_to_ptr(attrs)
-      in
-        if eq_int_int(anl, name_len) then
-          if bytes_equal(an, 0, name, name_len) then let
-            (* Proof: name matched — av IS the value of THIS attribute *)
-            prval _ = ATTR_FOUND()
-            val sbuf = get_string_buffer_ptr()
-            val () = copy_bytes(av, 0, sbuf, buf_offset, avl, 4096)
-          in avl end
-          else find_attr_h(rp, name, name_len, buf_offset)
-        else find_attr_h(rp, name, name_len, buf_offset)
-      end
-  end
-
-extern fun get_texts_h(list_ptr: ptr, buf_offset: int, written: int): int
-
-implement xml_node_get_text(node_ptr, buf_offset) =
-  if eq_ptr_ptr(node_ptr, quire_null_ptr()) then 0
-  else let val node = ptr_to_node(node_ptr) in
-    case+ node of
-    | xml_text_vt(text, tlen) => let
-        val sbuf = get_string_buffer_ptr()
-        val () = copy_bytes(text, 0, sbuf, buf_offset, tlen, 4096)
-        val _ = node_to_ptr(node)
-      in tlen end
-    | xml_element_vt(_, _, _, children) => let
-        val cp = nodes_borrow_ptr(children)
-        val _ = node_to_ptr(node)
-      in get_texts_h(cp, buf_offset, 0) end
-  end
-
-implement get_texts_h(list_ptr, buf_offset, written) =
-  if eq_ptr_ptr(list_ptr, quire_null_ptr()) then written
-  else let val nodes = ptr_to_nodes(list_ptr) in
-    case+ nodes of
-    | xml_nodes_nil() => let val _ = nodes_to_ptr(nodes) in written end
-    | xml_nodes_cons(node, rest) => let
-        val np = node_borrow_ptr(node)
-        val rp = nodes_borrow_ptr(rest)
-        val _ = nodes_to_ptr(nodes)
-        val w = let val n2 = ptr_to_node(np) in
-          case+ n2 of
-          | xml_text_vt(t, tl) => let
-              val sbuf = get_string_buffer_ptr()
-              val () = copy_bytes(t, 0, sbuf, buf_offset + written, tl, 4096)
-              val _ = node_to_ptr(n2)
-            in tl end
-          | xml_element_vt(_, _, _, _) => let val _ = node_to_ptr(n2) in 0 end
-        end
-      in get_texts_h(rp, buf_offset, written + w) end
-  end
 

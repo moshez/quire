@@ -154,6 +154,12 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define ATSINSmove_con1_end()
 #define ATSINSfreecon(ptr) ATS_MFREE(ptr)
 
+#define ATSSELrecsin(pmv, tyrec, lab) (pmv)
+#define ATSINSstore_con1_tag(dst, tag) (((int*)(dst))[0] = (tag))
+#define ATSINSmove_con0(dst, tag) ((dst) = (void*)0)
+#define ATSCKpat_con0(p, tag) ((p) == (void*)0)
+#define ATSCKpat_con1(p, tag) (((int*)(p))[0] == (tag))
+
 #define ATSINSmove_fltrec_beg()
 #define ATSINSmove_fltrec_end()
 #define ATSINSstore_fltrec_ofs(tmp, tyrec, lab, val) ((tmp).lab = val)
@@ -200,7 +206,18 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define atspre_g0int_lte_int(x, y) ((x) <= (y))
 #define atspre_g0int_eq_int(x, y) ((x) == (y))
 #define atspre_g0int_mul_int(x, y) ((x) * (y))
+#define atspre_g0int_sub_int(x, y) ((x) - (y))
+#define atspre_g0int_neq_int(x, y) ((x) != (y))
+#define atspre_g0int_lt_int(x, y) ((x) < (y))
+#define atspre_g0int_div_int(x, y) ((x) / (y))
+#define atspre_g0int_mod_int(x, y) ((x) % (y))
 #define atspre_g1int_div_int(x, y) ((x) / (y))
+#define atspre_g1int_eq_int(x, y) ((x) == (y))
+#define atspre_g1int_neq_int(x, y) ((x) != (y))
+#define atspre_g0int_asl_int(x, n) ((x) << (n))
+#define atspre_g0int_asr_int(x, n) ((x) >> (n))
+#define atspre_g0int_lor_int(x, y) ((x) | (y))
+#define atspre_g0int_land_int(x, y) ((x) & (y))
 
 /* Prelude functions not in freestanding mode since CATS files are suppressed */
 #define atspre_byte2int0(b) ((int)(b))
@@ -236,6 +253,7 @@ void *malloc(int size);
 void free(void *ptr);
 void *memset(void *s, int c, unsigned int n);
 void *memcpy(void *dst, const void *src, unsigned int n);
+static inline void *calloc(int n, int sz) { return malloc(n * sz); }
 
 /* Promise types */
 #define ward_promise(...) atstype_ptrk

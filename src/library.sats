@@ -104,39 +104,33 @@ absprop IMPORT_LOCK_FREE
 (* Initialize library module.
  * Postcondition: library_count == 0, all pending flags cleared.
  * Internally establishes LIBRARY_INDEX_VALID(0, MAX_LIBRARY_BOOKS). *)
-fun library_init(): void = "mac#"
-
+fun library_init(): void
 (* Get number of books in library.
  * Returns count with proof that 0 <= count <= MAX_LIBRARY_BOOKS.
  * CORRECTNESS: Internally maintains LIBRARY_INDEX_VALID invariant. *)
-fun library_get_count(): [n:nat | n <= 32] int(n) = "mac#"
-
+fun library_get_count(): [n:nat | n <= 32] int(n)
 (* Get book title into string buffer. Returns length.
  * Returns 0 if index out of bounds.
  * CORRECTNESS: When index is valid (< count), returns THE title for
  * book at that index, not some other book's title. Runtime bounds
  * check verifies BOOK_IN_LIBRARY at the C level. *)
-fun library_get_title(index: int, buf_offset: int): [len:nat] int(len) = "mac#"
-
+fun library_get_title(index: int, buf_offset: int): [len:nat] int(len)
 (* Get book author into string buffer. Returns length.
  * Returns 0 if index out of bounds.
  * CORRECTNESS: Same as library_get_title - returns THE author for
  * the specified book index. *)
-fun library_get_author(index: int, buf_offset: int): [len:nat] int(len) = "mac#"
-
+fun library_get_author(index: int, buf_offset: int): [len:nat] int(len)
 (* Get book ID into string buffer. Returns length.
  * Returns 0 if index out of bounds.
  * CORRECTNESS: Book ID is THE unique identifier for the book at this index. *)
-fun library_get_book_id(index: int, buf_offset: int): [len:nat] int(len) = "mac#"
-
+fun library_get_book_id(index: int, buf_offset: int): [len:nat] int(len)
 (* Get reading position for a book.
  * Returns 0 if index out of bounds.
  * CORRECTNESS: Returns THE saved chapter/page for the specified book,
  * reflecting the last call to library_update_position for that index. *)
-fun library_get_chapter(index: int): [ch:nat] int(ch) = "mac#"
-fun library_get_page(index: int): [pg:nat] int(pg) = "mac#"
-fun library_get_spine_count(index: int): [sc:nat] int(sc) = "mac#"
-
+fun library_get_chapter(index: int): [ch:nat] int(ch)
+fun library_get_page(index: int): [pg:nat] int(pg)
+fun library_get_spine_count(index: int): [sc:nat] int(sc)
 (* Add current epub book to library.
  * Reads book info from epub module state.
  * Returns index of added/existing book (>= 0), or -1 if library full.
@@ -148,23 +142,20 @@ fun library_get_spine_count(index: int): [sc:nat] int(sc) = "mac#"
  * - Deduplication: if book_id already exists, returns existing index
  *   without creating a duplicate entry
  * Internally maintains LIBRARY_INDEX_VALID. *)
-fun library_add_book(): [i:int | i >= ~1; i < 32] int(i) = "mac#"
-
+fun library_add_book(): [i:int | i >= ~1; i < 32] int(i)
 (* Remove book from library by index.
  * No-op if index out of bounds.
  * CORRECTNESS: After removal, entries shift down to maintain contiguous
  * array with no gaps. library_count decremented by 1.
  * Internally maintains LIBRARY_INDEX_VALID with count-1. *)
-fun library_remove_book(index: int): void = "mac#"
-
+fun library_remove_book(index: int): void
 (* Update reading position for a book.
  * No-op if index out of bounds.
  * CORRECTNESS: After update, library_get_chapter(index) == chapter
  * and library_get_page(index) == page. The position values are stored
  * as-is (caller responsible for valid values).
  * Internally documents BOOK_POSITION_VALID when chapter < spine_count. *)
-fun library_update_position(index: int, chapter: int, page: int): void = "mac#"
-
+fun library_update_position(index: int, chapter: int, page: int): void
 (* Find book index by current epub book_id.
  * Returns index if found (>= 0), -1 if not found.
  *
@@ -173,8 +164,7 @@ fun library_update_position(index: int, chapter: int, page: int): void = "mac#"
  *   current epub module's book_id (byte-for-byte comparison)
  * - When return == -1: no book in library has matching book_id
  * Internally produces BOOK_IN_LIBRARY proof when found. *)
-fun library_find_book_by_id(): [i:int | i >= ~1] int(i) = "mac#"
-
+fun library_find_book_by_id(): [i:int | i >= ~1] int(i)
 (* Serialize library index to fetch buffer. Returns bytes written.
  * Format: u16 count, then per book: 8-byte book_id, u16+title, u16+author,
  *         u16 chapter, u16 page, u16 spine_count.
@@ -182,45 +172,37 @@ fun library_find_book_by_id(): [i:int | i >= ~1] int(i) = "mac#"
  * CORRECTNESS: Output bytes are a deterministic encoding of library state.
  * Internally documents SERIALIZE_ROUNDTRIP: library_deserialize(return_value)
  * on the same buffer will reconstruct identical state. *)
-fun library_serialize(): [len:nat] int(len) = "mac#"
-
+fun library_serialize(): [len:nat] int(len)
 (* Deserialize library index from fetch buffer. Returns 1 on success, 0 on error.
  * CORRECTNESS: On success, library state matches what was serialized.
  * Internally verifies SERIALIZE_ROUNDTRIP by consuming serialized data
  * in the same field order as library_serialize produces it. *)
-fun library_deserialize(len: int): [r:int | r == 0 || r == 1] int(r) = "mac#"
-
+fun library_deserialize(len: int): [r:int | r == 0 || r == 1] int(r)
 (* Save library index to IndexedDB (async) *)
-fun library_save(): void = "mac#"
-
+fun library_save(): void
 (* Load library index from IndexedDB (async) *)
-fun library_load(): void = "mac#"
-
+fun library_load(): void
 (* Handle load/save completion callbacks *)
-fun library_on_load_complete(len: int): void = "mac#"
-fun library_on_save_complete(success: int): void = "mac#"
-
+fun library_on_load_complete(len: int): void
+fun library_on_save_complete(success: int): void
 (* Save book metadata to IndexedDB (async).
  * Serializes current epub state and stores under book-{book_id} key.
  * CORRECTNESS: Key is constructed from THE current book's ID, ensuring
  * metadata is stored for the correct book. *)
-fun library_save_book_metadata(): void = "mac#"
-
+fun library_save_book_metadata(): void
 (* Load book metadata from IndexedDB (async).
  * index: book index in library. Loads into fetch buffer.
  * CORRECTNESS: Key is constructed from THE book_id at the specified index,
  * ensuring we load metadata for the correct book. Runtime bounds check
  * verifies BOOK_IN_LIBRARY. *)
-fun library_load_book_metadata(index: int): void = "mac#"
-
+fun library_load_book_metadata(index: int): void
 (* Handle metadata load/save completion *)
-fun library_on_metadata_load_complete(len: int): void = "mac#"
-fun library_on_metadata_save_complete(success: int): void = "mac#"
-
+fun library_on_metadata_load_complete(len: int): void
+fun library_on_metadata_save_complete(success: int): void
 (* Check pending async operations.
  * Returns 0 or 1 (boolean).
  * CORRECTNESS: Pending flags accurately reflect whether an async operation
  * is in flight. Set to 1 before js_kv_get/put, cleared in completion handler. *)
-fun library_is_save_pending(): [b:int | b == 0 || b == 1] int(b) = "mac#"
-fun library_is_load_pending(): [b:int | b == 0 || b == 1] int(b) = "mac#"
-fun library_is_metadata_pending(): [b:int | b == 0 || b == 1] int(b) = "mac#"
+fun library_is_save_pending(): [b:int | b == 0 || b == 1] int(b)
+fun library_is_load_pending(): [b:int | b == 0 || b == 1] int(b)
+fun library_is_metadata_pending(): [b:int | b == 0 || b == 1] int(b)

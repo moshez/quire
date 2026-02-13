@@ -35,25 +35,8 @@ staload _ = "./../vendor/ward/lib/decompress.dats"
 staload _ = "./../vendor/ward/lib/xml.dats"
 staload _ = "./../vendor/ward/lib/dom_read.dats"
 
-(* ========== Freestanding arithmetic ========== *)
-
-extern fun add_int_int(a: int, b: int): int = "mac#quire_add"
-extern fun sub_int_int(a: int, b: int): int = "mac#quire_sub"
-extern fun gte_int_int(a: int, b: int): bool = "mac#quire_gte"
-extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
-extern fun lt_int_int(a: int, b: int): bool = "mac#quire_lt"
-extern fun eq_int_int(a: int, b: int): bool = "mac#quire_eq"
-extern fun neq_int_int(a: int, b: int): bool = "mac#quire_neq"
-extern fun mul_int_int(a: int, b: int): int = "mac#quire_mul"
-extern fun div_int_int(a: int, b: int): int = "mac#quire_div"
-extern fun mod_int_int(a: int, b: int): int = "mac#quire_mod"
-(* g1-level comparison: preserves static info for dependent array bounds *)
-extern fun gt1_int_int {a,b:int} (a: int a, b: int b): bool(a > b) = "mac#quire_gt"
-overload + with add_int_int of 10
-overload - with sub_int_int of 10
-
-(* Runtime-checked positive: used after verifying x > 0 at runtime *)
-extern castfn _checked_pos(x: int): [n:pos] int n
+staload "./arith.sats"
+staload "./quire_ext.sats"
 
 (* ========== Text constant IDs ========== *)
 
@@ -64,9 +47,10 @@ extern castfn _checked_pos(x: int): [n:pos] int n
 
 (* ========== Byte-level helpers (pure ATS2) ========== *)
 
-(* Bounds-checked byte write to ward_arr *)
-extern fun ward_arr_set_byte {l:agz}{n:pos}
-  (arr: !ward_arr(byte, l, n), off: int, len: int n, v: int): void = "mac#_ward_arr_set_byte"
+(* Byte write to ward_arr — wraps ward_arr_write_byte with castfn index *)
+fn ward_arr_set_byte {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), off: int, len: int n, v: int): void =
+  ward_arr_write_byte(arr, _ward_idx(off, len), _checked_byte(v))
 
 (* Fill ward_arr with text constant bytes.
  * "No books yet"(12), ".epub"(5), "Not started"(11), "Read"(4) *)
@@ -116,27 +100,16 @@ fn fill_text {l:agz}{n:pos}
 (* Copy len bytes from string_buffer to ward_arr *)
 fn copy_from_sbuf {l:agz}{n:pos}
   (dst: !ward_arr(byte, l, n), len: int n): void = let
-  val sbuf = get_string_buffer_ptr()
+  val sbuf = get_string_buf()
   fun loop(dst: !ward_arr(byte, l, n), dlen: int n,
-           sbuf: ptr, i: int, count: int): void =
+           i: int, count: int): void =
     if i < count then let
-      val b = buf_get_u8(sbuf, i)
+      val b = sbuf_get_u8(sbuf, i)
       val () = ward_arr_set_byte(dst, i, dlen, b)
-    in loop(dst, dlen, sbuf, i + 1, count) end
-in loop(dst, len, sbuf, 0, len) end
+    in loop(dst, dlen, i + 1, count) end
+in loop(dst, len, 0, len) end
 
-(* EPUB parsing helpers (implemented in quire_runtime.c) *)
-extern fun epub_parse_container_bytes {l:agz}{n:pos}
-  (buf: !ward_arr(byte, l, n), len: int n): int = "mac#"
-extern fun epub_parse_opf_bytes {l:agz}{n:pos}
-  (buf: !ward_arr(byte, l, n), len: int n): int = "mac#"
-extern fun epub_get_opf_path_ptr(): ptr = "mac#"
-extern fun epub_get_opf_path_len(): int = "mac#"
-extern fun get_str_container_ptr(): ptr = "mac#"
-
-(* Spine path accessors *)
-extern fun epub_get_spine_path_ptr(index: int): ptr = "mac#"
-extern fun epub_get_spine_path_len(index: int): int = "mac#"
+staload "./quire_ext.sats"
 
 (* ========== Measurement correctness ========== *)
 
@@ -167,10 +140,6 @@ fn measure_node_width(node_id: int): int = let
 in
   ward_measure_get_w()  (* slot 2 = rect.width *)
 end
-
-(* Read f64 clientX from click payload, return as int — irreducibly C *)
-extern fun read_payload_click_x {l:agz}{n:pos}
-  (arr: !ward_arr(byte, l, n)): int = "mac#"
 
 (* Castfn for indices proven in-bounds at runtime but not by solver.
  * Used for ward_arr(byte, l, 48) where max write index is 35. *)
@@ -474,7 +443,7 @@ in
       if gt_int_int(x, 0) then let
         val digit = mod_int_int(x, 10)
         (* digit is 0-9, so 48+digit is 48-57 — within byte range *)
-        val () = ward_arr_set<byte>(arr, _idx48(pos), int2byte0(48 + digit))
+        val () = ward_arr_set<byte>(arr, _idx48(pos), ward_int2byte(_checked_byte(48 + digit)))
       in write_rev(arr, div_int_int(x, 10), pos - 1) end
       else ()
     val () = write_rev(arr, v, offset + ndigits - 1)
@@ -586,7 +555,8 @@ end
 (* ========== EPUB import: read and parse ZIP entries ========== *)
 
 fn epub_read_container(handle: int): int = let
-  val idx = zip_find_entry(get_str_container_ptr(), 22)
+  val _cl = epub_copy_container_path(0)
+  val idx = zip_find_entry(get_string_buf(), 22)
 in
   if gt_int_int(0, idx) then 0
   else let
@@ -616,9 +586,8 @@ in
 end
 
 fn epub_read_opf(handle: int): int = let
-  val opf_ptr = epub_get_opf_path_ptr()
-  val opf_len = epub_get_opf_path_len()
-  val idx = zip_find_entry(opf_ptr, opf_len)
+  val opf_len = epub_copy_opf_path(0)
+  val idx = zip_find_entry(get_string_buf(), opf_len)
 in
   if gt_int_int(0, idx) then 0
   else let
@@ -756,11 +725,13 @@ in loop(s, 0, count) end
 (* ========== Chapter loading ========== *)
 
 fn load_chapter(file_handle: int, chapter_idx: int, container_id: int): void = let
-  val path_len = epub_get_spine_path_len(chapter_idx)
+  val ci = _checked_nat(chapter_idx)
+  val count = epub_get_chapter_count()
 in
-  if gt_int_int(path_len, 0) then let
-    val path_ptr = epub_get_spine_path_ptr(chapter_idx)
-    val zip_idx = zip_find_entry(path_ptr, path_len)
+  if lt1_int_int(ci, count) then let
+    prval pf = SPINE_ENTRY()
+    val path_len = epub_copy_spine_path(pf | ci, count, 0)
+    val zip_idx = zip_find_entry(get_string_buf(), path_len)
   in
     if gte_int_int(zip_idx, 0) then let
       var entry: zip_entry

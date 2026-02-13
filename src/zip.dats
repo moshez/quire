@@ -2,7 +2,7 @@
  *
  * Parses ZIP central directory to enumerate entries.
  * All byte-level parsing done via ward_arr_get<byte>.
- * Entry storage kept in quire_runtime.c as module-private statics.
+ * Entry storage in app_state.
  *)
 
 #define ATS_DYNLOADFLAG 0
@@ -15,48 +15,16 @@ staload "./../vendor/ward/lib/file.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
 staload _ = "./../vendor/ward/lib/file.dats"
 
-(* ========== Freestanding arithmetic ========== *)
+staload "./arith.sats"
+staload "./buf.sats"
 
-extern fun add_int_int(a: int, b: int): int = "mac#quire_add"
-extern fun sub_int_int(a: int, b: int): int = "mac#quire_sub"
-extern fun gte_int_int(a: int, b: int): bool = "mac#quire_gte"
-extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
-extern fun eq_int_int(a: int, b: int): bool = "mac#quire_eq"
-extern fun neq_int_int(a: int, b: int): bool = "mac#quire_neq"
-extern fun bor(a: int, b: int): int = "mac#quire_bor"
-extern fun bsl(a: int, b: int): int = "mac#quire_bsl"
-overload + with add_int_int of 10
-overload - with sub_int_int of 10
-
-(* Bounds-checked byte read directly from ward_arr.
- * ward_arr erases to ptr at runtime; macro does the bounds check. *)
-extern fun ward_arr_byte {l:agz}{n:pos}
-  (arr: !ward_arr(byte, l, n), off: int, len: int n): int = "mac#_ward_arr_byte"
-
-(* Runtime-checked positive: used after verifying x > 0 at runtime. *)
-extern castfn _checked_pos(x: int): [n:pos] int n
+(* Byte read from ward_arr — wraps ward_arr_get<byte> with castfn index *)
+fn ward_arr_byte {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), off: int, len: int n): int =
+  byte2int0(ward_arr_get<byte>(arr, _ward_idx(off, len)))
 
 (* Runtime-checked bounded count *)
 extern castfn _checked_bounded(x: int): [n:nat | n <= 256] int n
-
-(* ========== C storage accessors (quire_runtime.c) ========== *)
-
-(* Array-backed storage stays in C — only arrays, not simple int globals *)
-extern fun _zip_entry_file_handle(i: int): int = "mac#"
-extern fun _zip_entry_name_offset(i: int): int = "mac#"
-extern fun _zip_entry_name_len(i: int): int = "mac#"
-extern fun _zip_entry_compression(i: int): int = "mac#"
-extern fun _zip_entry_compressed_size(i: int): int = "mac#"
-extern fun _zip_entry_uncompressed_size(i: int): int = "mac#"
-extern fun _zip_entry_local_offset(i: int): int = "mac#"
-extern fun _zip_name_char(off: int): int = "mac#"
-extern fun _zip_name_buf_put(off: int, byte_val: int): int = "mac#"
-
-(* Store entry at a specific index — caller manages count via app_state *)
-extern fun _zip_store_entry_at(idx: int, fh: int, no: int, nl: int,
-  comp: int, cs: int, us: int, lo: int): int = "mac#"
-
-extern fun quire_get_byte(p: ptr, off: int): int = "mac#"
 
 (* ========== App state wrappers for ZIP int fields ========== *)
 
@@ -123,7 +91,7 @@ fn arr_u16 {l:agz}{n:pos}
   (arr: !ward_arr(byte, l, n), off: int, len: int n): int = let
   val b0 = ward_arr_byte(arr, off, len)
   val b1 = ward_arr_byte(arr, off + 1, len)
-in bor(b0, bsl(b1, 8)) end
+in bor_int_int(b0, bsl_int_int(b1, 8)) end
 
 fn arr_u32 {l:agz}{n:pos}
   (arr: !ward_arr(byte, l, n), off: int, len: int n): int = let
@@ -131,7 +99,7 @@ fn arr_u32 {l:agz}{n:pos}
   val b1 = ward_arr_byte(arr, off + 1, len)
   val b2 = ward_arr_byte(arr, off + 2, len)
   val b3 = ward_arr_byte(arr, off + 3, len)
-in bor(bor(b0, bsl(b1, 8)), bor(bsl(b2, 16), bsl(b3, 24))) end
+in bor_int_int(bor_int_int(b0, bsl_int_int(b1, 8)), bor_int_int(bsl_int_int(b2, 16), bsl_int_int(b3, 24))) end
 
 (* ========== ZIP parsing functions (pure ATS2) ========== *)
 
@@ -303,7 +271,7 @@ in
         if gte_int_int(i, suffix_len) then 1
         else let
           val c1 = _zip_name_char(name_off + start + i)
-          val c2 = quire_get_byte(suffix_ptr, i)
+          val c2 = sbuf_get_u8(suffix_ptr, i)
           (* Case-insensitive *)
           val c1 = (if gte_int_int(c1, 65) then
             (if gt_int_int(91, c1) then c1 + 32 else c1) else c1): int
@@ -331,7 +299,7 @@ in
         if gte_int_int(i, name_len) then 1
         else let
           val c1 = _zip_name_char(name_off + i)
-          val c2 = quire_get_byte(name_ptr, i)
+          val c2 = sbuf_get_u8(name_ptr, i)
         in
           if eq_int_int(c1, c2) then cmp(i + 1) else 0
         end

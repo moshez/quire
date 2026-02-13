@@ -2,10 +2,8 @@
 
 staload "./../vendor/ward/lib/memory.sats"
 
-(* Parse HTML safely — returns tree binary length, stashes ptr *)
-fun ward_js_parse_html
-  {n:pos}
-  (html: ptr, html_len: int n): int = "mac#"
-
-(* Retrieve parseHTML result ptr — from quire_runtime.c stash *)
-fun ward_parse_html_get_ptr(): ptr = "mac#"
+(* Read f64 clientX from click payload, return as int.
+ * Reads bytes 5-7 of the ward_arr for IEEE 754 extraction.
+ * Requires at least 8 bytes (click payload is 20 bytes). *)
+fun read_payload_click_x {l:agz}{n:nat | n >= 8}
+  (arr: !ward_arr(byte, l, n)): int

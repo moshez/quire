@@ -11,14 +11,14 @@ staload "./../vendor/ward/lib/memory.sats"
 staload "./../vendor/ward/lib/dom.sats"
 staload "./dom.sats"
 staload "./app_state.sats"
+staload "./arith.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
 staload _ = "./../vendor/ward/lib/dom.dats"
 
 (* ========== Node ID allocator ========== *)
 
 (* Loads app_state from callback registry, reads/increments counter,
- * stores app_state back. Zero-argument signature preserved for C callers
- * in quire_runtime.c. *)
+ * stores app_state back. *)
 implement dom_next_id() = let
   val st = app_state_load()
   val id = g1ofg0(app_get_dom_next_id(st))
@@ -753,23 +753,21 @@ implement attr_value() = let val b = ward_text_build(5)
 
 (* ========== Ward array byte access ========== *)
 
-(* Bounds-checked byte read from ward_arr (erased to ptr at runtime).
- * Same mac# pattern as zip.dats. *)
-extern fun ward_arr_byte {l:agz}{n:pos}
-  (arr: !ward_arr(byte, l, n), off: int, len: int n): int = "mac#_ward_arr_byte"
+(* Byte read from ward_arr — wraps ward_arr_get<byte> with castfn index *)
+fn ward_arr_byte {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), off: int, len: int n): int =
+  byte2int0(ward_arr_get<byte>(arr, _ward_idx(off, len)))
 
 fn rd_u16 {lb:agz}{n:pos}
   (tree: !ward_arr(byte, lb, n), off: int, len: int n): int = let
-  extern fun bor(a: int, b: int): int = "mac#quire_bor"
-  extern fun bsl(a: int, b: int): int = "mac#quire_bsl"
   val b0 = ward_arr_byte(tree, off, len)
   val b1 = ward_arr_byte(tree, off + 1, len)
-in bor(b0, bsl(b1, 8)) end
+in bor_int_int(b0, bsl_int_int(b1, 8)) end
 
-(* Bounds-checked byte write to ward_arr (erased to ptr at runtime).
- * Mirrors ward_arr_byte (read). Both use runtime bounds checks. *)
-extern fun ward_arr_set_byte {l:agz}{n:pos}
-  (arr: !ward_arr(byte, l, n), off: int, len: int n, v: int): void = "mac#_ward_arr_set_byte"
+(* Byte write to ward_arr — wraps ward_arr_write_byte with castfn index *)
+fn ward_arr_set_byte {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), off: int, len: int n, v: int): void =
+  ward_arr_write_byte(arr, _ward_idx(off, len), _checked_byte(v))
 
 (* Copy bytes between ward_arrs. Both erase to ptr at runtime.
  * Copies count bytes from src[src_off..] to dst[0..count-1]. *)
