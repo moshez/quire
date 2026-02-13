@@ -11,7 +11,12 @@
   <link rel="apple-touch-icon" href="/icon-192.png">
 </head>
 <body>
-  <div id="app">Loading...</div>
+  <div id="app">
+    <div class="quire-loading">
+      <div class="spinner"></div>
+      <div class="app-name">Quire</div>
+    </div>
+  </div>
   <script type="module">
     import { loadWard } from './vendor/ward/lib/ward_bridge.mjs';
     const root = document.getElementById('app');

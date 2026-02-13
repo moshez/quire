@@ -8,6 +8,7 @@
 #define ATS_DYNLOADFLAG 0
 
 #include "share/atspre_staload.hats"
+staload UN = "prelude/SATS/unsafe.sats"
 staload "./quire.sats"
 staload "./app_state.sats"
 staload "./dom.sats"
@@ -351,6 +352,36 @@ fn val_zero(): ward_safe_text(1) = let
   val b = ward_text_build(1)
   val b = ward_text_putc(b, 0, 48) (* '0' *)
 in ward_text_done(b) end
+
+(* ========== App CSS injection ========== *)
+
+(* CSS string lives in quire_decls.h as a static const char[].
+ * _fill_css copies it into a ward_arr for set_text. *)
+extern fun _app_css_len(): [n:pos] int n = "mac#"
+extern fun _fill_css {l:agz}{n:pos} (dst: !ward_arr(byte, l, n)): void = "mac#"
+
+(* Create a <style> element under parent and fill it with app CSS.
+ * Called at the start of both render_library and enter_reader so that
+ * each view has its styles after remove_children clears the previous. *)
+fn inject_app_css {l:agz}
+  (s: ward_dom_stream(l), parent: int): ward_dom_stream(l) = let
+  val css_len = _app_css_len()
+in
+  if css_len < 65536 then
+  if css_len + 7 <= 262144 then let
+    val css_arr = ward_arr_alloc<byte>(css_len)
+    val () = _fill_css(css_arr)
+    val style_id = dom_next_id()
+    val s = ward_dom_stream_create_element(s, style_id, parent, tag_style(), 5)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(css_arr)
+    val s = ward_dom_stream_set_text(s, style_id, borrow, css_len)
+    val () = ward_arr_drop<byte>(frozen, borrow)
+    val css_arr = ward_arr_thaw<byte>(frozen)
+    val () = ward_arr_free<byte>(css_arr)
+  in s end
+  else s
+  else s
+end
 
 (* ========== Helper: set text content from C string constant ========== *)
 
@@ -788,7 +819,7 @@ in
                   val () = ward_blob_free(blob_handle)
                 in ward_promise_return<int>(0) end
               end)
-            val () = ward_promise_discard<int>(p2)
+            val _ = $UN.castvwtp0{ptr}(p2) (* forget — node stays alive in chain *)
           in end
           else if eq_int_int(compression, 0) then let
             (* Stored — read directly, no decompression needed *)
@@ -884,6 +915,7 @@ implement render_library(root_id) = let
   val dom = ward_dom_init()
   val s = ward_dom_stream_begin(dom)
   val s = ward_dom_stream_remove_children(s, root_id)
+  val s = inject_app_css(s, root_id)
 
   (* Import button: <label class="import-btn">Import<input ...></label> *)
   val label_id = dom_next_id()
@@ -951,7 +983,7 @@ in
               val () = ward_dom_fini(dom)
             in ward_promise_return<int>(0) end)
           end)
-        val () = ward_promise_discard<int>(p2)
+        val _ = $UN.castvwtp0{ptr}(p2) (* forget — node stays alive in chain *)
       in 0 end
     )
 
@@ -1036,7 +1068,7 @@ in
               val () = reg_new_btns(0, btn_count, sr)
             in ward_promise_return<int>(0) end)
           end)
-        val () = ward_promise_discard<int>(p2)
+        val _ = $UN.castvwtp0{ptr}(p2) (* forget — node stays alive in chain *)
       in 0 end
     )
   in end
@@ -1052,6 +1084,7 @@ implement enter_reader(root_id, book_index) = let
   val dom = ward_dom_init()
   val s = ward_dom_stream_begin(dom)
   val s = ward_dom_stream_remove_children(s, root_id)
+  val s = inject_app_css(s, root_id)
 
   (* Create .reader-viewport with tabindex="0" for keyboard focus *)
   val viewport_id = dom_next_id()
