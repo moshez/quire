@@ -22,8 +22,7 @@ extern fun ward_listener_get(id: int): ptr = "mac#"
 extern fun ward_parse_html_stash_impl(p: ptr): void = "ext#ward_parse_html_stash"
 implement ward_parse_html_stash_impl(p) = ward_listener_set(PARSE_STASH_SLOT, p)
 
-extern fun ward_parse_html_get_ptr_impl(): ptr = "ext#ward_parse_html_get_ptr"
-implement ward_parse_html_get_ptr_impl() = ward_listener_get(PARSE_STASH_SLOT)
+implement ward_parse_html_get_ptr() = ward_listener_get(PARSE_STASH_SLOT)
 
 (* ========== IEEE 754 f64 → int extraction ========== *)
 (* Reads LE f64 from bytes 0-7 of the payload, returns integer part.
@@ -41,8 +40,7 @@ implement ward_parse_html_get_ptr_impl() = ward_listener_get(PARSE_STASH_SLOT)
  *   result = top13 >> (12 - exp)
  *)
 
-extern fun read_payload_click_x_impl(arr: ptr): int = "ext#read_payload_click_x"
-implement read_payload_click_x_impl(arr) = let
+implement read_payload_click_x(arr) = let
   val b5 = buf_get_u8(arr, 5)
   val b6 = buf_get_u8(arr, 6)
   val b7 = buf_get_u8(arr, 7)

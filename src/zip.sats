@@ -72,45 +72,36 @@ typedef zip_entry = @{
 }
 
 (* Initialize ZIP parser state *)
-fun zip_init(): void = "mac#"
-
+fun zip_init(): void
 (* Open a ZIP file and parse central directory
  * Returns number of entries on success, 0 on failure
  * Result is bounded by MAX_ZIP_ENTRIES (256) *)
-fun zip_open(file_handle: int, file_size: int): [n:nat | n <= 256] int(n) = "mac#"
-
+fun zip_open(file_handle: int, file_size: int): [n:nat | n <= 256] int(n)
 (* Get entry info by index (0-based)
  * Returns 1 on success, 0 if index out of range
  * entry is filled if successful *)
-fun zip_get_entry(index: int, entry: &zip_entry? >> _): int = "mac#"
-
+fun zip_get_entry(index: int, entry: &zip_entry? >> _): int
 (* Get entry name into string buffer at given offset
  * Returns name length
  * CORRECTNESS: Returned length is bounded to prevent buffer overflow *)
-fun zip_get_entry_name(index: int, buf_offset: int): [len:nat] int(len) = "mac#"
-
+fun zip_get_entry_name(index: int, buf_offset: int): [len:nat] int(len)
 (* Check if entry name matches a given suffix (e.g., ".opf", ".xhtml")
  * Returns 1 if matches, 0 otherwise *)
-fun zip_entry_name_ends_with(index: int, suffix_ptr: ptr, suffix_len: int): int = "mac#"
-
+fun zip_entry_name_ends_with(index: int, suffix_ptr: ptr, suffix_len: int): int
 (* Check if entry name matches exactly
  * Returns 1 if matches, 0 otherwise *)
-fun zip_entry_name_equals(index: int, name_ptr: ptr, name_len: int): int = "mac#"
-
+fun zip_entry_name_equals(index: int, name_ptr: ptr, name_len: int): int
 (* Find entry by exact name
  * Returns entry index or -1 if not found *)
-fun zip_find_entry(name_ptr: ptr, name_len: int): int = "mac#"
-
+fun zip_find_entry(name_ptr: ptr, name_len: int): int
 (* Get offset where decompressed data should be read from
  * This accounts for local file header size
  * Returns -1 on error, or a valid offset on success
  * CORRECTNESS: When >= 0, returned offset is valid and reading compressed_size
  * bytes from this offset won't exceed file bounds (DATA_OFFSET_SAFE proof) *)
-fun zip_get_data_offset(index: int): int = "mac#"
-
+fun zip_get_data_offset(index: int): int
 (* Get total number of entries
  * Returns count bounded by MAX_ZIP_ENTRIES (256) *)
-fun zip_get_entry_count(): [n:nat | n <= 256] int(n) = "mac#"
-
+fun zip_get_entry_count(): [n:nat | n <= 256] int(n)
 (* Close ZIP file (cleanup state) *)
-fun zip_close(): void = "mac#"
+fun zip_close(): void

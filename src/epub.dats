@@ -13,34 +13,6 @@ staload "./app_state.sats"
 staload "./arith.sats"
 staload "./buf.sats"
 
-(* ========== C-callable epub field accessors (ext# in app_state.dats) ========== *)
-
-extern fun _app_epub_spine_count(): int = "mac#_app_epub_spine_count"
-extern fun _app_set_epub_spine_count(v: int): void = "mac#_app_set_epub_spine_count"
-extern fun _app_epub_title_ptr(): ptr = "mac#_app_epub_title_ptr"
-extern fun _app_epub_title_len(): int = "mac#_app_epub_title_len"
-extern fun _app_set_epub_title_len(v: int): void = "mac#_app_set_epub_title_len"
-extern fun _app_epub_author_ptr(): ptr = "mac#_app_epub_author_ptr"
-extern fun _app_epub_author_len(): int = "mac#_app_epub_author_len"
-extern fun _app_set_epub_author_len(v: int): void = "mac#_app_set_epub_author_len"
-extern fun _app_epub_book_id_ptr(): ptr = "mac#_app_epub_book_id_ptr"
-extern fun _app_epub_book_id_len(): int = "mac#_app_epub_book_id_len"
-extern fun _app_set_epub_book_id_len(v: int): void = "mac#_app_set_epub_book_id_len"
-extern fun _app_epub_opf_path_ptr(): ptr = "mac#_app_epub_opf_path_ptr"
-extern fun _app_epub_opf_path_len(): int = "mac#_app_epub_opf_path_len"
-extern fun _app_set_epub_opf_path_len(v: int): void = "mac#_app_set_epub_opf_path_len"
-extern fun _app_epub_opf_dir_len(): int = "mac#_app_epub_opf_dir_len"
-extern fun _app_set_epub_opf_dir_len(v: int): void = "mac#_app_set_epub_opf_dir_len"
-extern fun _app_epub_state(): int = "mac#_app_epub_state"
-extern fun _app_set_epub_state(v: int): void = "mac#_app_set_epub_state"
-extern fun _app_epub_spine_path_buf(): ptr = "mac#_app_epub_spine_path_buf"
-extern fun _app_epub_spine_path_offsets(): ptr = "mac#_app_epub_spine_path_offsets"
-extern fun _app_epub_spine_path_lens(): ptr = "mac#_app_epub_spine_path_lens"
-extern fun _app_epub_spine_path_count(): int = "mac#_app_epub_spine_path_count"
-extern fun _app_set_epub_spine_path_count(v: int): void = "mac#_app_set_epub_spine_path_count"
-extern fun _app_epub_spine_path_pos(): int = "mac#_app_epub_spine_path_pos"
-extern fun _app_set_epub_spine_path_pos(v: int): void = "mac#_app_set_epub_spine_path_pos"
-
 (* ========== Byte search helper ========== *)
 
 (* Find needle bytes in haystack starting at position start.
@@ -313,8 +285,7 @@ in loop(0) end
 
 (* ========== epub_init ========== *)
 
-extern fun epub_init_impl(): void = "ext#epub_init"
-implement epub_init_impl() = let
+implement epub_init() = let
   val () = _app_set_epub_title_len(0)
   val () = _app_set_epub_author_len(0)
   val () = _app_set_epub_book_id_len(0)
@@ -328,107 +299,82 @@ in end
 
 (* ========== Simple accessors ========== *)
 
-extern fun epub_get_state_impl(): int = "ext#epub_get_state"
-implement epub_get_state_impl() = _app_epub_state()
+implement epub_get_state() = g1ofg0(_app_epub_state())
 
-extern fun epub_get_progress_impl(): int = "ext#epub_get_progress"
-implement epub_get_progress_impl() = 0
+implement epub_get_progress() = 0
 
-extern fun epub_get_error_impl(buf_offset: int): int = "ext#epub_get_error"
-implement epub_get_error_impl(_) = 0
+implement epub_get_error(_) = 0
 
-extern fun epub_start_import_impl(fid: int): int = "ext#epub_start_import"
-implement epub_start_import_impl(_) = 0
+implement epub_start_import(_) = 0
 
-extern fun epub_get_title_impl(buf_offset: int): int = "ext#epub_get_title"
-implement epub_get_title_impl(buf_offset) = let
+implement epub_get_title(buf_offset) = let
   val tptr = _app_epub_title_ptr()
   val tlen = _app_epub_title_len()
   val sbuf = get_string_buffer_ptr()
   val () = _copy_bytes(sbuf, buf_offset, tptr, 0, tlen)
 in tlen end
 
-extern fun epub_get_author_impl(buf_offset: int): int = "ext#epub_get_author"
-implement epub_get_author_impl(buf_offset) = let
+implement epub_get_author(buf_offset) = let
   val aptr = _app_epub_author_ptr()
   val alen = _app_epub_author_len()
   val sbuf = get_string_buffer_ptr()
   val () = _copy_bytes(sbuf, buf_offset, aptr, 0, alen)
 in alen end
 
-extern fun epub_get_book_id_impl(buf_offset: int): int = "ext#epub_get_book_id"
-implement epub_get_book_id_impl(buf_offset) = let
+implement epub_get_book_id(buf_offset) = let
   val bptr = _app_epub_book_id_ptr()
   val blen = _app_epub_book_id_len()
   val sbuf = get_string_buffer_ptr()
   val () = _copy_bytes(sbuf, buf_offset, bptr, 0, blen)
 in blen end
 
-extern fun epub_get_chapter_count_impl(): int = "ext#epub_get_chapter_count"
-implement epub_get_chapter_count_impl() = let
+implement epub_get_chapter_count() = let
   val sc = _app_epub_spine_count()
+  extern castfn _clamp256(x: int): [n:nat | n <= 256] int n
 in
   if lt_int_int(sc, 0) then 0
   else if gt_int_int(sc, 256) then 256
-  else sc
+  else _clamp256(sc)
 end
 
-extern fun epub_get_chapter_key_impl(ci: int, bo: int): int = "ext#epub_get_chapter_key"
-implement epub_get_chapter_key_impl(_, _) = 0
+implement epub_get_chapter_key(_, _) = 0
 
-extern fun epub_continue_impl(): void = "ext#epub_continue"
-implement epub_continue_impl() = ()
+implement epub_continue() = ()
 
-extern fun epub_on_file_open_impl(h: int, s: int): void = "ext#epub_on_file_open"
-implement epub_on_file_open_impl(_, _) = ()
+implement epub_on_file_open(_, _) = ()
 
-extern fun epub_on_decompress_impl(bh: int, s: int): void = "ext#epub_on_decompress"
-implement epub_on_decompress_impl(_, _) = ()
+implement epub_on_decompress(_, _) = ()
 
-extern fun epub_on_db_open_impl(s: int): void = "ext#epub_on_db_open"
-implement epub_on_db_open_impl(_) = ()
+implement epub_on_db_open(_) = ()
 
-extern fun epub_on_db_put_impl(s: int): void = "ext#epub_on_db_put"
-implement epub_on_db_put_impl(_) = ()
+implement epub_on_db_put(_) = ()
 
-extern fun epub_cancel_impl(): void = "ext#epub_cancel"
-implement epub_cancel_impl() = _app_set_epub_state(0)
+implement epub_cancel() = _app_set_epub_state(0)
 
 (* TOC stubs *)
-extern fun epub_get_toc_count_impl(): int = "ext#epub_get_toc_count"
-implement epub_get_toc_count_impl() = 0
+implement epub_get_toc_count() = 0
 
-extern fun epub_get_toc_label_impl(ti: int, bo: int): int = "ext#epub_get_toc_label"
-implement epub_get_toc_label_impl(_, _) = 0
+implement epub_get_toc_label(_, _) = 0
 
-extern fun epub_get_toc_chapter_impl(ti: int): int = "ext#epub_get_toc_chapter"
-implement epub_get_toc_chapter_impl(_) = 0 - 1
+implement epub_get_toc_chapter(_) = 0 - 1
 
-extern fun epub_get_toc_level_impl(ti: int): int = "ext#epub_get_toc_level"
-implement epub_get_toc_level_impl(_) = 0
+implement epub_get_toc_level(_) = 0
 
-extern fun epub_get_chapter_title_impl(si: int, bo: int): int = "ext#epub_get_chapter_title"
-implement epub_get_chapter_title_impl(_, _) = 0
+implement epub_get_chapter_title(_, _) = 0
 
 (* Serialization stubs *)
-extern fun epub_serialize_metadata_impl(): int = "ext#epub_serialize_metadata"
-implement epub_serialize_metadata_impl() = 0
+implement epub_serialize_metadata() = 0
 
-extern fun epub_restore_metadata_impl(len: int): int = "ext#epub_restore_metadata"
-implement epub_restore_metadata_impl(_) = 0
+implement epub_restore_metadata(_) = 0
 
-extern fun epub_reset_impl(): void = "ext#epub_reset"
-implement epub_reset_impl() = epub_init_impl()
+implement epub_reset() = epub_init()
 
 (* ========== epub_parse_container_bytes ========== *)
 
 (* Parse container.xml to extract OPF path from full-path="..." attribute.
  * Stores path and directory prefix in app_state.
  * Returns 1 on success, 0 on failure. *)
-extern fun epub_parse_container_bytes_impl(buf: ptr, len: int): int
-  = "ext#epub_parse_container_bytes"
-
-implement epub_parse_container_bytes_impl(buf, len) = let
+implement epub_parse_container_bytes(buf, len) = let
   val ndl = needle_full_path() (* "full-path=\"" 11 bytes *)
   val pos0 = _find_bytes(buf, len, ndl, 11, 0)
 in
@@ -640,10 +586,7 @@ implement _opf_resolve_spine(buf, len, spine_count) = let
 
 in resolve_spine(0, 0, 0, 0) end
 
-extern fun epub_parse_opf_bytes_impl(buf: ptr, len: int): int
-  = "ext#epub_parse_opf_bytes"
-
-implement epub_parse_opf_bytes_impl(buf, len) = let
+implement epub_parse_opf_bytes(buf, len) = let
   val () = _opf_extract_title(buf, len)
   val () = _opf_extract_author(buf, len)
   val () = _opf_extract_identifier(buf, len)
@@ -657,21 +600,17 @@ end
 
 (* ========== OPF path and container string accessors ========== *)
 
-extern fun epub_get_opf_path_ptr_impl(): ptr = "ext#epub_get_opf_path_ptr"
-implement epub_get_opf_path_ptr_impl() = _app_epub_opf_path_ptr()
+implement epub_get_opf_path_ptr() = _app_epub_opf_path_ptr()
 
-extern fun epub_get_opf_path_len_impl(): int = "ext#epub_get_opf_path_len"
-implement epub_get_opf_path_len_impl() = _app_epub_opf_path_len()
+implement epub_get_opf_path_len() = _app_epub_opf_path_len()
 
-extern fun get_str_container_ptr_impl(): ptr = "ext#get_str_container_ptr"
-implement get_str_container_ptr_impl() = _build_str_container()
+implement get_str_container_ptr() = _build_str_container()
 
 (* ========== Spine path accessors ========== *)
 
 (* _null_ptr and _ptr_add provided by arith.sats *)
 
-extern fun epub_get_spine_path_ptr_impl(index: int): ptr = "ext#epub_get_spine_path_ptr"
-implement epub_get_spine_path_ptr_impl(index) = let
+implement epub_get_spine_path_ptr(index) = let
   val count = _app_epub_spine_path_count()
 in
   if lt_int_int(index, 0) then _null_ptr()
@@ -683,8 +622,7 @@ in
   in _ptr_add(buf, off) end
 end
 
-extern fun epub_get_spine_path_len_impl(index: int): int = "ext#epub_get_spine_path_len"
-implement epub_get_spine_path_len_impl(index) = let
+implement epub_get_spine_path_len(index) = let
   val count = _app_epub_spine_path_count()
 in
   if lt_int_int(index, 0) then 0

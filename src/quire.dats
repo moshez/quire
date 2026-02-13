@@ -108,18 +108,7 @@ fn copy_from_sbuf {l:agz}{n:pos}
     in loop(dst, dlen, sbuf, i + 1, count) end
 in loop(dst, len, sbuf, 0, len) end
 
-(* EPUB parsing helpers (implemented in quire_runtime.c) *)
-extern fun epub_parse_container_bytes {l:agz}{n:pos}
-  (buf: !ward_arr(byte, l, n), len: int n): int = "mac#"
-extern fun epub_parse_opf_bytes {l:agz}{n:pos}
-  (buf: !ward_arr(byte, l, n), len: int n): int = "mac#"
-extern fun epub_get_opf_path_ptr(): ptr = "mac#"
-extern fun epub_get_opf_path_len(): int = "mac#"
-extern fun get_str_container_ptr(): ptr = "mac#"
-
-(* Spine path accessors *)
-extern fun epub_get_spine_path_ptr(index: int): ptr = "mac#"
-extern fun epub_get_spine_path_len(index: int): int = "mac#"
+staload "./quire_ext.sats"
 
 (* ========== Measurement correctness ========== *)
 
@@ -150,10 +139,6 @@ fn measure_node_width(node_id: int): int = let
 in
   ward_measure_get_w()  (* slot 2 = rect.width *)
 end
-
-(* Read f64 clientX from click payload, return as int — irreducibly C *)
-extern fun read_payload_click_x {l:agz}{n:pos}
-  (arr: !ward_arr(byte, l, n)): int = "mac#"
 
 (* Castfn for indices proven in-bounds at runtime but not by solver.
  * Used for ward_arr(byte, l, 48) where max write index is 35. *)
@@ -590,7 +575,7 @@ in
           val usize1 = _checked_pos(usize)
           val arr = ward_arr_alloc<byte>(usize1)
           val _rd = ward_file_read(handle, data_off, arr, usize1)
-          val result = epub_parse_container_bytes(arr, usize1)
+          val result = epub_parse_container_bytes(_arr_as_ptr(arr), usize1)
           val () = ward_arr_free<byte>(arr)
         in result end
       end
@@ -622,7 +607,7 @@ in
           val usize1 = _checked_pos(usize)
           val arr = ward_arr_alloc<byte>(usize1)
           val _rd = ward_file_read(handle, data_off, arr, usize1)
-          val result = epub_parse_opf_bytes(arr, usize1)
+          val result = epub_parse_opf_bytes(_arr_as_ptr(arr), usize1)
           val () = ward_arr_free<byte>(arr)
         in result end
       end
@@ -1105,7 +1090,7 @@ implement enter_reader(root_id, book_index) = let
       if gt1_int_int(pl1, 19) then let
         (* Click payload: f64 clientX (0-7), f64 clientY (8-15), i32 target (16-19) *)
         val payload = ward_event_get_payload(pl1)
-        val click_x = read_payload_click_x(payload)
+        val click_x = read_payload_click_x(_arr_as_ptr(payload))
         val () = ward_arr_free<byte>(payload)
         val vw = measure_node_width(reader_get_viewport_id())
       in

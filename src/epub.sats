@@ -115,41 +115,32 @@ dataprop ASYNC_PRECONDITION(expected_state: int) =
   | {s:int} STATE_SET_BEFORE_ASYNC(s)
 
 (* Initialize EPUB module *)
-fun epub_init(): void = "mac#"
-
+fun epub_init(): void
 (* Start EPUB import from file input node
  * file_input_node_id: the DOM node ID of the file input element
  * Returns 1 if import started, 0 on error *)
-fun epub_start_import(file_input_node_id: int): int = "mac#"
-
+fun epub_start_import(file_input_node_id: int): int
 (* Get current import state
  * Returns a valid state value with EPUB_STATE_VALID proof *)
-fun epub_get_state(): [s:int] int(s) = "mac#"
-
+fun epub_get_state(): [s:int] int(s)
 (* Get import progress (0-100)
  * Progress is bounded: 0 <= progress <= 100 *)
-fun epub_get_progress(): [p:nat | p <= 100] int(p) = "mac#"
-
+fun epub_get_progress(): [p:nat | p <= 100] int(p)
 (* Get last error message into string buffer
  * Returns message length *)
-fun epub_get_error(buf_offset: int): int = "mac#"
-
+fun epub_get_error(buf_offset: int): int
 (* Get book title into string buffer (after import completes)
  * Returns title length *)
-fun epub_get_title(buf_offset: int): int = "mac#"
-
+fun epub_get_title(buf_offset: int): int
 (* Get book author into string buffer (after import completes)
  * Returns author length *)
-fun epub_get_author(buf_offset: int): int = "mac#"
-
+fun epub_get_author(buf_offset: int): int
 (* Get book ID (hash of title+author or generated)
  * Returns ID into string buffer *)
-fun epub_get_book_id(buf_offset: int): int = "mac#"
-
+fun epub_get_book_id(buf_offset: int): int
 (* Get total number of chapters in spine
  * Returns count with proof that count <= MAX_SPINE_ITEMS (256) *)
-fun epub_get_chapter_count(): [n:nat | n <= 256] int(n) = "mac#"
-
+fun epub_get_chapter_count(): [n:nat | n <= 256] int(n)
 (* Get chapter key for IndexedDB lookup (book_id/chapter_href)
  * chapter_index: 0-based index into spine
  * buf_offset: offset in string buffer to write key
@@ -158,39 +149,30 @@ fun epub_get_chapter_count(): [n:nat | n <= 256] int(n) = "mac#"
  * CORRECTNESS: When chapter_index is valid (< chapter_count), the returned
  * key is THE correct key for retrieving chapter chapter_index from IndexedDB.
  * Internally produces CHAPTER_KEY_CORRECT proof establishing this. *)
-fun epub_get_chapter_key(chapter_index: int, buf_offset: int): int = "mac#"
-
+fun epub_get_chapter_key(chapter_index: int, buf_offset: int): int
 (* Continue processing (called from async callbacks)
  * Called after file open, decompress, or IDB operations complete *)
-fun epub_continue(): void = "mac#"
-
+fun epub_continue(): void
 (* Handle file open completion (called by bridge callback) *)
-fun epub_on_file_open(handle: int, size: int): void = "mac#"
-
+fun epub_on_file_open(handle: int, size: int): void
 (* Handle decompress completion (called by bridge callback) *)
-fun epub_on_decompress(blob_handle: int, size: int): void = "mac#"
-
+fun epub_on_decompress(blob_handle: int, size: int): void
 (* Handle IndexedDB open completion *)
-fun epub_on_db_open(success: int): void = "mac#"
-
+fun epub_on_db_open(success: int): void
 (* Handle IndexedDB put completion *)
-fun epub_on_db_put(success: int): void = "mac#"
-
+fun epub_on_db_put(success: int): void
 (* Cancel current import *)
-fun epub_cancel(): void = "mac#"
-
+fun epub_cancel(): void
 (* M13: TOC (Table of Contents) support *)
 
 (* Get number of TOC entries
  * Returns count with proof that count <= MAX_TOC_ENTRIES (256) *)
-fun epub_get_toc_count(): [n:nat | n <= 256] int(n) = "mac#"
-
+fun epub_get_toc_count(): [n:nat | n <= 256] int(n)
 (* Get TOC entry label into string buffer
  * toc_index: 0-based index into TOC entries
  * buf_offset: offset in string buffer to write label
  * Returns label length, or 0 if index out of range *)
-fun epub_get_toc_label(toc_index: int, buf_offset: int): int = "mac#"
-
+fun epub_get_toc_label(toc_index: int, buf_offset: int): int
 (* Get chapter index for a TOC entry
  * toc_index: 0-based index into TOC entries
  * Returns spine chapter index, or -1 if not found
@@ -200,19 +182,16 @@ fun epub_get_toc_label(toc_index: int, buf_offset: int): int = "mac#"
  *   chapter for this TOC entry (not some other chapter)
  * - When return value == -1: TOC entry has no spine mapping (valid case)
  *)
-fun epub_get_toc_chapter(toc_index: int): int = "mac#"
-
+fun epub_get_toc_chapter(toc_index: int): int
 (* Get nesting level for a TOC entry (0 = top level)
  * toc_index: 0-based index into TOC entries
  * Returns nesting level *)
-fun epub_get_toc_level(toc_index: int): [level:nat] int(level) = "mac#"
-
+fun epub_get_toc_level(toc_index: int): [level:nat] int(level)
 (* Get chapter title from TOC for a spine index
  * spine_index: 0-based index into spine
  * buf_offset: offset in string buffer to write title
  * Returns title length, or 0 if no TOC entry found *)
-fun epub_get_chapter_title(spine_index: int, buf_offset: int): int = "mac#"
-
+fun epub_get_chapter_title(spine_index: int, buf_offset: int): int
 (* ========== M15: Metadata Serialization Proofs ========== *)
 
 (* Metadata roundtrip correctness proof.
@@ -249,8 +228,7 @@ absprop EPUB_RESET_TO_IDLE
  * identical state. The encoding format writes fields in a fixed order:
  * book_id, title, author, opf_dir, spine entries, TOC entries.
  * Deserialization reads them back in the same order. *)
-fun epub_serialize_metadata(): [len:nat] int(len) = "mac#"
-
+fun epub_serialize_metadata(): [len:nat] int(len)
 (* M15: Restore book metadata from fetch buffer.
  * Reconstructs epub module state so reader can function.
  * len: number of bytes to read from fetch buffer.
@@ -265,11 +243,29 @@ fun epub_serialize_metadata(): [len:nat] int(len) = "mac#"
  * handle error. Minimum len of 12 required (6 u16 headers).
  * Internally verifies METADATA_ROUNDTRIP by consuming serialized data
  * in the same field order as epub_serialize_metadata produces it. *)
-fun epub_restore_metadata(len: int): [r:int | r == 0 || r == 1] int(r) = "mac#"
-
+fun epub_restore_metadata(len: int): [r:int | r == 0 || r == 1] int(r)
 (* M15: Reset epub state to idle (for switching between books).
  * Postcondition: epub_state == 0, all metadata cleared.
  * CORRECTNESS: After reset, epub module is in the same state as after
  * epub_init(), ready for a new import or metadata restore.
  * Internally produces EPUB_RESET_TO_IDLE proof. *)
-fun epub_reset(): void = "mac#"
+fun epub_reset(): void
+
+(* ========== Parsing and accessor functions ========== *)
+
+(* Parse container.xml bytes to extract OPF path *)
+fun epub_parse_container_bytes(buf: ptr, len: int): int
+
+(* Parse OPF bytes to extract metadata and spine *)
+fun epub_parse_opf_bytes(buf: ptr, len: int): int
+
+(* Get OPF path pointer and length *)
+fun epub_get_opf_path_ptr(): ptr
+fun epub_get_opf_path_len(): int
+
+(* Get pointer to "META-INF/container.xml" string constant *)
+fun get_str_container_ptr(): ptr
+
+(* Get spine chapter path by index *)
+fun epub_get_spine_path_ptr(index: int): ptr
+fun epub_get_spine_path_len(index: int): int

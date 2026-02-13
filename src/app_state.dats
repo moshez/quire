@@ -8,6 +8,7 @@
 
 #include "share/atspre_staload.hats"
 staload "./app_state.sats"
+staload "./buf.sats"
 
 (* Listener table slot for the app_state stash.
  * ward_listener_set/get in runtime.c stores/retrieves ptr.
@@ -226,18 +227,6 @@ in end
  *   0=file_handle, 1=name_offset, 2=name_len, 3=compression,
  *   4=compressed_size, 5=uncompressed_size, 6=local_header_offset *)
 
-extern fun _zip_entry_file_handle(i: int): int = "ext#_zip_entry_file_handle"
-extern fun _zip_entry_name_offset(i: int): int = "ext#_zip_entry_name_offset"
-extern fun _zip_entry_name_len(i: int): int = "ext#_zip_entry_name_len"
-extern fun _zip_entry_compression(i: int): int = "ext#_zip_entry_compression"
-extern fun _zip_entry_compressed_size(i: int): int = "ext#_zip_entry_compressed_size"
-extern fun _zip_entry_uncompressed_size(i: int): int = "ext#_zip_entry_uncompressed_size"
-extern fun _zip_entry_local_offset(i: int): int = "ext#_zip_entry_local_offset"
-extern fun _zip_name_char(off: int): int = "ext#_zip_name_char"
-extern fun _zip_name_buf_put(off: int, byte_val: int): int = "ext#_zip_name_buf_put"
-extern fun _zip_store_entry_at(idx: int, fh: int, no: int, nl: int,
-  comp: int, cs: int, us: int, lo: int): int = "ext#_zip_store_entry_at"
-
 fn _zip_get_entries_ptr(): ptr = let
   val st = app_state_load()
   val @APP_STATE(r) = st
@@ -356,19 +345,6 @@ implement app_get_diff_buffer(st) = let
 (* These use ext# so C code in quire_runtime.c can call them.
  * Each does a load/use/store cycle on the callback registry stash. *)
 
-extern fun _app_lib_count(): int = "ext#_app_lib_count"
-extern fun _app_set_lib_count(v: int): void = "ext#_app_set_lib_count"
-extern fun _app_lib_save_pend(): int = "ext#_app_lib_save_pend"
-extern fun _app_set_lib_save_pend(v: int): void = "ext#_app_set_lib_save_pend"
-extern fun _app_lib_load_pend(): int = "ext#_app_lib_load_pend"
-extern fun _app_set_lib_load_pend(v: int): void = "ext#_app_set_lib_load_pend"
-extern fun _app_lib_meta_save_pend(): int = "ext#_app_lib_meta_save_pend"
-extern fun _app_set_lib_meta_save_pend(v: int): void = "ext#_app_set_lib_meta_save_pend"
-extern fun _app_lib_meta_load_pend(): int = "ext#_app_lib_meta_load_pend"
-extern fun _app_set_lib_meta_load_pend(v: int): void = "ext#_app_set_lib_meta_load_pend"
-extern fun _app_lib_meta_load_idx(): int = "ext#_app_lib_meta_load_idx"
-extern fun _app_set_lib_meta_load_idx(v: int): void = "ext#_app_set_lib_meta_load_idx"
-
 implement _app_lib_count() = let val st = app_state_load()
   val v = app_get_library_count(st) val () = app_state_store(st) in v end
 implement _app_set_lib_count(v) = let val st = app_state_load()
@@ -393,7 +369,6 @@ implement _app_lib_meta_load_idx() = let val st = app_state_load()
   val v = app_get_lib_meta_load_index(st) val () = app_state_store(st) in v end
 implement _app_set_lib_meta_load_idx(v) = let val st = app_state_load()
   val () = app_set_lib_meta_load_index(st, v) val () = app_state_store(st) in end
-extern fun _app_lib_books_ptr(): ptr = "ext#_app_lib_books_ptr"
 implement _app_lib_books_ptr() = let val st = app_state_load()
   val v = app_get_library_books(st) val () = app_state_store(st) in v end
 
@@ -401,14 +376,11 @@ implement _app_lib_books_ptr() = let val st = app_state_load()
 (* These replace the static buffers in quire_runtime.c.
  * Buffers are calloc'd in app_state_init and stored as ptr fields. *)
 
-extern fun _get_string_buffer_ptr(): ptr = "ext#get_string_buffer_ptr"
-implement _get_string_buffer_ptr() = let val st = app_state_load()
+implement get_string_buffer_ptr() = let val st = app_state_load()
   val v = app_get_string_buffer(st) val () = app_state_store(st) in v end
-extern fun _get_fetch_buffer_ptr(): ptr = "ext#get_fetch_buffer_ptr"
-implement _get_fetch_buffer_ptr() = let val st = app_state_load()
+implement get_fetch_buffer_ptr() = let val st = app_state_load()
   val v = app_get_fetch_buffer(st) val () = app_state_store(st) in v end
-extern fun _get_diff_buffer_ptr(): ptr = "ext#get_diff_buffer_ptr"
-implement _get_diff_buffer_ptr() = let val st = app_state_load()
+implement get_diff_buffer_ptr() = let val st = app_state_load()
   val v = app_get_diff_buffer(st) val () = app_state_store(st) in v end
 
 (* ========== Settings state ========== *)
@@ -721,57 +693,6 @@ implement app_set_epub_spine_path_pos(st, v) = let
 
 (* ========== C-callable wrappers for settings module ========== *)
 
-extern fun _app_stg_font_size(): int = "ext#_app_stg_font_size"
-extern fun _app_set_stg_font_size(v: int): void = "ext#_app_set_stg_font_size"
-extern fun _app_stg_font_family(): int = "ext#_app_stg_font_family"
-extern fun _app_set_stg_font_family(v: int): void = "ext#_app_set_stg_font_family"
-extern fun _app_stg_theme(): int = "ext#_app_stg_theme"
-extern fun _app_set_stg_theme(v: int): void = "ext#_app_set_stg_theme"
-extern fun _app_stg_lh_tenths(): int = "ext#_app_stg_lh_tenths"
-extern fun _app_set_stg_lh_tenths(v: int): void = "ext#_app_set_stg_lh_tenths"
-extern fun _app_stg_margin(): int = "ext#_app_stg_margin"
-extern fun _app_set_stg_margin(v: int): void = "ext#_app_set_stg_margin"
-extern fun _app_stg_visible(): int = "ext#_app_stg_visible"
-extern fun _app_set_stg_visible(v: int): void = "ext#_app_set_stg_visible"
-extern fun _app_stg_overlay_id(): int = "ext#_app_stg_overlay_id"
-extern fun _app_set_stg_overlay_id(v: int): void = "ext#_app_set_stg_overlay_id"
-extern fun _app_stg_close_id(): int = "ext#_app_stg_close_id"
-extern fun _app_set_stg_close_id(v: int): void = "ext#_app_set_stg_close_id"
-extern fun _app_stg_root_id(): int = "ext#_app_stg_root_id"
-extern fun _app_set_stg_root_id(v: int): void = "ext#_app_set_stg_root_id"
-extern fun _app_stg_btn_font_minus(): int = "ext#_app_stg_btn_font_minus"
-extern fun _app_set_stg_btn_font_minus(v: int): void = "ext#_app_set_stg_btn_font_minus"
-extern fun _app_stg_btn_font_plus(): int = "ext#_app_stg_btn_font_plus"
-extern fun _app_set_stg_btn_font_plus(v: int): void = "ext#_app_set_stg_btn_font_plus"
-extern fun _app_stg_btn_font_fam(): int = "ext#_app_stg_btn_font_fam"
-extern fun _app_set_stg_btn_font_fam(v: int): void = "ext#_app_set_stg_btn_font_fam"
-extern fun _app_stg_btn_theme_l(): int = "ext#_app_stg_btn_theme_l"
-extern fun _app_set_stg_btn_theme_l(v: int): void = "ext#_app_set_stg_btn_theme_l"
-extern fun _app_stg_btn_theme_d(): int = "ext#_app_stg_btn_theme_d"
-extern fun _app_set_stg_btn_theme_d(v: int): void = "ext#_app_set_stg_btn_theme_d"
-extern fun _app_stg_btn_theme_s(): int = "ext#_app_stg_btn_theme_s"
-extern fun _app_set_stg_btn_theme_s(v: int): void = "ext#_app_set_stg_btn_theme_s"
-extern fun _app_stg_btn_lh_minus(): int = "ext#_app_stg_btn_lh_minus"
-extern fun _app_set_stg_btn_lh_minus(v: int): void = "ext#_app_set_stg_btn_lh_minus"
-extern fun _app_stg_btn_lh_plus(): int = "ext#_app_stg_btn_lh_plus"
-extern fun _app_set_stg_btn_lh_plus(v: int): void = "ext#_app_set_stg_btn_lh_plus"
-extern fun _app_stg_btn_mg_minus(): int = "ext#_app_stg_btn_mg_minus"
-extern fun _app_set_stg_btn_mg_minus(v: int): void = "ext#_app_set_stg_btn_mg_minus"
-extern fun _app_stg_btn_mg_plus(): int = "ext#_app_stg_btn_mg_plus"
-extern fun _app_set_stg_btn_mg_plus(v: int): void = "ext#_app_set_stg_btn_mg_plus"
-extern fun _app_stg_disp_fs(): int = "ext#_app_stg_disp_fs"
-extern fun _app_set_stg_disp_fs(v: int): void = "ext#_app_set_stg_disp_fs"
-extern fun _app_stg_disp_ff(): int = "ext#_app_stg_disp_ff"
-extern fun _app_set_stg_disp_ff(v: int): void = "ext#_app_set_stg_disp_ff"
-extern fun _app_stg_disp_lh(): int = "ext#_app_stg_disp_lh"
-extern fun _app_set_stg_disp_lh(v: int): void = "ext#_app_set_stg_disp_lh"
-extern fun _app_stg_disp_mg(): int = "ext#_app_stg_disp_mg"
-extern fun _app_set_stg_disp_mg(v: int): void = "ext#_app_set_stg_disp_mg"
-extern fun _app_stg_save_pend(): int = "ext#_app_stg_save_pend"
-extern fun _app_set_stg_save_pend(v: int): void = "ext#_app_set_stg_save_pend"
-extern fun _app_stg_load_pend(): int = "ext#_app_stg_load_pend"
-extern fun _app_set_stg_load_pend(v: int): void = "ext#_app_set_stg_load_pend"
-
 implement _app_stg_font_size() = let val st = app_state_load()
   val v = app_get_stg_font_size(st) val () = app_state_store(st) in v end
 implement _app_set_stg_font_size(v) = let val st = app_state_load()
@@ -874,32 +795,6 @@ implement _app_set_stg_load_pend(v) = let val st = app_state_load()
   val () = app_set_stg_load_pend(st, v) val () = app_state_store(st) in end
 
 (* ========== C-callable wrappers for epub fields ========== *)
-
-extern fun _app_epub_spine_count(): int = "ext#_app_epub_spine_count"
-extern fun _app_set_epub_spine_count(v: int): void = "ext#_app_set_epub_spine_count"
-extern fun _app_epub_title_ptr(): ptr = "ext#_app_epub_title_ptr"
-extern fun _app_epub_title_len(): int = "ext#_app_epub_title_len"
-extern fun _app_set_epub_title_len(v: int): void = "ext#_app_set_epub_title_len"
-extern fun _app_epub_author_ptr(): ptr = "ext#_app_epub_author_ptr"
-extern fun _app_epub_author_len(): int = "ext#_app_epub_author_len"
-extern fun _app_set_epub_author_len(v: int): void = "ext#_app_set_epub_author_len"
-extern fun _app_epub_book_id_ptr(): ptr = "ext#_app_epub_book_id_ptr"
-extern fun _app_epub_book_id_len(): int = "ext#_app_epub_book_id_len"
-extern fun _app_set_epub_book_id_len(v: int): void = "ext#_app_set_epub_book_id_len"
-extern fun _app_epub_opf_path_ptr(): ptr = "ext#_app_epub_opf_path_ptr"
-extern fun _app_epub_opf_path_len(): int = "ext#_app_epub_opf_path_len"
-extern fun _app_set_epub_opf_path_len(v: int): void = "ext#_app_set_epub_opf_path_len"
-extern fun _app_epub_opf_dir_len(): int = "ext#_app_epub_opf_dir_len"
-extern fun _app_set_epub_opf_dir_len(v: int): void = "ext#_app_set_epub_opf_dir_len"
-extern fun _app_epub_state(): int = "ext#_app_epub_state"
-extern fun _app_set_epub_state(v: int): void = "ext#_app_set_epub_state"
-extern fun _app_epub_spine_path_buf(): ptr = "ext#_app_epub_spine_path_buf"
-extern fun _app_epub_spine_path_offsets(): ptr = "ext#_app_epub_spine_path_offsets"
-extern fun _app_epub_spine_path_lens(): ptr = "ext#_app_epub_spine_path_lens"
-extern fun _app_epub_spine_path_count(): int = "ext#_app_epub_spine_path_count"
-extern fun _app_set_epub_spine_path_count(v: int): void = "ext#_app_set_epub_spine_path_count"
-extern fun _app_epub_spine_path_pos(): int = "ext#_app_epub_spine_path_pos"
-extern fun _app_set_epub_spine_path_pos(v: int): void = "ext#_app_set_epub_spine_path_pos"
 
 implement _app_epub_spine_count() = let val st = app_state_load()
   val v = app_get_epub_spine_count(st) val () = app_state_store(st) in v end

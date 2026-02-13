@@ -5,6 +5,8 @@
  * extern fun declarations per module.
  *)
 
+staload "./../vendor/ward/lib/memory.sats"
+
 (* ========== Arithmetic ========== *)
 fun add_int_int(a: int, b: int): int = "mac#atspre_g0int_add_int"
 fun sub_int_int(a: int, b: int): int = "mac#atspre_g0int_sub_int"
@@ -47,3 +49,8 @@ castfn _checked_byte(x: int): [v:nat | v < 256] int v
 (* Index castfn — asserts offset is within [0, n) for ward_arr access.
  * Replaces runtime bounds check of _ward_arr_byte macro. *)
 castfn _ward_idx {n:pos} (x: int, len: int n): [i:nat | i < n] int i
+
+(* Borrow ward_arr as raw ptr — for crossing into ptr-based functions.
+ * Safe because ward_arr erases to ptr at runtime. The !-borrow
+ * ensures the ward_arr remains valid after the call. *)
+castfn _arr_as_ptr {a:t0p}{l:agz}{n:pos} (arr: !ward_arr(a, l, n)): ptr

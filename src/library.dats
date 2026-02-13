@@ -22,20 +22,7 @@ staload "./library.sats"
 
 staload "./arith.sats"
 staload "./buf.sats"
-
-(* ========== App state ext# wrappers ========== *)
-
-extern fun _app_lib_count(): int = "mac#"
-extern fun _app_set_lib_count(v: int): void = "mac#"
-extern fun _app_lib_books_ptr(): ptr = "mac#"
-extern fun _app_epub_book_id_ptr(): ptr = "mac#"
-extern fun _app_epub_book_id_len(): int = "mac#"
-extern fun _app_epub_title_ptr(): ptr = "mac#"
-extern fun _app_epub_title_len(): int = "mac#"
-extern fun _app_epub_author_ptr(): ptr = "mac#"
-extern fun _app_epub_author_len(): int = "mac#"
-extern fun _app_epub_spine_count(): int = "mac#"
-extern fun get_string_buffer_ptr(): ptr = "mac#"
+staload "./app_state.sats"
 
 (* ========== Record layout constants ========== *)
 
@@ -53,6 +40,11 @@ extern fun get_string_buffer_ptr(): ptr = "mac#"
 #define SPINE_SLOT 147
 #define CHAPTER_SLOT 148
 #define PAGE_SLOT 149
+
+(* ========== Castfns for dependent return types ========== *)
+extern castfn _clamp32(x: int): [n:nat | n <= 32] int n
+extern castfn _lib_idx(x: int): [i:int | i >= ~1; i < 32] int i
+extern castfn _find_idx(x: int): [i:int | i >= ~1] int i
 
 (* ========== Helpers ========== *)
 
@@ -101,23 +93,20 @@ in loop(0) end
 
 (* ========== Library functions (ext#) ========== *)
 
-extern fun library_init_impl(): void = "ext#library_init"
-implement library_init_impl() = _app_set_lib_count(0)
+implement library_init() = _app_set_lib_count(0)
 
-extern fun library_get_count_impl(): int = "ext#library_get_count"
-implement library_get_count_impl() = let
+implement library_get_count() = let
   val c = _app_lib_count()
 in
   if lt_int_int(c, 0) then 0
   else if gt_int_int(c, 32) then 32
-  else c
+  else _clamp32(c)
 end
 
-extern fun library_add_book_impl(): int = "ext#library_add_book"
-implement library_add_book_impl() = let
+implement library_add_book() = let
   val count = _app_lib_count()
 in
-  if gte_int_int(count, 32) then 0 - 1
+  if gte_int_int(count, 32) then _lib_idx(0 - 1)
   else let
     val books = _app_lib_books_ptr()
     val bid_ptr = _app_epub_book_id_ptr()
@@ -134,7 +123,7 @@ in
       end
     val dup = find_dup(0)
   in
-    if gte_int_int(dup, 0) then dup
+    if gte_int_int(dup, 0) then _lib_idx(dup)
     else let
       val tptr = _app_epub_title_ptr()
       val tlen = _app_epub_title_len()
@@ -152,12 +141,11 @@ in
       val () = buf_set_i32(books, base + CHAPTER_SLOT, 0)
       val () = buf_set_i32(books, base + PAGE_SLOT, 0)
       val () = _app_set_lib_count(count + 1)
-    in count end
+    in _lib_idx(count) end
   end
 end
 
-extern fun library_get_title_impl(index: int, buf_offset: int): int = "ext#library_get_title"
-implement library_get_title_impl(index, buf_offset) =
+implement library_get_title(index, buf_offset) =
   if lt_int_int(index, 0) then 0
   else if gte_int_int(index, _app_lib_count()) then 0
   else let
@@ -165,10 +153,9 @@ implement library_get_title_impl(index, buf_offset) =
     val len = buf_get_i32(books, index * REC_INTS + TITLE_LEN_SLOT)
     val () = _copy_bytes_to_sbuf(books, index, TITLE_OFF, len,
                                  get_string_buffer_ptr(), buf_offset)
-  in len end
+  in _checked_nat(len) end
 
-extern fun library_get_author_impl(index: int, buf_offset: int): int = "ext#library_get_author"
-implement library_get_author_impl(index, buf_offset) =
+implement library_get_author(index, buf_offset) =
   if lt_int_int(index, 0) then 0
   else if gte_int_int(index, _app_lib_count()) then 0
   else let
@@ -176,10 +163,9 @@ implement library_get_author_impl(index, buf_offset) =
     val len = buf_get_i32(books, index * REC_INTS + AUTHOR_LEN_SLOT)
     val () = _copy_bytes_to_sbuf(books, index, AUTHOR_OFF, len,
                                  get_string_buffer_ptr(), buf_offset)
-  in len end
+  in _checked_nat(len) end
 
-extern fun library_get_book_id_impl(index: int, buf_offset: int): int = "ext#library_get_book_id"
-implement library_get_book_id_impl(index, buf_offset) =
+implement library_get_book_id(index, buf_offset) =
   if lt_int_int(index, 0) then 0
   else if gte_int_int(index, _app_lib_count()) then 0
   else let
@@ -187,28 +173,24 @@ implement library_get_book_id_impl(index, buf_offset) =
     val len = buf_get_i32(books, index * REC_INTS + BOOKID_LEN_SLOT)
     val () = _copy_bytes_to_sbuf(books, index, BOOKID_OFF, len,
                                  get_string_buffer_ptr(), buf_offset)
-  in len end
+  in _checked_nat(len) end
 
-extern fun library_get_chapter_impl(index: int): int = "ext#library_get_chapter"
-implement library_get_chapter_impl(index) =
+implement library_get_chapter(index) =
   if lt_int_int(index, 0) then 0
   else if gte_int_int(index, _app_lib_count()) then 0
-  else buf_get_i32(_app_lib_books_ptr(), index * REC_INTS + CHAPTER_SLOT)
+  else _checked_nat(buf_get_i32(_app_lib_books_ptr(), index * REC_INTS + CHAPTER_SLOT))
 
-extern fun library_get_page_impl(index: int): int = "ext#library_get_page"
-implement library_get_page_impl(index) =
+implement library_get_page(index) =
   if lt_int_int(index, 0) then 0
   else if gte_int_int(index, _app_lib_count()) then 0
-  else buf_get_i32(_app_lib_books_ptr(), index * REC_INTS + PAGE_SLOT)
+  else _checked_nat(buf_get_i32(_app_lib_books_ptr(), index * REC_INTS + PAGE_SLOT))
 
-extern fun library_get_spine_count_impl(index: int): int = "ext#library_get_spine_count"
-implement library_get_spine_count_impl(index) =
+implement library_get_spine_count(index) =
   if lt_int_int(index, 0) then 0
   else if gte_int_int(index, _app_lib_count()) then 0
-  else buf_get_i32(_app_lib_books_ptr(), index * REC_INTS + SPINE_SLOT)
+  else _checked_nat(buf_get_i32(_app_lib_books_ptr(), index * REC_INTS + SPINE_SLOT))
 
-extern fun library_update_position_impl(index: int, chapter: int, page: int): void = "ext#library_update_position"
-implement library_update_position_impl(index, chapter, page) =
+implement library_update_position(index, chapter, page) =
   if lt_int_int(index, 0) then ()
   else if gte_int_int(index, _app_lib_count()) then ()
   else let
@@ -218,8 +200,7 @@ implement library_update_position_impl(index, chapter, page) =
     val () = buf_set_i32(books, base + PAGE_SLOT, page)
   in end
 
-extern fun library_find_book_by_id_impl(): int = "ext#library_find_book_by_id"
-implement library_find_book_by_id_impl() = let
+implement library_find_book_by_id() = let
   val count = _app_lib_count()
   val bid_ptr = _app_epub_book_id_ptr()
   val bid_len = _app_epub_book_id_len()
@@ -233,10 +214,9 @@ implement library_find_book_by_id_impl() = let
       then i
       else loop(i + 1)
     end
-in loop(0) end
+in _find_idx(loop(0)) end
 
-extern fun library_remove_book_impl(index: int): void = "ext#library_remove_book"
-implement library_remove_book_impl(index) = let
+implement library_remove_book(index) = let
   val count = _app_lib_count()
 in
   if lt_int_int(index, 0) then ()
@@ -254,41 +234,28 @@ end
 
 (* ========== Persistence stubs ========== *)
 
-extern fun library_serialize_impl(): int = "ext#library_serialize"
-implement library_serialize_impl() = 0
+implement library_serialize() = 0
 
-extern fun library_deserialize_impl(len: int): int = "ext#library_deserialize"
-implement library_deserialize_impl(len) = 0
+implement library_deserialize(len) = 0
 
-extern fun library_save_impl(): void = "ext#library_save"
-implement library_save_impl() = ()
+implement library_save() = ()
 
-extern fun library_load_impl(): void = "ext#library_load"
-implement library_load_impl() = ()
+implement library_load() = ()
 
-extern fun library_on_load_complete_impl(len: int): void = "ext#library_on_load_complete"
-implement library_on_load_complete_impl(len) = ()
+implement library_on_load_complete(len) = ()
 
-extern fun library_on_save_complete_impl(success: int): void = "ext#library_on_save_complete"
-implement library_on_save_complete_impl(success) = ()
+implement library_on_save_complete(success) = ()
 
-extern fun library_save_book_metadata_impl(): void = "ext#library_save_book_metadata"
-implement library_save_book_metadata_impl() = ()
+implement library_save_book_metadata() = ()
 
-extern fun library_load_book_metadata_impl(index: int): void = "ext#library_load_book_metadata"
-implement library_load_book_metadata_impl(index) = ()
+implement library_load_book_metadata(index) = ()
 
-extern fun library_on_metadata_load_complete_impl(len: int): void = "ext#library_on_metadata_load_complete"
-implement library_on_metadata_load_complete_impl(len) = ()
+implement library_on_metadata_load_complete(len) = ()
 
-extern fun library_on_metadata_save_complete_impl(success: int): void = "ext#library_on_metadata_save_complete"
-implement library_on_metadata_save_complete_impl(success) = ()
+implement library_on_metadata_save_complete(success) = ()
 
-extern fun library_is_save_pending_impl(): int = "ext#library_is_save_pending"
-implement library_is_save_pending_impl() = 0
+implement library_is_save_pending() = 0
 
-extern fun library_is_load_pending_impl(): int = "ext#library_is_load_pending"
-implement library_is_load_pending_impl() = 0
+implement library_is_load_pending() = 0
 
-extern fun library_is_metadata_pending_impl(): int = "ext#library_is_metadata_pending"
-implement library_is_metadata_pending_impl() = 0
+implement library_is_metadata_pending() = 0

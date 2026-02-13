@@ -26,23 +26,6 @@ fn ward_arr_byte {l:agz}{n:pos}
 (* Runtime-checked bounded count *)
 extern castfn _checked_bounded(x: int): [n:nat | n <= 256] int n
 
-(* ========== C storage accessors (quire_runtime.c) ========== *)
-
-(* Array-backed storage stays in C — only arrays, not simple int globals *)
-extern fun _zip_entry_file_handle(i: int): int = "mac#"
-extern fun _zip_entry_name_offset(i: int): int = "mac#"
-extern fun _zip_entry_name_len(i: int): int = "mac#"
-extern fun _zip_entry_compression(i: int): int = "mac#"
-extern fun _zip_entry_compressed_size(i: int): int = "mac#"
-extern fun _zip_entry_uncompressed_size(i: int): int = "mac#"
-extern fun _zip_entry_local_offset(i: int): int = "mac#"
-extern fun _zip_name_char(off: int): int = "mac#"
-extern fun _zip_name_buf_put(off: int, byte_val: int): int = "mac#"
-
-(* Store entry at a specific index — caller manages count via app_state *)
-extern fun _zip_store_entry_at(idx: int, fh: int, no: int, nl: int,
-  comp: int, cs: int, us: int, lo: int): int = "mac#"
-
 (* ========== App state wrappers for ZIP int fields ========== *)
 
 fn _get_zip_count(): int = let

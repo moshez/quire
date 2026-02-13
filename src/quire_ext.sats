@@ -1,11 +1,10 @@
 (* quire_ext.sats — Bridge function declarations not in ward .sats files *)
 
-staload "./../vendor/ward/lib/memory.sats"
-
 (* Parse HTML safely — returns tree binary length, stashes ptr *)
-fun ward_js_parse_html
-  {n:pos}
-  (html: ptr, html_len: int n): int = "mac#"
+fun ward_js_parse_html(html: ptr, html_len: int): int = "mac#"
 
-(* Retrieve parseHTML result ptr — from quire_runtime.c stash *)
-fun ward_parse_html_get_ptr(): ptr = "mac#"
+(* Retrieve parseHTML result ptr — from listener stash *)
+fun ward_parse_html_get_ptr(): ptr
+
+(* Read f64 clientX from click payload, return as int *)
+fun read_payload_click_x(arr: ptr): int

@@ -35,6 +35,7 @@ When completing a milestone from quire-design.md §8:
 5. **Dependent types enforce correctness** — if it compiles, diffs are valid
 6. **Never work around ward bugs** — if ward (vendor/ward/) has a bug, STOP and give the user a bug report instead of working around it. Do not patch vendor/ files or add workarounds in quire code. The user will report the issue upstream and have it fixed.
 7. **Minimize C code** — Any function added to C (`quire_runtime.c`, `quire_prelude.h`) must be accompanied by a justification that includes: (a) external research (links, references) showing that this operation is conventionally done in C rather than a type-safe language (e.g., IEEE 754 reinterpretation, hardware intrinsics), (b) what alternative ATS2-only solutions were tried and why they don't work, (c) what the trade-offs are, and (d) why the C implementation is safe (e.g., no truncation, no overflow, no aliasing). Prefer ATS2 with ward_arr over C global buffers. If an algorithm can be expressed with ward_arr_set/get, div/mod, and existing extern funs, it belongs in ATS2.
+8. **Be fanatic about safety** — Auditing or checking are not reliable. Only ATS2-provable safety matters. It is unacceptable to work around safety, even if it's "small". If something is truly absolutely impossible to express safely in ATS2, file a bug against ward. Note that ward might well reject any bug that is not well justified.
 
 ## Type Safety Requirements
 

@@ -66,9 +66,9 @@ fun sbuf_advance {cap,n:nat | n <= cap}
 (* Raw pointer accessors for C interop and low-level operations.
  * Prefer the typed accessors above for new ATS code. *)
 
-fun get_diff_buffer_ptr(): ptr = "mac#"
-fun get_string_buffer_ptr(): ptr = "mac#"
-fun get_fetch_buffer_ptr(): ptr = "mac#"
+fun get_diff_buffer_ptr(): ptr
+fun get_string_buffer_ptr(): ptr
+fun get_fetch_buffer_ptr(): ptr
 
 (* ========== Low-level Memory Access ========== *)
 (* Byte-level access — implemented in buf.dats via ptr0_get/ptr0_set *)
