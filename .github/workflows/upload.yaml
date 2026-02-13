@@ -37,14 +37,15 @@ jobs:
       - name: Build quire.wasm
         run: |
           export PATSHOME=$HOME/ATS2-Postiats-int-${{ env.ATS_VERSION }}
-          export PATH=$PATSHOME/src/CBOOT:$PATH
-          make
+          make PATSOPT="PATSHOME=$PATSHOME $PATSHOME/src/CBOOT/patsopt"
+          test -f build/quire.wasm
 
       - name: Assemble PWA
         run: |
           mkdir -p dist
           cp index.html dist/
-          cp bridge.js dist/
+          cp vendor/ward/lib/ward_bridge.mjs dist/ward_bridge.js
+          sed -i "s|./vendor/ward/lib/ward_bridge.mjs|./ward_bridge.js|" dist/index.html
           cp reader.css dist/ 2>/dev/null || true
           cp manifest.json dist/
           cp service-worker.js dist/ 2>/dev/null || true
