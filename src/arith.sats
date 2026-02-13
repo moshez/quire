@@ -32,9 +32,7 @@ fun band_int_int(a: int, b: int): int = "mac#atspre_g0int_land_int"
 fun bsr_int_int(a: int, n: int): int = "mac#atspre_g0int_asr_int"
 
 (* ========== Pointer ========== *)
-fun _null_ptr(): ptr = "mac#atspre_ptr_null"
 fun _ptr_add(p: ptr, n: int): ptr = "mac#atspre_add_ptr0_bsz"
-fun eq_ptr_ptr(a: ptr, b: ptr): bool = "mac#quire_ptr_eq"
 
 (* ========== Operator overloads (priority 10 beats prelude) ========== *)
 overload + with add_int_int of 10

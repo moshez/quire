@@ -1,6 +1,6 @@
 (* buf.dats — Pure ATS2 implementations of buffer access primitives
  *
- * Replaces C macros from quire_prelude.h with safe ATS2 using
+ * Safe ATS2 buffer access primitives using
  * ward's runtime.h for ptr0_get/ptr0_set/ptr_add.
  *
  * $UNSAFE justification [U1]: dereferences ptr at computed offset.

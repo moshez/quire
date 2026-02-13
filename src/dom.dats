@@ -18,8 +18,7 @@ staload _ = "./../vendor/ward/lib/dom.dats"
 (* ========== Node ID allocator ========== *)
 
 (* Loads app_state from callback registry, reads/increments counter,
- * stores app_state back. Zero-argument signature preserved for C callers
- * in quire_runtime.c. *)
+ * stores app_state back. *)
 implement dom_next_id() = let
   val st = app_state_load()
   val id = g1ofg0(app_get_dom_next_id(st))

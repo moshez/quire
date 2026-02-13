@@ -342,8 +342,7 @@ implement app_get_diff_buffer(st) = let
 
 (* ========== C-callable wrappers for library module ========== *)
 
-(* These use ext# so C code in quire_runtime.c can call them.
- * Each does a load/use/store cycle on the callback registry stash. *)
+(* Each does a load/use/store cycle on the callback registry stash. *)
 
 implement _app_lib_count() = let val st = app_state_load()
   val v = app_get_library_count(st) val () = app_state_store(st) in v end
@@ -373,8 +372,7 @@ implement _app_lib_books_ptr() = let val st = app_state_load()
   val v = app_get_library_books(st) val () = app_state_store(st) in v end
 
 (* ========== Buffer ext# wrappers ========== *)
-(* These replace the static buffers in quire_runtime.c.
- * Buffers are calloc'd in app_state_init and stored as ptr fields. *)
+(* Buffers are calloc'd in app_state_init and stored as ptr fields. *)
 
 implement get_string_buffer_ptr() = let val st = app_state_load()
   val v = app_get_string_buffer(st) val () = app_state_store(st) in v end

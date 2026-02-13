@@ -7,7 +7,7 @@
  * No mutable globals. No C code.
  *)
 
-absvtype app_state
+absvtype app_state = ptr
 
 (* Lifecycle *)
 fun app_state_init(): app_state

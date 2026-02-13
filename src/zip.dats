@@ -2,7 +2,7 @@
  *
  * Parses ZIP central directory to enumerate entries.
  * All byte-level parsing done via ward_arr_get<byte>.
- * Entry storage kept in quire_runtime.c as module-private statics.
+ * Entry storage in app_state.
  *)
 
 #define ATS_DYNLOADFLAG 0
