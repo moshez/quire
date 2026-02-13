@@ -20,24 +20,8 @@
 #include "share/atspre_staload.hats"
 staload "./library.sats"
 
-(* ========== Primitives ========== *)
-
-extern fun add_int_int(a: int, b: int): int = "mac#quire_add"
-extern fun sub_int_int(a: int, b: int): int = "mac#quire_sub"
-extern fun mul_int_int(a: int, b: int): int = "mac#quire_mul"
-extern fun eq_int_int(a: int, b: int): bool = "mac#quire_eq"
-extern fun neq_int_int(a: int, b: int): bool = "mac#quire_neq"
-extern fun lt_int_int(a: int, b: int): bool = "mac#quire_lt"
-extern fun gte_int_int(a: int, b: int): bool = "mac#quire_gte"
-extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
-overload + with add_int_int of 10
-overload - with sub_int_int of 10
-overload * with mul_int_int of 10
-
-extern fun buf_get_u8(p: ptr, off: int): int = "mac#"
-extern fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#"
-extern fun buf_get_i32(p: ptr, idx: int): int = "mac#"
-extern fun buf_set_i32(p: ptr, idx: int, v: int): void = "mac#"
+staload "./arith.sats"
+staload "./buf.sats"
 
 (* ========== App state ext# wrappers ========== *)
 

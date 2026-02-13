@@ -87,16 +87,11 @@ datavtype app_state_impl =
 
 assume app_state = app_state_impl
 
+staload "./arith.sats"
+staload "./buf.sats"
+
 (* Bump allocator — never freed. Zero-initialized by calloc. *)
 extern fun _calloc(n: int, sz: int): ptr = "mac#calloc"
-
-(* Byte-level access on raw ptr — macros in quire_prelude.h *)
-extern fun buf_get_u8(p: ptr, off: int): int = "mac#"
-extern fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#"
-
-(* Int array access on raw ptr — macros in quire_prelude.h *)
-extern fun buf_get_i32(p: ptr, idx: int): int = "mac#"
-extern fun buf_set_i32(p: ptr, idx: int, v: int): void = "mac#"
 
 (* Allocate btn_ids array: 32 ints × 4 bytes = 128 bytes *)
 fn _rdr_btn_alloc(): ptr = _calloc(32, 4)

@@ -35,25 +35,7 @@ staload _ = "./../vendor/ward/lib/decompress.dats"
 staload _ = "./../vendor/ward/lib/xml.dats"
 staload _ = "./../vendor/ward/lib/dom_read.dats"
 
-(* ========== Freestanding arithmetic ========== *)
-
-extern fun add_int_int(a: int, b: int): int = "mac#quire_add"
-extern fun sub_int_int(a: int, b: int): int = "mac#quire_sub"
-extern fun gte_int_int(a: int, b: int): bool = "mac#quire_gte"
-extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
-extern fun lt_int_int(a: int, b: int): bool = "mac#quire_lt"
-extern fun eq_int_int(a: int, b: int): bool = "mac#quire_eq"
-extern fun neq_int_int(a: int, b: int): bool = "mac#quire_neq"
-extern fun mul_int_int(a: int, b: int): int = "mac#quire_mul"
-extern fun div_int_int(a: int, b: int): int = "mac#quire_div"
-extern fun mod_int_int(a: int, b: int): int = "mac#quire_mod"
-(* g1-level comparison: preserves static info for dependent array bounds *)
-extern fun gt1_int_int {a,b:int} (a: int a, b: int b): bool(a > b) = "mac#quire_gt"
-overload + with add_int_int of 10
-overload - with sub_int_int of 10
-
-(* Runtime-checked positive: used after verifying x > 0 at runtime *)
-extern castfn _checked_pos(x: int): [n:pos] int n
+staload "./arith.sats"
 
 (* ========== Text constant IDs ========== *)
 
@@ -64,9 +46,10 @@ extern castfn _checked_pos(x: int): [n:pos] int n
 
 (* ========== Byte-level helpers (pure ATS2) ========== *)
 
-(* Bounds-checked byte write to ward_arr *)
-extern fun ward_arr_set_byte {l:agz}{n:pos}
-  (arr: !ward_arr(byte, l, n), off: int, len: int n, v: int): void = "mac#_ward_arr_set_byte"
+(* Byte write to ward_arr — wraps ward_arr_write_byte with castfn index *)
+fn ward_arr_set_byte {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), off: int, len: int n, v: int): void =
+  ward_arr_write_byte(arr, _ward_idx(off, len), _checked_byte(v))
 
 (* Fill ward_arr with text constant bytes.
  * "No books yet"(12), ".epub"(5), "Not started"(11), "Read"(4) *)
@@ -474,7 +457,7 @@ in
       if gt_int_int(x, 0) then let
         val digit = mod_int_int(x, 10)
         (* digit is 0-9, so 48+digit is 48-57 — within byte range *)
-        val () = ward_arr_set<byte>(arr, _idx48(pos), int2byte0(48 + digit))
+        val () = ward_arr_set<byte>(arr, _idx48(pos), ward_int2byte(_checked_byte(48 + digit)))
       in write_rev(arr, div_int_int(x, 10), pos - 1) end
       else ()
     val () = write_rev(arr, v, offset + ndigits - 1)

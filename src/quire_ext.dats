@@ -5,19 +5,8 @@
 staload "./../vendor/ward/lib/memory.sats"
 staload "./quire_ext.sats"
 
-(* ========== Primitives ========== *)
-
-extern fun sub_int_int(a: int, b: int): int = "mac#quire_sub"
-extern fun eq_int_int(a: int, b: int): bool = "mac#quire_eq"
-extern fun lt_int_int(a: int, b: int): bool = "mac#quire_lt"
-extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
-overload - with sub_int_int of 10
-
-extern fun buf_get_u8(p: ptr, off: int): int = "mac#"
-extern fun bor_int_int(a: int, b: int): int = "mac#quire_bor"
-extern fun bsl_int_int(a: int, n: int): int = "mac#quire_bsl"
-extern fun band_int_int(a: int, b: int): int = "mac#quire_band"
-extern fun bsr_int_int(a: int, n: int): int = "mac#quire_bsr"
+staload "./arith.sats"
+staload "./buf.sats"
 
 (* Ward listener table — used for parse stash storage *)
 extern fun ward_listener_set(id: int, ctx: ptr): void = "mac#"

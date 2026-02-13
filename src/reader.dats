@@ -11,18 +11,7 @@ staload "./reader.sats"
 staload "./app_state.sats"
 staload "./dom.sats"
 
-(* Freestanding arithmetic *)
-extern fun gte_int_int(a: int, b: int): bool = "mac#quire_gte"
-extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
-extern fun lt_int_int(a: int, b: int): bool = "mac#quire_lt"
-extern fun sub_int_int(a: int, b: int): int = "mac#quire_sub"
-extern fun add_int_int(a: int, b: int): int = "mac#quire_add"
-overload + with add_int_int of 10
-overload - with sub_int_int of 10
-
-(* Runtime-checked non-negative *)
-extern castfn _checked_nat(x: int): [n:nat] int n
-extern castfn _checked_pos(x: int): [n:pos] int n
+staload "./arith.sats"
 
 implement reader_init() = let
   val st = app_state_load()

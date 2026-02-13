@@ -55,12 +55,12 @@ fun get_fetch_buf(): sized_buf(FBUF_CAP) = "mac#get_fetch_buffer_ptr"
 (* Write len bytes at the start of a sized buffer.
  * Requires: len <= remaining capacity. *)
 fun sbuf_write {cap,l:nat | l <= cap}
-  (dst: sized_buf(cap), src: ptr, len: int l): void = "mac#sbuf_write"
+  (dst: sized_buf(cap), src: ptr, len: int l): void = "mac#memcpy"
 
 (* Advance a buffer pointer by n bytes, reducing capacity.
  * Returns a sub-buffer starting n bytes later with cap-n remaining. *)
 fun sbuf_advance {cap,n:nat | n <= cap}
-  (buf: sized_buf(cap), n: int n): sized_buf(cap - n) = "mac#ptr_add_int"
+  (buf: sized_buf(cap), n: int n): sized_buf(cap - n) = "mac#atspre_add_ptr0_bsz"
 
 (* ========== Buffer Accessors (raw) ========== *)
 (* Raw pointer accessors for C interop and low-level operations.
@@ -71,7 +71,9 @@ fun get_string_buffer_ptr(): ptr = "mac#"
 fun get_fetch_buffer_ptr(): ptr = "mac#"
 
 (* ========== Low-level Memory Access ========== *)
-(* Byte-level access — irreducible C macros in runtime.h *)
+(* Byte-level access — C macros in quire_prelude.h *)
 fun buf_get_u8(p: ptr, off: int): int = "mac#"
 fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#"
-fun ptr_add_int(p: ptr, n: int): ptr = "mac#"
+fun buf_get_i32(p: ptr, idx: int): int = "mac#"
+fun buf_set_i32(p: ptr, idx: int, v: int): void = "mac#"
+fun ptr_add_int(p: ptr, n: int): ptr = "mac#atspre_add_ptr0_bsz"

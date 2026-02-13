@@ -15,26 +15,12 @@ staload "./../vendor/ward/lib/file.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
 staload _ = "./../vendor/ward/lib/file.dats"
 
-(* ========== Freestanding arithmetic ========== *)
+staload "./arith.sats"
 
-extern fun add_int_int(a: int, b: int): int = "mac#quire_add"
-extern fun sub_int_int(a: int, b: int): int = "mac#quire_sub"
-extern fun gte_int_int(a: int, b: int): bool = "mac#quire_gte"
-extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
-extern fun eq_int_int(a: int, b: int): bool = "mac#quire_eq"
-extern fun neq_int_int(a: int, b: int): bool = "mac#quire_neq"
-extern fun bor(a: int, b: int): int = "mac#quire_bor"
-extern fun bsl(a: int, b: int): int = "mac#quire_bsl"
-overload + with add_int_int of 10
-overload - with sub_int_int of 10
-
-(* Bounds-checked byte read directly from ward_arr.
- * ward_arr erases to ptr at runtime; macro does the bounds check. *)
-extern fun ward_arr_byte {l:agz}{n:pos}
-  (arr: !ward_arr(byte, l, n), off: int, len: int n): int = "mac#_ward_arr_byte"
-
-(* Runtime-checked positive: used after verifying x > 0 at runtime. *)
-extern castfn _checked_pos(x: int): [n:pos] int n
+(* Byte read from ward_arr — wraps ward_arr_get<byte> with castfn index *)
+fn ward_arr_byte {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), off: int, len: int n): int =
+  byte2int0(ward_arr_get<byte>(arr, _ward_idx(off, len)))
 
 (* Runtime-checked bounded count *)
 extern castfn _checked_bounded(x: int): [n:nat | n <= 256] int n
@@ -123,7 +109,7 @@ fn arr_u16 {l:agz}{n:pos}
   (arr: !ward_arr(byte, l, n), off: int, len: int n): int = let
   val b0 = ward_arr_byte(arr, off, len)
   val b1 = ward_arr_byte(arr, off + 1, len)
-in bor(b0, bsl(b1, 8)) end
+in bor_int_int(b0, bsl_int_int(b1, 8)) end
 
 fn arr_u32 {l:agz}{n:pos}
   (arr: !ward_arr(byte, l, n), off: int, len: int n): int = let
@@ -131,7 +117,7 @@ fn arr_u32 {l:agz}{n:pos}
   val b1 = ward_arr_byte(arr, off + 1, len)
   val b2 = ward_arr_byte(arr, off + 2, len)
   val b3 = ward_arr_byte(arr, off + 3, len)
-in bor(bor(b0, bsl(b1, 8)), bor(bsl(b2, 16), bsl(b3, 24))) end
+in bor_int_int(bor_int_int(b0, bsl_int_int(b1, 8)), bor_int_int(bsl_int_int(b2, 16), bsl_int_int(b3, 24))) end
 
 (* ========== ZIP parsing functions (pure ATS2) ========== *)
 

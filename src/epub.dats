@@ -10,29 +10,8 @@
 staload "./epub.sats"
 staload "./app_state.sats"
 
-(* ========== Arithmetic primitives ========== *)
-
-extern fun add_int_int(a: int, b: int): int = "mac#quire_add"
-extern fun sub_int_int(a: int, b: int): int = "mac#quire_sub"
-extern fun mul_int_int(a: int, b: int): int = "mac#quire_mul"
-extern fun eq_int_int(a: int, b: int): bool = "mac#quire_eq"
-extern fun neq_int_int(a: int, b: int): bool = "mac#quire_neq"
-extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
-extern fun gte_int_int(a: int, b: int): bool = "mac#quire_gte"
-extern fun lt_int_int(a: int, b: int): bool = "mac#quire_lt"
-extern fun lte_int_int(a: int, b: int): bool = "mac#quire_lte"
-
-overload + with add_int_int of 10
-overload - with sub_int_int of 10
-overload * with mul_int_int of 10
-
-(* ========== Byte-level access ========== *)
-
-extern fun buf_get_u8(p: ptr, off: int): int = "mac#"
-extern fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#"
-extern fun buf_get_i32(p: ptr, idx: int): int = "mac#"
-extern fun buf_set_i32(p: ptr, idx: int, v: int): void = "mac#"
-extern fun get_string_buffer_ptr(): ptr = "mac#"
+staload "./arith.sats"
+staload "./buf.sats"
 
 (* ========== C-callable epub field accessors (ext# in app_state.dats) ========== *)
 
@@ -689,9 +668,7 @@ implement get_str_container_ptr_impl() = _build_str_container()
 
 (* ========== Spine path accessors ========== *)
 
-(* Null ptr and ptr arithmetic *)
-extern fun _null_ptr(): ptr = "mac#quire_null_ptr"
-extern fun _ptr_add(p: ptr, n: int): ptr = "mac#ptr_add_int"
+(* _null_ptr and _ptr_add provided by arith.sats *)
 
 extern fun epub_get_spine_path_ptr_impl(index: int): ptr = "ext#epub_get_spine_path_ptr"
 implement epub_get_spine_path_ptr_impl(index) = let

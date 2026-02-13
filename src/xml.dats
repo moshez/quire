@@ -10,21 +10,7 @@
 staload "./buf.sats"
 staload "./xml.sats"
 
-(* ========== Integer arithmetic for freestanding mode ========== *)
-extern fun add_int_int(a: int, b: int): int = "mac#quire_add"
-extern fun mul_int_int(a: int, b: int): int = "mac#quire_mul"
-extern fun gte_int_int(a: int, b: int): bool = "mac#quire_gte"
-extern fun gt_int_int(a: int, b: int): bool = "mac#quire_gt"
-overload + with add_int_int of 10
-overload * with mul_int_int of 10
-
-extern fun quire_null_ptr(): ptr = "mac#"
-
-(* Equality and inequality — avoid prelude templates *)
-extern fun sub_int_int(a: int, b: int): int = "mac#quire_sub"
-extern fun eq_int_int(a: int, b: int): bool = "mac#quire_eq"
-extern fun neq_int_int(a: int, b: int): bool = "mac#quire_neq"
-extern fun eq_ptr_ptr(a: ptr, b: ptr): bool = "mac#quire_ptr_eq"
+staload "./arith.sats"
 (* Cast functions for linear type borrowing — all at top level *)
 extern castfn ptr_to_nodes(p: ptr): xml_node_list_vt
 extern castfn nodes_to_ptr(ns: xml_node_list_vt): ptr
@@ -335,7 +321,7 @@ in
 end
 
 implement serialize_nodes_h(nodes_ptr, buf, pos, max) =
-  if eq_ptr_ptr(nodes_ptr, quire_null_ptr()) then pos
+  if eq_ptr_ptr(nodes_ptr, _null_ptr()) then pos
   else let
     val nodes = ptr_to_nodes(nodes_ptr)
   in case+ nodes of
@@ -351,7 +337,7 @@ implement serialize_nodes_h(nodes_ptr, buf, pos, max) =
   end
 
 implement serialize_attrs_h(attrs_ptr, buf, pos, max) =
-  if eq_ptr_ptr(attrs_ptr, quire_null_ptr()) then pos
+  if eq_ptr_ptr(attrs_ptr, _null_ptr()) then pos
   else let
     val attrs = ptr_to_attrs(attrs_ptr)
   in case+ attrs of
@@ -393,24 +379,24 @@ extern fun find_in_list_h(list_ptr: ptr, name: ptr, name_len: int): ptr
 extern fun find_in_node_h(node_ptr: ptr, name: ptr, name_len: int): ptr
 
 implement find_in_list_h(list_ptr, name, name_len) =
-  if eq_ptr_ptr(list_ptr, quire_null_ptr()) then quire_null_ptr()
+  if eq_ptr_ptr(list_ptr, _null_ptr()) then _null_ptr()
   else let
     val nodes = ptr_to_nodes(list_ptr)
   in case+ nodes of
-    | xml_nodes_nil() => let val _ = nodes_to_ptr(nodes) in quire_null_ptr() end
+    | xml_nodes_nil() => let val _ = nodes_to_ptr(nodes) in _null_ptr() end
     | xml_nodes_cons(node, rest) => let
         val np = node_borrow_ptr(node)
         val rp = nodes_borrow_ptr(rest)
         val _ = nodes_to_ptr(nodes)
         val result = find_in_node_h(np, name, name_len)
       in
-        if eq_ptr_ptr(result, quire_null_ptr()) then find_in_list_h(rp, name, name_len)
+        if eq_ptr_ptr(result, _null_ptr()) then find_in_list_h(rp, name, name_len)
         else result
       end
   end
 
 implement find_in_node_h(node_ptr, name, name_len) =
-  if eq_ptr_ptr(node_ptr, quire_null_ptr()) then quire_null_ptr()
+  if eq_ptr_ptr(node_ptr, _null_ptr()) then _null_ptr()
   else let
     val node = ptr_to_node(node_ptr)
   in case+ node of
@@ -423,14 +409,14 @@ implement find_in_node_h(node_ptr, name, name_len) =
           else find_in_list_h(cp, name, name_len)
         else find_in_list_h(cp, name, name_len)
       end
-    | xml_text_vt(_, _) => let val _ = node_to_ptr(node) in quire_null_ptr() end
+    | xml_text_vt(_, _) => let val _ = node_to_ptr(node) in _null_ptr() end
   end
 
 implement xml_find_element(tree, name, name_len) =
   find_in_list_h(tree, name, name_len)
 
 implement xml_first_child(node_ptr) =
-  if eq_ptr_ptr(node_ptr, quire_null_ptr()) then quire_null_ptr()
+  if eq_ptr_ptr(node_ptr, _null_ptr()) then _null_ptr()
   else let
     val node = ptr_to_node(node_ptr)
   in case+ node of
@@ -438,15 +424,15 @@ implement xml_first_child(node_ptr) =
         val cp = nodes_borrow_ptr(children)
         val _ = node_to_ptr(node)
       in cp end
-    | xml_text_vt(_, _) => let val _ = node_to_ptr(node) in quire_null_ptr() end
+    | xml_text_vt(_, _) => let val _ = node_to_ptr(node) in _null_ptr() end
   end
 
 implement xml_next_sibling(cursor) =
-  if eq_ptr_ptr(cursor, quire_null_ptr()) then quire_null_ptr()
+  if eq_ptr_ptr(cursor, _null_ptr()) then _null_ptr()
   else let
     val nodes = ptr_to_nodes(cursor)
   in case+ nodes of
-    | xml_nodes_nil() => let val _ = nodes_to_ptr(nodes) in quire_null_ptr() end
+    | xml_nodes_nil() => let val _ = nodes_to_ptr(nodes) in _null_ptr() end
     | xml_nodes_cons(_, rest) => let
         val rp = nodes_borrow_ptr(rest)
         val _ = nodes_to_ptr(nodes)
@@ -454,11 +440,11 @@ implement xml_next_sibling(cursor) =
   end
 
 implement xml_node_at(cursor) =
-  if eq_ptr_ptr(cursor, quire_null_ptr()) then quire_null_ptr()
+  if eq_ptr_ptr(cursor, _null_ptr()) then _null_ptr()
   else let
     val nodes = ptr_to_nodes(cursor)
   in case+ nodes of
-    | xml_nodes_nil() => let val _ = nodes_to_ptr(nodes) in quire_null_ptr() end
+    | xml_nodes_nil() => let val _ = nodes_to_ptr(nodes) in _null_ptr() end
     | xml_nodes_cons(node, _) => let
         val np = node_borrow_ptr(node)
         val _ = nodes_to_ptr(nodes)
@@ -466,7 +452,7 @@ implement xml_node_at(cursor) =
   end
 
 implement xml_node_is_element(node_ptr) =
-  if eq_ptr_ptr(node_ptr, quire_null_ptr()) then 0
+  if eq_ptr_ptr(node_ptr, _null_ptr()) then 0
   else let val node = ptr_to_node(node_ptr) in
     case+ node of
     | xml_element_vt(_, _, _, _) => let val _ = node_to_ptr(node) in 1 end
@@ -474,7 +460,7 @@ implement xml_node_is_element(node_ptr) =
   end
 
 implement xml_node_name_is(node_ptr, name, name_len) =
-  if eq_ptr_ptr(node_ptr, quire_null_ptr()) then let
+  if eq_ptr_ptr(node_ptr, _null_ptr()) then let
     (* Proof: null node — name cannot match *)
     prval _ = NAME_DIFFERS()
   in 0 end
@@ -502,7 +488,7 @@ implement xml_node_name_is(node_ptr, name, name_len) =
 extern fun find_attr_h(attrs_ptr: ptr, name: ptr, name_len: int, buf_offset: int): int
 
 implement xml_node_get_attr(node_ptr, name, name_len, buf_offset) =
-  if eq_ptr_ptr(node_ptr, quire_null_ptr()) then 0
+  if eq_ptr_ptr(node_ptr, _null_ptr()) then 0
   else let val node = ptr_to_node(node_ptr) in
     case+ node of
     | xml_element_vt(_, _, attrs, _) => let
@@ -513,7 +499,7 @@ implement xml_node_get_attr(node_ptr, name, name_len, buf_offset) =
   end
 
 implement find_attr_h(attrs_ptr, name, name_len, buf_offset) =
-  if eq_ptr_ptr(attrs_ptr, quire_null_ptr()) then let
+  if eq_ptr_ptr(attrs_ptr, _null_ptr()) then let
     (* Proof: exhausted attribute list — attribute not found *)
     prval _ = ATTR_NOT_FOUND()
   in 0 end
@@ -542,7 +528,7 @@ implement find_attr_h(attrs_ptr, name, name_len, buf_offset) =
 extern fun get_texts_h(list_ptr: ptr, buf_offset: int, written: int): int
 
 implement xml_node_get_text(node_ptr, buf_offset) =
-  if eq_ptr_ptr(node_ptr, quire_null_ptr()) then 0
+  if eq_ptr_ptr(node_ptr, _null_ptr()) then 0
   else let val node = ptr_to_node(node_ptr) in
     case+ node of
     | xml_text_vt(text, tlen) => let
@@ -557,7 +543,7 @@ implement xml_node_get_text(node_ptr, buf_offset) =
   end
 
 implement get_texts_h(list_ptr, buf_offset, written) =
-  if eq_ptr_ptr(list_ptr, quire_null_ptr()) then written
+  if eq_ptr_ptr(list_ptr, _null_ptr()) then written
   else let val nodes = ptr_to_nodes(list_ptr) in
     case+ nodes of
     | xml_nodes_nil() => let val _ = nodes_to_ptr(nodes) in written end
