@@ -18,7 +18,8 @@ WASM_CFLAGS := --target=wasm32 -O2 -flto -nostdlib -ffreestanding \
   -D_ATS_CCOMP_EXCEPTION_NONE_ \
   -D_ATS_CCOMP_PRELUDE_NONE_ \
   -DWARD_NO_DOM_STUB \
-  -include $(WARD_DIR)/runtime.h
+  -include $(WARD_DIR)/runtime.h \
+  -include src/quire_decls.h
 
 WASM_LDFLAGS := --no-entry --allow-undefined --lto-O2 \
   -z stack-size=262144 --initial-memory=16777216 --max-memory=268435456

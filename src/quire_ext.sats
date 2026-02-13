@@ -1,10 +1,9 @@
 (* quire_ext.sats — Bridge function declarations not in ward .sats files *)
 
-(* Parse HTML safely — returns tree binary length, stashes ptr *)
-fun ward_js_parse_html(html: ptr, html_len: int): int = "mac#"
+staload "./../vendor/ward/lib/memory.sats"
 
-(* Retrieve parseHTML result ptr — from listener stash *)
-fun ward_parse_html_get_ptr(): ptr
-
-(* Read f64 clientX from click payload, return as int *)
-fun read_payload_click_x(arr: ptr): int
+(* Read f64 clientX from click payload, return as int.
+ * Reads bytes 5-7 of the ward_arr for IEEE 754 extraction.
+ * Requires at least 8 bytes (click payload is 20 bytes). *)
+fun read_payload_click_x {l:agz}{n:nat | n >= 8}
+  (arr: !ward_arr(byte, l, n)): int

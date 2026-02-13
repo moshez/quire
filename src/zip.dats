@@ -271,7 +271,7 @@ in
         if gte_int_int(i, suffix_len) then 1
         else let
           val c1 = _zip_name_char(name_off + start + i)
-          val c2 = buf_get_u8(suffix_ptr, i)
+          val c2 = sbuf_get_u8(suffix_ptr, i)
           (* Case-insensitive *)
           val c1 = (if gte_int_int(c1, 65) then
             (if gt_int_int(91, c1) then c1 + 32 else c1) else c1): int
@@ -299,7 +299,7 @@ in
         if gte_int_int(i, name_len) then 1
         else let
           val c1 = _zip_name_char(name_off + i)
-          val c2 = buf_get_u8(name_ptr, i)
+          val c2 = sbuf_get_u8(name_ptr, i)
         in
           if eq_int_int(c1, c2) then cmp(i + 1) else 0
         end

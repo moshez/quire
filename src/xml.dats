@@ -11,6 +11,13 @@ staload "./buf.sats"
 staload "./xml.sats"
 
 staload "./arith.sats"
+
+(* Module-private raw ptr buffer access — stays within xml.dats.
+ * xml.dats operates on fetch buffer ptr from epub module. *)
+extern fun buf_get_u8(p: ptr, off: int): int = "mac#buf_get_u8"
+extern fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#buf_set_u8"
+extern fun ptr_add_int(p: ptr, n: int): ptr = "mac#atspre_add_ptr0_bsz"
+
 (* Cast functions for linear type borrowing — all at top level *)
 extern castfn ptr_to_nodes(p: ptr): xml_node_list_vt
 extern castfn nodes_to_ptr(ns: xml_node_list_vt): ptr

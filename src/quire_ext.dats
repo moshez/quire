@@ -2,15 +2,15 @@
 
 #define ATS_DYNLOADFLAG 0
 
+#include "share/atspre_staload.hats"
 staload "./../vendor/ward/lib/memory.sats"
+staload _ = "./../vendor/ward/lib/memory.dats"
 staload "./quire_ext.sats"
 
 staload "./arith.sats"
-staload "./buf.sats"
 
 (* Ward listener table — used for parse stash storage *)
 extern fun ward_listener_set(id: int, ctx: ptr): void = "mac#"
-extern fun ward_listener_get(id: int): ptr = "mac#"
 
 #define PARSE_STASH_SLOT 126
 
@@ -21,8 +21,6 @@ extern fun ward_listener_get(id: int): ptr = "mac#"
 
 extern fun ward_parse_html_stash_impl(p: ptr): void = "ext#ward_parse_html_stash"
 implement ward_parse_html_stash_impl(p) = ward_listener_set(PARSE_STASH_SLOT, p)
-
-implement ward_parse_html_get_ptr() = ward_listener_get(PARSE_STASH_SLOT)
 
 (* ========== IEEE 754 f64 → int extraction ========== *)
 (* Reads LE f64 from bytes 0-7 of the payload, returns integer part.
@@ -41,9 +39,9 @@ implement ward_parse_html_get_ptr() = ward_listener_get(PARSE_STASH_SLOT)
  *)
 
 implement read_payload_click_x(arr) = let
-  val b5 = buf_get_u8(arr, 5)
-  val b6 = buf_get_u8(arr, 6)
-  val b7 = buf_get_u8(arr, 7)
+  val b5 = byte2int0(ward_arr_get<byte>(arr, 5))
+  val b6 = byte2int0(ward_arr_get<byte>(arr, 6))
+  val b7 = byte2int0(ward_arr_get<byte>(arr, 7))
   val exp_raw = bor_int_int(bsl_int_int(band_int_int(b7, 127), 4),
                             bsr_int_int(b6, 4))
 in

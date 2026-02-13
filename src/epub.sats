@@ -11,6 +11,8 @@
  * - COUNT_BOUNDED: Counts never exceed maximum limits
  *)
 
+staload "./../vendor/ward/lib/memory.sats"
+
 (* EPUB import state *)
 #define EPUB_STATE_IDLE           0
 #define EPUB_STATE_OPENING_FILE   1
@@ -254,18 +256,25 @@ fun epub_reset(): void
 (* ========== Parsing and accessor functions ========== *)
 
 (* Parse container.xml bytes to extract OPF path *)
-fun epub_parse_container_bytes(buf: ptr, len: int): int
+fun epub_parse_container_bytes {l:agz}{n:pos}
+  (buf: !ward_arr(byte, l, n), len: int n): int
 
 (* Parse OPF bytes to extract metadata and spine *)
-fun epub_parse_opf_bytes(buf: ptr, len: int): int
+fun epub_parse_opf_bytes {l:agz}{n:pos}
+  (buf: !ward_arr(byte, l, n), len: int n): int
 
-(* Get OPF path pointer and length *)
-fun epub_get_opf_path_ptr(): ptr
-fun epub_get_opf_path_len(): int
+(* Copy OPF path to string buffer. Returns length (0 if not set). *)
+fun epub_copy_opf_path(buf_offset: int): [len:nat] int(len)
 
-(* Get pointer to "META-INF/container.xml" string constant *)
-fun get_str_container_ptr(): ptr
+(* Copy "META-INF/container.xml" to string buffer. Always 22 bytes. *)
+fun epub_copy_container_path(buf_offset: int): int
 
-(* Get spine chapter path by index *)
-fun epub_get_spine_path_ptr(index: int): ptr
-fun epub_get_spine_path_len(index: int): int
+(* Copy spine chapter path to string buffer.
+ * Requires SPINE_ORDERED proof — only callable when index is proven
+ * less than chapter count via dependent comparison. Invalid calls
+ * are rejected at compile time, not at runtime.
+ * count is a dynamic witness for the constraint solver to unify t.
+ * Returns positive path length (guaranteed by parser invariant:
+ * _opf_resolve_spine rejects empty paths). *)
+fun epub_copy_spine_path {c,t:nat | c < t}
+  (pf: SPINE_ORDERED(c, t) | index: int(c), count: int(t), buf_offset: int): [len:pos] int(len)

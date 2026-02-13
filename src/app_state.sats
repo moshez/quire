@@ -276,4 +276,4 @@ fun _zip_name_buf_put(off: int, byte_val: int): int
 fun _zip_store_entry_at(idx: int, fh: int, no: int, nl: int,
   comp: int, cs: int, us: int, lo: int): int
 
-(* Buffer accessors — declared in buf.sats, implemented here *)
+(* Buffer accessors — module-private ext# in app_state.dats *)

@@ -7,11 +7,26 @@
 #define ATS_DYNLOADFLAG 0
 
 #include "share/atspre_staload.hats"
+staload UN = "prelude/SATS/unsafe.sats"
+staload "./../vendor/ward/lib/memory.sats"
 staload "./epub.sats"
 staload "./app_state.sats"
 
 staload "./arith.sats"
 staload "./buf.sats"
+
+(* Module-private raw ptr buffer access — stays within epub.dats.
+ * All cross-module APIs use sized_buf or ward_arr. *)
+extern fun buf_get_u8(p: ptr, off: int): int = "mac#buf_get_u8"
+extern fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#buf_set_u8"
+extern fun buf_get_i32(p: ptr, idx: int): int = "mac#buf_get_i32"
+extern fun buf_set_i32(p: ptr, idx: int, v: int): void = "mac#buf_set_i32"
+extern fun get_string_buffer_ptr(): ptr = "mac#get_string_buffer_ptr"
+
+(* Borrow ward_arr as ptr for module-internal use.
+ * ward_arr erases to ptr at runtime; this is a no-op cast. *)
+fn _borrow_ptr {l:agz}{n:pos}
+  (a: !ward_arr(byte, l, n)): ptr = $UN.castvwtp1{ptr}(a)
 
 (* ========== Byte search helper ========== *)
 
@@ -374,7 +389,8 @@ implement epub_reset() = epub_init()
 (* Parse container.xml to extract OPF path from full-path="..." attribute.
  * Stores path and directory prefix in app_state.
  * Returns 1 on success, 0 on failure. *)
-implement epub_parse_container_bytes(buf, len) = let
+implement epub_parse_container_bytes(arr, len) = let
+  val buf = _borrow_ptr(arr)
   val ndl = needle_full_path() (* "full-path=\"" 11 bytes *)
   val pos0 = _find_bytes(buf, len, ndl, 11, 0)
 in
@@ -586,7 +602,8 @@ implement _opf_resolve_spine(buf, len, spine_count) = let
 
 in resolve_spine(0, 0, 0, 0) end
 
-implement epub_parse_opf_bytes(buf, len) = let
+implement epub_parse_opf_bytes(arr, len) = let
+  val buf = _borrow_ptr(arr)
   val () = _opf_extract_title(buf, len)
   val () = _opf_extract_author(buf, len)
   val () = _opf_extract_identifier(buf, len)
@@ -598,36 +615,32 @@ in
   spine_count
 end
 
-(* ========== OPF path and container string accessors ========== *)
+(* ========== Path copy accessors (no raw ptr exposure) ========== *)
 
-implement epub_get_opf_path_ptr() = _app_epub_opf_path_ptr()
+implement epub_copy_opf_path(buf_offset) = let
+  val optr = _app_epub_opf_path_ptr()
+  val olen = _app_epub_opf_path_len()
+  val sbuf = get_string_buffer_ptr()
+  val () = _copy_bytes(sbuf, buf_offset, optr, 0, olen)
+in _checked_nat(olen) end
 
-implement epub_get_opf_path_len() = _app_epub_opf_path_len()
+implement epub_copy_container_path(buf_offset) = let
+  val p = _build_str_container()
+  val sbuf = get_string_buffer_ptr()
+  val () = _copy_bytes(sbuf, buf_offset, p, 0, 22)
+in 22 end
 
-implement get_str_container_ptr() = _build_str_container()
-
-(* ========== Spine path accessors ========== *)
-
-(* _null_ptr and _ptr_add provided by arith.sats *)
-
-implement epub_get_spine_path_ptr(index) = let
-  val count = _app_epub_spine_path_count()
-in
-  if lt_int_int(index, 0) then _null_ptr()
-  else if gte_int_int(index, count) then _null_ptr()
-  else let
-    val buf = _app_epub_spine_path_buf()
-    val offsets = _app_epub_spine_path_offsets()
-    val off = buf_get_i32(offsets, index)
-  in _ptr_add(buf, off) end
-end
-
-implement epub_get_spine_path_len(index) = let
-  val count = _app_epub_spine_path_count()
-in
-  if lt_int_int(index, 0) then 0
-  else if gte_int_int(index, count) then 0
-  else let
-    val lens = _app_epub_spine_path_lens()
-  in buf_get_i32(lens, index) end
-end
+(* Spine path copy — proof-guarded, no bounds check needed.
+ * SPINE_ORDERED(c, t) guarantees index is valid.
+ * Parser invariant: stored lengths are always positive
+ * (_opf_resolve_spine rejects lte_int_int(full_len, 0)). *)
+implement epub_copy_spine_path(pf | index, _count, buf_offset) = let
+  prval SPINE_ENTRY() = pf
+  val sp_buf = _app_epub_spine_path_buf()
+  val sp_offsets = _app_epub_spine_path_offsets()
+  val sp_lens = _app_epub_spine_path_lens()
+  val off = buf_get_i32(sp_offsets, index)
+  val len = buf_get_i32(sp_lens, index)
+  val sbuf = get_string_buffer_ptr()
+  val () = _copy_bytes(sbuf, buf_offset, sp_buf, off, len)
+in _checked_pos(len) end

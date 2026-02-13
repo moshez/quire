@@ -36,6 +36,7 @@ staload _ = "./../vendor/ward/lib/xml.dats"
 staload _ = "./../vendor/ward/lib/dom_read.dats"
 
 staload "./arith.sats"
+staload "./quire_ext.sats"
 
 (* ========== Text constant IDs ========== *)
 
@@ -99,14 +100,14 @@ fn fill_text {l:agz}{n:pos}
 (* Copy len bytes from string_buffer to ward_arr *)
 fn copy_from_sbuf {l:agz}{n:pos}
   (dst: !ward_arr(byte, l, n), len: int n): void = let
-  val sbuf = get_string_buffer_ptr()
+  val sbuf = get_string_buf()
   fun loop(dst: !ward_arr(byte, l, n), dlen: int n,
-           sbuf: ptr, i: int, count: int): void =
+           i: int, count: int): void =
     if i < count then let
-      val b = buf_get_u8(sbuf, i)
+      val b = sbuf_get_u8(sbuf, i)
       val () = ward_arr_set_byte(dst, i, dlen, b)
-    in loop(dst, dlen, sbuf, i + 1, count) end
-in loop(dst, len, sbuf, 0, len) end
+    in loop(dst, dlen, i + 1, count) end
+in loop(dst, len, 0, len) end
 
 staload "./quire_ext.sats"
 
@@ -554,7 +555,8 @@ end
 (* ========== EPUB import: read and parse ZIP entries ========== *)
 
 fn epub_read_container(handle: int): int = let
-  val idx = zip_find_entry(get_str_container_ptr(), 22)
+  val _cl = epub_copy_container_path(0)
+  val idx = zip_find_entry(get_string_buf(), 22)
 in
   if gt_int_int(0, idx) then 0
   else let
@@ -575,7 +577,7 @@ in
           val usize1 = _checked_pos(usize)
           val arr = ward_arr_alloc<byte>(usize1)
           val _rd = ward_file_read(handle, data_off, arr, usize1)
-          val result = epub_parse_container_bytes(_arr_as_ptr(arr), usize1)
+          val result = epub_parse_container_bytes(arr, usize1)
           val () = ward_arr_free<byte>(arr)
         in result end
       end
@@ -584,9 +586,8 @@ in
 end
 
 fn epub_read_opf(handle: int): int = let
-  val opf_ptr = epub_get_opf_path_ptr()
-  val opf_len = epub_get_opf_path_len()
-  val idx = zip_find_entry(opf_ptr, opf_len)
+  val opf_len = epub_copy_opf_path(0)
+  val idx = zip_find_entry(get_string_buf(), opf_len)
 in
   if gt_int_int(0, idx) then 0
   else let
@@ -607,7 +608,7 @@ in
           val usize1 = _checked_pos(usize)
           val arr = ward_arr_alloc<byte>(usize1)
           val _rd = ward_file_read(handle, data_off, arr, usize1)
-          val result = epub_parse_opf_bytes(_arr_as_ptr(arr), usize1)
+          val result = epub_parse_opf_bytes(arr, usize1)
           val () = ward_arr_free<byte>(arr)
         in result end
       end
@@ -724,11 +725,13 @@ in loop(s, 0, count) end
 (* ========== Chapter loading ========== *)
 
 fn load_chapter(file_handle: int, chapter_idx: int, container_id: int): void = let
-  val path_len = epub_get_spine_path_len(chapter_idx)
+  val ci = _checked_nat(chapter_idx)
+  val count = epub_get_chapter_count()
 in
-  if gt_int_int(path_len, 0) then let
-    val path_ptr = epub_get_spine_path_ptr(chapter_idx)
-    val zip_idx = zip_find_entry(path_ptr, path_len)
+  if lt1_int_int(ci, count) then let
+    prval pf = SPINE_ENTRY()
+    val path_len = epub_copy_spine_path(pf | ci, count, 0)
+    val zip_idx = zip_find_entry(get_string_buf(), path_len)
   in
     if gte_int_int(zip_idx, 0) then let
       var entry: zip_entry
@@ -1090,7 +1093,7 @@ implement enter_reader(root_id, book_index) = let
       if gt1_int_int(pl1, 19) then let
         (* Click payload: f64 clientX (0-7), f64 clientY (8-15), i32 target (16-19) *)
         val payload = ward_event_get_payload(pl1)
-        val click_x = read_payload_click_x(_arr_as_ptr(payload))
+        val click_x = read_payload_click_x(payload)
         val () = ward_arr_free<byte>(payload)
         val vw = measure_node_width(reader_get_viewport_id())
       in

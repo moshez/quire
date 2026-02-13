@@ -91,6 +91,21 @@ assume app_state = app_state_impl
 staload "./arith.sats"
 staload "./buf.sats"
 
+(* Module-private raw ptr buffer access — stays within app_state.dats.
+ * These are the ONLY place in the codebase where ptr touches buffers.
+ * All cross-module APIs use sized_buf(cap) from buf.sats. *)
+extern fun buf_get_u8(p: ptr, off: int): int = "mac#buf_get_u8"
+extern fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#buf_set_u8"
+extern fun buf_get_i32(p: ptr, idx: int): int = "mac#buf_get_i32"
+extern fun buf_set_i32(p: ptr, idx: int, v: int): void = "mac#buf_set_i32"
+
+(* Buffer accessors — C symbols called via mac# from buf.sats.
+ * buf.sats declares get_string_buf(): sized_buf = "mac#get_string_buffer_ptr"
+ * so the C symbol must exist. ext# provides the linkage. *)
+extern fun get_string_buffer_ptr(): ptr = "ext#"
+extern fun get_fetch_buffer_ptr(): ptr = "ext#"
+extern fun get_diff_buffer_ptr(): ptr = "ext#"
+
 (* Bump allocator — never freed. Zero-initialized by calloc. *)
 extern fun _calloc(n: int, sz: int): ptr = "mac#calloc"
 

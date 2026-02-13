@@ -24,6 +24,13 @@ staload "./arith.sats"
 staload "./buf.sats"
 staload "./app_state.sats"
 
+(* Module-private raw ptr buffer access — stays within library.dats *)
+extern fun buf_get_u8(p: ptr, off: int): int = "mac#buf_get_u8"
+extern fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#buf_set_u8"
+extern fun buf_get_i32(p: ptr, idx: int): int = "mac#buf_get_i32"
+extern fun buf_set_i32(p: ptr, idx: int, v: int): void = "mac#buf_set_i32"
+extern fun get_string_buffer_ptr(): ptr = "mac#get_string_buffer_ptr"
+
 (* ========== Record layout constants ========== *)
 
 #define REC_BYTES 600

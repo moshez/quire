@@ -1,18 +1,23 @@
-(* buf.dats — Pure ATS2 implementations of buffer access primitives
+(* buf.dats — Raw byte access primitives (ext# linkage)
  *
- * Safe ATS2 buffer access primitives using
- * ward's runtime.h for ptr0_get/ptr0_set/ptr_add.
+ * These functions are NOT in buf.sats — they use raw ptr which
+ * is module-internal only. Each module that needs byte access
+ * declares them locally with "ext#". This keeps ptr out of
+ * all public cross-module APIs.
  *
  * $UNSAFE justification [U1]: dereferences ptr at computed offset.
- * These are irreducible C operations (raw pointer byte/int access).
- * Bounds safety must be ensured by callers. Alternative considered:
- * ward_arr_get<byte> — rejected because 238 call sites use raw ptr
- * from app_state accessors, not ward_arr.
+ * Irreducible C operations. Bounds safety ensured by callers.
+ * To be replaced when app_state fields migrate from ptr to ward_arr.
  *)
 
 #include "share/atspre_staload.hats"
 staload UN = "prelude/SATS/unsafe.sats"
 staload "./buf.sats"
+
+extern fun buf_get_u8(p: ptr, off: int): int = "ext#"
+extern fun buf_set_u8(p: ptr, off: int, v: int): void = "ext#"
+extern fun buf_get_i32(p: ptr, idx: int): int = "ext#"
+extern fun buf_set_i32(p: ptr, idx: int, v: int): void = "ext#"
 
 implement buf_get_u8(p, off) =
   byte2int0($UN.ptr0_get<byte>(ptr_add<byte>(p, off))) (* [U1] *)
