@@ -37,8 +37,8 @@ jobs:
       - name: Build quire.wasm
         run: |
           export PATSHOME=$HOME/ATS2-Postiats-int-${{ env.ATS_VERSION }}
-          export PATH=$PATSHOME/src/CBOOT:$PATH
-          make
+          make PATSOPT="PATSHOME=$PATSHOME $PATSHOME/src/CBOOT/patsopt"
+          test -f build/quire.wasm
 
       - name: Assemble PWA
         run: |
