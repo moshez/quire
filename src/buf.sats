@@ -71,9 +71,9 @@ fun get_string_buffer_ptr(): ptr = "mac#"
 fun get_fetch_buffer_ptr(): ptr = "mac#"
 
 (* ========== Low-level Memory Access ========== *)
-(* Byte-level access — C macros in quire_prelude.h *)
-fun buf_get_u8(p: ptr, off: int): int = "mac#"
-fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#"
-fun buf_get_i32(p: ptr, idx: int): int = "mac#"
-fun buf_set_i32(p: ptr, idx: int, v: int): void = "mac#"
+(* Byte-level access — implemented in buf.dats via ptr0_get/ptr0_set *)
+fun buf_get_u8(p: ptr, off: int): int
+fun buf_set_u8(p: ptr, off: int, v: int): void
+fun buf_get_i32(p: ptr, idx: int): int
+fun buf_set_i32(p: ptr, idx: int, v: int): void
 fun ptr_add_int(p: ptr, n: int): ptr = "mac#atspre_add_ptr0_bsz"

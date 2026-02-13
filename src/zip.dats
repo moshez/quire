@@ -16,6 +16,7 @@ staload _ = "./../vendor/ward/lib/memory.dats"
 staload _ = "./../vendor/ward/lib/file.dats"
 
 staload "./arith.sats"
+staload "./buf.sats"
 
 (* Byte read from ward_arr — wraps ward_arr_get<byte> with castfn index *)
 fn ward_arr_byte {l:agz}{n:pos}
@@ -41,8 +42,6 @@ extern fun _zip_name_buf_put(off: int, byte_val: int): int = "mac#"
 (* Store entry at a specific index — caller manages count via app_state *)
 extern fun _zip_store_entry_at(idx: int, fh: int, no: int, nl: int,
   comp: int, cs: int, us: int, lo: int): int = "mac#"
-
-extern fun quire_get_byte(p: ptr, off: int): int = "mac#"
 
 (* ========== App state wrappers for ZIP int fields ========== *)
 
@@ -289,7 +288,7 @@ in
         if gte_int_int(i, suffix_len) then 1
         else let
           val c1 = _zip_name_char(name_off + start + i)
-          val c2 = quire_get_byte(suffix_ptr, i)
+          val c2 = buf_get_u8(suffix_ptr, i)
           (* Case-insensitive *)
           val c1 = (if gte_int_int(c1, 65) then
             (if gt_int_int(91, c1) then c1 + 32 else c1) else c1): int
@@ -317,7 +316,7 @@ in
         if gte_int_int(i, name_len) then 1
         else let
           val c1 = _zip_name_char(name_off + i)
-          val c2 = quire_get_byte(name_ptr, i)
+          val c2 = buf_get_u8(name_ptr, i)
         in
           if eq_int_int(c1, c2) then cmp(i + 1) else 0
         end

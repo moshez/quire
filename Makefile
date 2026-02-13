@@ -65,6 +65,7 @@ WARD_DATS := \
 
 # Quire application sources (order: dependencies first)
 QUIRE_DATS := \
+  src/buf.dats \
   src/app_state.dats \
   src/dom.dats \
   src/quire_ext.dats \

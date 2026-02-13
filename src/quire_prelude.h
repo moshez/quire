@@ -14,20 +14,6 @@
 /* Pointer comparison — no ward atspre_* for ptr == ptr */
 #define quire_ptr_eq(a, b) ((a) == (b))
 
-/* Byte-level memory access (used by buf.sats buf_get_u8/buf_set_u8) */
-#define buf_get_u8(p, off) ((int)(((unsigned char*)(p))[(off)]))
-#define buf_set_u8(p, off, v) (((unsigned char*)(p))[(off)] = (unsigned char)(v))
-
-/* Int array access on raw ptr (for btn_ids etc.) */
-#define buf_get_i32(p, idx) (((int*)(p))[(idx)])
-#define buf_set_i32(p, idx, v) (((int*)(p))[(idx)] = (v))
-
-
-/* quire_get_byte — same as buf_get_u8 (used by zip.dats) */
-#define quire_get_byte(p, off) ((int)(((unsigned char*)(p))[(off)]))
-
-
-
 /* Buffer accessors (implemented in quire_runtime.c) */
 extern void *get_string_buffer_ptr(void);
 extern void *get_fetch_buffer_ptr(void);
