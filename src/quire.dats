@@ -503,6 +503,78 @@ fn log_import_done(): ward_safe_text(11) = let
   val b = ward_text_putc(b, 10, char2int1('e'))
 in ward_text_done(b) end
 
+(* "err-container" = 13 chars — container.xml not found *)
+fn log_err_container(): ward_safe_text(13) = let
+  val b = ward_text_build(13)
+  val b = ward_text_putc(b, 0, char2int1('e'))
+  val b = ward_text_putc(b, 1, char2int1('r'))
+  val b = ward_text_putc(b, 2, char2int1('r'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('c'))
+  val b = ward_text_putc(b, 5, char2int1('o'))
+  val b = ward_text_putc(b, 6, char2int1('n'))
+  val b = ward_text_putc(b, 7, char2int1('t'))
+  val b = ward_text_putc(b, 8, char2int1('a'))
+  val b = ward_text_putc(b, 9, char2int1('i'))
+  val b = ward_text_putc(b, 10, char2int1('n'))
+  val b = ward_text_putc(b, 11, char2int1('e'))
+  val b = ward_text_putc(b, 12, char2int1('r'))
+in ward_text_done(b) end
+
+(* "err-opf" = 7 chars — OPF parsing failed *)
+fn log_err_opf(): ward_safe_text(7) = let
+  val b = ward_text_build(7)
+  val b = ward_text_putc(b, 0, char2int1('e'))
+  val b = ward_text_putc(b, 1, char2int1('r'))
+  val b = ward_text_putc(b, 2, char2int1('r'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('o'))
+  val b = ward_text_putc(b, 5, char2int1('p'))
+  val b = ward_text_putc(b, 6, char2int1('f'))
+in ward_text_done(b) end
+
+(* "err-lib-full" = 12 chars — library at capacity *)
+fn log_err_lib_full(): ward_safe_text(12) = let
+  val b = ward_text_build(12)
+  val b = ward_text_putc(b, 0, char2int1('e'))
+  val b = ward_text_putc(b, 1, char2int1('r'))
+  val b = ward_text_putc(b, 2, char2int1('r'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('l'))
+  val b = ward_text_putc(b, 5, char2int1('i'))
+  val b = ward_text_putc(b, 6, char2int1('b'))
+  val b = ward_text_putc(b, 7, 45) (* '-' *)
+  val b = ward_text_putc(b, 8, char2int1('f'))
+  val b = ward_text_putc(b, 9, char2int1('u'))
+  val b = ward_text_putc(b, 10, char2int1('l'))
+  val b = ward_text_putc(b, 11, char2int1('l'))
+in ward_text_done(b) end
+
+(* ========== Linear import outcome proof ========== *)
+(* import_handled is LINEAR — must be consumed exactly once.
+ * Only import_mark_success and import_mark_failed can create it.
+ * import_complete consumes it and logs "import-done".
+ * If any if-then-else branch forgets a token, ATS2 rejects. *)
+absvt@ype import_handled = int
+
+extern fn import_mark_success(): import_handled
+extern fn import_mark_failed {n:pos}
+  (msg: ward_safe_text(n), len: int n): import_handled
+extern fn import_complete(h: import_handled): void
+
+local
+assume import_handled = int
+in
+implement import_mark_success() = 1
+implement import_mark_failed{n}(msg, len) = let
+  val () = ward_log(3, msg, len)
+in 0 end
+implement import_complete(h) = let
+  val _ = h
+  val () = ward_log(1, log_import_done(), 11)
+in end
+end
+
 (* ========== App CSS injection ========== *)
 
 (* CSS bytes packed as little-endian int32s, written via _w4.
@@ -1208,6 +1280,30 @@ fn clear_node(nid: int): void = let
   val () = ward_dom_fini(dom)
 in end
 
+(* import_finish: consumes linear import_handled token, restores UI, logs "import-done".
+ * Called from each branch of the import outcome — token never crosses if-then-else. *)
+fn import_finish(h: import_handled, label_id: int, span_id: int, status_id: int): void = let
+  val () = quire_set_title(0)
+  val () = update_import_label_class(label_id, 0)
+  (* Restore span text to "Import" *)
+  val import_st2 = let
+    val b = ward_text_build(6)
+    val b = ward_text_putc(b, 0, 73) (* 'I' *)
+    val b = ward_text_putc(b, 1, char2int1('m'))
+    val b = ward_text_putc(b, 2, char2int1('p'))
+    val b = ward_text_putc(b, 3, char2int1('o'))
+    val b = ward_text_putc(b, 4, char2int1('r'))
+    val b = ward_text_putc(b, 5, char2int1('t'))
+  in ward_text_done(b) end
+  val dom2 = ward_dom_init()
+  val s2 = ward_dom_stream_begin(dom2)
+  val s2 = ward_dom_stream_set_safe_text(s2, span_id, import_st2, 6)
+  val dom2 = ward_dom_stream_end(s2)
+  val () = ward_dom_fini(dom2)
+  val () = clear_node(status_id)
+  val () = import_complete(h)
+in end
+
 (* ========== Page navigation helpers ========== *)
 
 (* Write non-negative int as decimal digits into ward_arr at offset.
@@ -1698,8 +1794,6 @@ dataprop IMPORT_PHASE(phase: int) =
   | {p:int | p == 1} PHASE_META(2) of IMPORT_PHASE(p)
   | {p:int | p == 2} PHASE_ADD(3) of IMPORT_PHASE(p)
 
-extern praxi consume_phase {p:int} (pf: IMPORT_PHASE(p)): void
-
 implement render_library(root_id) = let
   val dom = ward_dom_init()
   val s = ward_dom_stream_begin(dom)
@@ -1807,55 +1901,50 @@ implement render_library(root_id) = let
           in ward_promise_then<int><int>(p2,
             llam (_: int): ward_promise_chained(int) => let
               (* Phase 3 — read metadata, consumes pf2 *)
-              prval pf3 = PHASE_ADD(pf2)
+              prval _ = PHASE_ADD(pf2)
               val () = update_status_text(ssts, TEXT_READING_META, 16)
               val ok1 = epub_read_container(sh)
               val ok2 = (if gt_int_int(ok1, 0)
                 then epub_read_opf(sh) else 0): int
 
               (* Phase 3: Add book + re-render — yield for "Reading metadata" to paint *)
+              val sok1 = ok1
               val p3 = ward_timer_set(0)
             in ward_promise_then<int><int>(p3,
               llam (_: int): ward_promise_chained(int) => let
-                (* Phase 3 complete — consume final proof *)
-                prval () = consume_phase(pf3)
                 val () = update_status_text(ssts, TEXT_ADDING_BOOK, 17)
-                val _book_idx = (if gt_int_int(ok2, 0)
-                  then library_add_book() else 0 - 1): int
 
-                (* Re-render library list *)
-                val dom = ward_dom_init()
-                val s = ward_dom_stream_begin(dom)
-                val s = render_library_with_books(s, sli)
-                val dom = ward_dom_stream_end(s)
-                val () = ward_dom_fini(dom)
-
-                (* Register click listeners on all rendered read buttons *)
-                val btn_count = library_get_count()
-                val () = register_read_btns(0, btn_count, sr)
-
-                (* Restore UI *)
-                val () = quire_set_title(0)
-                val () = update_import_label_class(slbl, 0)
-
-                (* Restore span text to "Import" *)
-                val import_st2 = let
-                  val b = ward_text_build(6)
-                  val b = ward_text_putc(b, 0, 73) (* 'I' *)
-                  val b = ward_text_putc(b, 1, char2int1('m'))
-                  val b = ward_text_putc(b, 2, char2int1('p'))
-                  val b = ward_text_putc(b, 3, char2int1('o'))
-                  val b = ward_text_putc(b, 4, char2int1('r'))
-                  val b = ward_text_putc(b, 5, char2int1('t'))
-                in ward_text_done(b) end
-                val dom2 = ward_dom_init()
-                val s2 = ward_dom_stream_begin(dom2)
-                val s2 = ward_dom_stream_set_safe_text(s2, sspn, import_st2, 6)
-                val dom2 = ward_dom_stream_end(s2)
-                val () = ward_dom_fini(dom2)
-                val () = clear_node(ssts)
-
-                val () = ward_log(1, log_import_done(), 11)
+                (* Linear import outcome — every branch must produce exactly one token.
+                 * import_mark_failed logs error; import_finish consumes token + cleans up.
+                 * Token never crosses if-then-else boundary — each branch calls import_finish. *)
+                val () =
+                  if gt_int_int(ok2, 0) then let
+                    val book_idx = library_add_book()
+                  in
+                    if gte_int_int(book_idx, 0) then let
+                      val h = import_mark_success()
+                      (* Re-render + register read buttons — success only *)
+                      val dom = ward_dom_init()
+                      val s = ward_dom_stream_begin(dom)
+                      val s = render_library_with_books(s, sli)
+                      val dom = ward_dom_stream_end(s)
+                      val () = ward_dom_fini(dom)
+                      val btn_count = library_get_count()
+                      val () = register_read_btns(0, btn_count, sr)
+                    in import_finish(h, slbl, sspn, ssts) end
+                    else import_finish(
+                      import_mark_failed(log_err_lib_full(), 12),
+                      slbl, sspn, ssts)
+                  end
+                  else (
+                    if gt_int_int(sok1, 0)
+                    then import_finish(
+                      import_mark_failed(log_err_opf(), 7),
+                      slbl, sspn, ssts)
+                    else import_finish(
+                      import_mark_failed(log_err_container(), 13),
+                      slbl, sspn, ssts)
+                  )
               in ward_promise_return<int>(0) end)
             end)
           end)
