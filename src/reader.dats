@@ -139,7 +139,6 @@ end
 implement reader_on_chapter_loaded(len) = ()
 implement reader_on_chapter_blob_loaded(handle, size) = ()
 implement reader_get_viewport_width() = 0
-implement reader_get_page_indicator_id() = 0
 implement reader_update_page_display() = ()
 implement reader_is_loading() = 0
 implement reader_remeasure_all() = ()
@@ -151,7 +150,11 @@ implement reader_get_toc_id() = 0
 implement reader_get_progress_bar_id() = 0
 implement reader_get_toc_index_for_node(node_id) = 0 - 1
 implement reader_on_toc_click(node_id) = ()
-implement reader_get_back_btn_id() = _checked_nat(0)
+implement reader_get_back_btn_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_nav_id(st)
+  val () = app_state_store(st)
+in _checked_nat(v) end
 
 implement reader_enter_at(root_id, container_hide_id, chapter, page) = let
   val () = reader_enter(root_id, container_hide_id)
@@ -227,3 +230,27 @@ implement reader_set_total_pages(n) = let
   val () = app_set_rdr_total_pages(st, v)
   val () = app_state_store(st)
 in end
+
+implement reader_set_page_info_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_page_info_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_page_indicator_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_page_info_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_nav_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_nav_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_nav_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_nav_id(st)
+  val () = app_state_store(st)
+in v end

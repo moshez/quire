@@ -131,6 +131,10 @@ fun app_get_rdr_root_id(st: !app_state): int
 fun app_set_rdr_root_id(st: !app_state, v: int): void
 fun app_get_rdr_file_handle(st: !app_state): int
 fun app_set_rdr_file_handle(st: !app_state, v: int): void
+fun app_get_rdr_page_info_id(st: !app_state): int
+fun app_set_rdr_page_info_id(st: !app_state, v: int): void
+fun app_get_rdr_nav_id(st: !app_state): int
+fun app_set_rdr_nav_id(st: !app_state, v: int): void
 fun app_get_rdr_btn_id(st: !app_state, idx: int): int
 fun app_set_rdr_btn_id(st: !app_state, idx: int, v: int): void
 

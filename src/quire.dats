@@ -462,6 +462,48 @@ fn cls_chapter_container(): ward_safe_text(17) = let
   val b = ward_text_putc(b, 16, char2int1('r'))
 in ward_text_done(b) end
 
+(* "reader-nav" = 10 chars *)
+fn cls_reader_nav(): ward_safe_text(10) = let
+  val b = ward_text_build(10)
+  val b = ward_text_putc(b, 0, char2int1('r'))
+  val b = ward_text_putc(b, 1, char2int1('e'))
+  val b = ward_text_putc(b, 2, char2int1('a'))
+  val b = ward_text_putc(b, 3, char2int1('d'))
+  val b = ward_text_putc(b, 4, char2int1('e'))
+  val b = ward_text_putc(b, 5, char2int1('r'))
+  val b = ward_text_putc(b, 6, 45) (* '-' *)
+  val b = ward_text_putc(b, 7, char2int1('n'))
+  val b = ward_text_putc(b, 8, char2int1('a'))
+  val b = ward_text_putc(b, 9, char2int1('v'))
+in ward_text_done(b) end
+
+(* "back-btn" = 8 chars *)
+fn cls_back_btn(): ward_safe_text(8) = let
+  val b = ward_text_build(8)
+  val b = ward_text_putc(b, 0, char2int1('b'))
+  val b = ward_text_putc(b, 1, char2int1('a'))
+  val b = ward_text_putc(b, 2, char2int1('c'))
+  val b = ward_text_putc(b, 3, char2int1('k'))
+  val b = ward_text_putc(b, 4, 45) (* '-' *)
+  val b = ward_text_putc(b, 5, char2int1('b'))
+  val b = ward_text_putc(b, 6, char2int1('t'))
+  val b = ward_text_putc(b, 7, char2int1('n'))
+in ward_text_done(b) end
+
+(* "page-info" = 9 chars *)
+fn cls_page_info(): ward_safe_text(9) = let
+  val b = ward_text_build(9)
+  val b = ward_text_putc(b, 0, char2int1('p'))
+  val b = ward_text_putc(b, 1, char2int1('a'))
+  val b = ward_text_putc(b, 2, char2int1('g'))
+  val b = ward_text_putc(b, 3, char2int1('e'))
+  val b = ward_text_putc(b, 4, 45) (* '-' *)
+  val b = ward_text_putc(b, 5, char2int1('i'))
+  val b = ward_text_putc(b, 6, char2int1('n'))
+  val b = ward_text_putc(b, 7, char2int1('f'))
+  val b = ward_text_putc(b, 8, char2int1('o'))
+in ward_text_done(b) end
+
 (* tabindex value "0" = 1 char *)
 fn val_zero(): ward_safe_text(1) = let
   val b = ward_text_build(1)
@@ -1166,6 +1208,132 @@ fn inject_app_css {l:agz}
   val () = ward_arr_free<byte>(css_arr)
 in s end
 
+(* ========== Reader navigation CSS ========== *)
+
+#define NAV_CSS_LEN 406
+stadef NAV_CSS_LEN = 406
+
+fn fill_css_nav {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), alen: int n): void = let
+  val () = _w4(arr, alen, 0, 1634038318)
+  val () = _w4(arr, alen, 4, 762471780)
+  val () = _w4(arr, alen, 8, 2071355758)
+  val () = _w4(arr, alen, 12, 1769172848)
+  val () = _w4(arr, alen, 16, 1852795252)
+  val () = _w4(arr, alen, 20, 2020173370)
+  val () = _w4(arr, alen, 24, 1950049381)
+  val () = _w4(arr, alen, 28, 809136239)
+  val () = _w4(arr, alen, 32, 1717922875)
+  val () = _w4(arr, alen, 36, 993016436)
+  val () = _w4(arr, alen, 40, 1751607666)
+  val () = _w4(arr, alen, 44, 993016436)
+  val () = _w4(arr, alen, 48, 1886611812)
+  val () = _w4(arr, alen, 52, 981033324)
+  val () = _w4(arr, alen, 56, 2019912806)
+  val () = _w4(arr, alen, 60, 1937074747)
+  val () = _w4(arr, alen, 64, 2036754804)
+  val () = _w4(arr, alen, 68, 1852793645)
+  val () = _w4(arr, alen, 72, 1953391988)
+  val () = _w4(arr, alen, 76, 1634759482)
+  val () = _w4(arr, alen, 80, 1647142243)
+  val () = _w4(arr, alen, 84, 1702327397)
+  val () = _w4(arr, alen, 88, 1631284837)
+  val () = _w4(arr, alen, 92, 1852270956)
+  val () = _w4(arr, alen, 96, 1702127917)
+  val () = _w4(arr, alen, 100, 1664775021)
+  val () = _w4(arr, alen, 104, 1702129253)
+  val () = _w4(arr, alen, 108, 1634745202)
+  val () = _w4(arr, alen, 112, 1852400740)
+  val () = _w4(arr, alen, 116, 540031591)
+  val () = _w4(arr, alen, 120, 1835364913)
+  val () = _w4(arr, alen, 124, 1768253499)
+  val () = _w4(arr, alen, 128, 980707431)
+  val () = _w4(arr, alen, 132, 1916087858)
+  val () = _w4(arr, alen, 136, 1648061797)
+  val () = _w4(arr, alen, 140, 1735091041)
+  val () = _w4(arr, alen, 144, 1853190002)
+  val () = _w4(arr, alen, 148, 1713584740)
+  val () = _w4(arr, alen, 152, 1717659233)
+  val () = _w4(arr, alen, 156, 762985272)
+  val () = _w4(arr, alen, 160, 1701080681)
+  val () = _w4(arr, alen, 164, 808532600)
+  val () = _w4(arr, alen, 168, 1633824381)
+  val () = _w4(arr, alen, 172, 1647143779)
+  val () = _w4(arr, alen, 176, 1635479156)
+  val () = _w4(arr, alen, 180, 1966763116)
+  val () = _w4(arr, alen, 184, 1952805742)
+  val () = _w4(arr, alen, 188, 1920295739)
+  val () = _w4(arr, alen, 192, 980578163)
+  val () = _w4(arr, alen, 196, 1852403568)
+  val () = _w4(arr, alen, 200, 997352820)
+  val () = _w4(arr, alen, 204, 1869377379)
+  val () = _w4(arr, alen, 208, 874723954)
+  val () = _w4(arr, alen, 212, 895694689)
+  val () = _w4(arr, alen, 216, 1882094905)
+  val () = _w4(arr, alen, 220, 761620321)
+  val () = _w4(arr, alen, 224, 1868983913)
+  val () = _w4(arr, alen, 228, 1819239291)
+  val () = _w4(arr, alen, 232, 591032943)
+  val () = _w4(arr, alen, 236, 993408566)
+  val () = _w4(arr, alen, 240, 1953394534)
+  val () = _w4(arr, alen, 244, 2053731117)
+  val () = _w4(arr, alen, 248, 875641445)
+  val () = _w4(arr, alen, 252, 779974768)
+  val () = _w4(arr, alen, 256, 1684104562)
+  val () = _w4(arr, alen, 260, 1848472165)
+  val () = _w4(arr, alen, 264, 780039777)
+  val () = _w4(arr, alen, 268, 1684104562)
+  val () = _w4(arr, alen, 272, 1982689893)
+  val () = _w4(arr, alen, 276, 1886872937)
+  val () = _w4(arr, alen, 280, 2071229039)
+  val () = _w4(arr, alen, 284, 1735549293)
+  val () = _w4(arr, alen, 288, 1949134441)
+  val () = _w4(arr, alen, 292, 842690671)
+  val () = _w4(arr, alen, 296, 1701983534)
+  val () = _w4(arr, alen, 300, 1701329773)
+  val () = _w4(arr, alen, 304, 1952999273)
+  val () = _w4(arr, alen, 308, 1818321722)
+  val () = _w4(arr, alen, 312, 808527971)
+  val () = _w4(arr, alen, 316, 543716912)
+  val () = _w4(arr, alen, 320, 775036973)
+  val () = _w4(arr, alen, 324, 1835364917)
+  val () = _w4(arr, alen, 328, 1915649321)
+  val () = _w4(arr, alen, 332, 1701077349)
+  val () = _w4(arr, alen, 336, 1634610546)
+  val () = _w4(arr, alen, 340, 1915649654)
+  val () = _w4(arr, alen, 344, 1701077349)
+  val () = _w4(arr, alen, 348, 1769352562)
+  val () = _w4(arr, alen, 352, 1869641573)
+  val () = _w4(arr, alen, 356, 773878898)
+  val () = _w4(arr, alen, 360, 1885431907)
+  val () = _w4(arr, alen, 364, 762471796)
+  val () = _w4(arr, alen, 368, 1953394531)
+  val () = _w4(arr, alen, 372, 1701734753)
+  val () = _w4(arr, alen, 376, 1701346162)
+  val () = _w4(arr, alen, 380, 1952999273)
+  val () = _w4(arr, alen, 384, 1818321722)
+  val () = _w4(arr, alen, 388, 808527971)
+  val () = _w4(arr, alen, 392, 543716912)
+  val () = _w4(arr, alen, 396, 775299117)
+  val () = _w4(arr, alen, 400, 1835364917)
+  val () = ward_arr_set_byte(arr, 404, alen, 41)
+  val () = ward_arr_set_byte(arr, 405, alen, 125)
+in end
+
+(* Inject reader-specific nav CSS as a separate <style> element *)
+fn inject_nav_css {l:agz}
+  (s: ward_dom_stream(l), parent: int): ward_dom_stream(l) = let
+  val nav_arr = ward_arr_alloc<byte>(NAV_CSS_LEN)
+  val () = fill_css_nav(nav_arr, NAV_CSS_LEN)
+  val nav_style_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, nav_style_id, parent, tag_style(), 5)
+  val @(frozen, borrow) = ward_arr_freeze<byte>(nav_arr)
+  val s = ward_dom_stream_set_text(s, nav_style_id, borrow, NAV_CSS_LEN)
+  val () = ward_arr_drop<byte>(frozen, borrow)
+  val nav_arr = ward_arr_thaw<byte>(frozen)
+  val () = ward_arr_free<byte>(nav_arr)
+in s end
+
 (* ========== Helper: set text content from C string constant ========== *)
 
 fn set_text_cstr {l:agz}
@@ -1420,6 +1588,45 @@ in
     val total = div_int_int(scroll_width + page_width - 1, page_width)
     val () = reader_set_total_pages(total)
   in end
+  else ()
+end
+
+(* Update page indicator text: "X / Y" where X = current page + 1, Y = total pages.
+ * Uses standalone DOM stream — safe to call from event handlers. *)
+fn update_page_info(): void = let
+  val nid = reader_get_page_indicator_id()
+in
+  if gt_int_int(nid, 0) then let
+    val cur = reader_get_current_page()
+    val total = reader_get_total_pages()
+    val arr = ward_arr_alloc<byte>(48)
+    (* Write "X / Y" — e.g. "1 / 5" *)
+    val pg_digits = itoa_to_arr(arr, cur + 1, 0)
+    val p = pg_digits
+    val () = ward_arr_set<byte>(arr, _idx48(p), _byte(32))       (* ' ' *)
+    val () = ward_arr_set<byte>(arr, _idx48(p + 1), _byte(47))   (* '/' *)
+    val () = ward_arr_set<byte>(arr, _idx48(p + 2), _byte(32))   (* ' ' *)
+    val tot_digits = itoa_to_arr(arr, total, p + 3)
+    val total_len = p + 3 + tot_digits
+    val tl = g1ofg0(total_len)
+  in
+    if tl > 0 then
+      if tl < 48 then let
+        val @(used, rest) = ward_arr_split<byte>(arr, tl)
+        val () = ward_arr_free<byte>(rest)
+        val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+        val dom = ward_dom_init()
+        val s = ward_dom_stream_begin(dom)
+        val s = ward_dom_stream_set_text(s, nid, borrow, tl)
+        val dom = ward_dom_stream_end(s)
+        val () = ward_dom_fini(dom)
+        val () = ward_arr_drop<byte>(frozen, borrow)
+        val used = ward_arr_thaw<byte>(frozen)
+        val () = ward_arr_free<byte>(used)
+      in end
+      else let val () = ward_arr_free<byte>(arr) in end
+    else let val () = ward_arr_free<byte>(arr) in end
+  end
   else ()
 end
 
@@ -1736,6 +1943,7 @@ in
                     val () = ward_dom_fini(dom)
                     val () = ward_arr_free<byte>(sax_buf)
                     val () = measure_and_set_pages(saved_cid)
+                    val () = update_page_info()
                   in ward_promise_return<int>(0) end
                   else ward_promise_return<int>(0)
                 end
@@ -1768,6 +1976,7 @@ in
               val () = ward_dom_fini(dom)
               val () = ward_arr_free<byte>(sax_buf)
               val () = measure_and_set_pages(container_id)
+              val () = update_page_info()
             in end
             else ()
           end
@@ -1812,6 +2021,7 @@ in
       if eq_int_int(k0, 65) then let
         val () = reader_next_page()
         val () = apply_page_transform(cid)
+        val () = update_page_info()
       in end
       else ()
     else if eq_int_int(key_len, 9) then
@@ -1819,6 +2029,7 @@ in
       if eq_int_int(k0, 65) then let
         val () = reader_prev_page()
         val () = apply_page_transform(cid)
+        val () = update_page_info()
       in end
       else ()
     else if eq_int_int(key_len, 1) then
@@ -1826,6 +2037,7 @@ in
       if eq_int_int(k0, 32) then let
         val () = reader_next_page()
         val () = apply_page_transform(cid)
+        val () = update_page_info()
       in end
       else ()
     else ()
@@ -2033,6 +2245,35 @@ implement enter_reader(root_id, book_index) = let
   val s = ward_dom_stream_begin(dom)
   val s = ward_dom_stream_remove_children(s, root_id)
   val s = inject_app_css(s, root_id)
+  val s = inject_nav_css(s, root_id)
+
+  (* Create nav bar: <div class="reader-nav">
+   *   <button class="back-btn">Back</button>
+   *   <span class="page-info"></span>
+   * </div> *)
+  val nav_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, nav_id, root_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, nav_id, attr_class(), 5,
+    cls_reader_nav(), 10)
+
+  val back_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, back_btn_id, nav_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, back_btn_id, attr_class(), 5,
+    cls_back_btn(), 8)
+  (* "Back" = 4 chars *)
+  val back_st = let
+    val b = ward_text_build(4)
+    val b = ward_text_putc(b, 0, char2int1('B'))
+    val b = ward_text_putc(b, 1, char2int1('a'))
+    val b = ward_text_putc(b, 2, char2int1('c'))
+    val b = ward_text_putc(b, 3, char2int1('k'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, back_btn_id, back_st, 4)
+
+  val page_info_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, page_info_id, nav_id, tag_span(), 4)
+  val s = ward_dom_stream_set_attr_safe(s, page_info_id, attr_class(), 5,
+    cls_page_info(), 9)
 
   (* Create .reader-viewport with tabindex="0" for keyboard focus *)
   val viewport_id = dom_next_id()
@@ -2054,9 +2295,20 @@ implement enter_reader(root_id, book_index) = let
   (* Store IDs *)
   val () = reader_set_viewport_id(viewport_id)
   val () = reader_set_container_id(container_id)
+  val () = reader_set_nav_id(nav_id)
+  val () = reader_set_page_info_id(page_info_id)
+
+  (* Register click listener on back button *)
+  val saved_root = root_id
+  val () = ward_add_event_listener(
+    back_btn_id, evt_click(), 5, 52,
+    lam (_pl: int): int => let
+      val () = reader_save_and_exit()
+      val () = render_library(saved_root)
+    in 0 end
+  )
 
   (* Register keydown listener on viewport *)
-  val saved_root = root_id
   val () = ward_add_event_listener(
     viewport_id, evt_keydown(), 7, 50,
     lam (payload_len: int): int => let
@@ -2085,10 +2337,12 @@ implement enter_reader(root_id, book_index) = let
           if gt_int_int(click_x, threshold) then let
             val () = reader_next_page()
             val () = apply_page_transform(saved_container)
+            val () = update_page_info()
           in 0 end
           else let
             val () = reader_prev_page()
             val () = apply_page_transform(saved_container)
+            val () = update_page_info()
           in 0 end
         end
         else 0

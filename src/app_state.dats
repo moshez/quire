@@ -77,6 +77,8 @@ datavtype app_state_impl =
       rdr_container_id = int,
       rdr_root_id = int,
       rdr_file_handle = int,
+      rdr_page_info_id = int,
+      rdr_nav_id = int,
       rdr_btn_ids = ptr,
       epub_spine_count = int,
       epub_title = ptr,
@@ -209,6 +211,8 @@ implement app_state_init() =
     rdr_container_id = 0,
     rdr_root_id = 0,
     rdr_file_handle = 0,
+    rdr_page_info_id = 0,
+    rdr_nav_id = 0,
     rdr_btn_ids = _alloc_buf(RDR_BTNS_SIZE),
     epub_spine_count = 0,
     epub_title = _alloc_buf(EPUB_TITLE_SIZE),
@@ -723,6 +727,18 @@ implement app_get_rdr_file_handle(st) = let
   prval () = fold@(st) in v end
 implement app_set_rdr_file_handle(st, v) = let
   val @APP_STATE(r) = st val () = r.rdr_file_handle := v
+  prval () = fold@(st) in end
+implement app_get_rdr_page_info_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_page_info_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_page_info_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_page_info_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_nav_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_nav_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_nav_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_nav_id := v
   prval () = fold@(st) in end
 
 implement app_get_rdr_btn_id(st, idx) = let

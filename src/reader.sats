@@ -200,3 +200,6 @@ fun reader_get_file_handle(): int
 fun reader_set_btn_id(book_index: int, node_id: int): void
 fun reader_get_btn_id(book_index: int): int
 fun reader_set_total_pages(n: int): void
+fun reader_set_page_info_id(id: int): void
+fun reader_set_nav_id(id: int): void
+fun reader_get_nav_id(): int
