@@ -15,7 +15,6 @@ staload "./zip.sats"
 staload "./epub.sats"
 staload "./library.sats"
 staload "./reader.sats"
-staload "./buf.sats"
 staload "./../vendor/ward/lib/memory.sats"
 staload "./../vendor/ward/lib/dom.sats"
 staload "./../vendor/ward/lib/listener.sats"
@@ -25,6 +24,7 @@ staload "./../vendor/ward/lib/event.sats"
 staload "./../vendor/ward/lib/decompress.sats"
 staload "./../vendor/ward/lib/xml.sats"
 staload "./../vendor/ward/lib/dom_read.sats"
+staload "./../vendor/ward/lib/window.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
 staload _ = "./../vendor/ward/lib/dom.dats"
 staload _ = "./../vendor/ward/lib/listener.dats"
@@ -38,12 +38,22 @@ staload _ = "./../vendor/ward/lib/dom_read.dats"
 staload "./arith.sats"
 staload "./quire_ext.sats"
 
+(* Forward declaration for JS import — suppresses C99 warning *)
+%{
+extern void quireSetTitle(int mode);
+%}
+
 (* ========== Text constant IDs ========== *)
 
 #define TEXT_NO_BOOKS 0
 #define TEXT_EPUB_EXT 1
 #define TEXT_NOT_STARTED 2
 #define TEXT_READ 3
+#define TEXT_IMPORTING 4
+#define TEXT_OPENING_FILE 5
+#define TEXT_PARSING_ZIP 6
+#define TEXT_READING_META 7
+#define TEXT_ADDING_BOOK 8
 
 (* ========== Byte-level helpers (pure ATS2) ========== *)
 
@@ -90,26 +100,102 @@ fn fill_text {l:agz}{n:pos}
     val () = ward_arr_set_byte(arr, 9, alen, 101)  (* e *)
     val () = ward_arr_set_byte(arr, 10, alen, 100) (* d *)
   in end
-  else let (* text_id = 3: "Read" *)
+  else if text_id = 3 then let (* "Read" *)
     val () = ward_arr_set_byte(arr, 0, alen, 82)   (* R *)
     val () = ward_arr_set_byte(arr, 1, alen, 101)  (* e *)
     val () = ward_arr_set_byte(arr, 2, alen, 97)   (* a *)
     val () = ward_arr_set_byte(arr, 3, alen, 100)  (* d *)
   in end
+  else if text_id = 4 then let (* "Importing" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 73)   (* I *)
+    val () = ward_arr_set_byte(arr, 1, alen, 109)  (* m *)
+    val () = ward_arr_set_byte(arr, 2, alen, 112)  (* p *)
+    val () = ward_arr_set_byte(arr, 3, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 4, alen, 114)  (* r *)
+    val () = ward_arr_set_byte(arr, 5, alen, 116)  (* t *)
+    val () = ward_arr_set_byte(arr, 6, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 7, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 8, alen, 103)  (* g *)
+  in end
+  else if text_id = 5 then let (* "Opening file" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 79)   (* O *)
+    val () = ward_arr_set_byte(arr, 1, alen, 112)  (* p *)
+    val () = ward_arr_set_byte(arr, 2, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 3, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 4, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 5, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 6, alen, 103)  (* g *)
+    val () = ward_arr_set_byte(arr, 7, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 8, alen, 102)  (* f *)
+    val () = ward_arr_set_byte(arr, 9, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 10, alen, 108) (* l *)
+    val () = ward_arr_set_byte(arr, 11, alen, 101) (* e *)
+  in end
+  else if text_id = 6 then let (* "Parsing archive" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 80)   (* P *)
+    val () = ward_arr_set_byte(arr, 1, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 2, alen, 114)  (* r *)
+    val () = ward_arr_set_byte(arr, 3, alen, 115)  (* s *)
+    val () = ward_arr_set_byte(arr, 4, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 5, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 6, alen, 103)  (* g *)
+    val () = ward_arr_set_byte(arr, 7, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 8, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 9, alen, 114)  (* r *)
+    val () = ward_arr_set_byte(arr, 10, alen, 99)  (* c *)
+    val () = ward_arr_set_byte(arr, 11, alen, 104) (* h *)
+    val () = ward_arr_set_byte(arr, 12, alen, 105) (* i *)
+    val () = ward_arr_set_byte(arr, 13, alen, 118) (* v *)
+    val () = ward_arr_set_byte(arr, 14, alen, 101) (* e *)
+  in end
+  else if text_id = 7 then let (* "Reading metadata" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 82)   (* R *)
+    val () = ward_arr_set_byte(arr, 1, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 2, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 3, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 4, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 5, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 6, alen, 103)  (* g *)
+    val () = ward_arr_set_byte(arr, 7, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 8, alen, 109)  (* m *)
+    val () = ward_arr_set_byte(arr, 9, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 10, alen, 116) (* t *)
+    val () = ward_arr_set_byte(arr, 11, alen, 97)  (* a *)
+    val () = ward_arr_set_byte(arr, 12, alen, 100) (* d *)
+    val () = ward_arr_set_byte(arr, 13, alen, 97)  (* a *)
+    val () = ward_arr_set_byte(arr, 14, alen, 116) (* t *)
+    val () = ward_arr_set_byte(arr, 15, alen, 97)  (* a *)
+  in end
+  else let (* text_id = 8: "Adding to library" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 65)   (* A *)
+    val () = ward_arr_set_byte(arr, 1, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 2, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 3, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 4, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 5, alen, 103)  (* g *)
+    val () = ward_arr_set_byte(arr, 6, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 7, alen, 116)  (* t *)
+    val () = ward_arr_set_byte(arr, 8, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 9, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 10, alen, 108) (* l *)
+    val () = ward_arr_set_byte(arr, 11, alen, 105) (* i *)
+    val () = ward_arr_set_byte(arr, 12, alen, 98)  (* b *)
+    val () = ward_arr_set_byte(arr, 13, alen, 114) (* r *)
+    val () = ward_arr_set_byte(arr, 14, alen, 97)  (* a *)
+    val () = ward_arr_set_byte(arr, 15, alen, 114) (* r *)
+    val () = ward_arr_set_byte(arr, 16, alen, 121) (* y *)
+  in end
 
 (* Copy len bytes from string_buffer to ward_arr *)
 fn copy_from_sbuf {l:agz}{n:pos}
   (dst: !ward_arr(byte, l, n), len: int n): void = let
-  val sbuf = get_string_buf()
   fun loop(dst: !ward_arr(byte, l, n), dlen: int n,
            i: int, count: int): void =
     if i < count then let
-      val b = sbuf_get_u8(sbuf, i)
+      val b = _app_sbuf_get_u8(i)
       val () = ward_arr_set_byte(dst, i, dlen, b)
     in loop(dst, dlen, i + 1, count) end
 in loop(dst, len, 0, len) end
-
-staload "./quire_ext.sats"
 
 (* ========== Measurement correctness ========== *)
 
@@ -180,6 +266,36 @@ fn cls_library_list(): ward_safe_text(12) = let
   val b = ward_text_putc(b, 9, char2int1('i'))
   val b = ward_text_putc(b, 10, char2int1('s'))
   val b = ward_text_putc(b, 11, char2int1('t'))
+in ward_text_done(b) end
+
+fn cls_importing(): ward_safe_text(9) = let
+  val b = ward_text_build(9)
+  val b = ward_text_putc(b, 0, char2int1('i'))
+  val b = ward_text_putc(b, 1, char2int1('m'))
+  val b = ward_text_putc(b, 2, char2int1('p'))
+  val b = ward_text_putc(b, 3, char2int1('o'))
+  val b = ward_text_putc(b, 4, char2int1('r'))
+  val b = ward_text_putc(b, 5, char2int1('t'))
+  val b = ward_text_putc(b, 6, char2int1('i'))
+  val b = ward_text_putc(b, 7, char2int1('n'))
+  val b = ward_text_putc(b, 8, char2int1('g'))
+in ward_text_done(b) end
+
+fn cls_import_status(): ward_safe_text(13) = let
+  val b = ward_text_build(13)
+  val b = ward_text_putc(b, 0, char2int1('i'))
+  val b = ward_text_putc(b, 1, char2int1('m'))
+  val b = ward_text_putc(b, 2, char2int1('p'))
+  val b = ward_text_putc(b, 3, char2int1('o'))
+  val b = ward_text_putc(b, 4, char2int1('r'))
+  val b = ward_text_putc(b, 5, char2int1('t'))
+  val b = ward_text_putc(b, 6, 45) (* '-' *)
+  val b = ward_text_putc(b, 7, char2int1('s'))
+  val b = ward_text_putc(b, 8, char2int1('t'))
+  val b = ward_text_putc(b, 9, char2int1('a'))
+  val b = ward_text_putc(b, 10, char2int1('t'))
+  val b = ward_text_putc(b, 11, char2int1('u'))
+  val b = ward_text_putc(b, 12, char2int1('s'))
 in ward_text_done(b) end
 
 fn cls_empty_lib(): ward_safe_text(9) = let
@@ -352,35 +468,631 @@ fn val_zero(): ward_safe_text(1) = let
   val b = ward_text_putc(b, 0, 48) (* '0' *)
 in ward_text_done(b) end
 
+(* ========== Log message safe text builders ========== *)
+
+(* "import-start" = 12 chars *)
+fn log_import_start(): ward_safe_text(12) = let
+  val b = ward_text_build(12)
+  val b = ward_text_putc(b, 0, char2int1('i'))
+  val b = ward_text_putc(b, 1, char2int1('m'))
+  val b = ward_text_putc(b, 2, char2int1('p'))
+  val b = ward_text_putc(b, 3, char2int1('o'))
+  val b = ward_text_putc(b, 4, char2int1('r'))
+  val b = ward_text_putc(b, 5, char2int1('t'))
+  val b = ward_text_putc(b, 6, 45)
+  val b = ward_text_putc(b, 7, char2int1('s'))
+  val b = ward_text_putc(b, 8, char2int1('t'))
+  val b = ward_text_putc(b, 9, char2int1('a'))
+  val b = ward_text_putc(b, 10, char2int1('r'))
+  val b = ward_text_putc(b, 11, char2int1('t'))
+in ward_text_done(b) end
+
+(* "import-done" = 11 chars *)
+fn log_import_done(): ward_safe_text(11) = let
+  val b = ward_text_build(11)
+  val b = ward_text_putc(b, 0, char2int1('i'))
+  val b = ward_text_putc(b, 1, char2int1('m'))
+  val b = ward_text_putc(b, 2, char2int1('p'))
+  val b = ward_text_putc(b, 3, char2int1('o'))
+  val b = ward_text_putc(b, 4, char2int1('r'))
+  val b = ward_text_putc(b, 5, char2int1('t'))
+  val b = ward_text_putc(b, 6, 45)
+  val b = ward_text_putc(b, 7, char2int1('d'))
+  val b = ward_text_putc(b, 8, char2int1('o'))
+  val b = ward_text_putc(b, 9, char2int1('n'))
+  val b = ward_text_putc(b, 10, char2int1('e'))
+in ward_text_done(b) end
+
 (* ========== App CSS injection ========== *)
 
-(* CSS string lives in quire_decls.h as a static const char[].
- * _fill_css copies it into a ward_arr for set_text. *)
-extern fun _app_css_len(): [n:pos] int n = "mac#"
-extern fun _fill_css {l:agz}{n:pos} (dst: !ward_arr(byte, l, n)): void = "mac#"
+(* CSS bytes packed as little-endian int32s, written via _w4.
+ * Generated from the CSS string — round-trip verified. *)
+#define APP_CSS_LEN 2012
+stadef APP_CSS_LEN = 2012
+
+(* Write 4 bytes from packed little-endian int *)
+fn _w4 {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), alen: int n, off: int, v: int): void = let
+  val () = ward_arr_set_byte(arr, off, alen, band_int_int(v, 255))
+  val () = ward_arr_set_byte(arr, off+1, alen, band_int_int(bsr_int_int(v, 8), 255))
+  val () = ward_arr_set_byte(arr, off+2, alen, band_int_int(bsr_int_int(v, 16), 255))
+  val () = ward_arr_set_byte(arr, off+3, alen, bsr_int_int(v, 24))
+in end
+
+fn fill_css_base {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), alen: int n): void = let
+  (* html,body *)
+  val () = _w4(arr, alen, 0, 1819112552)
+  val () = _w4(arr, alen, 4, 1685021228)
+  val () = _w4(arr, alen, 8, 1634564985)
+  val () = _w4(arr, alen, 12, 1852401522)
+  val () = _w4(arr, alen, 16, 1882927162)
+  val () = _w4(arr, alen, 20, 1768186977)
+  val () = _w4(arr, alen, 24, 809133934)
+  val () = _w4(arr, alen, 28, 1667326523)
+  val () = _w4(arr, alen, 32, 1869768555)
+  val () = _w4(arr, alen, 36, 979660405)
+  val () = _w4(arr, alen, 40, 1717659171)
+  val () = _w4(arr, alen, 44, 993551969)
+  val () = _w4(arr, alen, 48, 1869377379)
+  val () = _w4(arr, alen, 52, 841169522)
+  val () = _w4(arr, alen, 56, 845230689)
+  val () = _w4(arr, alen, 60, 1868970849)
+  val () = _w4(arr, alen, 64, 1714254958)
+  val () = _w4(arr, alen, 68, 1818848609)
+  val () = _w4(arr, alen, 72, 1699166841)
+  val () = _w4(arr, alen, 76, 1768387183)
+  val () = _w4(arr, alen, 80, 1702046817)
+  val () = _w4(arr, alen, 84, 996567410)
+  val () = _w4(arr, alen, 88, 1953394534)
+  val () = _w4(arr, alen, 92, 2053731117)
+  val () = _w4(arr, alen, 96, 942750309)
+  val () = _w4(arr, alen, 100, 1815836784)
+  val () = _w4(arr, alen, 104, 761622121)
+  val () = _w4(arr, alen, 108, 1734960488)
+  val () = _w4(arr, alen, 112, 825914472)
+  val () = _w4(arr, alen, 116, 779957806)
+  (* .import-btn *)
+  val () = _w4(arr, alen, 120, 1869639017)
+  val () = _w4(arr, alen, 124, 1647146098)
+  val () = _w4(arr, alen, 128, 1685810804)
+  val () = _w4(arr, alen, 132, 1819308905)
+  val () = _w4(arr, alen, 136, 1765439841)
+  val () = _w4(arr, alen, 140, 1852402798)
+  val () = _w4(arr, alen, 144, 1818373477)
+  val () = _w4(arr, alen, 148, 996893551)
+  val () = _w4(arr, alen, 152, 1684300144)
+  val () = _w4(arr, alen, 156, 979857001)
+  val () = _w4(arr, alen, 160, 1701983534)
+  val () = _w4(arr, alen, 164, 774971501)
+  val () = _w4(arr, alen, 168, 1835364914)
+  val () = _w4(arr, alen, 172, 1918987579)
+  val () = _w4(arr, alen, 176, 980314471)
+  val () = _w4(arr, alen, 180, 1835364913)
+  val () = _w4(arr, alen, 184, 1667326523)
+  val () = _w4(arr, alen, 188, 1869768555)
+  val () = _w4(arr, alen, 192, 979660405)
+  val () = _w4(arr, alen, 196, 929117219)
+  val () = _w4(arr, alen, 200, 993604963)
+  val () = _w4(arr, alen, 204, 1869377379)
+  val () = _w4(arr, alen, 208, 1713584754)
+  val () = _w4(arr, alen, 212, 1648060006)
+  val () = _w4(arr, alen, 216, 1701081711)
+  val () = _w4(arr, alen, 220, 1634872690)
+  val () = _w4(arr, alen, 224, 1937074532)
+  val () = _w4(arr, alen, 228, 2020619322)
+  val () = _w4(arr, alen, 232, 1920295739)
+  val () = _w4(arr, alen, 236, 980578163)
+  val () = _w4(arr, alen, 240, 1852403568)
+  val () = _w4(arr, alen, 244, 997352820)
+  val () = _w4(arr, alen, 248, 1953394534)
+  val () = _w4(arr, alen, 252, 2053731117)
+  val () = _w4(arr, alen, 256, 1915828837)
+  val () = _w4(arr, alen, 260, 779971941)
+  (* .import-btn input[type=file] *)
+  val () = _w4(arr, alen, 264, 1869639017)
+  val () = _w4(arr, alen, 268, 1647146098)
+  val () = _w4(arr, alen, 272, 1763733108)
+  val () = _w4(arr, alen, 276, 1953853550)
+  val () = _w4(arr, alen, 280, 1887007835)
+  val () = _w4(arr, alen, 284, 1768308069)
+  val () = _w4(arr, alen, 288, 2069718380)
+  val () = _w4(arr, alen, 292, 1886611812)
+  val () = _w4(arr, alen, 296, 981033324)
+  val () = _w4(arr, alen, 300, 1701736302)
+  (* .library-list *)
+  val () = _w4(arr, alen, 304, 1768697469)
+  val () = _w4(arr, alen, 308, 1918988898)
+  val () = _w4(arr, alen, 312, 1768697209)
+  val () = _w4(arr, alen, 316, 1887138931)
+  val () = _w4(arr, alen, 320, 1768186977)
+  val () = _w4(arr, alen, 324, 825911150)
+  val () = _w4(arr, alen, 328, 2104321394)
+  (* .empty-lib *)
+  val () = _w4(arr, alen, 332, 1886217518)
+  val () = _w4(arr, alen, 336, 1814919540)
+  val () = _w4(arr, alen, 340, 1669030505)
+  val () = _w4(arr, alen, 344, 1919904879)
+  val () = _w4(arr, alen, 348, 943203130)
+  val () = _w4(arr, alen, 352, 1702116152)
+  val () = _w4(arr, alen, 356, 1630368888)
+  val () = _w4(arr, alen, 360, 1852270956)
+  val () = _w4(arr, alen, 364, 1852138298)
+  val () = _w4(arr, alen, 368, 997352820)
+  val () = _w4(arr, alen, 372, 1684300144)
+  val () = _w4(arr, alen, 376, 979857001)
+  val () = _w4(arr, alen, 380, 1835364914)
+  val () = _w4(arr, alen, 384, 1852794427)
+  val () = _w4(arr, alen, 388, 1953705332)
+  val () = _w4(arr, alen, 392, 979725433)
+  val () = _w4(arr, alen, 396, 1818326121)
+  val () = ward_arr_set_byte(arr, 400, alen, 105)
+  val () = ward_arr_set_byte(arr, 401, alen, 99)
+  val () = ward_arr_set_byte(arr, 402, alen, 125)
+in end
+
+fn fill_css_cards {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), alen: int n): void = let
+  (* .book-card *)
+  val () = _w4(arr, alen, 403, 1869570606)
+  val () = _w4(arr, alen, 407, 1633889643)
+  val () = _w4(arr, alen, 411, 1685808242)
+  val () = _w4(arr, alen, 415, 1819308905)
+  val () = _w4(arr, alen, 419, 1715108193)
+  val () = _w4(arr, alen, 423, 997746028)
+  val () = _w4(arr, alen, 427, 1734962273)
+  val () = _w4(arr, alen, 431, 1953049966)
+  val () = _w4(arr, alen, 435, 980643173)
+  val () = _w4(arr, alen, 439, 1953391971)
+  val () = _w4(arr, alen, 443, 1882944101)
+  val () = _w4(arr, alen, 447, 1768186977)
+  val () = _w4(arr, alen, 451, 775579502)
+  val () = _w4(arr, alen, 455, 1701983543)
+  val () = _w4(arr, alen, 459, 1915822189)
+  val () = _w4(arr, alen, 463, 1832611173)
+  val () = _w4(arr, alen, 467, 1768387169)
+  val () = _w4(arr, alen, 471, 1868705134)
+  val () = _w4(arr, alen, 475, 1836020852)
+  val () = _w4(arr, alen, 479, 1916087866)
+  val () = _w4(arr, alen, 483, 1648061797)
+  val () = _w4(arr, alen, 487, 1735091041)
+  val () = _w4(arr, alen, 491, 1853190002)
+  val () = _w4(arr, alen, 495, 1713584740)
+  val () = _w4(arr, alen, 499, 1648060006)
+  val () = _w4(arr, alen, 503, 1701081711)
+  val () = _w4(arr, alen, 507, 1882274418)
+  val () = _w4(arr, alen, 511, 1869815928)
+  val () = _w4(arr, alen, 515, 543451500)
+  val () = _w4(arr, alen, 519, 1697670435)
+  val () = _w4(arr, alen, 523, 993027376)
+  val () = _w4(arr, alen, 527, 1685221218)
+  val () = _w4(arr, alen, 531, 1915581029)
+  val () = _w4(arr, alen, 535, 1969841249)
+  val () = _w4(arr, alen, 539, 1882602099)
+  val () = _w4(arr, alen, 543, 1647213944)
+  val () = _w4(arr, alen, 547, 762015599)
+  (* .book-title *)
+  val () = _w4(arr, alen, 551, 1819568500)
+  val () = _w4(arr, alen, 555, 1868987237)
+  val () = _w4(arr, alen, 559, 1999467630)
+  val () = _w4(arr, alen, 563, 1751607653)
+  val () = _w4(arr, alen, 567, 1868708468)
+  val () = _w4(arr, alen, 571, 1832608876)
+  val () = _w4(arr, alen, 575, 1768387169)
+  val () = _w4(arr, alen, 579, 1769090414)
+  val () = _w4(arr, alen, 583, 980707431)
+  val () = _w4(arr, alen, 587, 1701983534)
+  val () = _w4(arr, alen, 591, 1647213933)
+  (* .book-author *)
+  val () = _w4(arr, alen, 595, 762015599)
+  val () = _w4(arr, alen, 599, 1752462689)
+  val () = _w4(arr, alen, 603, 1669034607)
+  val () = _w4(arr, alen, 607, 1919904879)
+  val () = _w4(arr, alen, 611, 909517626)
+  val () = _w4(arr, alen, 615, 1634548534)
+  val () = _w4(arr, alen, 619, 1852401522)
+  val () = _w4(arr, alen, 623, 1734963757)
+  val () = _w4(arr, alen, 627, 1631220840)
+  val () = _w4(arr, alen, 631, 2104456309)
+  (* .book-position *)
+  val () = _w4(arr, alen, 635, 1869570606)
+  val () = _w4(arr, alen, 639, 1869622635)
+  val () = _w4(arr, alen, 643, 1769236851)
+  val () = _w4(arr, alen, 647, 1669033583)
+  val () = _w4(arr, alen, 651, 1919904879)
+  val () = _w4(arr, alen, 655, 960045882)
+  val () = _w4(arr, alen, 659, 1868970809)
+  val () = _w4(arr, alen, 663, 1932358766)
+  val () = _w4(arr, alen, 667, 979729001)
+  val () = _w4(arr, alen, 671, 1916090414)
+  val () = _w4(arr, alen, 675, 1832611173)
+  val () = _w4(arr, alen, 679, 1768387169)
+  val () = _w4(arr, alen, 683, 1769090414)
+  val () = _w4(arr, alen, 687, 980707431)
+  val () = _w4(arr, alen, 691, 1835364913)
+  (* .read-btn *)
+  val () = _w4(arr, alen, 695, 1701981821)
+  val () = _w4(arr, alen, 699, 1647141985)
+  val () = _w4(arr, alen, 703, 1887137396)
+  val () = _w4(arr, alen, 707, 1768186977)
+  val () = _w4(arr, alen, 711, 775579502)
+  val () = _w4(arr, alen, 715, 1835364916)
+  val () = _w4(arr, alen, 719, 1701982496)
+  val () = _w4(arr, alen, 723, 1633827693)
+  val () = _w4(arr, alen, 727, 1919380323)
+  val () = _w4(arr, alen, 731, 1684960623)
+  val () = _w4(arr, alen, 735, 1630806842)
+  val () = _w4(arr, alen, 739, 959800119)
+  val () = _w4(arr, alen, 743, 1819239227)
+  val () = _w4(arr, alen, 747, 591032943)
+  val () = _w4(arr, alen, 751, 996566630)
+  val () = _w4(arr, alen, 755, 1685221218)
+  val () = _w4(arr, alen, 759, 1849324133)
+  val () = _w4(arr, alen, 763, 996503151)
+  val () = _w4(arr, alen, 767, 1685221218)
+  val () = _w4(arr, alen, 771, 1915581029)
+  val () = _w4(arr, alen, 775, 1969841249)
+  val () = _w4(arr, alen, 779, 1882471027)
+  val () = _w4(arr, alen, 783, 1969437560)
+  val () = _w4(arr, alen, 787, 1919906674)
+  val () = _w4(arr, alen, 791, 1768910906)
+  val () = _w4(arr, alen, 795, 1919251566)
+  val () = ward_arr_set_byte(arr, 799, alen, 125)
+in end
+
+fn fill_css_reader {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), alen: int n): void = let
+  (* .reader-viewport *)
+  val () = _w4(arr, alen, 800, 1634038318)
+  val () = _w4(arr, alen, 804, 762471780)
+  val () = _w4(arr, alen, 808, 2003134838)
+  val () = _w4(arr, alen, 812, 1953656688)
+  val () = _w4(arr, alen, 816, 1684633467)
+  val () = _w4(arr, alen, 820, 825911412)
+  val () = _w4(arr, alen, 824, 2004234288)
+  val () = _w4(arr, alen, 828, 1768253499)
+  val () = _w4(arr, alen, 832, 980707431)
+  val () = _w4(arr, alen, 836, 1982869553)
+  val () = _w4(arr, alen, 840, 1987001192)
+  val () = _w4(arr, alen, 844, 1818653285)
+  val () = _w4(arr, alen, 848, 1748662127)
+  val () = _w4(arr, alen, 852, 1701078121)
+  val () = _w4(arr, alen, 856, 1869626222)
+  val () = _w4(arr, alen, 860, 1769236851)
+  val () = _w4(arr, alen, 864, 1916431983)
+  val () = _w4(arr, alen, 868, 1952541797)
+  val () = _w4(arr, alen, 872, 2103801449)
+  (* .chapter-container *)
+  val () = _w4(arr, alen, 876, 1634231086)
+  val () = _w4(arr, alen, 880, 1919251568)
+  val () = _w4(arr, alen, 884, 1852793645)
+  val () = _w4(arr, alen, 888, 1852399988)
+  val () = _w4(arr, alen, 892, 1669034597)
+  val () = _w4(arr, alen, 896, 1836412015)
+  val () = _w4(arr, alen, 900, 1769418094)
+  val () = _w4(arr, alen, 904, 979924068)
+  val () = _w4(arr, alen, 908, 1982869553)
+  val () = _w4(arr, alen, 912, 1868774263)
+  val () = _w4(arr, alen, 916, 1852667244)
+  val () = _w4(arr, alen, 920, 1885431597)
+  val () = _w4(arr, alen, 924, 1748709434)
+  val () = _w4(arr, alen, 928, 1751607653)
+  val () = _w4(arr, alen, 932, 1633892980)
+  val () = _w4(arr, alen, 936, 824730476)
+  val () = _w4(arr, alen, 940, 1752576048)
+  val () = _w4(arr, alen, 944, 874523936)
+  val () = _w4(arr, alen, 948, 695035250)
+  val () = _w4(arr, alen, 952, 1702260539)
+  val () = _w4(arr, alen, 956, 1869375090)
+  val () = _w4(arr, alen, 960, 1769355895)
+  val () = _w4(arr, alen, 964, 1818388851)
+  val () = _w4(arr, alen, 968, 1634745189)
+  val () = _w4(arr, alen, 972, 1852400740)
+  val () = _w4(arr, alen, 976, 1915894375)
+  val () = _w4(arr, alen, 980, 824208741)
+  val () = _w4(arr, alen, 984, 1701983534)
+  val () = _w4(arr, alen, 988, 1868708717)
+  val () = _w4(arr, alen, 992, 1769155960)
+  val () = _w4(arr, alen, 996, 1735289210)
+  val () = _w4(arr, alen, 1000, 1919902266)
+  val () = _w4(arr, alen, 1004, 762471780)
+  val () = _w4(arr, alen, 1008, 2105044834)
+in end
+
+fn fill_css_content {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), alen: int n): void = let
+  (* .chapter-container h1,.chapter-container h2,.chapter-container h3 *)
+  val () = _w4(arr, alen, 1012, 1634231086)
+  val () = _w4(arr, alen, 1016, 1919251568)
+  val () = _w4(arr, alen, 1020, 1852793645)
+  val () = _w4(arr, alen, 1024, 1852399988)
+  val () = _w4(arr, alen, 1028, 1746956901)
+  val () = _w4(arr, alen, 1032, 1663970353)
+  val () = _w4(arr, alen, 1036, 1953522024)
+  val () = _w4(arr, alen, 1040, 1663922789)
+  val () = _w4(arr, alen, 1044, 1635020399)
+  val () = _w4(arr, alen, 1048, 1919250025)
+  val () = _w4(arr, alen, 1052, 741500960)
+  val () = _w4(arr, alen, 1056, 1634231086)
+  val () = _w4(arr, alen, 1060, 1919251568)
+  val () = _w4(arr, alen, 1064, 1852793645)
+  val () = _w4(arr, alen, 1068, 1852399988)
+  val () = _w4(arr, alen, 1072, 1746956901)
+  val () = _w4(arr, alen, 1076, 1634564915)
+  val () = _w4(arr, alen, 1080, 1852401522)
+  val () = _w4(arr, alen, 1084, 1886352429)
+  val () = _w4(arr, alen, 1088, 892219706)
+  val () = _w4(arr, alen, 1092, 1832611173)
+  val () = _w4(arr, alen, 1096, 1768387169)
+  val () = _w4(arr, alen, 1100, 1868705134)
+  val () = _w4(arr, alen, 1104, 1836020852)
+  val () = _w4(arr, alen, 1108, 1697984058)
+  val () = _w4(arr, alen, 1112, 1768700781)
+  val () = _w4(arr, alen, 1116, 1747805550)
+  val () = _w4(arr, alen, 1120, 1751607653)
+  val () = _w4(arr, alen, 1124, 774978164)
+  (* .chapter-container p *)
+  val () = _w4(arr, alen, 1128, 1663991091)
+  val () = _w4(arr, alen, 1132, 1953522024)
+  val () = _w4(arr, alen, 1136, 1663922789)
+  val () = _w4(arr, alen, 1140, 1635020399)
+  val () = _w4(arr, alen, 1144, 1919250025)
+  val () = _w4(arr, alen, 1148, 1836806176)
+  val () = _w4(arr, alen, 1152, 1768387169)
+  val () = _w4(arr, alen, 1156, 540031598)
+  val () = _w4(arr, alen, 1160, 942546992)
+  val () = _w4(arr, alen, 1164, 1950051685)
+  val () = _w4(arr, alen, 1168, 762607717)
+  val () = _w4(arr, alen, 1172, 1734962273)
+  val () = _w4(arr, alen, 1176, 1969896046)
+  val () = _w4(arr, alen, 1180, 1718187123)
+  (* .chapter-container blockquote *)
+  val () = _w4(arr, alen, 1184, 1663991161)
+  val () = _w4(arr, alen, 1188, 1953522024)
+  val () = _w4(arr, alen, 1192, 1663922789)
+  val () = _w4(arr, alen, 1196, 1635020399)
+  val () = _w4(arr, alen, 1200, 1919250025)
+  val () = _w4(arr, alen, 1204, 1869373984)
+  val () = _w4(arr, alen, 1208, 1970367331)
+  val () = _w4(arr, alen, 1212, 2070246511)
+  val () = _w4(arr, alen, 1216, 1735549293)
+  val () = _w4(arr, alen, 1220, 825912937)
+  val () = _w4(arr, alen, 1224, 840985957)
+  val () = _w4(arr, alen, 1228, 1882942821)
+  val () = _w4(arr, alen, 1232, 1768186977)
+  val () = _w4(arr, alen, 1236, 1814914926)
+  val () = _w4(arr, alen, 1240, 980706917)
+  val () = _w4(arr, alen, 1244, 997025073)
+  val () = _w4(arr, alen, 1248, 1685221218)
+  val () = _w4(arr, alen, 1252, 1814917733)
+  val () = _w4(arr, alen, 1256, 980706917)
+  val () = _w4(arr, alen, 1260, 544763955)
+  val () = _w4(arr, alen, 1264, 1768714099)
+  val () = _w4(arr, alen, 1268, 1663246436)
+  val () = _w4(arr, alen, 1272, 1664836451)
+  val () = _w4(arr, alen, 1276, 1919904879)
+  val () = _w4(arr, alen, 1280, 892674874)
+  (* .chapter-container pre *)
+  val () = _w4(arr, alen, 1284, 1663991093)
+  val () = _w4(arr, alen, 1288, 1953522024)
+  val () = _w4(arr, alen, 1292, 1663922789)
+  val () = _w4(arr, alen, 1296, 1635020399)
+  val () = _w4(arr, alen, 1300, 1919250025)
+  val () = _w4(arr, alen, 1304, 1701998624)
+  val () = _w4(arr, alen, 1308, 1667326587)
+  val () = _w4(arr, alen, 1312, 1869768555)
+  val () = _w4(arr, alen, 1316, 979660405)
+  val () = _w4(arr, alen, 1320, 1714710051)
+  val () = _w4(arr, alen, 1324, 993289780)
+  val () = _w4(arr, alen, 1328, 1684300144)
+  val () = _w4(arr, alen, 1332, 979857001)
+  val () = _w4(arr, alen, 1336, 1835350062)
+  val () = _w4(arr, alen, 1340, 1919902267)
+  val () = _w4(arr, alen, 1344, 762471780)
+  val () = _w4(arr, alen, 1348, 1768186226)
+  val () = _w4(arr, alen, 1352, 876245877)
+  val () = _w4(arr, alen, 1356, 1866168432)
+  val () = _w4(arr, alen, 1360, 1718773110)
+  val () = _w4(arr, alen, 1364, 762802028)
+  val () = _w4(arr, alen, 1368, 1969306232)
+  val () = _w4(arr, alen, 1372, 1715171188)
+  val () = _w4(arr, alen, 1376, 762605167)
+  val () = _w4(arr, alen, 1380, 1702521203)
+  val () = _w4(arr, alen, 1384, 1698246202)
+  (* .chapter-container code *)
+  val () = _w4(arr, alen, 1388, 1663991149)
+  val () = _w4(arr, alen, 1392, 1953522024)
+  val () = _w4(arr, alen, 1396, 1663922789)
+  val () = _w4(arr, alen, 1400, 1635020399)
+  val () = _w4(arr, alen, 1404, 1919250025)
+  val () = _w4(arr, alen, 1408, 1685021472)
+  val () = _w4(arr, alen, 1412, 1633844069)
+  val () = _w4(arr, alen, 1416, 1919380323)
+  val () = _w4(arr, alen, 1420, 1684960623)
+  val () = _w4(arr, alen, 1424, 879108922)
+  val () = _w4(arr, alen, 1428, 879113318)
+  val () = _w4(arr, alen, 1432, 1684107323)
+  val () = _w4(arr, alen, 1436, 1735289188)
+  val () = _w4(arr, alen, 1440, 1697721914)
+  val () = _w4(arr, alen, 1444, 858660973)
+  val () = _w4(arr, alen, 1448, 1648061797)
+  val () = _w4(arr, alen, 1452, 1701081711)
+  val () = _w4(arr, alen, 1456, 1634872690)
+  val () = _w4(arr, alen, 1460, 1937074532)
+  val () = _w4(arr, alen, 1464, 2020618810)
+  val () = _w4(arr, alen, 1468, 1852794427)
+  val () = _w4(arr, alen, 1472, 1769155956)
+  val () = _w4(arr, alen, 1476, 775579002)
+  val () = _w4(arr, alen, 1480, 2104321337)
+  (* .chapter-container img *)
+  val () = _w4(arr, alen, 1484, 1634231086)
+  val () = _w4(arr, alen, 1488, 1919251568)
+  val () = _w4(arr, alen, 1492, 1852793645)
+  val () = _w4(arr, alen, 1496, 1852399988)
+  val () = _w4(arr, alen, 1500, 1763734117)
+  val () = _w4(arr, alen, 1504, 1836803949)
+  val () = _w4(arr, alen, 1508, 1999468641)
+  val () = _w4(arr, alen, 1512, 1752458345)
+  val () = _w4(arr, alen, 1516, 808464698)
+  val () = _w4(arr, alen, 1520, 1701329701)
+  val () = _w4(arr, alen, 1524, 1952999273)
+  val () = _w4(arr, alen, 1528, 1953849658)
+  (* .chapter-container a *)
+  val () = _w4(arr, alen, 1532, 1663991151)
+  val () = _w4(arr, alen, 1536, 1953522024)
+  val () = _w4(arr, alen, 1540, 1663922789)
+  val () = _w4(arr, alen, 1544, 1635020399)
+  val () = _w4(arr, alen, 1548, 1919250025)
+  val () = _w4(arr, alen, 1552, 1669030176)
+  val () = _w4(arr, alen, 1556, 1919904879)
+  val () = _w4(arr, alen, 1560, 1630806842)
+  val () = _w4(arr, alen, 1564, 959800119)
+  (* .chapter-container table *)
+  val () = _w4(arr, alen, 1568, 1751330429)
+  val () = _w4(arr, alen, 1572, 1702129761)
+  val () = _w4(arr, alen, 1576, 1868770674)
+  val () = _w4(arr, alen, 1580, 1767994478)
+  val () = _w4(arr, alen, 1584, 544367982)
+  val () = _w4(arr, alen, 1588, 1818386804)
+  val () = _w4(arr, alen, 1592, 1868725093)
+  val () = _w4(arr, alen, 1596, 1919247474)
+  val () = _w4(arr, alen, 1600, 1819239213)
+  val () = _w4(arr, alen, 1604, 1936744812)
+  val () = _w4(arr, alen, 1608, 1868773989)
+  val () = _w4(arr, alen, 1612, 1885432940)
+  val () = _w4(arr, alen, 1616, 1832609139)
+  val () = _w4(arr, alen, 1620, 1768387169)
+  val () = _w4(arr, alen, 1624, 1697725038)
+  val () = _w4(arr, alen, 1628, 2100306029)
+  (* .chapter-container td,.chapter-container th *)
+  val () = _w4(arr, alen, 1632, 1634231086)
+  val () = _w4(arr, alen, 1636, 1919251568)
+  val () = _w4(arr, alen, 1640, 1852793645)
+  val () = _w4(arr, alen, 1644, 1852399988)
+  val () = _w4(arr, alen, 1648, 1948283493)
+  val () = _w4(arr, alen, 1652, 1663970404)
+  val () = _w4(arr, alen, 1656, 1953522024)
+  val () = _w4(arr, alen, 1660, 1663922789)
+  val () = _w4(arr, alen, 1664, 1635020399)
+  val () = _w4(arr, alen, 1668, 1919250025)
+  val () = _w4(arr, alen, 1672, 2070443040)
+  val () = _w4(arr, alen, 1676, 1685221218)
+  val () = _w4(arr, alen, 1680, 825913957)
+  val () = _w4(arr, alen, 1684, 1931507824)
+  val () = _w4(arr, alen, 1688, 1684630639)
+  val () = _w4(arr, alen, 1692, 1684284192)
+  val () = _w4(arr, alen, 1696, 1634745188)
+  val () = _w4(arr, alen, 1700, 1852400740)
+  val () = _w4(arr, alen, 1704, 875444839)
+  val () = _w4(arr, alen, 1708, 773877093)
+  val () = _w4(arr, alen, 1712, 2104321336)
+in end
+
+fn fill_css_import {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), alen: int n): void = let
+  (* .importing *)
+  val () = _w4(arr, alen, 1716, 1886218542)
+  val () = _w4(arr, alen, 1720, 1769239151)
+  val () = _w4(arr, alen, 1724, 1685809006)
+  val () = _w4(arr, alen, 1728, 1819308905)
+  val () = _w4(arr, alen, 1732, 1765439841)
+  val () = _w4(arr, alen, 1736, 1852402798)
+  val () = _w4(arr, alen, 1740, 1818373477)
+  val () = _w4(arr, alen, 1744, 996893551)
+  val () = _w4(arr, alen, 1748, 1684300144)
+  val () = _w4(arr, alen, 1752, 979857001)
+  val () = _w4(arr, alen, 1756, 1701983534)
+  val () = _w4(arr, alen, 1760, 774971501)
+  val () = _w4(arr, alen, 1764, 1835364914)
+  val () = _w4(arr, alen, 1768, 1918987579)
+  val () = _w4(arr, alen, 1772, 980314471)
+  val () = _w4(arr, alen, 1776, 1835364913)
+  val () = _w4(arr, alen, 1780, 1667326523)
+  val () = _w4(arr, alen, 1784, 1869768555)
+  val () = _w4(arr, alen, 1788, 979660405)
+  val () = _w4(arr, alen, 1792, 929117219)
+  val () = _w4(arr, alen, 1796, 993604963)
+  val () = _w4(arr, alen, 1800, 1869377379)
+  val () = _w4(arr, alen, 1804, 1713584754)
+  val () = _w4(arr, alen, 1808, 1648060006)
+  val () = _w4(arr, alen, 1812, 1701081711)
+  val () = _w4(arr, alen, 1816, 1634872690)
+  val () = _w4(arr, alen, 1820, 1937074532)
+  val () = _w4(arr, alen, 1824, 2020619322)
+  val () = _w4(arr, alen, 1828, 1852794427)
+  val () = _w4(arr, alen, 1832, 1769155956)
+  val () = _w4(arr, alen, 1836, 825910650)
+  val () = _w4(arr, alen, 1840, 997025138)
+  val () = _w4(arr, alen, 1844, 1835626081)
+  val () = _w4(arr, alen, 1848, 1869182049)
+  val () = _w4(arr, alen, 1852, 1970289262)
+  val () = _w4(arr, alen, 1856, 543519596)
+  val () = _w4(arr, alen, 1860, 1932865073)
+  val () = _w4(arr, alen, 1864, 1935762720)
+  val () = _w4(arr, alen, 1868, 1852386661)
+  val () = _w4(arr, alen, 1872, 1953853229)
+  val () = _w4(arr, alen, 1876, 1718511904)
+  val () = _w4(arr, alen, 1880, 1953066601)
+  val () = _w4(arr, alen, 1884, 1799388517)
+  (* @keyframes pulse *)
+  val () = _w4(arr, alen, 1888, 1919318373)
+  val () = _w4(arr, alen, 1892, 1936026977)
+  val () = _w4(arr, alen, 1896, 1819635744)
+  val () = _w4(arr, alen, 1900, 813393267)
+  val () = _w4(arr, alen, 1904, 808528933)
+  val () = _w4(arr, alen, 1908, 1870341424)
+  val () = _w4(arr, alen, 1912, 1768120688)
+  val () = _w4(arr, alen, 1916, 825915764)
+  val () = _w4(arr, alen, 1920, 623916413)
+  val () = _w4(arr, alen, 1924, 1634758523)
+  val () = _w4(arr, alen, 1928, 2037672291)
+  val () = _w4(arr, alen, 1932, 2100702778)
+  (* .import-status *)
+  val () = _w4(arr, alen, 1936, 1835609725)
+  val () = _w4(arr, alen, 1940, 1953656688)
+  val () = _w4(arr, alen, 1944, 1635021613)
+  val () = _w4(arr, alen, 1948, 2071164276)
+  val () = _w4(arr, alen, 1952, 1684300144)
+  val () = _w4(arr, alen, 1956, 979857001)
+  val () = _w4(arr, alen, 1960, 1915822128)
+  val () = _w4(arr, alen, 1964, 1664839013)
+  val () = _w4(arr, alen, 1968, 1919904879)
+  val () = _w4(arr, alen, 1972, 943203130)
+  val () = _w4(arr, alen, 1976, 1868970808)
+  val () = _w4(arr, alen, 1980, 1932358766)
+  val () = _w4(arr, alen, 1984, 979729001)
+  val () = _w4(arr, alen, 1988, 1916090414)
+  val () = _w4(arr, alen, 1992, 1832611173)
+  val () = _w4(arr, alen, 1996, 1747807849)
+  val () = _w4(arr, alen, 2000, 1751607653)
+  val () = _w4(arr, alen, 2004, 774978164)
+  val () = _w4(arr, alen, 2008, 2104321330)
+in end
+
+fn fill_css {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), alen: int n): void = let
+  val () = fill_css_base(arr, alen)
+  val () = fill_css_cards(arr, alen)
+  val () = fill_css_reader(arr, alen)
+  val () = fill_css_content(arr, alen)
+  val () = fill_css_import(arr, alen)
+in end
 
 (* Create a <style> element under parent and fill it with app CSS.
  * Called at the start of both render_library and enter_reader so that
  * each view has its styles after remove_children clears the previous. *)
 fn inject_app_css {l:agz}
   (s: ward_dom_stream(l), parent: int): ward_dom_stream(l) = let
-  val css_len = _app_css_len()
-in
-  if css_len < 65536 then
-  if css_len + 7 <= 262144 then let
-    val css_arr = ward_arr_alloc<byte>(css_len)
-    val () = _fill_css(css_arr)
-    val style_id = dom_next_id()
-    val s = ward_dom_stream_create_element(s, style_id, parent, tag_style(), 5)
-    val @(frozen, borrow) = ward_arr_freeze<byte>(css_arr)
-    val s = ward_dom_stream_set_text(s, style_id, borrow, css_len)
-    val () = ward_arr_drop<byte>(frozen, borrow)
-    val css_arr = ward_arr_thaw<byte>(frozen)
-    val () = ward_arr_free<byte>(css_arr)
-  in s end
-  else s
-  else s
-end
+  val css_arr = ward_arr_alloc<byte>(APP_CSS_LEN)
+  val () = fill_css(css_arr, APP_CSS_LEN)
+  val style_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, style_id, parent, tag_style(), 5)
+  val @(frozen, borrow) = ward_arr_freeze<byte>(css_arr)
+  val s = ward_dom_stream_set_text(s, style_id, borrow, APP_CSS_LEN)
+  val () = ward_arr_drop<byte>(frozen, borrow)
+  val css_arr = ward_arr_thaw<byte>(frozen)
+  val () = ward_arr_free<byte>(css_arr)
+in s end
 
 (* ========== Helper: set text content from C string constant ========== *)
 
@@ -448,6 +1160,53 @@ in
     else s
   else s
 end
+
+(* ========== Import progress DOM update helpers ========== *)
+
+(* Update a node's text content from a fill_text constant.
+ * Opens/closes its own DOM stream — safe to call from promise callbacks. *)
+fn update_status_text(nid: int, text_id: int, text_len: int): void = let
+  val tl = g1ofg0(text_len)
+in
+  if tl > 0 then
+    if tl < 65536 then let
+      val dom = ward_dom_init()
+      val s = ward_dom_stream_begin(dom)
+      val s = set_text_cstr(s, nid, text_id, text_len)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+    in end
+    else ()
+  else ()
+end
+
+(* Set CSS class on import label: 1=importing, 0=import-btn *)
+fn update_import_label_class(label_id: int, importing: int): void = let
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+in
+  if gt_int_int(importing, 0) then let
+    val s = ward_dom_stream_set_attr_safe(s, label_id, attr_class(), 5,
+      cls_importing(), 9)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+  in end
+  else let
+    val s = ward_dom_stream_set_attr_safe(s, label_id, attr_class(), 5,
+      cls_import_btn(), 10)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+  in end
+end
+
+(* Clear text content of a node by removing its children *)
+fn clear_node(nid: int): void = let
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+  val s = ward_dom_stream_remove_children(s, nid)
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
+in end
 
 (* ========== Page navigation helpers ========== *)
 
@@ -586,7 +1345,7 @@ end
 
 fn epub_read_container(handle: int): int = let
   val _cl = epub_copy_container_path(0)
-  val idx = zip_find_entry(get_string_buf(), 22)
+  val idx = zip_find_entry(22)
 in
   if gt_int_int(0, idx) then 0
   else let
@@ -617,7 +1376,7 @@ end
 
 fn epub_read_opf(handle: int): int = let
   val opf_len = epub_copy_opf_path(0)
-  val idx = zip_find_entry(get_string_buf(), opf_len)
+  val idx = zip_find_entry(opf_len)
 in
   if gt_int_int(0, idx) then 0
   else let
@@ -761,7 +1520,7 @@ in
   if lt1_int_int(ci, count) then let
     prval pf = SPINE_ENTRY()
     val path_len = epub_copy_spine_path(pf | ci, count, 0)
-    val zip_idx = zip_find_entry(get_string_buf(), path_len)
+    val zip_idx = zip_find_entry(path_len)
   in
     if gte_int_int(zip_idx, 0) then let
       var entry: zip_entry
@@ -910,17 +1669,51 @@ end
 
 (* ========== Render library view ========== *)
 
+(* Register click listeners on all read buttons.
+ * Shared by initial render and post-import re-render. *)
+fun register_read_btns(i: int, n: int, root: int): void =
+  if gte_int_int(i, n) then ()
+  else let
+    val btn_id = reader_get_btn_id(i)
+    val book_idx = i
+    val saved_r = root
+  in
+    if gt_int_int(btn_id, 0) then let
+      val () = ward_add_event_listener(
+        btn_id, evt_click(), 5, 2 + i,
+        lam (_pl: int): int => let
+          val () = enter_reader(saved_r, book_idx)
+        in 0 end
+      )
+    in register_read_btns(i + 1, n, root) end
+    else register_read_btns(i + 1, n, root)
+  end
+
+(* Import phase ordering: proves each phase follows the previous.
+ * BUG PREVENTED: Copy-paste reordering of import phases would break
+ * the proof chain — each phase requires the previous phase's proof. *)
+dataprop IMPORT_PHASE(phase: int) =
+  | PHASE_OPEN(0)
+  | {p:int | p == 0} PHASE_ZIP(1) of IMPORT_PHASE(p)
+  | {p:int | p == 1} PHASE_META(2) of IMPORT_PHASE(p)
+  | {p:int | p == 2} PHASE_ADD(3) of IMPORT_PHASE(p)
+
+extern praxi consume_phase {p:int} (pf: IMPORT_PHASE(p)): void
+
 implement render_library(root_id) = let
   val dom = ward_dom_init()
   val s = ward_dom_stream_begin(dom)
   val s = ward_dom_stream_remove_children(s, root_id)
   val s = inject_app_css(s, root_id)
 
-  (* Import button: <label class="import-btn">Import<input ...></label> *)
+  (* Import button: <label class="import-btn"><span>Import</span><input ...></label>
+   * Text is in a <span> so we can update it during import without destroying <input>. *)
   val label_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, label_id, root_id, tag_label(), 5)
   val s = ward_dom_stream_set_attr_safe(s, label_id, attr_class(), 5, cls_import_btn(), 10)
 
+  val span_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, span_id, label_id, tag_span(), 4)
   val import_st = let
     val b = ward_text_build(6)
     val b = ward_text_putc(b, 0, 73) (* 'I' *)
@@ -930,12 +1723,17 @@ implement render_library(root_id) = let
     val b = ward_text_putc(b, 4, char2int1('r'))
     val b = ward_text_putc(b, 5, char2int1('t'))
   in ward_text_done(b) end
-  val s = ward_dom_stream_set_safe_text(s, label_id, import_st, 6)
+  val s = ward_dom_stream_set_safe_text(s, span_id, import_st, 6)
 
   val input_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, input_id, label_id, tag_input(), 5)
   val s = ward_dom_stream_set_attr_safe(s, input_id, attr_type(), 4, st_file(), 4)
   val s = set_attr_cstr(s, input_id, attr_accept(), 6, TEXT_EPUB_EXT, 5)
+
+  (* Status div: <div class="import-status"></div> — updated during import *)
+  val status_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, status_id, root_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, status_id, attr_class(), 5, cls_import_status(), 13)
 
   (* Library list *)
   val list_id = dom_next_id()
@@ -943,135 +1741,129 @@ implement render_library(root_id) = let
   val s = ward_dom_stream_set_attr_safe(s, list_id, attr_class(), 5, cls_library_list(), 12)
 
   val count = library_get_count()
-in
-  if gt_int_int(count, 0) then let
-    (* Render book cards *)
-    val s = render_library_with_books(s, list_id)
-    val dom = ward_dom_stream_end(s)
-    val () = ward_dom_fini(dom)
+  val () =
+    if gt_int_int(count, 0) then let
+      (* Render book cards *)
+      val s = render_library_with_books(s, list_id)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+    in end
+    else let
+      (* Empty library message *)
+      val empty_id = dom_next_id()
+      val s = ward_dom_stream_create_element(s, empty_id, list_id, tag_div(), 3)
+      val s = ward_dom_stream_set_attr_safe(s, empty_id, attr_class(), 5, cls_empty_lib(), 9)
+      val s = set_text_cstr(s, empty_id, TEXT_NO_BOOKS, 12)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+    in end
 
-    (* Register change listener on file input *)
-    val saved_input_id = input_id
-    val saved_list_id = list_id
-    val saved_root = root_id
-    val () = ward_add_event_listener(
-      input_id, evt_change(), 6, 1,
-      lam (_payload_len: int): int => let
-        val p = ward_file_open(saved_input_id)
-        val p2 = ward_promise_then<int><int>(p,
-          llam (handle: int): ward_promise_chained(int) => let
-            val file_size = ward_file_get_size()
-            val () = reader_set_file_handle(handle)
-            (* Async break: yield to event loop to reset V8 call stack.
-             * Chrome renderer stack is ~864KB; the synchronous EPUB
-             * import chain exceeds this with ext# wrapper overhead. *)
-            val break_p = ward_timer_set(0)
-            val sh = handle val sfs = file_size val sli = saved_list_id
-          in ward_promise_then<int><int>(break_p,
-            llam (_unused: int): ward_promise_chained(int) => let
-              val _nentries = zip_open(sh, sfs)
+  (* Register click listeners on read buttons (if any) *)
+  val () = register_read_btns(0, count, root_id)
+
+  (* Register change listener on file input — shared import handler.
+   * Multi-phase promise chain with timer yields between phases
+   * for UI responsiveness (browser can paint progress updates). *)
+  val saved_input_id = input_id
+  val saved_list_id = list_id
+  val saved_root = root_id
+  val saved_label_id = label_id
+  val saved_span_id = span_id
+  val saved_status_id = status_id
+  val () = ward_add_event_listener(
+    input_id, evt_change(), 6, 1,
+    lam (_payload_len: int): int => let
+      (* Phase 0 — visual setup *)
+      prval pf0 = PHASE_OPEN()
+      val () = ward_log(1, log_import_start(), 12)
+      val () = quire_set_title(1)
+      val () = update_import_label_class(saved_label_id, 1)
+      val () = update_status_text(saved_span_id, TEXT_IMPORTING, 9)
+      val () = update_status_text(saved_status_id, TEXT_OPENING_FILE, 12)
+
+      val p = ward_file_open(saved_input_id)
+      val p2 = ward_promise_then<int><int>(p,
+        llam (handle: int): ward_promise_chained(int) => let
+          (* Phase 1 — file open complete, consumes pf0 *)
+          prval pf1 = PHASE_ZIP(pf0)
+          val file_size = ward_file_get_size()
+          val () = reader_set_file_handle(handle)
+
+          (* Phase 1: Parse ZIP — yield first for "Opening file" to paint *)
+          val p1 = ward_timer_set(0)
+          val sh = handle val sfs = file_size
+          val sli = saved_list_id val sr = saved_root
+          val slbl = saved_label_id val sspn = saved_span_id
+          val ssts = saved_status_id
+        in ward_promise_then<int><int>(p1,
+          llam (_: int): ward_promise_chained(int) => let
+            (* Phase 2 — parse ZIP, consumes pf1 *)
+            prval pf2 = PHASE_META(pf1)
+            val () = update_status_text(ssts, TEXT_PARSING_ZIP, 15)
+            val _nentries = zip_open(sh, sfs)
+
+            (* Phase 2: Read EPUB metadata — yield for "Parsing archive" to paint *)
+            val p2 = ward_timer_set(0)
+          in ward_promise_then<int><int>(p2,
+            llam (_: int): ward_promise_chained(int) => let
+              (* Phase 3 — read metadata, consumes pf2 *)
+              prval pf3 = PHASE_ADD(pf2)
+              val () = update_status_text(ssts, TEXT_READING_META, 16)
               val ok1 = epub_read_container(sh)
               val ok2 = (if gt_int_int(ok1, 0)
                 then epub_read_opf(sh) else 0): int
-              val _book_idx = (if gt_int_int(ok2, 0)
-                then library_add_book() else 0 - 1): int
-              val dom = ward_dom_init()
-              val s = ward_dom_stream_begin(dom)
-              val s = render_library_with_books(s, sli)
-              val dom = ward_dom_stream_end(s)
-              val () = ward_dom_fini(dom)
-            in ward_promise_return<int>(0) end)
+
+              (* Phase 3: Add book + re-render — yield for "Reading metadata" to paint *)
+              val p3 = ward_timer_set(0)
+            in ward_promise_then<int><int>(p3,
+              llam (_: int): ward_promise_chained(int) => let
+                (* Phase 3 complete — consume final proof *)
+                prval () = consume_phase(pf3)
+                val () = update_status_text(ssts, TEXT_ADDING_BOOK, 17)
+                val _book_idx = (if gt_int_int(ok2, 0)
+                  then library_add_book() else 0 - 1): int
+
+                (* Re-render library list *)
+                val dom = ward_dom_init()
+                val s = ward_dom_stream_begin(dom)
+                val s = render_library_with_books(s, sli)
+                val dom = ward_dom_stream_end(s)
+                val () = ward_dom_fini(dom)
+
+                (* Register click listeners on all rendered read buttons *)
+                val btn_count = library_get_count()
+                val () = register_read_btns(0, btn_count, sr)
+
+                (* Restore UI *)
+                val () = quire_set_title(0)
+                val () = update_import_label_class(slbl, 0)
+
+                (* Restore span text to "Import" *)
+                val import_st2 = let
+                  val b = ward_text_build(6)
+                  val b = ward_text_putc(b, 0, 73) (* 'I' *)
+                  val b = ward_text_putc(b, 1, char2int1('m'))
+                  val b = ward_text_putc(b, 2, char2int1('p'))
+                  val b = ward_text_putc(b, 3, char2int1('o'))
+                  val b = ward_text_putc(b, 4, char2int1('r'))
+                  val b = ward_text_putc(b, 5, char2int1('t'))
+                in ward_text_done(b) end
+                val dom2 = ward_dom_init()
+                val s2 = ward_dom_stream_begin(dom2)
+                val s2 = ward_dom_stream_set_safe_text(s2, sspn, import_st2, 6)
+                val dom2 = ward_dom_stream_end(s2)
+                val () = ward_dom_fini(dom2)
+                val () = clear_node(ssts)
+
+                val () = ward_log(1, log_import_done(), 11)
+              in ward_promise_return<int>(0) end)
+            end)
           end)
-        val () = ward_promise_discard<int>(p2)
-      in 0 end
-    )
-
-    (* Register click listeners on read buttons *)
-    fun reg_btns(i: int, n: int, root: int): void =
-      if gte_int_int(i, n) then ()
-      else let
-        val btn_id = reader_get_btn_id(i)
-        val book_idx = i
-        val saved_r = root
-      in
-        if gt_int_int(btn_id, 0) then let
-          val () = ward_add_event_listener(
-            btn_id, evt_click(), 5, 2 + i,
-            lam (_pl: int): int => let
-              val () = enter_reader(saved_r, book_idx)
-            in 0 end
-          )
-        in reg_btns(i + 1, n, root) end
-        else reg_btns(i + 1, n, root)
-      end
-    val () = reg_btns(0, count, root_id)
-  in end
-  else let
-    (* Empty library message *)
-    val empty_id = dom_next_id()
-    val s = ward_dom_stream_create_element(s, empty_id, list_id, tag_div(), 3)
-    val s = ward_dom_stream_set_attr_safe(s, empty_id, attr_class(), 5, cls_empty_lib(), 9)
-    val s = set_text_cstr(s, empty_id, TEXT_NO_BOOKS, 12)
-    val dom = ward_dom_stream_end(s)
-    val () = ward_dom_fini(dom)
-
-    (* Register change listener on file input *)
-    val saved_input_id = input_id
-    val saved_list_id = list_id
-    val saved_root = root_id
-    val () = ward_add_event_listener(
-      input_id, evt_change(), 6, 1,
-      lam (_payload_len: int): int => let
-        val p = ward_file_open(saved_input_id)
-        val p2 = ward_promise_then<int><int>(p,
-          llam (handle: int): ward_promise_chained(int) => let
-            val file_size = ward_file_get_size()
-            val () = reader_set_file_handle(handle)
-            (* Async break: yield to event loop to reset V8 call stack *)
-            val break_p = ward_timer_set(0)
-            val sh = handle val sfs = file_size
-            val sli = saved_list_id val sr = saved_root
-          in ward_promise_then<int><int>(break_p,
-            llam (_unused: int): ward_promise_chained(int) => let
-              val _nentries = zip_open(sh, sfs)
-              val ok1 = epub_read_container(sh)
-              val ok2 = (if gt_int_int(ok1, 0)
-                then epub_read_opf(sh) else 0): int
-              val _book_idx = (if gt_int_int(ok2, 0)
-                then library_add_book() else 0 - 1): int
-              val dom = ward_dom_init()
-              val s = ward_dom_stream_begin(dom)
-              val s = render_library_with_books(s, sli)
-              val dom = ward_dom_stream_end(s)
-              val () = ward_dom_fini(dom)
-
-              (* Register click listeners on newly rendered read buttons *)
-              val btn_count = library_get_count()
-              fun reg_new_btns(i: int, n: int, root: int): void =
-                if gte_int_int(i, n) then ()
-                else let
-                  val bid = reader_get_btn_id(i)
-                  val bidx = i
-                  val sroot = root
-                in
-                  if gt_int_int(bid, 0) then let
-                    val () = ward_add_event_listener(
-                      bid, evt_click(), 5, 2 + i,
-                      lam (_pl2: int): int => let
-                        val () = enter_reader(sroot, bidx)
-                      in 0 end
-                    )
-                  in reg_new_btns(i + 1, n, root) end
-                  else reg_new_btns(i + 1, n, root)
-                end
-              val () = reg_new_btns(0, btn_count, sr)
-            in ward_promise_return<int>(0) end)
-          end)
-        val () = ward_promise_discard<int>(p2)
-      in 0 end
-    )
-  in end
-end
+        end)
+      val () = ward_promise_discard<int>(p2)
+    in 0 end
+  )
+in end
 
 (* ========== Enter reader view ========== *)
 

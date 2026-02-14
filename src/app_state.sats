@@ -4,7 +4,8 @@
  * Threaded through functions as a parameter; stored in the
  * callback registry context across async boundaries.
  *
- * No mutable globals. No C code. No ptr in any declaration.
+ * All buffer fields are ward_arr(byte, l, CAP) — linear, bounds-checked.
+ * No mutable globals. No C code. No raw ptr in any declaration.
  *)
 
 staload "./buf.sats"
@@ -50,7 +51,6 @@ fun app_get_lib_meta_load_pending(st: !app_state): int
 fun app_set_lib_meta_load_pending(st: !app_state, v: int): void
 fun app_get_lib_meta_load_index(st: !app_state): int
 fun app_set_lib_meta_load_index(st: !app_state, v: int): void
-(* Library books — internal, no cross-module ptr access *)
 
 (* Settings values *)
 fun app_get_stg_font_size(st: !app_state): int
@@ -137,7 +137,6 @@ fun app_set_rdr_btn_id(st: !app_state, idx: int, v: int): void
 (* EPUB state *)
 fun app_get_epub_spine_count(st: !app_state): int
 fun app_set_epub_spine_count(st: !app_state, v: int): void
-(* EPUB scalar accessors — no ptr returns *)
 fun app_get_epub_title_len(st: !app_state): int
 fun app_set_epub_title_len(st: !app_state, v: int): void
 fun app_get_epub_author_len(st: !app_state): int
@@ -173,7 +172,12 @@ fun _app_lib_meta_load_pend(): int
 fun _app_set_lib_meta_load_pend(v: int): void
 fun _app_lib_meta_load_idx(): int
 fun _app_set_lib_meta_load_idx(v: int): void
-fun _app_lib_books_buf(): sized_buf(LIB_BOOKS_CAP)
+
+(* Library books — per-byte/i32 accessors (bounds-checked via ward_arr) *)
+fun _app_lib_books_get_u8(off: int): int
+fun _app_lib_books_set_u8(off: int, v: int): void
+fun _app_lib_books_get_i32(idx: int): int
+fun _app_lib_books_set_i32(idx: int, v: int): void
 
 (* Settings accessors *)
 fun _app_stg_font_size(): int
@@ -227,32 +231,81 @@ fun _app_set_stg_save_pend(v: int): void
 fun _app_stg_load_pend(): int
 fun _app_set_stg_load_pend(v: int): void
 
-(* EPUB accessors — sized_buf for buffer pointers *)
+(* EPUB accessors — per-buffer byte/i32 access (bounds-checked) *)
 fun _app_epub_spine_count(): int
 fun _app_set_epub_spine_count(v: int): void
-fun _app_epub_title_buf(): sized_buf(EPUB_TITLE_CAP)
 fun _app_epub_title_len(): int
 fun _app_set_epub_title_len(v: int): void
-fun _app_epub_author_buf(): sized_buf(EPUB_AUTHOR_CAP)
 fun _app_epub_author_len(): int
 fun _app_set_epub_author_len(v: int): void
-fun _app_epub_book_id_buf(): sized_buf(EPUB_BOOKID_CAP)
 fun _app_epub_book_id_len(): int
 fun _app_set_epub_book_id_len(v: int): void
-fun _app_epub_opf_path_buf(): sized_buf(EPUB_OPF_CAP)
 fun _app_epub_opf_path_len(): int
 fun _app_set_epub_opf_path_len(v: int): void
 fun _app_epub_opf_dir_len(): int
 fun _app_set_epub_opf_dir_len(v: int): void
 fun _app_epub_state(): int
 fun _app_set_epub_state(v: int): void
-fun _app_epub_spine_path_buf(): sized_buf(EPUB_SPINE_BUF_CAP)
-fun _app_epub_spine_path_offsets(): sized_buf(EPUB_SPINE_OFF_CAP)
-fun _app_epub_spine_path_lens(): sized_buf(EPUB_SPINE_LEN_CAP)
 fun _app_epub_spine_path_count(): int
 fun _app_set_epub_spine_path_count(v: int): void
 fun _app_epub_spine_path_pos(): int
 fun _app_set_epub_spine_path_pos(v: int): void
+
+(* EPUB title buffer *)
+fun _app_epub_title_get_u8(off: int): int
+fun _app_epub_title_set_u8(off: int, v: int): void
+
+(* EPUB author buffer *)
+fun _app_epub_author_get_u8(off: int): int
+fun _app_epub_author_set_u8(off: int, v: int): void
+
+(* EPUB book ID buffer *)
+fun _app_epub_book_id_get_u8(off: int): int
+fun _app_epub_book_id_set_u8(off: int, v: int): void
+
+(* EPUB OPF path buffer *)
+fun _app_epub_opf_path_get_u8(off: int): int
+fun _app_epub_opf_path_set_u8(off: int, v: int): void
+
+(* EPUB spine path buffer *)
+fun _app_epub_spine_buf_get_u8(off: int): int
+fun _app_epub_spine_buf_set_u8(off: int, v: int): void
+
+(* EPUB spine offsets/lens (i32 access) *)
+fun _app_epub_spine_offsets_get_i32(idx: int): int
+fun _app_epub_spine_offsets_set_i32(idx: int, v: int): void
+fun _app_epub_spine_lens_get_i32(idx: int): int
+fun _app_epub_spine_lens_set_i32(idx: int, v: int): void
+
+(* String buffer — byte access *)
+fun _app_sbuf_get_u8(off: int): int
+fun _app_sbuf_set_u8(off: int, v: int): void
+
+(* Fetch buffer — byte access *)
+fun _app_fbuf_get_u8(off: int): int
+fun _app_fbuf_set_u8(off: int, v: int): void
+
+(* Diff buffer — byte and i32 access *)
+fun _app_dbuf_get_u8(off: int): int
+fun _app_dbuf_set_u8(off: int, v: int): void
+fun _app_dbuf_get_i32(idx: int): int
+fun _app_dbuf_set_i32(idx: int, v: int): void
+
+(* Bulk copy functions — single load/store cycle for tight loops *)
+fun _app_copy_fbuf_to_epub_title(src_off: int, len: int): void
+fun _app_copy_fbuf_to_epub_author(src_off: int, len: int): void
+fun _app_copy_fbuf_to_epub_book_id(src_off: int, len: int): void
+fun _app_copy_fbuf_to_epub_opf_path(src_off: int, len: int): void
+fun _app_copy_fbuf_to_epub_spine_buf(src_off: int, dst_off: int, len: int): void
+fun _app_copy_opf_path_to_epub_spine_buf(dst_off: int, len: int): void
+fun _app_copy_epub_title_to_sbuf(dst_off: int, len: int): void
+fun _app_copy_epub_author_to_sbuf(dst_off: int, len: int): void
+fun _app_copy_epub_book_id_to_sbuf(dst_off: int, len: int): void
+fun _app_copy_epub_opf_path_to_sbuf(dst_off: int, len: int): void
+fun _app_copy_epub_spine_buf_to_sbuf(src_off: int, dst_off: int, len: int): void
+fun _app_copy_sbuf_to_lib_books(dst_off: int, src_off: int, len: int): void
+fun _app_copy_lib_books_to_sbuf(src_off: int, dst_off: int, len: int): void
+fun _app_lib_books_match_bid(book_base: int, bid_len: int): int
 
 (* ZIP accessors *)
 fun _zip_entry_file_handle(i: int): int
@@ -266,5 +319,3 @@ fun _zip_name_char(off: int): int
 fun _zip_name_buf_put(off: int, byte_val: int): int
 fun _zip_store_entry_at(idx: int, fh: int, no: int, nl: int,
   comp: int, cs: int, us: int, lo: int): int
-
-(* Buffer accessors — module-private ext# in app_state.dats *)

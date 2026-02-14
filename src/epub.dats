@@ -1,306 +1,247 @@
 (* epub.dats - EPUB import pipeline implementation
  *
- * All epub functions implemented in pure ATS2 using app_state.
- * State stored via app_state_load/store pattern.
+ * Pure ATS2 — all buffer access via ward_arr or app_state accessors.
+ * No $UNSAFE, no raw ptr, no C blocks.
  *)
 
 #define ATS_DYNLOADFLAG 0
 
 #include "share/atspre_staload.hats"
-staload UN = "prelude/SATS/unsafe.sats"
 staload "./../vendor/ward/lib/memory.sats"
+staload _ = "./../vendor/ward/lib/memory.dats"
 staload "./epub.sats"
 staload "./app_state.sats"
 
 staload "./arith.sats"
-staload "./buf.sats"
 
-(* Module-private raw ptr buffer access — stays within epub.dats.
- * All cross-module APIs use sized_buf or ward_arr. *)
-extern fun buf_get_u8(p: ptr, off: int): int = "mac#buf_get_u8"
-extern fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#buf_set_u8"
-extern fun buf_get_i32(p: ptr, idx: int): int = "mac#buf_get_i32"
-extern fun buf_set_i32(p: ptr, idx: int, v: int): void = "mac#buf_set_i32"
-extern fun get_string_buffer_ptr(): ptr = "mac#get_string_buffer_ptr"
+(* ========== Ward arr byte helpers ========== *)
 
-(* Convert sized_buf back to ptr for internal helpers.
- * sized_buf(cap) erases to ptr at runtime; this is a no-op cast. *)
-extern castfn _sbuf_ptr {n:nat} (b: sized_buf(n)): ptr
+(* Read byte from ward_arr *)
+fn _ab {l:agz}{n:pos}
+  (a: !ward_arr(byte, l, n), off: int, cap: int n): int =
+  byte2int0(ward_arr_get<byte>(a, _ward_idx(off, cap)))
 
-(* Borrow ward_arr as ptr for module-internal use.
- * ward_arr erases to ptr at runtime; this is a no-op cast. *)
-fn _borrow_ptr {l:agz}{n:pos}
-  (a: !ward_arr(byte, l, n)): ptr = $UN.castvwtp1{ptr}(a)
+(* Write byte to ward_arr *)
+fn _wb {l:agz}{n:pos}
+  (a: !ward_arr(byte, l, n), off: int, v: int, cap: int n): void =
+  ward_arr_set<byte>(a, _ward_idx(off, cap), ward_int2byte(_checked_byte(v)))
 
 (* ========== Byte search helper ========== *)
 
 (* Find needle bytes in haystack starting at position start.
- * Returns index of first match, or -1 if not found. *)
-fn _find_bytes(hay: ptr, hay_len: int,
-               needle: ptr, needle_len: int, start: int): int = let
+ * Returns index of first match, or -1 if not found.
+ * hay_len is the search limit (<= hcap); hcap/ncap are physical capacities. *)
+fn _find_bytes {lh:agz}{nh:pos}{ln:agz}{nn:pos}
+  (hay: !ward_arr(byte, lh, nh), hay_len: int, hcap: int nh,
+   needle: !ward_arr(byte, ln, nn), needle_len: int, ncap: int nn,
+   start: int): int = let
   val limit = hay_len - needle_len
-  fun outer(i: int): int =
-    if gt_int_int(i, limit) then 0 - 1
+  fun outer {lh:agz}{nh:pos}{ln:agz}{nn:pos}
+    (hay: !ward_arr(byte, lh, nh), ndl: !ward_arr(byte, ln, nn),
+     i: int, hc: int nh, nc: int nn, lim: int, nlen: int): int =
+    if gt_int_int(i, lim) then 0 - 1
     else let
-      fun inner(j: int): bool =
-        if gte_int_int(j, needle_len) then true
-        else if neq_int_int(buf_get_u8(hay, i + j), buf_get_u8(needle, j)) then false
-        else inner(j + 1)
+      fun inner {lh:agz}{nh:pos}{ln:agz}{nn:pos}
+        (hay: !ward_arr(byte, lh, nh), ndl: !ward_arr(byte, ln, nn),
+         j: int, hc: int nh, nc: int nn, base: int, nlen: int): bool =
+        if gte_int_int(j, nlen) then true
+        else if neq_int_int(_ab(hay, base + j, hc), _ab(ndl, j, nc)) then false
+        else inner(hay, ndl, j + 1, hc, nc, base, nlen)
     in
-      if inner(0) then i
-      else outer(i + 1)
+      if inner(hay, ndl, 0, hc, nc, i, nlen) then i
+      else outer(hay, ndl, i + 1, hc, nc, lim, nlen)
     end
-in outer(start) end
+in outer(hay, needle, start, hcap, ncap, limit, needle_len) end
 
-(* ========== Needle builder helpers ========== *)
-
-(* Bump allocator — never freed *)
-extern fun _calloc(n: int, sz: int): ptr = "mac#calloc"
-
-(* Build a needle buffer from known byte values.
- * Returns ptr to a calloc'd buffer filled with the given bytes. *)
-
-(* "full-path=\"" = 102 117 108 108 45 112 97 116 104 61 34 — 11 bytes *)
-fn needle_full_path(): ptr = let
-  val p = _calloc(1, 11)
-  val () = buf_set_u8(p, 0, 102) (* f *)
-  val () = buf_set_u8(p, 1, 117) (* u *)
-  val () = buf_set_u8(p, 2, 108) (* l *)
-  val () = buf_set_u8(p, 3, 108) (* l *)
-  val () = buf_set_u8(p, 4, 45)  (* - *)
-  val () = buf_set_u8(p, 5, 112) (* p *)
-  val () = buf_set_u8(p, 6, 97)  (* a *)
-  val () = buf_set_u8(p, 7, 116) (* t *)
-  val () = buf_set_u8(p, 8, 104) (* h *)
-  val () = buf_set_u8(p, 9, 61)  (* = *)
-  val () = buf_set_u8(p, 10, 34) (* " *)
-in p end
-
-(* "<dc:title>" = 60 100 99 58 116 105 116 108 101 62 — 10 bytes *)
-fn needle_dc_title_open(): ptr = let
-  val p = _calloc(1, 10)
-  val () = buf_set_u8(p, 0, 60)  (* < *)
-  val () = buf_set_u8(p, 1, 100) (* d *)
-  val () = buf_set_u8(p, 2, 99)  (* c *)
-  val () = buf_set_u8(p, 3, 58)  (* : *)
-  val () = buf_set_u8(p, 4, 116) (* t *)
-  val () = buf_set_u8(p, 5, 105) (* i *)
-  val () = buf_set_u8(p, 6, 116) (* t *)
-  val () = buf_set_u8(p, 7, 108) (* l *)
-  val () = buf_set_u8(p, 8, 101) (* e *)
-  val () = buf_set_u8(p, 9, 62)  (* > *)
-in p end
-
-(* "</dc:title>" = 60 47 100 99 58 116 105 116 108 101 62 — 11 bytes *)
-fn needle_dc_title_close(): ptr = let
-  val p = _calloc(1, 11)
-  val () = buf_set_u8(p, 0, 60)  (* < *)
-  val () = buf_set_u8(p, 1, 47)  (* / *)
-  val () = buf_set_u8(p, 2, 100) (* d *)
-  val () = buf_set_u8(p, 3, 99)  (* c *)
-  val () = buf_set_u8(p, 4, 58)  (* : *)
-  val () = buf_set_u8(p, 5, 116) (* t *)
-  val () = buf_set_u8(p, 6, 105) (* i *)
-  val () = buf_set_u8(p, 7, 116) (* t *)
-  val () = buf_set_u8(p, 8, 108) (* l *)
-  val () = buf_set_u8(p, 9, 101) (* e *)
-  val () = buf_set_u8(p, 10, 62) (* > *)
-in p end
-
-(* "<dc:creator>" = 60 100 99 58 99 114 101 97 116 111 114 62 — 12 bytes *)
-fn needle_dc_creator_open(): ptr = let
-  val p = _calloc(1, 12)
-  val () = buf_set_u8(p, 0, 60)  (* < *)
-  val () = buf_set_u8(p, 1, 100) (* d *)
-  val () = buf_set_u8(p, 2, 99)  (* c *)
-  val () = buf_set_u8(p, 3, 58)  (* : *)
-  val () = buf_set_u8(p, 4, 99)  (* c *)
-  val () = buf_set_u8(p, 5, 114) (* r *)
-  val () = buf_set_u8(p, 6, 101) (* e *)
-  val () = buf_set_u8(p, 7, 97)  (* a *)
-  val () = buf_set_u8(p, 8, 116) (* t *)
-  val () = buf_set_u8(p, 9, 111) (* o *)
-  val () = buf_set_u8(p, 10, 114)(* r *)
-  val () = buf_set_u8(p, 11, 62) (* > *)
-in p end
-
-(* "</dc:creator>" = 60 47 100 99 58 99 114 101 97 116 111 114 62 — 13 bytes *)
-fn needle_dc_creator_close(): ptr = let
-  val p = _calloc(1, 13)
-  val () = buf_set_u8(p, 0, 60)  (* < *)
-  val () = buf_set_u8(p, 1, 47)  (* / *)
-  val () = buf_set_u8(p, 2, 100) (* d *)
-  val () = buf_set_u8(p, 3, 99)  (* c *)
-  val () = buf_set_u8(p, 4, 58)  (* : *)
-  val () = buf_set_u8(p, 5, 99)  (* c *)
-  val () = buf_set_u8(p, 6, 114) (* r *)
-  val () = buf_set_u8(p, 7, 101) (* e *)
-  val () = buf_set_u8(p, 8, 97)  (* a *)
-  val () = buf_set_u8(p, 9, 116) (* t *)
-  val () = buf_set_u8(p, 10, 111)(* o *)
-  val () = buf_set_u8(p, 11, 114)(* r *)
-  val () = buf_set_u8(p, 12, 62) (* > *)
-in p end
-
-(* "<dc:identifier" = 60 100 99 58 105 100 101 110 116 105 102 105 101 114 — 14 bytes *)
-fn needle_dc_identifier_open(): ptr = let
-  val p = _calloc(1, 14)
-  val () = buf_set_u8(p, 0, 60)  (* < *)
-  val () = buf_set_u8(p, 1, 100) (* d *)
-  val () = buf_set_u8(p, 2, 99)  (* c *)
-  val () = buf_set_u8(p, 3, 58)  (* : *)
-  val () = buf_set_u8(p, 4, 105) (* i *)
-  val () = buf_set_u8(p, 5, 100) (* d *)
-  val () = buf_set_u8(p, 6, 101) (* e *)
-  val () = buf_set_u8(p, 7, 110) (* n *)
-  val () = buf_set_u8(p, 8, 116) (* t *)
-  val () = buf_set_u8(p, 9, 105) (* i *)
-  val () = buf_set_u8(p, 10, 102)(* f *)
-  val () = buf_set_u8(p, 11, 105)(* i *)
-  val () = buf_set_u8(p, 12, 101)(* e *)
-  val () = buf_set_u8(p, 13, 114)(* r *)
-in p end
-
-(* "</dc:identifier>" — 16 bytes *)
-fn needle_dc_identifier_close(): ptr = let
-  val p = _calloc(1, 16)
-  val () = buf_set_u8(p, 0, 60)  (* < *)
-  val () = buf_set_u8(p, 1, 47)  (* / *)
-  val () = buf_set_u8(p, 2, 100) (* d *)
-  val () = buf_set_u8(p, 3, 99)  (* c *)
-  val () = buf_set_u8(p, 4, 58)  (* : *)
-  val () = buf_set_u8(p, 5, 105) (* i *)
-  val () = buf_set_u8(p, 6, 100) (* d *)
-  val () = buf_set_u8(p, 7, 101) (* e *)
-  val () = buf_set_u8(p, 8, 110) (* n *)
-  val () = buf_set_u8(p, 9, 116) (* t *)
-  val () = buf_set_u8(p, 10, 105)(* i *)
-  val () = buf_set_u8(p, 11, 102)(* f *)
-  val () = buf_set_u8(p, 12, 105)(* i *)
-  val () = buf_set_u8(p, 13, 101)(* e *)
-  val () = buf_set_u8(p, 14, 114)(* r *)
-  val () = buf_set_u8(p, 15, 62) (* > *)
-in p end
-
-(* "<itemref " — 9 bytes *)
-fn needle_itemref(): ptr = let
-  val p = _calloc(1, 9)
-  val () = buf_set_u8(p, 0, 60)  (* < *)
-  val () = buf_set_u8(p, 1, 105) (* i *)
-  val () = buf_set_u8(p, 2, 116) (* t *)
-  val () = buf_set_u8(p, 3, 101) (* e *)
-  val () = buf_set_u8(p, 4, 109) (* m *)
-  val () = buf_set_u8(p, 5, 114) (* r *)
-  val () = buf_set_u8(p, 6, 101) (* e *)
-  val () = buf_set_u8(p, 7, 102) (* f *)
-  val () = buf_set_u8(p, 8, 32)  (* space *)
-in p end
-
-(* "idref=\"" — 7 bytes *)
-fn needle_idref(): ptr = let
-  val p = _calloc(1, 7)
-  val () = buf_set_u8(p, 0, 105) (* i *)
-  val () = buf_set_u8(p, 1, 100) (* d *)
-  val () = buf_set_u8(p, 2, 114) (* r *)
-  val () = buf_set_u8(p, 3, 101) (* e *)
-  val () = buf_set_u8(p, 4, 102) (* f *)
-  val () = buf_set_u8(p, 5, 61)  (* = *)
-  val () = buf_set_u8(p, 6, 34)  (* " *)
-in p end
-
-(* "<item " — 6 bytes *)
-fn needle_item(): ptr = let
-  val p = _calloc(1, 6)
-  val () = buf_set_u8(p, 0, 60)  (* < *)
-  val () = buf_set_u8(p, 1, 105) (* i *)
-  val () = buf_set_u8(p, 2, 116) (* t *)
-  val () = buf_set_u8(p, 3, 101) (* e *)
-  val () = buf_set_u8(p, 4, 109) (* m *)
-  val () = buf_set_u8(p, 5, 32)  (* space *)
-in p end
-
-(* " id=\"" — 5 bytes *)
-fn needle_id(): ptr = let
-  val p = _calloc(1, 5)
-  val () = buf_set_u8(p, 0, 32)  (* space *)
-  val () = buf_set_u8(p, 1, 105) (* i *)
-  val () = buf_set_u8(p, 2, 100) (* d *)
-  val () = buf_set_u8(p, 3, 61)  (* = *)
-  val () = buf_set_u8(p, 4, 34)  (* " *)
-in p end
-
-(* "href=\"" — 6 bytes *)
-fn needle_href(): ptr = let
-  val p = _calloc(1, 6)
-  val () = buf_set_u8(p, 0, 104) (* h *)
-  val () = buf_set_u8(p, 1, 114) (* r *)
-  val () = buf_set_u8(p, 2, 101) (* e *)
-  val () = buf_set_u8(p, 3, 102) (* f *)
-  val () = buf_set_u8(p, 4, 61)  (* = *)
-  val () = buf_set_u8(p, 5, 34)  (* " *)
-in p end
-
-(* ========== "META-INF/container.xml" constant (22 bytes) ========== *)
-
-(* Build once and cache as a module-level allocation *)
-fn _build_str_container(): ptr = let
-  val p = _calloc(1, 22)
-  val () = buf_set_u8(p, 0, 77)  (* M *)
-  val () = buf_set_u8(p, 1, 69)  (* E *)
-  val () = buf_set_u8(p, 2, 84)  (* T *)
-  val () = buf_set_u8(p, 3, 65)  (* A *)
-  val () = buf_set_u8(p, 4, 45)  (* - *)
-  val () = buf_set_u8(p, 5, 73)  (* I *)
-  val () = buf_set_u8(p, 6, 78)  (* N *)
-  val () = buf_set_u8(p, 7, 70)  (* F *)
-  val () = buf_set_u8(p, 8, 47)  (* / *)
-  val () = buf_set_u8(p, 9, 99)  (* c *)
-  val () = buf_set_u8(p, 10, 111)(* o *)
-  val () = buf_set_u8(p, 11, 110)(* n *)
-  val () = buf_set_u8(p, 12, 116)(* t *)
-  val () = buf_set_u8(p, 13, 97) (* a *)
-  val () = buf_set_u8(p, 14, 105)(* i *)
-  val () = buf_set_u8(p, 15, 110)(* n *)
-  val () = buf_set_u8(p, 16, 101)(* e *)
-  val () = buf_set_u8(p, 17, 114)(* r *)
-  val () = buf_set_u8(p, 18, 46) (* . *)
-  val () = buf_set_u8(p, 19, 120)(* x *)
-  val () = buf_set_u8(p, 20, 109)(* m *)
-  val () = buf_set_u8(p, 21, 108)(* l *)
-in p end
-
-(* ========== Scan forward to find closing quote ========== *)
-
-fn _find_quote(data: ptr, len: int, start: int): int = let
-  fun loop(i: int): int =
+(* Scan forward to find closing quote *)
+fn _find_quote {l:agz}{n:pos}
+  (data: !ward_arr(byte, l, n), len: int, cap: int n, start: int): int = let
+  fun loop {l:agz}{n:pos}
+    (d: !ward_arr(byte, l, n), i: int, len: int, c: int n): int =
     if gte_int_int(i, len) then len
-    else if eq_int_int(buf_get_u8(data, i), 34) then i (* 34 = '"' *)
-    else loop(i + 1)
-in loop(start) end
+    else if eq_int_int(_ab(d, i, c), 34) then i (* 34 = '"' *)
+    else loop(d, i + 1, len, c)
+in loop(data, start, len, cap) end
 
 (* Scan forward to find closing '>' *)
-fn _find_gt(data: ptr, len: int, start: int): int = let
-  fun loop(i: int): int =
+fn _find_gt {l:agz}{n:pos}
+  (data: !ward_arr(byte, l, n), len: int, cap: int n, start: int): int = let
+  fun loop {l:agz}{n:pos}
+    (d: !ward_arr(byte, l, n), i: int, len: int, c: int n): int =
     if gte_int_int(i, len) then len
-    else if eq_int_int(buf_get_u8(data, i), 62) then i (* 62 = '>' *)
-    else loop(i + 1)
-in loop(start) end
+    else if eq_int_int(_ab(d, i, c), 62) then i (* 62 = '>' *)
+    else loop(d, i + 1, len, c)
+in loop(data, start, len, cap) end
 
-(* Copy bytes from src to dst *)
-fn _copy_bytes(dst: ptr, dst_off: int, src: ptr, src_off: int, count: int): void = let
-  fun loop(i: int): void =
-    if lt_int_int(i, count) then let
-      val () = buf_set_u8(dst, dst_off + i, buf_get_u8(src, src_off + i))
-    in loop(i + 1) end
-in loop(0) end
+(* Compare two byte regions within the same ward_arr *)
+fn _arr_bytes_equal {l:agz}{n:pos}
+  (a: !ward_arr(byte, l, n), a_off: int, b_off: int, count: int, cap: int n): bool = let
+  fun loop {l:agz}{n:pos}
+    (a: !ward_arr(byte, l, n), i: int, ao: int, bo: int, cnt: int, c: int n): bool =
+    if gte_int_int(i, cnt) then true
+    else if neq_int_int(_ab(a, ao + i, c), _ab(a, bo + i, c)) then false
+    else loop(a, i + 1, ao, bo, cnt, c)
+in loop(a, 0, a_off, b_off, count, cap) end
 
-(* Compare bytes at two locations *)
-fn _bytes_equal(a: ptr, a_off: int, b: ptr, b_off: int, count: int): bool = let
-  fun loop(i: int): bool =
-    if gte_int_int(i, count) then true
-    else if neq_int_int(buf_get_u8(a, a_off + i), buf_get_u8(b, b_off + i)) then false
-    else loop(i + 1)
-in loop(0) end
+(* Copy bytes from ward_arr to an app_state buffer via setter function.
+ * setter_fn is inlined at each call site via specific helpers below. *)
+
+fn _copy_arr_to_opf {l:agz}{n:pos}
+  (a: !ward_arr(byte, l, n), base: int, len: int, cap: int n): void = let
+  fun loop {l:agz}{n:pos}
+    (a: !ward_arr(byte, l, n), i: int, base: int, len: int, c: int n): void =
+    if gte_int_int(i, len) then ()
+    else let
+      val () = _app_epub_opf_path_set_u8(i, _ab(a, base + i, c))
+    in loop(a, i + 1, base, len, c) end
+in loop(a, 0, base, len, cap) end
+
+fn _copy_arr_to_title {l:agz}{n:pos}
+  (a: !ward_arr(byte, l, n), base: int, len: int, cap: int n): void = let
+  fun loop {l:agz}{n:pos}
+    (a: !ward_arr(byte, l, n), i: int, base: int, len: int, c: int n): void =
+    if gte_int_int(i, len) then ()
+    else let
+      val () = _app_epub_title_set_u8(i, _ab(a, base + i, c))
+    in loop(a, i + 1, base, len, c) end
+in loop(a, 0, base, len, cap) end
+
+fn _copy_arr_to_author {l:agz}{n:pos}
+  (a: !ward_arr(byte, l, n), base: int, len: int, cap: int n): void = let
+  fun loop {l:agz}{n:pos}
+    (a: !ward_arr(byte, l, n), i: int, base: int, len: int, c: int n): void =
+    if gte_int_int(i, len) then ()
+    else let
+      val () = _app_epub_author_set_u8(i, _ab(a, base + i, c))
+    in loop(a, i + 1, base, len, c) end
+in loop(a, 0, base, len, cap) end
+
+fn _copy_arr_to_bookid {l:agz}{n:pos}
+  (a: !ward_arr(byte, l, n), base: int, len: int, cap: int n): void = let
+  fun loop {l:agz}{n:pos}
+    (a: !ward_arr(byte, l, n), i: int, base: int, len: int, c: int n): void =
+    if gte_int_int(i, len) then ()
+    else let
+      val () = _app_epub_book_id_set_u8(i, _ab(a, base + i, c))
+    in loop(a, i + 1, base, len, c) end
+in loop(a, 0, base, len, cap) end
+
+fn _copy_arr_to_spine_buf {l:agz}{n:pos}
+  (a: !ward_arr(byte, l, n), src_base: int, dst_off: int, len: int, cap: int n): void = let
+  fun loop {l:agz}{n:pos}
+    (a: !ward_arr(byte, l, n), i: int, sb: int, db: int, len: int, c: int n): void =
+    if gte_int_int(i, len) then ()
+    else let
+      val () = _app_epub_spine_buf_set_u8(db + i, _ab(a, sb + i, c))
+    in loop(a, i + 1, sb, db, len, c) end
+in loop(a, 0, src_base, dst_off, len, cap) end
+
+(* ========== Needle builders ========== *)
+(* Each returns a ward_arr that must be freed by the caller. *)
+
+(* "full-path=\"" — 11 bytes *)
+fn _n_full_path(): [l:agz] ward_arr(byte, l, 11) = let
+  val a = ward_arr_alloc<byte>(11)
+  val () = _wb(a,0,102,11) val () = _wb(a,1,117,11) val () = _wb(a,2,108,11)
+  val () = _wb(a,3,108,11) val () = _wb(a,4,45,11)  val () = _wb(a,5,112,11)
+  val () = _wb(a,6,97,11)  val () = _wb(a,7,116,11) val () = _wb(a,8,104,11)
+  val () = _wb(a,9,61,11)  val () = _wb(a,10,34,11)
+in a end
+
+(* "<dc:title>" — 10 bytes *)
+fn _n_dc_title_open(): [l:agz] ward_arr(byte, l, 10) = let
+  val a = ward_arr_alloc<byte>(10)
+  val () = _wb(a,0,60,10)  val () = _wb(a,1,100,10) val () = _wb(a,2,99,10)
+  val () = _wb(a,3,58,10)  val () = _wb(a,4,116,10) val () = _wb(a,5,105,10)
+  val () = _wb(a,6,116,10) val () = _wb(a,7,108,10) val () = _wb(a,8,101,10)
+  val () = _wb(a,9,62,10)
+in a end
+
+(* "</dc:title>" — 11 bytes *)
+fn _n_dc_title_close(): [l:agz] ward_arr(byte, l, 11) = let
+  val a = ward_arr_alloc<byte>(11)
+  val () = _wb(a,0,60,11)  val () = _wb(a,1,47,11)  val () = _wb(a,2,100,11)
+  val () = _wb(a,3,99,11)  val () = _wb(a,4,58,11)  val () = _wb(a,5,116,11)
+  val () = _wb(a,6,105,11) val () = _wb(a,7,116,11) val () = _wb(a,8,108,11)
+  val () = _wb(a,9,101,11) val () = _wb(a,10,62,11)
+in a end
+
+(* "<dc:creator>" — 12 bytes *)
+fn _n_dc_creator_open(): [l:agz] ward_arr(byte, l, 12) = let
+  val a = ward_arr_alloc<byte>(12)
+  val () = _wb(a,0,60,12)  val () = _wb(a,1,100,12) val () = _wb(a,2,99,12)
+  val () = _wb(a,3,58,12)  val () = _wb(a,4,99,12)  val () = _wb(a,5,114,12)
+  val () = _wb(a,6,101,12) val () = _wb(a,7,97,12)  val () = _wb(a,8,116,12)
+  val () = _wb(a,9,111,12) val () = _wb(a,10,114,12) val () = _wb(a,11,62,12)
+in a end
+
+(* "</dc:creator>" — 13 bytes *)
+fn _n_dc_creator_close(): [l:agz] ward_arr(byte, l, 13) = let
+  val a = ward_arr_alloc<byte>(13)
+  val () = _wb(a,0,60,13)  val () = _wb(a,1,47,13)  val () = _wb(a,2,100,13)
+  val () = _wb(a,3,99,13)  val () = _wb(a,4,58,13)  val () = _wb(a,5,99,13)
+  val () = _wb(a,6,114,13) val () = _wb(a,7,101,13) val () = _wb(a,8,97,13)
+  val () = _wb(a,9,116,13) val () = _wb(a,10,111,13) val () = _wb(a,11,114,13)
+  val () = _wb(a,12,62,13)
+in a end
+
+(* "<dc:identifier" — 14 bytes *)
+fn _n_dc_identifier_open(): [l:agz] ward_arr(byte, l, 14) = let
+  val a = ward_arr_alloc<byte>(14)
+  val () = _wb(a,0,60,14)  val () = _wb(a,1,100,14) val () = _wb(a,2,99,14)
+  val () = _wb(a,3,58,14)  val () = _wb(a,4,105,14) val () = _wb(a,5,100,14)
+  val () = _wb(a,6,101,14) val () = _wb(a,7,110,14) val () = _wb(a,8,116,14)
+  val () = _wb(a,9,105,14) val () = _wb(a,10,102,14) val () = _wb(a,11,105,14)
+  val () = _wb(a,12,101,14) val () = _wb(a,13,114,14)
+in a end
+
+(* "</dc:identifier>" — 16 bytes *)
+fn _n_dc_identifier_close(): [l:agz] ward_arr(byte, l, 16) = let
+  val a = ward_arr_alloc<byte>(16)
+  val () = _wb(a,0,60,16)  val () = _wb(a,1,47,16)  val () = _wb(a,2,100,16)
+  val () = _wb(a,3,99,16)  val () = _wb(a,4,58,16)  val () = _wb(a,5,105,16)
+  val () = _wb(a,6,100,16) val () = _wb(a,7,101,16) val () = _wb(a,8,110,16)
+  val () = _wb(a,9,116,16) val () = _wb(a,10,105,16) val () = _wb(a,11,102,16)
+  val () = _wb(a,12,105,16) val () = _wb(a,13,101,16) val () = _wb(a,14,114,16)
+  val () = _wb(a,15,62,16)
+in a end
+
+(* "<itemref " — 9 bytes *)
+fn _n_itemref(): [l:agz] ward_arr(byte, l, 9) = let
+  val a = ward_arr_alloc<byte>(9)
+  val () = _wb(a,0,60,9)  val () = _wb(a,1,105,9) val () = _wb(a,2,116,9)
+  val () = _wb(a,3,101,9) val () = _wb(a,4,109,9) val () = _wb(a,5,114,9)
+  val () = _wb(a,6,101,9) val () = _wb(a,7,102,9) val () = _wb(a,8,32,9)
+in a end
+
+(* "idref=\"" — 7 bytes *)
+fn _n_idref(): [l:agz] ward_arr(byte, l, 7) = let
+  val a = ward_arr_alloc<byte>(7)
+  val () = _wb(a,0,105,7) val () = _wb(a,1,100,7) val () = _wb(a,2,114,7)
+  val () = _wb(a,3,101,7) val () = _wb(a,4,102,7) val () = _wb(a,5,61,7)
+  val () = _wb(a,6,34,7)
+in a end
+
+(* "<item " — 6 bytes *)
+fn _n_item(): [l:agz] ward_arr(byte, l, 6) = let
+  val a = ward_arr_alloc<byte>(6)
+  val () = _wb(a,0,60,6)  val () = _wb(a,1,105,6) val () = _wb(a,2,116,6)
+  val () = _wb(a,3,101,6) val () = _wb(a,4,109,6) val () = _wb(a,5,32,6)
+in a end
+
+(* " id=\"" — 5 bytes *)
+fn _n_id(): [l:agz] ward_arr(byte, l, 5) = let
+  val a = ward_arr_alloc<byte>(5)
+  val () = _wb(a,0,32,5)  val () = _wb(a,1,105,5) val () = _wb(a,2,100,5)
+  val () = _wb(a,3,61,5)  val () = _wb(a,4,34,5)
+in a end
+
+(* "href=\"" — 6 bytes *)
+fn _n_href(): [l:agz] ward_arr(byte, l, 6) = let
+  val a = ward_arr_alloc<byte>(6)
+  val () = _wb(a,0,104,6) val () = _wb(a,1,114,6) val () = _wb(a,2,101,6)
+  val () = _wb(a,3,102,6) val () = _wb(a,4,61,6)  val () = _wb(a,5,34,6)
+in a end
 
 (* ========== epub_init ========== *)
 
@@ -327,24 +268,18 @@ implement epub_get_error(_) = 0
 implement epub_start_import(_) = 0
 
 implement epub_get_title(buf_offset) = let
-  val tptr = _app_epub_title_buf()
   val tlen = _app_epub_title_len()
-  val sbuf = get_string_buffer_ptr()
-  val () = _copy_bytes(sbuf, buf_offset, _sbuf_ptr(tptr), 0, tlen)
+  val () = _app_copy_epub_title_to_sbuf(buf_offset, tlen)
 in tlen end
 
 implement epub_get_author(buf_offset) = let
-  val aptr = _app_epub_author_buf()
   val alen = _app_epub_author_len()
-  val sbuf = get_string_buffer_ptr()
-  val () = _copy_bytes(sbuf, buf_offset, _sbuf_ptr(aptr), 0, alen)
+  val () = _app_copy_epub_author_to_sbuf(buf_offset, alen)
 in alen end
 
 implement epub_get_book_id(buf_offset) = let
-  val bptr = _app_epub_book_id_buf()
   val blen = _app_epub_book_id_len()
-  val sbuf = get_string_buffer_ptr()
-  val () = _copy_bytes(sbuf, buf_offset, _sbuf_ptr(bptr), 0, blen)
+  val () = _app_copy_epub_book_id_to_sbuf(buf_offset, blen)
 in blen end
 
 implement epub_get_chapter_count() = let
@@ -394,14 +329,14 @@ implement epub_reset() = epub_init()
  * Stores path and directory prefix in app_state.
  * Returns 1 on success, 0 on failure. *)
 implement epub_parse_container_bytes(arr, len) = let
-  val buf = _borrow_ptr(arr)
-  val ndl = needle_full_path() (* "full-path=\"" 11 bytes *)
-  val pos0 = _find_bytes(buf, len, ndl, 11, 0)
+  val ndl = _n_full_path() (* "full-path=\"" 11 bytes *)
+  val pos0 = _find_bytes(arr, len, len, ndl, 11, 11, 0)
+  val () = ward_arr_free<byte>(ndl)
 in
   if lt_int_int(pos0, 0) then 0
   else let
     val pos = pos0 + 11
-    val qend = _find_quote(buf, len, pos)
+    val qend = _find_quote(arr, len, len, pos)
   in
     if gte_int_int(qend, len) then 0
     else let
@@ -410,15 +345,15 @@ in
       if lte_int_int(path_len, 0) then 0
       else if gte_int_int(path_len, 256) then 0
       else let
-        val opf_ptr = _app_epub_opf_path_buf()
-        val () = _copy_bytes(_sbuf_ptr(opf_ptr), 0, buf, pos, path_len)
+        (* Copy path bytes from arr to opf_path buffer in app_state *)
+        val () = _copy_arr_to_opf(arr, pos, path_len, len)
         val () = _app_set_epub_opf_path_len(path_len)
         (* Extract directory prefix up to and including last '/' *)
-        fun find_last_slash(i: int, last: int): int =
-          if gte_int_int(i, path_len) then last
-          else if eq_int_int(sbuf_get_u8(opf_ptr, i), 47) then find_last_slash(i + 1, i) (* 47 = '/' *)
-          else find_last_slash(i + 1, last)
-        val last_slash = find_last_slash(0, 0 - 1)
+        fun find_last_slash(i: int, last: int, plen: int): int =
+          if gte_int_int(i, plen) then last
+          else if eq_int_int(_app_epub_opf_path_get_u8(i), 47) then find_last_slash(i + 1, i, plen)
+          else find_last_slash(i + 1, last, plen)
+        val last_slash = find_last_slash(0, 0 - 1, path_len)
       in
         if gte_int_int(last_slash, 0) then
           _app_set_epub_opf_dir_len(last_slash + 1)
@@ -437,201 +372,269 @@ end
  * The OPF parser is split into 5 separate functions so each generates
  * a reasonably-sized WASM function body. *)
 
-extern fun _opf_extract_title(buf: ptr, len: int): void = "ext#"
+extern fun _opf_extract_title {l:agz}{n:pos}
+  (buf: !ward_arr(byte, l, n), len: int n): void = "ext#"
 implement _opf_extract_title(buf, len) = let
-  val ndl_to = needle_dc_title_open()
-  val ndl_tc = needle_dc_title_close()
-  val pos_t = _find_bytes(buf, len, ndl_to, 10, 0)
+  val ndl_to = _n_dc_title_open()
+  val ndl_tc = _n_dc_title_close()
+  val pos_t = _find_bytes(buf, len, len, ndl_to, 10, 10, 0)
+  val () = ward_arr_free<byte>(ndl_to)
 in
-  if gte_int_int(pos_t, 0) then let
+  if lt_int_int(pos_t, 0) then ward_arr_free<byte>(ndl_tc)
+  else let
     val tstart = pos_t + 10
-    val tend = _find_bytes(buf, len, ndl_tc, 11, tstart)
+    val tend = _find_bytes(buf, len, len, ndl_tc, 11, 11, tstart)
+    val () = ward_arr_free<byte>(ndl_tc)
   in
-    if gte_int_int(tend, 0) then let
+    if lt_int_int(tend, 0) then ()
+    else let
       val tlen0 = tend - tstart
       val tlen = if gt_int_int(tlen0, 255) then 255 else tlen0
-      val tptr = _app_epub_title_buf()
-      val () = _copy_bytes(_sbuf_ptr(tptr), 0, buf, tstart, tlen)
+      val () = _copy_arr_to_title(buf, tstart, tlen, len)
     in _app_set_epub_title_len(tlen) end
   end
 end
 
-extern fun _opf_extract_author(buf: ptr, len: int): void = "ext#"
+extern fun _opf_extract_author {l:agz}{n:pos}
+  (buf: !ward_arr(byte, l, n), len: int n): void = "ext#"
 implement _opf_extract_author(buf, len) = let
-  val ndl_co = needle_dc_creator_open()
-  val ndl_cc = needle_dc_creator_close()
-  val pos_c = _find_bytes(buf, len, ndl_co, 12, 0)
+  val ndl_co = _n_dc_creator_open()
+  val ndl_cc = _n_dc_creator_close()
+  val pos_c = _find_bytes(buf, len, len, ndl_co, 12, 12, 0)
+  val () = ward_arr_free<byte>(ndl_co)
 in
-  if gte_int_int(pos_c, 0) then let
+  if lt_int_int(pos_c, 0) then ward_arr_free<byte>(ndl_cc)
+  else let
     val astart = pos_c + 12
-    val aend = _find_bytes(buf, len, ndl_cc, 13, astart)
+    val aend = _find_bytes(buf, len, len, ndl_cc, 13, 13, astart)
+    val () = ward_arr_free<byte>(ndl_cc)
   in
-    if gte_int_int(aend, 0) then let
+    if lt_int_int(aend, 0) then ()
+    else let
       val alen0 = aend - astart
       val alen = if gt_int_int(alen0, 255) then 255 else alen0
-      val aptr = _app_epub_author_buf()
-      val () = _copy_bytes(_sbuf_ptr(aptr), 0, buf, astart, alen)
+      val () = _copy_arr_to_author(buf, astart, alen, len)
     in _app_set_epub_author_len(alen) end
   end
 end
 
-extern fun _opf_extract_identifier(buf: ptr, len: int): void = "ext#"
+extern fun _opf_extract_identifier {l:agz}{n:pos}
+  (buf: !ward_arr(byte, l, n), len: int n): void = "ext#"
 implement _opf_extract_identifier(buf, len) = let
-  val ndl_io = needle_dc_identifier_open()
-  val ndl_ic = needle_dc_identifier_close()
-  val pos_i = _find_bytes(buf, len, ndl_io, 14, 0)
+  val ndl_io = _n_dc_identifier_open()
+  val ndl_ic = _n_dc_identifier_close()
+  val pos_i = _find_bytes(buf, len, len, ndl_io, 14, 14, 0)
+  val () = ward_arr_free<byte>(ndl_io)
 in
-  if gte_int_int(pos_i, 0) then let
-    val gt_pos = _find_gt(buf, len, pos_i + 14)
+  if lt_int_int(pos_i, 0) then ward_arr_free<byte>(ndl_ic)
+  else let
+    val gt_pos = _find_gt(buf, len, len, pos_i + 14)
   in
-    if lt_int_int(gt_pos, len) then let
+    if gte_int_int(gt_pos, len) then ward_arr_free<byte>(ndl_ic)
+    else let
       val id_start = gt_pos + 1
-      val id_end = _find_bytes(buf, len, ndl_ic, 16, id_start)
+      val id_end = _find_bytes(buf, len, len, ndl_ic, 16, 16, id_start)
+      val () = ward_arr_free<byte>(ndl_ic)
     in
-      if gte_int_int(id_end, 0) then let
+      if lt_int_int(id_end, 0) then ()
+      else let
         val id_len0 = id_end - id_start
         val id_len = if gt_int_int(id_len0, 63) then 63 else id_len0
-        val bptr = _app_epub_book_id_buf()
-        val () = _copy_bytes(_sbuf_ptr(bptr), 0, buf, id_start, id_len)
+        val () = _copy_arr_to_bookid(buf, id_start, id_len, len)
       in _app_set_epub_book_id_len(id_len) end
     end
   end
 end
 
-extern fun _opf_count_spine(buf: ptr, len: int): int = "ext#"
+extern fun _opf_count_spine {l:agz}{n:pos}
+  (buf: !ward_arr(byte, l, n), len: int n): int = "ext#"
 implement _opf_count_spine(buf, len) = let
-  val ndl_ir = needle_itemref()
-  fun count_spine(pos: int, cnt: int): int = let
-    val found = _find_bytes(buf, len, ndl_ir, 9, pos)
+  val ndl_ir = _n_itemref()
+  fun count_loop {lb:agz}{nb:pos}{ln:agz}
+    (buf: !ward_arr(byte, lb, nb), ndl: !ward_arr(byte, ln, 9),
+     pos: int, cnt: int, hc: int nb): int = let
+    val found = _find_bytes(buf, len, hc, ndl, 9, 9, pos)
   in
     if lt_int_int(found, 0) then cnt
-    else count_spine(found + 9, cnt + 1)
+    else count_loop(buf, ndl, found + 9, cnt + 1, hc)
   end
-in count_spine(0, 0) end
+  val result = count_loop(buf, ndl_ir, 0, 0, len)
+  val () = ward_arr_free<byte>(ndl_ir)
+in result end
 
-extern fun _opf_resolve_spine(buf: ptr, len: int, spine_count: int): void = "ext#"
+extern fun _opf_resolve_spine {l:agz}{n:pos}
+  (buf: !ward_arr(byte, l, n), len: int n, spine_count: int): void = "ext#"
 implement _opf_resolve_spine(buf, len, spine_count) = let
   val () = _app_set_epub_spine_path_count(0)
   val () = _app_set_epub_spine_path_pos(0)
 
-  val ndl_ir = needle_itemref()
-  val ndl_idref = needle_idref()
-  val ndl_item = needle_item()
-  val ndl_mid = needle_id()
-  val ndl_href = needle_href()
-  val opf_ptr = _app_epub_opf_path_buf()
+  val nir = _n_itemref()
+  val nidr = _n_idref()
+  val nit = _n_item()
+  val nmid = _n_id()
+  val nhr = _n_href()
   val opf_dir_len = _app_epub_opf_dir_len()
-  val sp_buf = _app_epub_spine_path_buf()
-  val sp_offsets = _app_epub_spine_path_offsets()
-  val sp_lens = _app_epub_spine_path_lens()
 
-  fun resolve_spine(si: int, pos: int, sp_count: int, sp_pos: int): void = let
-    fun done(): void = let
-      val () = _app_set_epub_spine_path_count(sp_count)
-      val () = _app_set_epub_spine_path_pos(sp_pos)
+  (* Find <item> with id matching idref, return href bounds or @(-1,-1) *)
+  fun find_matching_item
+    {lb:agz}{nb:pos}{l3:agz}{l4:agz}{l5:agz}
+    (buf: !ward_arr(byte, lb, nb),
+     nit: !ward_arr(byte, l3, 6),
+     nmid: !ward_arr(byte, l4, 5),
+     nhr: !ward_arr(byte, l5, 6),
+     item_pos: int, id_start: int, idref_len: int,
+     cap: int nb, hlen: int): @(int, int) = let
+    val found_item = _find_bytes(buf, hlen, cap, nit, 6, 6, item_pos)
+  in
+    if lt_int_int(found_item, 0) then @(0 - 1, 0 - 1)
+    else let
+      val item_limit0 = found_item + 500
+      val item_limit = if gt_int_int(item_limit0, hlen) then hlen else item_limit0
+      val mid_pos = _find_bytes(buf, item_limit, cap, nmid, 5, 5, found_item)
+    in
+      if lt_int_int(mid_pos, 0) then
+        find_matching_item(buf, nit, nmid, nhr, found_item + 6, id_start, idref_len, cap, hlen)
+      else let
+        val mid_start = mid_pos + 5
+        val mid_end = _find_quote(buf, hlen, cap, mid_start)
+        val mid_len = mid_end - mid_start
+      in
+        if neq_int_int(mid_len, idref_len) then
+          find_matching_item(buf, nit, nmid, nhr, found_item + 6, id_start, idref_len, cap, hlen)
+        else if _arr_bytes_equal(buf, mid_start, id_start, idref_len, cap) then let
+          val href_pos = _find_bytes(buf, item_limit, cap, nhr, 6, 6, found_item)
+        in
+          if lt_int_int(href_pos, 0) then @(0 - 1, 0 - 1)
+          else let
+            val href_start = href_pos + 6
+            val href_end = _find_quote(buf, hlen, cap, href_start)
+          in @(href_start, href_end) end
+        end
+        else find_matching_item(buf, nit, nmid, nhr, found_item + 6, id_start, idref_len, cap, hlen)
+      end
+    end
+  end
+
+  (* Main spine resolution loop *)
+  fun resolve_loop
+    {lb:agz}{nb:pos}{l1:agz}{l2:agz}{l3:agz}{l4:agz}{l5:agz}
+    (buf: !ward_arr(byte, lb, nb),
+     nir: !ward_arr(byte, l1, 9),
+     nidr: !ward_arr(byte, l2, 7),
+     nit: !ward_arr(byte, l3, 6),
+     nmid: !ward_arr(byte, l4, 5),
+     nhr: !ward_arr(byte, l5, 6),
+     si: int, pos: int, sp_count: int, sp_pos: int,
+     cap: int nb, odir_len: int, sc: int, hlen: int): void = let
+    fun done(spc: int, spp: int): void = let
+      val () = _app_set_epub_spine_path_count(spc)
+      val () = _app_set_epub_spine_path_pos(spp)
     in end
   in
-    if gte_int_int(si, spine_count) then done()
-    else if gte_int_int(si, 32) then done()
+    if gte_int_int(si, sc) then done(sp_count, sp_pos)
+    else if gte_int_int(si, 32) then done(sp_count, sp_pos)
     else let
-      val ir_pos = _find_bytes(buf, len, ndl_ir, 9, pos)
+      val ir_pos = _find_bytes(buf, hlen, cap, nir, 9, 9, pos)
     in
-      if lt_int_int(ir_pos, 0) then done()
+      if lt_int_int(ir_pos, 0) then done(sp_count, sp_pos)
       else let
-        val idref_pos = _find_bytes(buf, len, ndl_idref, 7, ir_pos)
+        val idref_pos = _find_bytes(buf, hlen, cap, nidr, 7, 7, ir_pos)
       in
-        if lt_int_int(idref_pos, 0) then resolve_spine(si + 1, ir_pos + 9, sp_count, sp_pos)
-        else if gt_int_int(idref_pos, ir_pos + 200) then resolve_spine(si + 1, ir_pos + 9, sp_count, sp_pos)
+        if lt_int_int(idref_pos, 0) then
+          resolve_loop(buf, nir, nidr, nit, nmid, nhr, si + 1, ir_pos + 9, sp_count, sp_pos, cap, odir_len, sc, hlen)
+        else if gt_int_int(idref_pos, ir_pos + 200) then
+          resolve_loop(buf, nir, nidr, nit, nmid, nhr, si + 1, ir_pos + 9, sp_count, sp_pos, cap, odir_len, sc, hlen)
         else let
           val id_start = idref_pos + 7
-          val id_end = _find_quote(buf, len, id_start)
+          val id_end = _find_quote(buf, hlen, cap, id_start)
           val idref_len = id_end - id_start
         in
-          if lte_int_int(idref_len, 0) then resolve_spine(si + 1, ir_pos + 9, sp_count, sp_pos)
-          else if gt_int_int(idref_len, 63) then resolve_spine(si + 1, ir_pos + 9, sp_count, sp_pos)
+          if lte_int_int(idref_len, 0) then
+            resolve_loop(buf, nir, nidr, nit, nmid, nhr, si + 1, ir_pos + 9, sp_count, sp_pos, cap, odir_len, sc, hlen)
+          else if gt_int_int(idref_len, 63) then
+            resolve_loop(buf, nir, nidr, nit, nmid, nhr, si + 1, ir_pos + 9, sp_count, sp_pos, cap, odir_len, sc, hlen)
           else let
-            fun find_item(item_pos: int): void = let
-              val found_item = _find_bytes(buf, len, ndl_item, 6, item_pos)
+            val @(href_start, href_end) = find_matching_item(buf, nit, nmid, nhr, 0, id_start, idref_len, cap, hlen)
+          in
+            if lt_int_int(href_start, 0) then
+              resolve_loop(buf, nir, nidr, nit, nmid, nhr, si + 1, ir_pos + 9, sp_count, sp_pos, cap, odir_len, sc, hlen)
+            else let
+              val href_len = href_end - href_start
+              val full_len = odir_len + href_len
             in
-              if lt_int_int(found_item, 0) then
-                resolve_spine(si + 1, ir_pos + 9, sp_count, sp_pos)
+              if lte_int_int(full_len, 0) then
+                resolve_loop(buf, nir, nidr, nit, nmid, nhr, si + 1, ir_pos + 9, sp_count, sp_pos, cap, odir_len, sc, hlen)
+              else if gt_int_int(full_len, 255) then
+                resolve_loop(buf, nir, nidr, nit, nmid, nhr, si + 1, ir_pos + 9, sp_count, sp_pos, cap, odir_len, sc, hlen)
+              else if gt_int_int(sp_pos + full_len, 4096) then
+                resolve_loop(buf, nir, nidr, nit, nmid, nhr, si + 1, ir_pos + 9, sp_count, sp_pos, cap, odir_len, sc, hlen)
               else let
-                val item_limit0 = found_item + 500
-                val item_limit = if gt_int_int(item_limit0, len) then len else item_limit0
-                val mid_pos = _find_bytes(buf, item_limit, ndl_mid, 5, found_item)
+                val () = _app_copy_opf_path_to_epub_spine_buf(sp_pos, odir_len)
+                val () = _copy_arr_to_spine_buf(buf, href_start, sp_pos + odir_len, href_len, cap)
+                val () = _app_epub_spine_offsets_set_i32(sp_count, sp_pos)
+                val () = _app_epub_spine_lens_set_i32(sp_count, full_len)
               in
-                if lt_int_int(mid_pos, 0) then find_item(found_item + 6)
-                else let
-                  val mid_start = mid_pos + 5
-                  val mid_end = _find_quote(buf, len, mid_start)
-                  val mid_len = mid_end - mid_start
-                in
-                  if neq_int_int(mid_len, idref_len) then find_item(found_item + 6)
-                  else if _bytes_equal(buf, mid_start, buf, id_start, idref_len) then let
-                    val href_pos = _find_bytes(buf, item_limit, ndl_href, 6, found_item)
-                  in
-                    if lt_int_int(href_pos, 0) then
-                      resolve_spine(si + 1, ir_pos + 9, sp_count, sp_pos)
-                    else let
-                      val href_start = href_pos + 6
-                      val href_end = _find_quote(buf, len, href_start)
-                      val href_len = href_end - href_start
-                      val full_len = opf_dir_len + href_len
-                    in
-                      if lte_int_int(full_len, 0) then
-                        resolve_spine(si + 1, ir_pos + 9, sp_count, sp_pos)
-                      else if gt_int_int(full_len, 255) then
-                        resolve_spine(si + 1, ir_pos + 9, sp_count, sp_pos)
-                      else if gt_int_int(sp_pos + full_len, 4096) then
-                        resolve_spine(si + 1, ir_pos + 9, sp_count, sp_pos)
-                      else let
-                        val () = _copy_bytes(_sbuf_ptr(sp_buf), sp_pos, _sbuf_ptr(opf_ptr), 0, opf_dir_len)
-                        val () = _copy_bytes(_sbuf_ptr(sp_buf), sp_pos + opf_dir_len, buf, href_start, href_len)
-                        val () = sbuf_set_i32(sp_offsets, sp_count, sp_pos)
-                        val () = sbuf_set_i32(sp_lens, sp_count, full_len)
-                      in
-                        resolve_spine(si + 1, ir_pos + 9, sp_count + 1, sp_pos + full_len)
-                      end
-                    end
-                  end
-                  else find_item(found_item + 6)
-                end
+                resolve_loop(buf, nir, nidr, nit, nmid, nhr, si + 1, ir_pos + 9, sp_count + 1, sp_pos + full_len, cap, odir_len, sc, hlen)
               end
             end
-          in find_item(0) end
+          end
         end
       end
     end
   end
 
-in resolve_spine(0, 0, 0, 0) end
+  val () = resolve_loop(buf, nir, nidr, nit, nmid, nhr, 0, 0, 0, 0, len, opf_dir_len, spine_count, len)
+
+  val () = ward_arr_free<byte>(nir)
+  val () = ward_arr_free<byte>(nidr)
+  val () = ward_arr_free<byte>(nit)
+  val () = ward_arr_free<byte>(nmid)
+  val () = ward_arr_free<byte>(nhr)
+in end
 
 implement epub_parse_opf_bytes(arr, len) = let
-  val buf = _borrow_ptr(arr)
-  val () = _opf_extract_title(buf, len)
-  val () = _opf_extract_author(buf, len)
-  val () = _opf_extract_identifier(buf, len)
-  val spine_count = _opf_count_spine(buf, len)
+  val () = _opf_extract_title(arr, len)
+  val () = _opf_extract_author(arr, len)
+  val () = _opf_extract_identifier(arr, len)
+  val spine_count = _opf_count_spine(arr, len)
   val () = _app_set_epub_spine_count(spine_count)
-  val () = _opf_resolve_spine(buf, len, spine_count)
+  val () = _opf_resolve_spine(arr, len, spine_count)
 in
   _app_set_epub_state(8); (* EPUB_STATE_DONE *)
   spine_count
 end
 
-(* ========== Path copy accessors (no raw ptr exposure) ========== *)
+(* ========== Path copy accessors ========== *)
 
 implement epub_copy_opf_path(buf_offset) = let
-  val optr = _app_epub_opf_path_buf()
   val olen = _app_epub_opf_path_len()
-  val sbuf = get_string_buffer_ptr()
-  val () = _copy_bytes(sbuf, buf_offset, _sbuf_ptr(optr), 0, olen)
+  val () = _app_copy_epub_opf_path_to_sbuf(buf_offset, olen)
 in _checked_nat(olen) end
 
 implement epub_copy_container_path(buf_offset) = let
-  val p = _build_str_container()
-  val sbuf = get_string_buffer_ptr()
-  val () = _copy_bytes(sbuf, buf_offset, p, 0, 22)
+  (* "META-INF/container.xml" — 22 bytes, written directly to sbuf *)
+  val () = _app_sbuf_set_u8(buf_offset, 77)       (* M *)
+  val () = _app_sbuf_set_u8(buf_offset + 1, 69)   (* E *)
+  val () = _app_sbuf_set_u8(buf_offset + 2, 84)   (* T *)
+  val () = _app_sbuf_set_u8(buf_offset + 3, 65)   (* A *)
+  val () = _app_sbuf_set_u8(buf_offset + 4, 45)   (* - *)
+  val () = _app_sbuf_set_u8(buf_offset + 5, 73)   (* I *)
+  val () = _app_sbuf_set_u8(buf_offset + 6, 78)   (* N *)
+  val () = _app_sbuf_set_u8(buf_offset + 7, 70)   (* F *)
+  val () = _app_sbuf_set_u8(buf_offset + 8, 47)   (* / *)
+  val () = _app_sbuf_set_u8(buf_offset + 9, 99)   (* c *)
+  val () = _app_sbuf_set_u8(buf_offset + 10, 111) (* o *)
+  val () = _app_sbuf_set_u8(buf_offset + 11, 110) (* n *)
+  val () = _app_sbuf_set_u8(buf_offset + 12, 116) (* t *)
+  val () = _app_sbuf_set_u8(buf_offset + 13, 97)  (* a *)
+  val () = _app_sbuf_set_u8(buf_offset + 14, 105) (* i *)
+  val () = _app_sbuf_set_u8(buf_offset + 15, 110) (* n *)
+  val () = _app_sbuf_set_u8(buf_offset + 16, 101) (* e *)
+  val () = _app_sbuf_set_u8(buf_offset + 17, 114) (* r *)
+  val () = _app_sbuf_set_u8(buf_offset + 18, 46)  (* . *)
+  val () = _app_sbuf_set_u8(buf_offset + 19, 120) (* x *)
+  val () = _app_sbuf_set_u8(buf_offset + 20, 109) (* m *)
+  val () = _app_sbuf_set_u8(buf_offset + 21, 108) (* l *)
 in 22 end
 
 (* Spine path copy — proof-guarded, no bounds check needed.
@@ -640,11 +643,7 @@ in 22 end
  * (_opf_resolve_spine rejects lte_int_int(full_len, 0)). *)
 implement epub_copy_spine_path(pf | index, _count, buf_offset) = let
   prval SPINE_ENTRY() = pf
-  val sp_buf = _app_epub_spine_path_buf()
-  val sp_offsets = _app_epub_spine_path_offsets()
-  val sp_lens = _app_epub_spine_path_lens()
-  val off = sbuf_get_i32(sp_offsets, index)
-  val len = sbuf_get_i32(sp_lens, index)
-  val sbuf = get_string_buffer_ptr()
-  val () = _copy_bytes(sbuf, buf_offset, _sbuf_ptr(sp_buf), off, len)
-in _checked_pos(len) end
+  val off = _app_epub_spine_offsets_get_i32(index)
+  val slen = _app_epub_spine_lens_get_i32(index)
+  val () = _app_copy_epub_spine_buf_to_sbuf(off, buf_offset, slen)
+in _checked_pos(slen) end

@@ -10,8 +10,6 @@
  * - NAME_BOUNDED: Entry names fit in buffer without overflow
  *)
 
-staload "./buf.sats"
-
 (* ========== ZIP Signature Proofs ========== *)
 
 (* ZIP signatures are 4-byte little-endian magic numbers.
@@ -87,18 +85,21 @@ fun zip_get_entry(index: int, entry: &zip_entry? >> _): int
  * Returns name length
  * CORRECTNESS: Returned length is bounded to prevent buffer overflow *)
 fun zip_get_entry_name(index: int, buf_offset: int): [len:nat] int(len)
-(* Check if entry name matches a given suffix (e.g., ".opf", ".xhtml")
+(* Check if entry name matches a given suffix from string buffer
+ * Reads suffix bytes from string buffer at offset 0
  * Returns 1 if matches, 0 otherwise *)
-fun zip_entry_name_ends_with {cap:nat}
-  (index: int, suffix: sized_buf(cap), suffix_len: int): int
-(* Check if entry name matches exactly
+fun zip_entry_name_ends_with
+  (index: int, suffix_len: int): int
+(* Check if entry name matches exactly from string buffer
+ * Reads name bytes from string buffer at offset 0
  * Returns 1 if matches, 0 otherwise *)
-fun zip_entry_name_equals {cap:nat}
-  (index: int, name: sized_buf(cap), name_len: int): int
+fun zip_entry_name_equals
+  (index: int, name_len: int): int
 (* Find entry by exact name in string buffer
+ * Name is read from string buffer at offset 0
  * Returns entry index or -1 if not found *)
-fun zip_find_entry {cap:nat}
-  (name: sized_buf(cap), name_len: int): int
+fun zip_find_entry
+  (name_len: int): int
 (* Get offset where decompressed data should be read from
  * This accounts for local file header size
  * Returns -1 on error, or a valid offset on success
