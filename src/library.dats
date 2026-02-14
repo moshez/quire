@@ -1,7 +1,8 @@
 (* library.dats - Book library implementation
  *
  * Pure ATS2 implementation. Book data stored as flat byte records
- * in a calloc'd buffer held in app_state.
+ * in app_state's library_books buffer via per-byte/i32 accessors.
+ * No $UNSAFE, no raw ptr, no sized_buf.
  *
  * Book record layout: 150 i32 slots = 600 bytes per book.
  *   Byte 0-255:   title (256 bytes)
@@ -21,7 +22,6 @@
 staload "./library.sats"
 
 staload "./arith.sats"
-staload "./buf.sats"
 staload "./app_state.sats"
 
 (* ========== Record layout constants ========== *)
@@ -48,54 +48,18 @@ extern castfn _find_idx(x: int): [i:int | i >= ~1] int i
 
 (* ========== Helpers ========== *)
 
-fn _copy_bytes_to_book {bc,sc:nat}
-    (books: sized_buf(bc), book_idx: int, field_off: int,
-    src: sized_buf(sc), src_len: int, max_len: int): int = let
-  val len = if gt_int_int(src_len, max_len) then max_len else src_len
-  val base = book_idx * REC_BYTES + field_off
-  fun loop(i: int): void =
-    if lt_int_int(i, len) then let
-      val b = sbuf_get_u8(src, i)
-      val () = sbuf_set_u8(books, base + i, b)
-    in loop(i + 1) end
-in loop(0); len end
-
-fn _copy_bytes_to_sbuf {bc,sc:nat}
-    (books: sized_buf(bc), book_idx: int, field_off: int,
-    field_len: int, sbuf: sized_buf(sc), sbuf_off: int): void = let
-  val base = book_idx * REC_BYTES + field_off
-  fun loop(i: int): void =
-    if lt_int_int(i, field_len) then let
-      val b = sbuf_get_u8(books, base + i)
-      val () = sbuf_set_u8(sbuf, sbuf_off + i, b)
-    in loop(i + 1) end
-in loop(0) end
-
-fn _bytes_match {bc,sc:nat}
-    (books: sized_buf(bc), book_idx: int, field_off: int,
-    src: sized_buf(sc), src_len: int, field_len: int): bool =
-  if neq_int_int(field_len, src_len) then false
-  else let
-    val base = book_idx * REC_BYTES + field_off
-    fun loop(j: int): bool =
-      if gte_int_int(j, src_len) then true
-      else if neq_int_int(sbuf_get_u8(books, base + j),
-                          sbuf_get_u8(src, j)) then false
-      else loop(j + 1)
-  in loop(0) end
-
-fn _copy_book {bc:nat}
-    (books: sized_buf(bc), dst: int, src_idx: int): void = let
+(* Copy book record via per-byte lib_books accessors *)
+fn _copy_book(dst: int, src_idx: int): void = let
   val dst_off = dst * REC_BYTES
   val src_off = src_idx * REC_BYTES
-  fun loop(i: int): void =
+  fun loop(i: int, doff: int, soff: int): void =
     if lt_int_int(i, REC_BYTES) then let
-      val b = sbuf_get_u8(books, src_off + i)
-      val () = sbuf_set_u8(books, dst_off + i, b)
-    in loop(i + 1) end
-in loop(0) end
+      val b = _app_lib_books_get_u8(soff + i)
+      val () = _app_lib_books_set_u8(doff + i, b)
+    in loop(i + 1, doff, soff) end
+in loop(0, dst_off, src_off) end
 
-(* ========== Library functions (ext#) ========== *)
+(* ========== Library functions ========== *)
 
 implement library_init() = _app_set_lib_count(0)
 
@@ -112,38 +76,49 @@ implement library_add_book() = let
 in
   if gte_int_int(count, 32) then _lib_idx(0 - 1)
   else let
-    val books = _app_lib_books_buf()
-    val bid_buf = _app_epub_book_id_buf()
     val bid_len = _app_epub_book_id_len()
     (* Deduplicate by book_id *)
-    fun find_dup(i: int): int =
-      if gte_int_int(i, count) then 0 - 1
+    fun find_dup(i: int, cnt: int, blen: int): int =
+      if gte_int_int(i, cnt) then 0 - 1
       else let
-        val stored_len = sbuf_get_i32(books, i * REC_INTS + BOOKID_LEN_SLOT)
+        val stored_len = _app_lib_books_get_i32(i * REC_INTS + BOOKID_LEN_SLOT)
       in
-        if _bytes_match(books, i, BOOKID_OFF, bid_buf, bid_len, stored_len)
+        if neq_int_int(stored_len, blen) then find_dup(i + 1, cnt, blen)
+        else if gt_int_int(_app_lib_books_match_bid(i * REC_BYTES + BOOKID_OFF, blen), 0)
         then i
-        else find_dup(i + 1)
+        else find_dup(i + 1, cnt, blen)
       end
-    val dup = find_dup(0)
+    val dup = find_dup(0, count, bid_len)
   in
     if gte_int_int(dup, 0) then _lib_idx(dup)
     else let
-      val tbuf = _app_epub_title_buf()
       val tlen = _app_epub_title_len()
-      val abuf = _app_epub_author_buf()
       val alen = _app_epub_author_len()
       val sc = _app_epub_spine_count()
-      val base = count * REC_INTS
-      val tlen2 = _copy_bytes_to_book(books, count, TITLE_OFF, tbuf, tlen, TITLE_MAX)
-      val () = sbuf_set_i32(books, base + TITLE_LEN_SLOT, tlen2)
-      val alen2 = _copy_bytes_to_book(books, count, AUTHOR_OFF, abuf, alen, AUTHOR_MAX)
-      val () = sbuf_set_i32(books, base + AUTHOR_LEN_SLOT, alen2)
-      val blen2 = _copy_bytes_to_book(books, count, BOOKID_OFF, bid_buf, bid_len, BOOKID_MAX)
-      val () = sbuf_set_i32(books, base + BOOKID_LEN_SLOT, blen2)
-      val () = sbuf_set_i32(books, base + SPINE_SLOT, sc)
-      val () = sbuf_set_i32(books, base + CHAPTER_SLOT, 0)
-      val () = sbuf_set_i32(books, base + PAGE_SLOT, 0)
+      val base_ints = count * REC_INTS
+      val base_bytes = count * REC_BYTES
+
+      (* Copy title: epub_title → sbuf → lib_books *)
+      val tlen2 = if gt_int_int(tlen, TITLE_MAX) then TITLE_MAX else tlen
+      val () = _app_copy_epub_title_to_sbuf(0, tlen2)
+      val () = _app_copy_sbuf_to_lib_books(base_bytes + TITLE_OFF, 0, tlen2)
+      val () = _app_lib_books_set_i32(base_ints + TITLE_LEN_SLOT, tlen2)
+
+      (* Copy author: epub_author → sbuf → lib_books *)
+      val alen2 = if gt_int_int(alen, AUTHOR_MAX) then AUTHOR_MAX else alen
+      val () = _app_copy_epub_author_to_sbuf(0, alen2)
+      val () = _app_copy_sbuf_to_lib_books(base_bytes + AUTHOR_OFF, 0, alen2)
+      val () = _app_lib_books_set_i32(base_ints + AUTHOR_LEN_SLOT, alen2)
+
+      (* Copy book_id: epub_book_id → sbuf → lib_books *)
+      val blen2 = if gt_int_int(bid_len, BOOKID_MAX) then BOOKID_MAX else bid_len
+      val () = _app_copy_epub_book_id_to_sbuf(0, blen2)
+      val () = _app_copy_sbuf_to_lib_books(base_bytes + BOOKID_OFF, 0, blen2)
+      val () = _app_lib_books_set_i32(base_ints + BOOKID_LEN_SLOT, blen2)
+
+      val () = _app_lib_books_set_i32(base_ints + SPINE_SLOT, sc)
+      val () = _app_lib_books_set_i32(base_ints + CHAPTER_SLOT, 0)
+      val () = _app_lib_books_set_i32(base_ints + PAGE_SLOT, 0)
       val () = _app_set_lib_count(count + 1)
     in _lib_idx(count) end
   end
@@ -153,72 +128,64 @@ implement library_get_title(index, buf_offset) =
   if lt_int_int(index, 0) then 0
   else if gte_int_int(index, _app_lib_count()) then 0
   else let
-    val books = _app_lib_books_buf()
-    val len = sbuf_get_i32(books, index * REC_INTS + TITLE_LEN_SLOT)
-    val () = _copy_bytes_to_sbuf(books, index, TITLE_OFF, len,
-                                 get_string_buf(), buf_offset)
+    val len = _app_lib_books_get_i32(index * REC_INTS + TITLE_LEN_SLOT)
+    val () = _app_copy_lib_books_to_sbuf(index * REC_BYTES + TITLE_OFF, buf_offset, len)
   in _checked_nat(len) end
 
 implement library_get_author(index, buf_offset) =
   if lt_int_int(index, 0) then 0
   else if gte_int_int(index, _app_lib_count()) then 0
   else let
-    val books = _app_lib_books_buf()
-    val len = sbuf_get_i32(books, index * REC_INTS + AUTHOR_LEN_SLOT)
-    val () = _copy_bytes_to_sbuf(books, index, AUTHOR_OFF, len,
-                                 get_string_buf(), buf_offset)
+    val len = _app_lib_books_get_i32(index * REC_INTS + AUTHOR_LEN_SLOT)
+    val () = _app_copy_lib_books_to_sbuf(index * REC_BYTES + AUTHOR_OFF, buf_offset, len)
   in _checked_nat(len) end
 
 implement library_get_book_id(index, buf_offset) =
   if lt_int_int(index, 0) then 0
   else if gte_int_int(index, _app_lib_count()) then 0
   else let
-    val books = _app_lib_books_buf()
-    val len = sbuf_get_i32(books, index * REC_INTS + BOOKID_LEN_SLOT)
-    val () = _copy_bytes_to_sbuf(books, index, BOOKID_OFF, len,
-                                 get_string_buf(), buf_offset)
+    val len = _app_lib_books_get_i32(index * REC_INTS + BOOKID_LEN_SLOT)
+    val () = _app_copy_lib_books_to_sbuf(index * REC_BYTES + BOOKID_OFF, buf_offset, len)
   in _checked_nat(len) end
 
 implement library_get_chapter(index) =
   if lt_int_int(index, 0) then 0
   else if gte_int_int(index, _app_lib_count()) then 0
-  else _checked_nat(sbuf_get_i32(_app_lib_books_buf(), index * REC_INTS + CHAPTER_SLOT))
+  else _checked_nat(_app_lib_books_get_i32(index * REC_INTS + CHAPTER_SLOT))
 
 implement library_get_page(index) =
   if lt_int_int(index, 0) then 0
   else if gte_int_int(index, _app_lib_count()) then 0
-  else _checked_nat(sbuf_get_i32(_app_lib_books_buf(), index * REC_INTS + PAGE_SLOT))
+  else _checked_nat(_app_lib_books_get_i32(index * REC_INTS + PAGE_SLOT))
 
 implement library_get_spine_count(index) =
   if lt_int_int(index, 0) then 0
   else if gte_int_int(index, _app_lib_count()) then 0
-  else _checked_nat(sbuf_get_i32(_app_lib_books_buf(), index * REC_INTS + SPINE_SLOT))
+  else _checked_nat(_app_lib_books_get_i32(index * REC_INTS + SPINE_SLOT))
 
 implement library_update_position(index, chapter, page) =
   if lt_int_int(index, 0) then ()
   else if gte_int_int(index, _app_lib_count()) then ()
   else let
-    val books = _app_lib_books_buf()
     val base = index * REC_INTS
-    val () = sbuf_set_i32(books, base + CHAPTER_SLOT, chapter)
-    val () = sbuf_set_i32(books, base + PAGE_SLOT, page)
+    val () = _app_lib_books_set_i32(base + CHAPTER_SLOT, chapter)
+    val () = _app_lib_books_set_i32(base + PAGE_SLOT, page)
   in end
 
 implement library_find_book_by_id() = let
   val count = _app_lib_count()
-  val bid_buf = _app_epub_book_id_buf()
   val bid_len = _app_epub_book_id_len()
-  val books = _app_lib_books_buf()
-  fun loop(i: int): int =
-    if gte_int_int(i, count) then 0 - 1
+  fun loop(i: int, cnt: int, blen: int): int =
+    if gte_int_int(i, cnt) then 0 - 1
     else let
-      val stored_len = sbuf_get_i32(books, i * REC_INTS + BOOKID_LEN_SLOT)
+      val stored_len = _app_lib_books_get_i32(i * REC_INTS + BOOKID_LEN_SLOT)
     in
-      if _bytes_match(books, i, BOOKID_OFF, bid_buf, bid_len, stored_len)
+      if neq_int_int(stored_len, blen) then loop(i + 1, cnt, blen)
+      else if gt_int_int(_app_lib_books_match_bid(i * REC_BYTES + BOOKID_OFF, blen), 0)
       then i
-      else loop(i + 1)
+      else loop(i + 1, cnt, blen)
     end
-in _find_idx(loop(0)) end
+in _find_idx(loop(0, count, bid_len)) end
 
 implement library_remove_book(index) = let
   val count = _app_lib_count()
@@ -226,12 +193,11 @@ in
   if lt_int_int(index, 0) then ()
   else if gte_int_int(index, count) then ()
   else let
-    val books = _app_lib_books_buf()
-    fun shift(i: int): void =
-      if lt_int_int(i, count - 1) then let
-        val () = _copy_book(books, i, i + 1)
-      in shift(i + 1) end
-    val () = shift(index)
+    fun shift(i: int, cnt: int): void =
+      if lt_int_int(i, cnt - 1) then let
+        val () = _copy_book(i, i + 1)
+      in shift(i + 1, cnt) end
+    val () = shift(index, count)
     val () = _app_set_lib_count(count - 1)
   in end
 end

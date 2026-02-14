@@ -7,3 +7,6 @@ staload "./../vendor/ward/lib/memory.sats"
  * Requires at least 8 bytes (click payload is 20 bytes). *)
 fun read_payload_click_x {l:agz}{n:nat | n >= 8}
   (arr: !ward_arr(byte, l, n)): int
+
+(* Set document.title: 0="Quire", 1="Quire (importing)" *)
+fun quire_set_title(mode: int): void = "mac#quireSetTitle"

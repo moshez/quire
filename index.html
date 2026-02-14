@@ -22,7 +22,13 @@
     const root = document.getElementById('app');
     const resp = await fetch('quire.wasm');
     const bytes = await resp.arrayBuffer();
-    await loadWard(bytes, root);
+    await loadWard(bytes, root, {
+      extraImports: {
+        quireSetTitle(mode) {
+          document.title = mode ? 'Quire (importing)' : 'Quire';
+        }
+      }
+    });
   </script>
   <script>
     if ('serviceWorker' in navigator) {

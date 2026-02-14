@@ -16,7 +16,6 @@ staload _ = "./../vendor/ward/lib/memory.dats"
 staload _ = "./../vendor/ward/lib/file.dats"
 
 staload "./arith.sats"
-staload "./buf.sats"
 
 (* Byte read from ward_arr — wraps ward_arr_get<byte> with castfn index *)
 fn ward_arr_byte {l:agz}{n:pos}
@@ -254,7 +253,7 @@ in
   else _to_nat(_zip_entry_name_len(index))
 end
 
-implement zip_entry_name_ends_with(index, suffix_ptr, suffix_len) = let
+implement zip_entry_name_ends_with(index, suffix_len) = let
   val count = _get_zip_count()
 in
   if gt_int_int(0, index) then 0
@@ -271,7 +270,7 @@ in
         if gte_int_int(i, suffix_len) then 1
         else let
           val c1 = _zip_name_char(name_off + start + i)
-          val c2 = sbuf_get_u8(suffix_ptr, i)
+          val c2 = _app_sbuf_get_u8(i)
           (* Case-insensitive *)
           val c1 = (if gte_int_int(c1, 65) then
             (if gt_int_int(91, c1) then c1 + 32 else c1) else c1): int
@@ -284,7 +283,7 @@ in
   end
 end
 
-implement zip_entry_name_equals(index, name_ptr, name_len) = let
+implement zip_entry_name_equals(index, name_len) = let
   val count = _get_zip_count()
 in
   if gt_int_int(0, index) then 0
@@ -299,7 +298,7 @@ in
         if gte_int_int(i, name_len) then 1
         else let
           val c1 = _zip_name_char(name_off + i)
-          val c2 = sbuf_get_u8(name_ptr, i)
+          val c2 = _app_sbuf_get_u8(i)
         in
           if eq_int_int(c1, c2) then cmp(i + 1) else 0
         end
@@ -307,11 +306,11 @@ in
   end
 end
 
-implement zip_find_entry(name_ptr, name_len) = let
+implement zip_find_entry(name_len) = let
   val count = _get_zip_count()
   fun search(i: int): int =
     if gte_int_int(i, count) then 0 - 1
-    else if gt_int_int(zip_entry_name_equals(i, name_ptr, name_len), 0) then i
+    else if gt_int_int(zip_entry_name_equals(i, name_len), 0) then i
     else search(i + 1)
 in search(0) end
 

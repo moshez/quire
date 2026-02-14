@@ -61,9 +61,24 @@ test.describe('EPUB Reader E2E', () => {
     writeFileSync(epubPath, epubBuffer);
     await fileInput.setInputFiles(epubPath);
 
+    // Verify import progress UI is visible during import.
+    // The label should get the "importing" class and the status div should show messages.
+    const importingLabel = page.locator('label.importing');
+    await expect(importingLabel).toBeVisible({ timeout: 10000 });
+    await screenshot(page, '02a-import-progress');
+
+    // Verify the import-status div shows a progress message
+    const importStatus = page.locator('.import-status');
+    await expect(importStatus).not.toBeEmpty({ timeout: 10000 });
+
     // Wait for import to finish and library to rebuild with a book card
     await page.waitForSelector('.book-card', { timeout: 30000 });
     await screenshot(page, '02-library-with-book');
+
+    // Verify import UI is cleaned up: "importing" class removed, status cleared
+    await expect(importingLabel).not.toBeVisible({ timeout: 5000 });
+    const importBtn = page.locator('label.import-btn');
+    await expect(importBtn).toBeVisible();
 
     // Verify the book card shows correct title and author
     const bookTitle = page.locator('.book-title');

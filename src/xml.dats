@@ -1,19 +1,30 @@
 (* xml.dats - Tree-based XML parser implementation
  *
  * Pure ATS2 recursive descent parser that builds a tree of xml_node_vt.
- * All byte access goes through buf_get_u8 / buf_set_u8 (runtime.h macros).
  * Strings reference the fetch buffer directly (zero-copy).
+ *
+ * Note: This module's tree structure (xml_node_vt) stores raw ptrs into
+ * the fetch buffer for zero-copy name/value access. The buf_get_u8/set_u8
+ * helpers are irreducible C operations required by this design.
  *)
 
 #define ATS_DYNLOADFLAG 0
 
-staload "./buf.sats"
+%{
+static inline int buf_get_u8(void *p, int off) {
+  return ((unsigned char*)p)[off];
+}
+static inline void buf_set_u8(void *p, int off, int v) {
+  ((unsigned char*)p)[off] = (unsigned char)v;
+}
+%}
+
 staload "./xml.sats"
 
 staload "./arith.sats"
 
-(* Module-private raw ptr buffer access — stays within xml.dats.
- * xml.dats operates on fetch buffer ptr from epub module. *)
+(* Module-private raw ptr buffer access — local to xml.dats.
+ * C implementations above via %{ block (zero-copy tree needs raw ptr). *)
 extern fun buf_get_u8(p: ptr, off: int): int = "mac#buf_get_u8"
 extern fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#buf_set_u8"
 extern fun ptr_add_int(p: ptr, n: int): ptr = "mac#atspre_add_ptr0_bsz"
