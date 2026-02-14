@@ -352,6 +352,36 @@ fn val_zero(): ward_safe_text(1) = let
   val b = ward_text_putc(b, 0, 48) (* '0' *)
 in ward_text_done(b) end
 
+(* ========== App CSS injection ========== *)
+
+(* CSS string lives in quire_decls.h as a static const char[].
+ * _fill_css copies it into a ward_arr for set_text. *)
+extern fun _app_css_len(): [n:pos] int n = "mac#"
+extern fun _fill_css {l:agz}{n:pos} (dst: !ward_arr(byte, l, n)): void = "mac#"
+
+(* Create a <style> element under parent and fill it with app CSS.
+ * Called at the start of both render_library and enter_reader so that
+ * each view has its styles after remove_children clears the previous. *)
+fn inject_app_css {l:agz}
+  (s: ward_dom_stream(l), parent: int): ward_dom_stream(l) = let
+  val css_len = _app_css_len()
+in
+  if css_len < 65536 then
+  if css_len + 7 <= 262144 then let
+    val css_arr = ward_arr_alloc<byte>(css_len)
+    val () = _fill_css(css_arr)
+    val style_id = dom_next_id()
+    val s = ward_dom_stream_create_element(s, style_id, parent, tag_style(), 5)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(css_arr)
+    val s = ward_dom_stream_set_text(s, style_id, borrow, css_len)
+    val () = ward_arr_drop<byte>(frozen, borrow)
+    val css_arr = ward_arr_thaw<byte>(frozen)
+    val () = ward_arr_free<byte>(css_arr)
+  in s end
+  else s
+  else s
+end
+
 (* ========== Helper: set text content from C string constant ========== *)
 
 fn set_text_cstr {l:agz}
@@ -757,7 +787,7 @@ in
             val () = ward_arr_free<byte>(arr)
             val saved_cid = container_id
             val p2 = ward_promise_then<int><int>(p,
-              llam (blob_handle: int): ward_promise_pending(int) => let
+              llam (blob_handle: int): ward_promise_chained(int) => let
                 val dlen = ward_decompress_get_len()
               in
                 if gt_int_int(dlen, 0) then let
@@ -884,6 +914,7 @@ implement render_library(root_id) = let
   val dom = ward_dom_init()
   val s = ward_dom_stream_begin(dom)
   val s = ward_dom_stream_remove_children(s, root_id)
+  val s = inject_app_css(s, root_id)
 
   (* Import button: <label class="import-btn">Import<input ...></label> *)
   val label_id = dom_next_id()
@@ -928,7 +959,7 @@ in
       lam (_payload_len: int): int => let
         val p = ward_file_open(saved_input_id)
         val p2 = ward_promise_then<int><int>(p,
-          llam (handle: int): ward_promise_pending(int) => let
+          llam (handle: int): ward_promise_chained(int) => let
             val file_size = ward_file_get_size()
             val () = reader_set_file_handle(handle)
             (* Async break: yield to event loop to reset V8 call stack.
@@ -937,7 +968,7 @@ in
             val break_p = ward_timer_set(0)
             val sh = handle val sfs = file_size val sli = saved_list_id
           in ward_promise_then<int><int>(break_p,
-            llam (_unused: int): ward_promise_pending(int) => let
+            llam (_unused: int): ward_promise_chained(int) => let
               val _nentries = zip_open(sh, sfs)
               val ok1 = epub_read_container(sh)
               val ok2 = (if gt_int_int(ok1, 0)
@@ -993,7 +1024,7 @@ in
       lam (_payload_len: int): int => let
         val p = ward_file_open(saved_input_id)
         val p2 = ward_promise_then<int><int>(p,
-          llam (handle: int): ward_promise_pending(int) => let
+          llam (handle: int): ward_promise_chained(int) => let
             val file_size = ward_file_get_size()
             val () = reader_set_file_handle(handle)
             (* Async break: yield to event loop to reset V8 call stack *)
@@ -1001,7 +1032,7 @@ in
             val sh = handle val sfs = file_size
             val sli = saved_list_id val sr = saved_root
           in ward_promise_then<int><int>(break_p,
-            llam (_unused: int): ward_promise_pending(int) => let
+            llam (_unused: int): ward_promise_chained(int) => let
               val _nentries = zip_open(sh, sfs)
               val ok1 = epub_read_container(sh)
               val ok2 = (if gt_int_int(ok1, 0)
@@ -1052,6 +1083,7 @@ implement enter_reader(root_id, book_index) = let
   val dom = ward_dom_init()
   val s = ward_dom_stream_begin(dom)
   val s = ward_dom_stream_remove_children(s, root_id)
+  val s = inject_app_css(s, root_id)
 
   (* Create .reader-viewport with tabindex="0" for keyboard focus *)
   val viewport_id = dom_next_id()

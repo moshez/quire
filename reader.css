@@ -1,104 +1,39 @@
-:root {
-  --page-width: 100vw;
-  --page-gap: 0px;
-  --content-height: calc(100vh - 4rem);
-  --font-size: 18px;
-  --line-height: 1.6;
-  --font-family: Georgia, serif;
-  --bg-color: #fafaf8;
-  --text-color: #2a2a2a;
-}
-
+/* Quire loading screen — scoped to .quire-loading so it
+ * does NOT affect the app once WASM replaces the loading div.
+ * App styles are injected from WASM via a <style> element. */
 html, body {
   margin: 0;
   padding: 0;
-  background-color: var(--bg-color);
-  color: var(--text-color);
-  font-family: var(--font-family);
-  font-size: var(--font-size);
-  line-height: var(--line-height);
+  background: #fafaf8;
 }
-
-.reader-viewport {
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-  position: relative;
-}
-
-/* Library view */
-.import-btn {
-  display: inline-block;
-  padding: 0.5rem 1.2rem;
-  margin: 1rem;
-  background: #4a7c59;
-  color: #fff;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 1rem;
-}
-
-.import-btn input[type="file"] {
-  display: none;
-}
-
-.library-list {
-  padding: 1rem;
-}
-
-.empty-lib {
-  color: #888;
-  text-align: center;
-  padding: 2rem;
-  font-style: italic;
-}
-
-.book-card {
+.quire-loading {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: 0.75rem 1rem;
-  margin-bottom: 0.5rem;
-  background: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-}
-
-.book-title {
-  font-weight: bold;
-  margin-right: 0.5rem;
-}
-
-.book-author {
-  color: #666;
-  margin-right: auto;
-}
-
-.book-position {
-  color: #999;
-  font-size: 0.85rem;
-  margin-right: 1rem;
-}
-
-.read-btn {
-  padding: 0.4rem 1rem;
-  background: #4a7c59;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-/* Reader view */
-.reader-viewport {
-  width: 100vw;
+  justify-content: center;
   height: 100vh;
-  overflow: hidden;
-  position: relative;
+  font-family: Georgia, serif;
+  color: #999;
 }
-
-.chapter-container {
-  column-width: var(--page-width);
-  column-gap: var(--page-gap);
-  height: var(--content-height);
-  overflow: visible;
+.quire-loading .spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #e8e8e8;
+  border-top-color: #4a7c59;
+  border-radius: 50%;
+  animation: quire-spin 0.8s linear infinite;
+}
+.quire-loading .app-name {
+  margin-top: 1.5rem;
+  font-size: 1.1rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  animation: quire-fade 1.2s ease-in-out infinite alternate;
+}
+@keyframes quire-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes quire-fade {
+  from { opacity: 0.4; }
+  to { opacity: 1; }
 }

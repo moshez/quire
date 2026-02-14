@@ -172,12 +172,11 @@ describe('PWA Assets', () => {
     expect(icon[3]).toBe(0x47);
   });
 
-  it('should have reader.css', () => {
+  it('should have reader.css with loading screen styles', () => {
     const css = readFileSync(resolve(__dirname, '../reader.css'), 'utf8');
-    expect(css).toContain('--bg-color');
-    expect(css).toContain('--font-size');
-    expect(css).toContain('.reader-viewport');
-    expect(css).toContain('.chapter-container');
+    expect(css).toContain('.quire-loading');
+    expect(css).toContain('quire-spin');
+    expect(css).toContain('@keyframes');
   });
 
   it('should have service worker registration in index.html', () => {
