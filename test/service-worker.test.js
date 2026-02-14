@@ -21,11 +21,11 @@ describe('Service Worker Source', () => {
   });
 
   it('should define SHELL with all app shell assets', () => {
-    expect(swSource).toContain("'/'");
-    expect(swSource).toContain("'/ward_bridge.js'");
-    expect(swSource).toContain("'/quire.wasm'");
-    expect(swSource).toContain("'/reader.css'");
-    expect(swSource).toContain("'/manifest.json'");
+    expect(swSource).toContain("'./'");
+    expect(swSource).toContain("'ward_bridge.js'");
+    expect(swSource).toContain("'quire.wasm'");
+    expect(swSource).toContain("'reader.css'");
+    expect(swSource).toContain("'manifest.json'");
   });
 
   it('should register install event listener', () => {
@@ -94,7 +94,7 @@ describe('Service Worker Behavior', () => {
 
     expect(mockCaches.open).toHaveBeenCalledWith('quire-v2');
     expect(mockCache.addAll).toHaveBeenCalledWith([
-      '/', '/ward_bridge.js', '/quire.wasm', '/reader.css', '/manifest.json'
+      './', 'ward_bridge.js', 'quire.wasm', 'reader.css', 'manifest.json'
     ]);
   });
 
