@@ -1437,65 +1437,135 @@ in
   reader_exit(pf)
 end
 
-(* ========== EPUB import: read and parse ZIP entries ========== *)
+(* ========== EPUB import: read and parse ZIP entries (async) ========== *)
 
-fn epub_read_container(handle: int): int = let
+(* Read container.xml from ZIP, handling both stored and deflated entries.
+ * Returns ward_promise_chained(int) — resolves to parse result (>0 = success).
+ * For stored entries: reads directly, parses synchronously.
+ * For deflated entries: reads compressed bytes, decompresses via ward_decompress,
+ * parses in callback. Follows the load_chapter pattern exactly. *)
+fn epub_read_container_async(handle: int): ward_promise_chained(int) = let
   val _cl = epub_copy_container_path(0)
   val idx = zip_find_entry(22)
 in
-  if gt_int_int(0, idx) then 0
+  if gt_int_int(0, idx) then ward_promise_return<int>(0)
   else let
     var entry: zip_entry
     val found = zip_get_entry(idx, entry)
   in
-    if eq_int_int(found, 0) then 0
+    if eq_int_int(found, 0) then ward_promise_return<int>(0)
     else let
+      val compression = entry.compression
+      val compressed_size = entry.compressed_size
       val usize = entry.uncompressed_size
     in
-      if gt_int_int(1, usize) then 0
-      else if gt_int_int(usize, 16384) then 0
+      if gt_int_int(1, usize) then ward_promise_return<int>(0)
+      else if gt_int_int(usize, 16384) then ward_promise_return<int>(0)
       else let
         val data_off = zip_get_data_offset(idx)
       in
-        if gt_int_int(0, data_off) then 0
+        if gt_int_int(0, data_off) then ward_promise_return<int>(0)
+        else if eq_int_int(compression, 8) then let
+          (* Deflated — async decompression *)
+          val cs1 = (if gt_int_int(compressed_size, 0)
+            then compressed_size else 1): int
+          val cs_pos = _checked_pos(cs1)
+          val arr = ward_arr_alloc<byte>(cs_pos)
+          val _rd = ward_file_read(handle, data_off, arr, cs_pos)
+          val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+          val p = ward_decompress(borrow, cs_pos, 2) (* deflate-raw *)
+          val () = ward_arr_drop<byte>(frozen, borrow)
+          val arr = ward_arr_thaw<byte>(frozen)
+          val () = ward_arr_free<byte>(arr)
+        in ward_promise_then<int><int>(p,
+          llam (blob_handle: int): ward_promise_chained(int) => let
+            val dlen = ward_decompress_get_len()
+          in
+            if gt_int_int(dlen, 0) then let
+              val dl = _checked_pos(dlen)
+              val arr2 = ward_arr_alloc<byte>(dl)
+              val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
+              val () = ward_blob_free(blob_handle)
+              val result = epub_parse_container_bytes(arr2, dl)
+              val () = ward_arr_free<byte>(arr2)
+            in ward_promise_return<int>(result) end
+            else let
+              val () = ward_blob_free(blob_handle)
+            in ward_promise_return<int>(0) end
+          end)
+        end
         else let
+          (* Stored — synchronous read *)
           val usize1 = _checked_pos(usize)
           val arr = ward_arr_alloc<byte>(usize1)
           val _rd = ward_file_read(handle, data_off, arr, usize1)
           val result = epub_parse_container_bytes(arr, usize1)
           val () = ward_arr_free<byte>(arr)
-        in result end
+        in ward_promise_return<int>(result) end
       end
     end
   end
 end
 
-fn epub_read_opf(handle: int): int = let
+(* Read content.opf from ZIP — same pattern as container. *)
+fn epub_read_opf_async(handle: int): ward_promise_chained(int) = let
   val opf_len = epub_copy_opf_path(0)
   val idx = zip_find_entry(opf_len)
 in
-  if gt_int_int(0, idx) then 0
+  if gt_int_int(0, idx) then ward_promise_return<int>(0)
   else let
     var entry: zip_entry
     val found = zip_get_entry(idx, entry)
   in
-    if eq_int_int(found, 0) then 0
+    if eq_int_int(found, 0) then ward_promise_return<int>(0)
     else let
+      val compression = entry.compression
+      val compressed_size = entry.compressed_size
       val usize = entry.uncompressed_size
     in
-      if gt_int_int(1, usize) then 0
-      else if gt_int_int(usize, 16384) then 0
+      if gt_int_int(1, usize) then ward_promise_return<int>(0)
+      else if gt_int_int(usize, 16384) then ward_promise_return<int>(0)
       else let
         val data_off = zip_get_data_offset(idx)
       in
-        if gt_int_int(0, data_off) then 0
+        if gt_int_int(0, data_off) then ward_promise_return<int>(0)
+        else if eq_int_int(compression, 8) then let
+          (* Deflated — async decompression *)
+          val cs1 = (if gt_int_int(compressed_size, 0)
+            then compressed_size else 1): int
+          val cs_pos = _checked_pos(cs1)
+          val arr = ward_arr_alloc<byte>(cs_pos)
+          val _rd = ward_file_read(handle, data_off, arr, cs_pos)
+          val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+          val p = ward_decompress(borrow, cs_pos, 2) (* deflate-raw *)
+          val () = ward_arr_drop<byte>(frozen, borrow)
+          val arr = ward_arr_thaw<byte>(frozen)
+          val () = ward_arr_free<byte>(arr)
+        in ward_promise_then<int><int>(p,
+          llam (blob_handle: int): ward_promise_chained(int) => let
+            val dlen = ward_decompress_get_len()
+          in
+            if gt_int_int(dlen, 0) then let
+              val dl = _checked_pos(dlen)
+              val arr2 = ward_arr_alloc<byte>(dl)
+              val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
+              val () = ward_blob_free(blob_handle)
+              val result = epub_parse_opf_bytes(arr2, dl)
+              val () = ward_arr_free<byte>(arr2)
+            in ward_promise_return<int>(result) end
+            else let
+              val () = ward_blob_free(blob_handle)
+            in ward_promise_return<int>(0) end
+          end)
+        end
         else let
+          (* Stored — synchronous read *)
           val usize1 = _checked_pos(usize)
           val arr = ward_arr_alloc<byte>(usize1)
           val _rd = ward_file_read(handle, data_off, arr, usize1)
           val result = epub_parse_opf_bytes(arr, usize1)
           val () = ward_arr_free<byte>(arr)
-        in result end
+        in ward_promise_return<int>(result) end
       end
     end
   end
@@ -1900,52 +1970,50 @@ implement render_library(root_id) = let
             val p2 = ward_timer_set(0)
           in ward_promise_then<int><int>(p2,
             llam (_: int): ward_promise_chained(int) => let
-              (* Phase 3 — read metadata, consumes pf2 *)
+              (* Phase 3 — read metadata (async), consumes pf2 *)
               prval _ = PHASE_ADD(pf2)
               val () = update_status_text(ssts, TEXT_READING_META, 16)
-              val ok1 = epub_read_container(sh)
-              val ok2 = (if gt_int_int(ok1, 0)
-                then epub_read_opf(sh) else 0): int
+              val p_container = epub_read_container_async(sh)
 
-              (* Phase 3: Add book + re-render — yield for "Reading metadata" to paint *)
-              val sok1 = ok1
-              val p3 = ward_timer_set(0)
-            in ward_promise_then<int><int>(p3,
-              llam (_: int): ward_promise_chained(int) => let
-                val () = update_status_text(ssts, TEXT_ADDING_BOOK, 17)
-
-                (* Linear import outcome — every branch must produce exactly one token.
-                 * import_mark_failed logs error; import_finish consumes token + cleans up.
-                 * Token never crosses if-then-else boundary — each branch calls import_finish. *)
-                val () =
-                  if gt_int_int(ok2, 0) then let
-                    val book_idx = library_add_book()
-                  in
-                    if gte_int_int(book_idx, 0) then let
-                      val h = import_mark_success()
-                      (* Re-render + register read buttons — success only *)
-                      val dom = ward_dom_init()
-                      val s = ward_dom_stream_begin(dom)
-                      val s = render_library_with_books(s, sli)
-                      val dom = ward_dom_stream_end(s)
-                      val () = ward_dom_fini(dom)
-                      val btn_count = library_get_count()
-                      val () = register_read_btns(0, btn_count, sr)
-                    in import_finish(h, slbl, sspn, ssts) end
-                    else import_finish(
-                      import_mark_failed(log_err_lib_full(), 12),
-                      slbl, sspn, ssts)
-                  end
-                  else (
-                    if gt_int_int(sok1, 0)
-                    then import_finish(
-                      import_mark_failed(log_err_opf(), 7),
-                      slbl, sspn, ssts)
-                    else import_finish(
-                      import_mark_failed(log_err_container(), 13),
-                      slbl, sspn, ssts)
-                  )
-              in ward_promise_return<int>(0) end)
+              (* Chain: container result → OPF read → add book *)
+              val ssh = sh val ssli = sli val ssr = sr
+              val sslbl = slbl val ssspn = sspn val sssts = ssts
+            in ward_promise_then<int><int>(p_container,
+              llam (ok1: int): ward_promise_chained(int) =>
+                if gt_int_int(ok1, 0) then let
+                  val p_opf = epub_read_opf_async(ssh)
+                in ward_promise_then<int><int>(p_opf,
+                  llam (ok2: int): ward_promise_chained(int) => let
+                    val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
+                    val () =
+                      if gt_int_int(ok2, 0) then let
+                        val book_idx = library_add_book()
+                      in
+                        if gte_int_int(book_idx, 0) then let
+                          val h = import_mark_success()
+                          val dom = ward_dom_init()
+                          val s = ward_dom_stream_begin(dom)
+                          val s = render_library_with_books(s, ssli)
+                          val dom = ward_dom_stream_end(s)
+                          val () = ward_dom_fini(dom)
+                          val btn_count = library_get_count()
+                          val () = register_read_btns(0, btn_count, ssr)
+                        in import_finish(h, sslbl, ssspn, sssts) end
+                        else import_finish(
+                          import_mark_failed(log_err_lib_full(), 12),
+                          sslbl, ssspn, sssts)
+                      end
+                      else import_finish(
+                        import_mark_failed(log_err_opf(), 7),
+                        sslbl, ssspn, sssts)
+                  in ward_promise_return<int>(0) end)
+                end
+                else let
+                  val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
+                  val () = import_finish(
+                    import_mark_failed(log_err_container(), 13),
+                    sslbl, ssspn, sssts)
+                in ward_promise_return<int>(0) end)
             end)
           end)
         end)
