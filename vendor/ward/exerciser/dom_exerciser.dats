@@ -237,7 +237,7 @@ implement ward_node_init (root_id) = let
       val p_get = ward_promise_then<int><int>(p_put,
         llam (put_status: int) => let
           val idb_key2 = make_idb_key()
-        in ward_idb_get(idb_key2, 8) end)
+        in ward_promise_vow(ward_idb_get(idb_key2, 8)) end)
 
       (* IDB delete *)
       val p_del = ward_promise_then<int><int>(p_get,
@@ -245,12 +245,12 @@ implement ward_node_init (root_id) = let
           val result = ward_idb_get_result(5)
           val () = ward_arr_free<byte>(result)
           val idb_key3 = make_idb_key()
-        in ward_idb_delete(idb_key3, 8) end)
+        in ward_promise_vow(ward_idb_delete(idb_key3, 8)) end)
 
       (* Set 5s exit timer *)
       val p_timer = ward_promise_then<int><int>(p_del,
         llam (del_status: int) =>
-          ward_timer_set(5000))
+          ward_promise_vow(ward_timer_set(5000)))
 
       (* 5s timer fires — clean up dom and exit *)
       val p_exit = ward_promise_then<int><int>(p_timer,
@@ -262,5 +262,5 @@ implement ward_node_init (root_id) = let
 
     in p_exit end)
 
-  val () = ward_promise_discard<int><Pending>(p2)
+  val () = ward_promise_discard<int><Chained>(p2)
 in end

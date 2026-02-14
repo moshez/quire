@@ -7,6 +7,7 @@ staload "./memory.sats"
 datasort PromiseState =
   | Pending
   | Resolved
+  | Chained
 
 (* Linear promise indexed by state *)
 absvtype ward_promise(a:vt@ype, s:PromiseState)
@@ -17,6 +18,13 @@ absvtype ward_promise_resolver(a:vt@ype)
 (* Convenience aliases *)
 vtypedef ward_promise_pending(a:vt@ype) = ward_promise(a, Pending)
 vtypedef ward_promise_resolved(a:vt@ype) = ward_promise(a, Resolved)
+vtypedef ward_promise_chained(a:vt@ype) = ward_promise(a, Chained)
+
+(* Zero-cost coercion: Pending -> Chained.
+   Used when returning a bridge-created promise from a then callback.
+   At runtime all promise states have the same representation. *)
+castfn ward_promise_vow{a:vt@ype}
+  (p: ward_promise_pending(a)): ward_promise_chained(a)
 
 (* ============================================================
    Creation
@@ -30,10 +38,11 @@ fun{a:vt@ype}
 ward_promise_resolved
   (v: a): ward_promise_resolved(a)
 
-(* Lift a value into a pending promise (monadic return). *)
+(* Lift a value into a chain-context promise (monadic return).
+   Used exclusively inside ward_promise_then callbacks. *)
 fun{a:vt@ype}
 ward_promise_return
-  (v: a): ward_promise_pending(a)
+  (v: a): ward_promise_chained(a)
 
 (* ============================================================
    Resolution — consumes the resolver
@@ -57,12 +66,16 @@ ward_promise_discard
 
 (* Monadic bind: attach a callback that returns a promise.
    The closure is linear (cloptr1) — it can capture linear values
-   and is freed after invocation. Use ward_promise_return for immediate values. *)
+   and is freed after invocation. Use ward_promise_return for immediate
+   values, ward_promise_vow to coerce bridge results.
+   Returns Chained: the result is chain-owned by the parent promise.
+   Accepts any state via {s:PromiseState} — inferred, no call-site change. *)
 fun{a:vt@ype}{b:vt@ype}
 ward_promise_then
-  (p: ward_promise_pending(a),
-   f: (a) -<lin,cloptr1> ward_promise_pending(b)
-  ): ward_promise_pending(b)
+  {s:PromiseState}
+  (p: ward_promise(a, s),
+   f: (a) -<lin,cloptr1> ward_promise_chained(b)
+  ): ward_promise_chained(b)
 
 (* ============================================================
    Resolver stash — stores resolver in table, returns integer ID.

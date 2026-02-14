@@ -787,7 +787,7 @@ in
             val () = ward_arr_free<byte>(arr)
             val saved_cid = container_id
             val p2 = ward_promise_then<int><int>(p,
-              llam (blob_handle: int): ward_promise_pending(int) => let
+              llam (blob_handle: int): ward_promise_chained(int) => let
                 val dlen = ward_decompress_get_len()
               in
                 if gt_int_int(dlen, 0) then let
@@ -959,7 +959,7 @@ in
       lam (_payload_len: int): int => let
         val p = ward_file_open(saved_input_id)
         val p2 = ward_promise_then<int><int>(p,
-          llam (handle: int): ward_promise_pending(int) => let
+          llam (handle: int): ward_promise_chained(int) => let
             val file_size = ward_file_get_size()
             val () = reader_set_file_handle(handle)
             (* Async break: yield to event loop to reset V8 call stack.
@@ -968,7 +968,7 @@ in
             val break_p = ward_timer_set(0)
             val sh = handle val sfs = file_size val sli = saved_list_id
           in ward_promise_then<int><int>(break_p,
-            llam (_unused: int): ward_promise_pending(int) => let
+            llam (_unused: int): ward_promise_chained(int) => let
               val _nentries = zip_open(sh, sfs)
               val ok1 = epub_read_container(sh)
               val ok2 = (if gt_int_int(ok1, 0)
@@ -1024,7 +1024,7 @@ in
       lam (_payload_len: int): int => let
         val p = ward_file_open(saved_input_id)
         val p2 = ward_promise_then<int><int>(p,
-          llam (handle: int): ward_promise_pending(int) => let
+          llam (handle: int): ward_promise_chained(int) => let
             val file_size = ward_file_get_size()
             val () = reader_set_file_handle(handle)
             (* Async break: yield to event loop to reset V8 call stack *)
@@ -1032,7 +1032,7 @@ in
             val sh = handle val sfs = file_size
             val sli = saved_list_id val sr = saved_root
           in ward_promise_then<int><int>(break_p,
-            llam (_unused: int): ward_promise_pending(int) => let
+            llam (_unused: int): ward_promise_chained(int) => let
               val _nentries = zip_open(sh, sfs)
               val ok1 = epub_read_container(sh)
               val ok2 = (if gt_int_int(ok1, 0)

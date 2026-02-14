@@ -1,5 +1,5 @@
-(* ANTI-EXERCISER: use after then *)
-(* This MUST fail to compile — then consumes the promise *)
+(* ANTI-EXERCISER: extract from chained promise *)
+(* This MUST fail to compile — chained promises cannot be extracted *)
 
 #include "share/atspre_staload.hats"
 staload "./../../lib/memory.sats"
@@ -10,9 +10,7 @@ staload _ = "./../../lib/promise.dats"
 fun bad (): void = let
   val @(p, r) = ward_promise_create<int> ()
   val p2 = ward_promise_then<int><int> (p, llam (x) => ward_promise_return<int>(x + 1))
-  (* p already consumed by then — reuse is type error *)
-  val p3 = ward_promise_then<int><int> (p, llam (x) => ward_promise_return<int>(x + 2))
+  (* p2 is Chained, extract requires Resolved — type error *)
+  val v = ward_promise_extract<int> (p2)
   val () = ward_promise_resolve<int> (r, 0)
-  val () = ward_promise_discard<int><Chained> (p2)
-  val () = ward_promise_discard<int><Chained> (p3)
 in end

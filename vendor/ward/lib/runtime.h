@@ -156,8 +156,8 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 
 #define ATSSELrecsin(pmv, tyrec, lab) (pmv)
 #define ATSINSstore_con1_tag(dst, tag) (((int*)(dst))[0] = (tag))
-#define ATSINSmove_con0(dst, tag) ((dst) = (void*)0)
-#define ATSCKpat_con0(p, tag) ((p) == (void*)0)
+#define ATSINSmove_con0(dst, tag) ((dst) = (void*)(tag))
+#define ATSCKpat_con0(p, tag) ((p) == (void*)(tag))
 #define ATSCKpat_con1(p, tag) (((int*)(p))[0] == (tag))
 
 #define ATSINSmove_fltrec_beg()
