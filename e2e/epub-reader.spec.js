@@ -207,11 +207,10 @@ test.describe('EPUB Reader E2E', () => {
     expect(posText).not.toBe('Not started');
   });
 
-  test('import incompatible epub logs error and restores UI', async ({ page }) => {
-    // This test uses a real-world EPUB whose metadata entries are deflate-compressed.
-    // Quire's synchronous parser can only read stored (uncompressed) metadata entries,
-    // so import will fail — but it must fail gracefully: log an error and restore UI.
-    // This validates the linear import_handled proof: every failure path logs an error.
+  test('import real-world epub with deflate-compressed metadata', async ({ page }) => {
+    // This test uses a real-world EPUB whose metadata entries (container.xml,
+    // content.opf) are deflate-compressed (ZIP method 8). The async decompression
+    // path in epub_read_container_async / epub_read_opf_async handles this.
     const consoleMessages = [];
     const pageErrors = [];
     page.on('console', msg => consoleMessages.push(`[${msg.type()}] ${msg.text()}`));
@@ -225,45 +224,24 @@ test.describe('EPUB Reader E2E', () => {
     await page.goto('/');
     await page.waitForSelector('.library-list', { timeout: 15000 });
 
-    // Set up a promise that resolves when import-done is logged
-    const importDone = new Promise(resolve => {
-      page.on('console', msg => {
-        if (msg.text().includes('import-done')) resolve();
-      });
-    });
-
-    // Import the real EPUB fixture (expected to fail gracefully)
+    // Import the real EPUB fixture
     const fileInput = page.locator('input[type="file"]');
     await fileInput.setInputFiles('test/fixtures/conan-stories.epub');
 
-    // Wait for import-done log — proves import_complete ran (linear token consumed)
-    // The import chain has 4 timer yields (0ms each) so it completes quickly.
-    try {
-      await Promise.race([
-        importDone,
-        page.waitForTimeout(15000).then(() => { throw new Error('import-done not logged'); }),
-      ]);
-    } catch (e) {
-      console.error('Import did not complete. Console:', consoleMessages);
-      console.error('Page errors:', pageErrors);
-      throw e;
-    }
+    // Wait for import to complete — book card must appear
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await screenshot(page, 'conan-import-success');
 
-    // UI should be restored — "importing" class removed, "import-btn" restored
+    // Verify import UI is cleaned up
     const importBtn = page.locator('label.import-btn');
     await expect(importBtn).toBeVisible({ timeout: 5000 });
-    await screenshot(page, 'conan-import-failed');
 
-    // Verify an error was logged (err-container, err-opf, or err-lib-full)
+    // Verify no errors were logged
     const errorLogs = consoleMessages.filter(m => m.includes('[ward:error]'));
-    expect(errorLogs.length).toBeGreaterThan(0);
+    expect(errorLogs.length).toBe(0);
 
-    // Verify import-done was also logged (proves linear token was consumed)
+    // Verify import-done was logged (proves linear token was consumed)
     const doneLogs = consoleMessages.filter(m => m.includes('import-done'));
     expect(doneLogs.length).toBeGreaterThan(0);
-
-    // Verify no book card appeared (import failed, not succeeded silently)
-    const bookCards = page.locator('.book-card');
-    await expect(bookCards).toHaveCount(0);
   });
 });
