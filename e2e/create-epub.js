@@ -224,7 +224,7 @@ ${spineItems}  </spine>
 
   // Assemble ZIP entries
   // mimetype MUST be first and stored (EPUB spec)
-  // container.xml and content.opf MUST be stored (WASM parser reads them synchronously)
+  // container.xml and content.opf are stored here for simplicity (deflated also works)
   const zipEntries = [
     { name: 'mimetype', data: mimetype, store: true },
     { name: 'META-INF/container.xml', data: containerXml, store: true },
