@@ -213,27 +213,45 @@ test.describe('EPUB Reader E2E', () => {
     // so import will fail — but it must fail gracefully: log an error and restore UI.
     // This validates the linear import_handled proof: every failure path logs an error.
     const consoleMessages = [];
+    const pageErrors = [];
     page.on('console', msg => consoleMessages.push(`[${msg.type()}] ${msg.text()}`));
+    page.on('pageerror', err => pageErrors.push(err.message));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED during import test');
+      console.error('Console:', consoleMessages);
+    });
 
     // Navigate to app and wait for library
     await page.goto('/');
     await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Set up a promise that resolves when import-done is logged
+    const importDone = new Promise(resolve => {
+      page.on('console', msg => {
+        if (msg.text().includes('import-done')) resolve();
+      });
+    });
 
     // Import the real EPUB fixture (expected to fail gracefully)
     const fileInput = page.locator('input[type="file"]');
     await fileInput.setInputFiles('test/fixtures/conan-stories.epub');
 
     // Wait for import-done log — proves import_complete ran (linear token consumed)
-    await page.waitForFunction(
-      () => window.__wardLogs?.some(l => l.includes('import-done')),
-      { timeout: 30000 }
-    ).catch(() => {
-      // Fallback: wait for UI restoration instead
-    });
+    // The import chain has 4 timer yields (0ms each) so it completes quickly.
+    try {
+      await Promise.race([
+        importDone,
+        page.waitForTimeout(15000).then(() => { throw new Error('import-done not logged'); }),
+      ]);
+    } catch (e) {
+      console.error('Import did not complete. Console:', consoleMessages);
+      console.error('Page errors:', pageErrors);
+      throw e;
+    }
 
-    // Wait for UI to be restored — "importing" class removed, "import-btn" restored
+    // UI should be restored — "importing" class removed, "import-btn" restored
     const importBtn = page.locator('label.import-btn');
-    await expect(importBtn).toBeVisible({ timeout: 30000 });
+    await expect(importBtn).toBeVisible({ timeout: 5000 });
     await screenshot(page, 'conan-import-failed');
 
     // Verify an error was logged (err-container, err-opf, or err-lib-full)
