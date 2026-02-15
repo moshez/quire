@@ -127,4 +127,31 @@ clean:
 install: build/quire.wasm
 	cp build/quire.wasm quire.wasm
 
-.PHONY: all clean install
+# --- PWA packaging ---
+# Assembles a deployable PWA in dist/.
+# COMMIT_SHA controls version stamp (default: "dev" for local use).
+# Used by both PR validation and deploy workflows.
+
+COMMIT_SHA ?= dev
+
+# Required PWA files — build fails if any are missing
+PWA_REQUIRED := index.html reader.css manifest.json service-worker.js
+
+dist: build/quire.wasm
+	@mkdir -p dist
+	@for f in $(PWA_REQUIRED); do \
+	  test -f $$f || { echo "ERROR: required PWA file missing: $$f"; exit 1; }; \
+	done
+	cp index.html dist/
+	cp $(WARD_DIR)/ward_bridge.mjs dist/ward_bridge.js
+	cp reader.css dist/
+	cp manifest.json dist/
+	cp service-worker.js dist/
+	cp build/quire.wasm dist/
+	cp icon-192.png dist/ 2>/dev/null || true
+	cp icon-512.png dist/ 2>/dev/null || true
+	sed -i "s|./vendor/ward/lib/ward_bridge.mjs|./ward_bridge.js|" dist/index.html
+	sed -i "s|>dev</div>|>$(COMMIT_SHA)</div>|" dist/index.html
+	sed -i "s|quire-v3|quire-$(COMMIT_SHA)|" dist/service-worker.js
+
+.PHONY: all clean install dist
