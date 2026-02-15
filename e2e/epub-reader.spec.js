@@ -288,33 +288,13 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForSelector('.chapter-container', { timeout: 15000 });
 
-    // Wait a bit then check chapter container state for diagnostics
-    await page.waitForTimeout(3000);
-    const chapterState = await page.evaluate(() => {
+    // Wait for chapter content to render. The first spine entry in this EPUB
+    // is a cover page with SVG (no text), so we check for child elements
+    // rather than text content.
+    await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
-      return {
-        exists: !!el,
-        childCount: el ? el.childElementCount : -1,
-        textLen: el ? el.textContent.length : -1,
-        innerHTML: el ? el.innerHTML.substring(0, 200) : 'N/A',
-      };
-    });
-    console.log('Chapter container state:', JSON.stringify(chapterState));
-    console.log('Console messages:', consoleMessages.join('\n'));
-    console.log('Page errors:', pageErrors.join('\n'));
-
-    // If no content yet, wait longer with diagnostics
-    if (chapterState.textLen === 0) {
-      await page.waitForTimeout(5000);
-      const state2 = await page.evaluate(() => {
-        const el = document.querySelector('.chapter-container');
-        return {
-          textLen: el ? el.textContent.length : -1,
-          childCount: el ? el.childElementCount : -1,
-        };
-      });
-      console.log('Chapter state after 5s more:', JSON.stringify(state2));
-    }
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
 
     await screenshot(page, 'conan-reader');
 
@@ -322,11 +302,13 @@ test.describe('EPUB Reader E2E', () => {
     const readerNav = page.locator('.reader-nav');
     await expect(readerNav).toBeVisible();
 
-    // Verify chapter content rendered (deflate-compressed chapter data)
+    // Verify chapter content rendered (deflate-compressed chapter data).
+    // The first spine entry is a cover page with SVG — check child elements,
+    // not text content, to confirm the chapter was decompressed and rendered.
     const container = page.locator('.chapter-container').first();
     await expect(container).toBeVisible();
-    const textLen = await container.evaluate(el => el.textContent.length);
-    expect(textLen).toBeGreaterThan(0);
+    const childCount = await container.evaluate(el => el.childElementCount);
+    expect(childCount).toBeGreaterThan(0);
 
     // Navigate back via back button
     const backBtn = page.locator('.back-btn');
