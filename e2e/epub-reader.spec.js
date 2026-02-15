@@ -4,6 +4,8 @@
  * Creates a minimal EPUB programmatically, imports it into Quire,
  * verifies the library view, opens the book, flips pages, and
  * takes screenshots at each key step.
+ *
+ * Runs at multiple viewport sizes (see playwright.config.js projects).
  */
 
 import { test, expect } from '@playwright/test';
@@ -15,8 +17,11 @@ const SCREENSHOT_DIR = join(process.cwd(), 'e2e', 'screenshots');
 
 mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
+/** Viewport-aware screenshot: includes project name in filename */
 async function screenshot(page, name) {
-  await page.screenshot({ path: join(SCREENSHOT_DIR, `${name}.png`), fullPage: true });
+  const vp = page.viewportSize();
+  const tag = `${vp.width}x${vp.height}`;
+  await page.screenshot({ path: join(SCREENSHOT_DIR, `${name}-${tag}.png`), fullPage: true });
 }
 
 test.describe('EPUB Reader E2E', () => {
@@ -117,6 +122,14 @@ test.describe('EPUB Reader E2E', () => {
     await expect(backBtn).toBeVisible();
     await expect(backBtn).toContainText('Back');
 
+    // --- Verify prev/next buttons visible ---
+    const prevBtn = page.locator('.prev-btn');
+    const nextBtn = page.locator('.next-btn');
+    await expect(prevBtn).toBeVisible();
+    await expect(prevBtn).toContainText('Prev');
+    await expect(nextBtn).toBeVisible();
+    await expect(nextBtn).toContainText('Next');
+
     const pageInfo = page.locator('.page-info');
     await expect(pageInfo).toBeVisible();
 
@@ -146,6 +159,23 @@ test.describe('EPUB Reader E2E', () => {
     }));
     expect(dims.scrollWidth).toBeGreaterThan(dims.clientWidth);
 
+    // RENDERING PROOF: column width matches viewport width (no bleeding)
+    // scrollWidth must be an exact multiple of viewport width
+    const vpWidth = page.viewportSize().width;
+    expect(dims.scrollWidth % vpWidth).toBe(0);
+
+    // RENDERING PROOF: content has horizontal padding (not flush to edge)
+    const firstChild = await chapterContainer.evaluate(el => {
+      const child = el.firstElementChild;
+      if (!child) return null;
+      const rect = child.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, vpWidth: window.innerWidth };
+    });
+    if (firstChild) {
+      expect(firstChild.left).toBeGreaterThan(0);  // left margin exists
+      expect(firstChild.right).toBeLessThan(firstChild.vpWidth);  // right margin exists
+    }
+
     // --- Flip pages forward using click zones ---
     const viewport = page.viewportSize();
     const rightZoneX = viewport.width - 50;
@@ -173,8 +203,36 @@ test.describe('EPUB Reader E2E', () => {
     expect(pageTextAfterForward).toMatch(/^\d+ \/ \d+$/);
     expect(pageTextAfterForward).toMatch(/^2 \//);
 
+    // RENDERING PROOF: after forward, transform shifts by exactly viewport width
+    const transformPx = await chapterContainer.evaluate(el => {
+      const style = el.getAttribute('style') || '';
+      const match = style.match(/translateX\((-?\d+)px/);
+      return match ? parseInt(match[1]) : 0;
+    });
+    expect(transformPx).toBe(-vpWidth);
+
+    // --- Test prev button navigation ---
+    await prevBtn.click();
+    await page.waitForTimeout(500);
+    await screenshot(page, '04a-reader-prev-btn');
+
+    // Should be back at page 1
+    const pageTextAfterPrev = await pageInfo.textContent();
+    expect(pageTextAfterPrev).toMatch(/^1 \//);
+
+    // --- Test next button navigation ---
+    await nextBtn.click();
+    await page.waitForTimeout(500);
+    await screenshot(page, '04b-reader-next-btn');
+
+    // Should be at page 2
+    const pageTextAfterNext = await pageInfo.textContent();
+    expect(pageTextAfterNext).toMatch(/^2 \//);
+
     // Click right zone again — transform should change again
-    const transformBeforeSecond = transformAfterForward;
+    const transformBeforeSecond = await chapterContainer.evaluate(
+      el => getComputedStyle(el).transform
+    );
     await page.mouse.click(rightZoneX, centerY);
     await page.waitForTimeout(500);
     await screenshot(page, '05-reader-page-forward2');
@@ -192,8 +250,8 @@ test.describe('EPUB Reader E2E', () => {
     const transformAfterBack = await chapterContainer.evaluate(
       el => getComputedStyle(el).transform
     );
-    // After going back, transform should match the first forward position
-    expect(transformAfterBack).toBe(transformAfterForward);
+    // After going back, transform should match the second forward position
+    expect(transformAfterBack).toBe(transformBeforeSecond);
 
     // Verify page indicator updated after going back
     const pageTextAfterBack = await pageInfo.textContent();
@@ -298,9 +356,12 @@ test.describe('EPUB Reader E2E', () => {
 
     await screenshot(page, 'conan-reader');
 
-    // Verify nav bar appears
+    // Verify nav bar appears with all controls
     const readerNav = page.locator('.reader-nav');
     await expect(readerNav).toBeVisible();
+    await expect(page.locator('.prev-btn')).toBeVisible();
+    await expect(page.locator('.next-btn')).toBeVisible();
+    await expect(page.locator('.page-info')).toBeVisible();
 
     // Verify chapter content rendered (deflate-compressed chapter data).
     // The first spine entry is a cover page with SVG — check child elements,

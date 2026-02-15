@@ -1,5 +1,13 @@
 import { defineConfig } from '@playwright/test';
 
+const chromiumArgs = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-gpu',
+  '--disable-dev-shm-usage',
+  '--disable-software-rasterizer',
+];
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 60000,
@@ -8,7 +16,6 @@ export default defineConfig({
     baseURL: 'http://localhost:3737',
     screenshot: 'on',
     trace: 'on',
-    viewport: { width: 1024, height: 768 },
     headless: true,
   },
   webServer: {
@@ -18,18 +25,43 @@ export default defineConfig({
   },
   projects: [
     {
-      name: 'chromium',
+      name: 'desktop',
       use: {
         browserName: 'chromium',
-        launchOptions: {
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-gpu',
-            '--disable-dev-shm-usage',
-            '--disable-software-rasterizer',
-          ],
-        },
+        viewport: { width: 1024, height: 768 },
+        launchOptions: { args: chromiumArgs },
+      },
+    },
+    {
+      name: 'mobile-portrait',
+      use: {
+        browserName: 'chromium',
+        viewport: { width: 375, height: 667 },
+        launchOptions: { args: chromiumArgs },
+      },
+    },
+    {
+      name: 'mobile-landscape',
+      use: {
+        browserName: 'chromium',
+        viewport: { width: 667, height: 375 },
+        launchOptions: { args: chromiumArgs },
+      },
+    },
+    {
+      name: 'tablet',
+      use: {
+        browserName: 'chromium',
+        viewport: { width: 768, height: 1024 },
+        launchOptions: { args: chromiumArgs },
+      },
+    },
+    {
+      name: 'wide',
+      use: {
+        browserName: 'chromium',
+        viewport: { width: 1440, height: 900 },
+        launchOptions: { args: chromiumArgs },
       },
     },
   ],
