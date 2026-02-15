@@ -263,6 +263,11 @@ test.describe('EPUB Reader E2E', () => {
     expect(pageTextAfterBack).toMatch(/^2 \//);
 
     // --- Keyboard navigation ---
+    // Ensure the viewport has focus for keyboard events.
+    // (Previous interaction may have focused a button instead.)
+    await page.locator('.reader-viewport').focus();
+    await page.waitForTimeout(300);
+
     // Navigate forward then back to verify keyboard works
     await page.keyboard.press('ArrowLeft');
     await page.waitForTimeout(500);
