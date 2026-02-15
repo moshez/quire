@@ -2257,6 +2257,90 @@ in
   else ()
 end
 
+(* ========== Chapter navigation ========== *)
+
+(* Navigate forward: advance page within chapter, or load next chapter.
+ * When on the last page of the current chapter and there IS a next chapter,
+ * clears the container and loads the next chapter asynchronously. *)
+fn navigate_next(container_id: int): void = let
+  val pg = reader_get_current_page()
+  val total = reader_get_total_pages()
+in
+  if lt_int_int(pg, total - 1) then let
+    (* Within chapter — advance page *)
+    val () = reader_next_page()
+    val () = apply_page_transform(container_id)
+    val () = update_page_info()
+  in end
+  else let
+    (* At last page — try advancing chapter *)
+    val ch = reader_get_current_chapter()
+    val spine = epub_get_chapter_count()
+    val next_ch = ch + 1
+  in
+    if lt_int_int(next_ch, spine) then let
+      val spine_g1 = g1ofg0(spine)
+      val next_g1 = _checked_nat(next_ch)
+    in
+      if lt1_int_int(next_g1, spine_g1) then let
+        val () = reader_go_to_chapter(next_g1, spine_g1)
+        val () = reader_set_total_pages(1)
+        (* Clear container and load next chapter *)
+        val dom = ward_dom_init()
+        val s = ward_dom_stream_begin(dom)
+        val s = ward_dom_stream_remove_children(s, container_id)
+        val dom = ward_dom_stream_end(s)
+        val () = ward_dom_fini(dom)
+        val () = load_chapter(reader_get_file_handle(), next_ch, container_id)
+        val () = apply_page_transform(container_id)
+        val () = update_page_info()
+      in end
+      else ()
+    end
+    else ()
+  end
+end
+
+(* Navigate backward: go to previous page, or load previous chapter.
+ * When on page 0 and there IS a previous chapter, loads it. *)
+fn navigate_prev(container_id: int): void = let
+  val pg = reader_get_current_page()
+in
+  if gt_int_int(pg, 0) then let
+    (* Within chapter — go back a page *)
+    val () = reader_prev_page()
+    val () = apply_page_transform(container_id)
+    val () = update_page_info()
+  in end
+  else let
+    (* At first page — try going to previous chapter *)
+    val ch = reader_get_current_chapter()
+  in
+    if gt_int_int(ch, 0) then let
+      val prev_ch = ch - 1
+      val spine = epub_get_chapter_count()
+      val spine_g1 = g1ofg0(spine)
+      val prev_g1 = _checked_nat(prev_ch)
+    in
+      if lt1_int_int(prev_g1, spine_g1) then let
+        val () = reader_go_to_chapter(prev_g1, spine_g1)
+        val () = reader_set_total_pages(1)
+        (* Clear container and load previous chapter *)
+        val dom = ward_dom_init()
+        val s = ward_dom_stream_begin(dom)
+        val s = ward_dom_stream_remove_children(s, container_id)
+        val dom = ward_dom_stream_end(s)
+        val () = ward_dom_fini(dom)
+        val () = load_chapter(reader_get_file_handle(), prev_ch, container_id)
+        val () = apply_page_transform(container_id)
+        val () = update_page_info()
+      in end
+      else ()
+    end
+    else ()
+  end
+end
+
 (* ========== Forward declarations for mutual recursion ========== *)
 
 extern fun render_library(root_id: int): void
@@ -2285,27 +2369,15 @@ in
       else ()
     else if eq_int_int(key_len, 10) then
       (* "ArrowRight": key_len=10, k0='A' (65) *)
-      if eq_int_int(k0, 65) then let
-        val () = reader_next_page()
-        val () = apply_page_transform(cid)
-        val () = update_page_info()
-      in end
+      if eq_int_int(k0, 65) then navigate_next(cid)
       else ()
     else if eq_int_int(key_len, 9) then
       (* "ArrowLeft": key_len=9, k0='A' (65) *)
-      if eq_int_int(k0, 65) then let
-        val () = reader_prev_page()
-        val () = apply_page_transform(cid)
-        val () = update_page_info()
-      in end
+      if eq_int_int(k0, 65) then navigate_prev(cid)
       else ()
     else if eq_int_int(key_len, 1) then
       (* " " (Space): key_len=1, k0=' ' (32) *)
-      if eq_int_int(k0, 32) then let
-        val () = reader_next_page()
-        val () = apply_page_transform(cid)
-        val () = update_page_info()
-      in end
+      if eq_int_int(k0, 32) then navigate_next(cid)
       else ()
     else ()
   end
@@ -2620,9 +2692,7 @@ implement enter_reader(root_id, book_index) = let
   val () = ward_add_event_listener(
     prev_btn_id, evt_click(), 5, LISTENER_PREV,
     lam (_pl: int): int => let
-      val () = reader_prev_page()
-      val () = apply_page_transform(saved_container)
-      val () = update_page_info()
+      val () = navigate_prev(saved_container)
     in 0 end
   )
 
@@ -2630,9 +2700,7 @@ implement enter_reader(root_id, book_index) = let
   val () = ward_add_event_listener(
     next_btn_id, evt_click(), 5, LISTENER_NEXT,
     lam (_pl: int): int => let
-      val () = reader_next_page()
-      val () = apply_page_transform(saved_container)
-      val () = update_page_info()
+      val () = navigate_next(saved_container)
     in 0 end
   )
 
@@ -2662,14 +2730,10 @@ implement enter_reader(root_id, book_index) = let
           val threshold = div_int_int(vw, 4)
         in
           if gt_int_int(click_x, threshold) then let
-            val () = reader_next_page()
-            val () = apply_page_transform(saved_container)
-            val () = update_page_info()
+            val () = navigate_next(saved_container)
           in 0 end
           else let
-            val () = reader_prev_page()
-            val () = apply_page_transform(saved_container)
-            val () = update_page_info()
+            val () = navigate_prev(saved_container)
           in 0 end
         end
         else 0
