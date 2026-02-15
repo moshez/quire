@@ -234,48 +234,50 @@ test.describe('EPUB Reader E2E', () => {
     const pageTextAfterNext = await pageInfo.textContent();
     expect(pageTextAfterNext).toMatch(/^2 \//);
 
-    // Click right zone again — transform should change again
-    const transformBeforeSecond = await chapterContainer.evaluate(
+    // Determine total pages — wider viewports may have fewer pages
+    const totalPages = parseInt(pageTextAfterNext.split(' / ')[1]);
+
+    // Click right zone again — transform changes only if more pages exist
+    const transformBeforeThird = await chapterContainer.evaluate(
       el => getComputedStyle(el).transform
     );
     await page.mouse.click(rightZoneX, centerY);
     await page.waitForTimeout(500);
     await screenshot(page, '05-reader-page-forward2');
 
-    const transformAfterSecond = await chapterContainer.evaluate(
-      el => getComputedStyle(el).transform
-    );
-    expect(transformAfterSecond).not.toBe(transformBeforeSecond);
+    if (totalPages > 2) {
+      const transformAfterThird = await chapterContainer.evaluate(
+        el => getComputedStyle(el).transform
+      );
+      expect(transformAfterThird).not.toBe(transformBeforeThird);
 
-    // --- Flip back using left click zone ---
-    await page.mouse.click(leftZoneX, centerY);
-    await page.waitForTimeout(500);
+      // Flip back using left click zone
+      await page.mouse.click(leftZoneX, centerY);
+      await page.waitForTimeout(500);
+    }
     await screenshot(page, '06-reader-page-back');
 
-    const transformAfterBack = await chapterContainer.evaluate(
-      el => getComputedStyle(el).transform
-    );
-    // After going back, transform should match the second forward position
-    expect(transformAfterBack).toBe(transformBeforeSecond);
-
-    // Verify page indicator updated after going back
+    // Verify page indicator shows page 2 (went back from 3, or stayed at 2)
     const pageTextAfterBack = await pageInfo.textContent();
     expect(pageTextAfterBack).toMatch(/^2 \//);
 
     // --- Keyboard navigation ---
-    await page.keyboard.press('ArrowRight');
-    await page.waitForTimeout(500);
-    await screenshot(page, '07-reader-arrow-right');
-
-    // Verify keyboard navigation changes transform
-    const transformAfterArrow = await chapterContainer.evaluate(
-      el => getComputedStyle(el).transform
-    );
-    expect(transformAfterArrow).not.toBe(transformAfterBack);
-
+    // Navigate forward then back to verify keyboard works
     await page.keyboard.press('ArrowLeft');
     await page.waitForTimeout(500);
-    await screenshot(page, '08-reader-arrow-left');
+    await screenshot(page, '07-reader-arrow-left');
+
+    // Should be at page 1
+    const pageTextAfterArrowLeft = await pageInfo.textContent();
+    expect(pageTextAfterArrowLeft).toMatch(/^1 \//);
+
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(500);
+    await screenshot(page, '08-reader-arrow-right');
+
+    // Should be at page 2
+    const pageTextAfterArrowRight = await pageInfo.textContent();
+    expect(pageTextAfterArrowRight).toMatch(/^2 \//);
 
     await page.keyboard.press('Space');
     await page.waitForTimeout(500);
