@@ -385,4 +385,90 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 10000 });
     await screenshot(page, 'conan-library-after-reading');
   });
+
+  test('chapter navigation: Next crosses to next chapter', async ({ page }) => {
+    // Create an EPUB with a very short first chapter (1 page) and a second
+    // chapter with enough text for multiple pages. This tests that clicking
+    // Next at the last page of chapter 1 loads chapter 2.
+    const epubBuffer = createEpub({
+      title: 'Chapter Nav Test',
+      author: 'Test Bot',
+      chapters: 3,
+      paragraphsPerChapter: 1,  // Very short — 1 page per chapter
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'chapnav-test.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open book
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForSelector('.chapter-container', { timeout: 15000 });
+
+    // Wait for first chapter content to render
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await screenshot(page, 'chapnav-01-chapter1');
+
+    // Should be at page 1 of chapter 1 (only 1 page with 1 paragraph)
+    const pageInfo = page.locator('.page-info');
+    const initialText = await pageInfo.textContent();
+    expect(initialText).toMatch(/^1 \//);
+
+    // Get initial chapter content
+    const container = page.locator('.chapter-container').first();
+    const initialContent = await container.textContent();
+
+    // Click Next — should cross to chapter 2
+    const nextBtn = page.locator('.next-btn');
+    await nextBtn.click();
+
+    // Wait for the new chapter content to load (async decompression)
+    await page.waitForFunction((prevContent) => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.textContent !== prevContent && el.childElementCount > 0;
+    }, initialContent, { timeout: 15000 });
+    await page.waitForTimeout(500);
+    await screenshot(page, 'chapnav-02-chapter2');
+
+    // Page info should reset to "1 / ..." for the new chapter
+    const ch2Text = await pageInfo.textContent();
+    expect(ch2Text).toMatch(/^1 \//);
+
+    // Verify content actually changed (different chapter heading)
+    const newContent = await container.textContent();
+    expect(newContent).not.toBe(initialContent);
+
+    // Click Prev — should go back to chapter 1
+    const prevBtn = page.locator('.prev-btn');
+    await prevBtn.click();
+
+    // Wait for previous chapter to reload
+    await page.waitForFunction((ch2Content) => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.textContent !== ch2Content && el.childElementCount > 0;
+    }, newContent, { timeout: 15000 });
+    await page.waitForTimeout(500);
+    await screenshot(page, 'chapnav-03-back-to-chapter1');
+
+    // Should be at page 1 of chapter 1 again
+    const backText = await pageInfo.textContent();
+    expect(backText).toMatch(/^1 \//);
+
+    // Navigate back to library
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+  });
 });
