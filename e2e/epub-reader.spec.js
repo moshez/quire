@@ -237,15 +237,16 @@ test.describe('EPUB Reader E2E', () => {
     // Determine total pages — wider viewports may have fewer pages
     const totalPages = parseInt(pageTextAfterNext.split(' / ')[1]);
 
-    // Click right zone again — transform changes only if more pages exist
-    const transformBeforeThird = await chapterContainer.evaluate(
-      el => getComputedStyle(el).transform
-    );
-    await page.mouse.click(rightZoneX, centerY);
-    await page.waitForTimeout(500);
-    await screenshot(page, '05-reader-page-forward2');
-
+    // Click right zone again only if more pages exist in this chapter.
+    // At wide viewports (2 pages), clicking Next would cross to chapter 2.
     if (totalPages > 2) {
+      const transformBeforeThird = await chapterContainer.evaluate(
+        el => getComputedStyle(el).transform
+      );
+      await page.mouse.click(rightZoneX, centerY);
+      await page.waitForTimeout(500);
+      await screenshot(page, '05-reader-page-forward2');
+
       const transformAfterThird = await chapterContainer.evaluate(
         el => getComputedStyle(el).transform
       );
