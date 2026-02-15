@@ -186,7 +186,6 @@ fun reader_on_toc_click(node_id: int): void
 absprop RESUME_AT_CORRECT(chapter: int, page: int)
 
 fun reader_enter_at(root_id: int, container_hide_id: int, chapter: int, page: int): void
-fun reader_get_back_btn_id(): [id:nat] int(id)
 
 (* ========== Extra accessors (for quire.dats orchestration) ========== *)
 

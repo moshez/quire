@@ -1010,9 +1010,10 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
         val after_attrs = skip_attrs(tree, attr_off + 1, attr_count, tlen)
       in
         if tag_idx >= 0 then
-          (* Skip <img> elements (tag_idx=13): image sources are paths inside
-           * the EPUB ZIP that can't be resolved, so they show as broken. *)
-          if tag_idx = 13 then let
+          (* Skip <img> elements: image sources are paths inside the EPUB ZIP
+           * that can't be resolved, so they show as broken.
+           * TAG_IDX_IMG defined in dom.sats — single source of truth. *)
+          if tag_idx = TAG_IDX_IMG then let
             val end_pos = skip_element(tree, after_attrs, len, tlen)
           in
             loop(st, tree, end_pos, len, parent, tlen, has_child)

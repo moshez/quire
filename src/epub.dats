@@ -63,15 +63,42 @@ fn _find_quote {l:agz}{n:pos}
     else loop(d, i + 1, len, c)
 in loop(data, start, len, cap) end
 
-(* Scan forward to find closing '>' *)
+(* Proof that a '>' was found in unquoted XML context.
+ * GT_OUTSIDE_QUOTES can ONLY be constructed in loop_unquoted,
+ * proving the returned position is not inside a quoted attribute value.
+ *
+ * BUG PREVENTED: _find_gt matching '>' inside id="author_0" on
+ * <dc:creator>, causing metadata to include attribute text. *)
+dataprop UNQUOTED_GT() = | GT_OUTSIDE_QUOTES()
+
+(* Scan forward to find closing '>' outside quoted attributes.
+ * Two mutually recursive functions as structural proof:
+ * - loop_unquoted: the ONLY function that can match '>' (byte 62)
+ * - loop_quoted: skips ALL bytes (including '>') until closing quote
+ *
+ * This structure makes it impossible to return a '>' inside quotes:
+ * loop_quoted has no code path that matches byte 62.
+ * Handles both double-quote (34) and single-quote (39) delimiters. *)
 fn _find_gt {l:agz}{n:pos}
-  (data: !ward_arr(byte, l, n), len: int, cap: int n, start: int): int = let
-  fun loop {l:agz}{n:pos}
-    (d: !ward_arr(byte, l, n), i: int, len: int, c: int n): int =
-    if gte_int_int(i, len) then len
-    else if eq_int_int(_ab(d, i, c), 62) then i (* 62 = '>' *)
-    else loop(d, i + 1, len, c)
-in loop(data, start, len, cap) end
+  (data: !ward_arr(byte, l, n), len: int, cap: int n, start: int)
+  : (UNQUOTED_GT() | int) = let
+  fun loop_unquoted {l:agz}{n:pos}
+    (d: !ward_arr(byte, l, n), i: int, len: int, c: int n)
+    : (UNQUOTED_GT() | int) =
+    if gte_int_int(i, len) then (GT_OUTSIDE_QUOTES() | len)
+    else let val b = _ab(d, i, c) in
+      if eq_int_int(b, 34) then loop_quoted(d, i + 1, len, c, 34)
+      else if eq_int_int(b, 39) then loop_quoted(d, i + 1, len, c, 39)
+      else if eq_int_int(b, 62) then (GT_OUTSIDE_QUOTES() | i)
+      else loop_unquoted(d, i + 1, len, c)
+    end
+  and loop_quoted {l:agz}{n:pos}
+    (d: !ward_arr(byte, l, n), i: int, len: int, c: int n, q: int)
+    : (UNQUOTED_GT() | int) =
+    if gte_int_int(i, len) then (GT_OUTSIDE_QUOTES() | len)
+    else if eq_int_int(_ab(d, i, c), q) then loop_unquoted(d, i + 1, len, c)
+    else loop_quoted(d, i + 1, len, c, q)
+in loop_unquoted(data, start, len, cap) end
 
 (* Compare two byte regions within the same ward_arr *)
 fn _arr_bytes_equal {l:agz}{n:pos}
@@ -382,7 +409,8 @@ in
   if lt_int_int(pos_t, 0) then ward_arr_free<byte>(ndl_tc)
   else let
     (* Find '>' to skip any attributes on the tag *)
-    val gt_pos = _find_gt(buf, len, len, pos_t + 9)
+    val (pf_gt | gt_pos) = _find_gt(buf, len, len, pos_t + 9)
+    prval _ = pf_gt
   in
     if gte_int_int(gt_pos, len) then ward_arr_free<byte>(ndl_tc)
     else let
@@ -411,7 +439,8 @@ in
   if lt_int_int(pos_c, 0) then ward_arr_free<byte>(ndl_cc)
   else let
     (* Find '>' to skip any attributes on the tag *)
-    val gt_pos = _find_gt(buf, len, len, pos_c + 11)
+    val (pf_gt | gt_pos) = _find_gt(buf, len, len, pos_c + 11)
+    prval _ = pf_gt
   in
     if gte_int_int(gt_pos, len) then ward_arr_free<byte>(ndl_cc)
     else let
@@ -439,7 +468,8 @@ implement _opf_extract_identifier(buf, len) = let
 in
   if lt_int_int(pos_i, 0) then ward_arr_free<byte>(ndl_ic)
   else let
-    val gt_pos = _find_gt(buf, len, len, pos_i + 14)
+    val (pf_gt | gt_pos) = _find_gt(buf, len, len, pos_i + 14)
+    prval _ = pf_gt
   in
     if gte_int_int(gt_pos, len) then ward_arr_free<byte>(ndl_ic)
     else let

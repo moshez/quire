@@ -150,12 +150,6 @@ implement reader_get_toc_id() = 0
 implement reader_get_progress_bar_id() = 0
 implement reader_get_toc_index_for_node(node_id) = 0 - 1
 implement reader_on_toc_click(node_id) = ()
-implement reader_get_back_btn_id() = let
-  val st = app_state_load()
-  val v = app_get_rdr_nav_id(st)
-  val () = app_state_store(st)
-in _checked_nat(v) end
-
 implement reader_enter_at(root_id, container_hide_id, chapter, page) = let
   val () = reader_enter(root_id, container_hide_id)
   val st = app_state_load()
