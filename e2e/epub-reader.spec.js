@@ -164,16 +164,21 @@ test.describe('EPUB Reader E2E', () => {
     const vpWidth = page.viewportSize().width;
     expect(dims.scrollWidth % vpWidth).toBe(0);
 
-    // RENDERING PROOF: content has horizontal padding (not flush to edge)
-    const firstChild = await chapterContainer.evaluate(el => {
+    // RENDERING PROOF: child elements have horizontal padding (not flush to edge)
+    // The .chapter-container>* rule sets padding-left/right on children.
+    // Padding is inside the bounding rect, so we check computed style.
+    const childPadding = await chapterContainer.evaluate(el => {
       const child = el.firstElementChild;
       if (!child) return null;
-      const rect = child.getBoundingClientRect();
-      return { left: rect.left, right: rect.right, vpWidth: window.innerWidth };
+      const cs = getComputedStyle(child);
+      return {
+        paddingLeft: parseFloat(cs.paddingLeft),
+        paddingRight: parseFloat(cs.paddingRight),
+      };
     });
-    if (firstChild) {
-      expect(firstChild.left).toBeGreaterThan(0);  // left margin exists
-      expect(firstChild.right).toBeLessThan(firstChild.vpWidth);  // right margin exists
+    if (childPadding) {
+      expect(childPadding.paddingLeft).toBeGreaterThan(0);
+      expect(childPadding.paddingRight).toBeGreaterThan(0);
     }
 
     // --- Flip pages forward using click zones ---
