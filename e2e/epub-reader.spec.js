@@ -109,6 +109,23 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForTimeout(1000);
     await screenshot(page, '03-reader-chapter1');
 
+    // --- Verify navigation bar UI ---
+    const readerNav = page.locator('.reader-nav');
+    await expect(readerNav).toBeVisible();
+
+    const backBtn = page.locator('.back-btn');
+    await expect(backBtn).toBeVisible();
+    await expect(backBtn).toContainText('Back');
+
+    const pageInfo = page.locator('.page-info');
+    await expect(pageInfo).toBeVisible();
+
+    // Page indicator should show "1 / N" format after chapter loads
+    const pageText = await pageInfo.textContent();
+    expect(pageText).toMatch(/^\d+ \/ \d+$/);
+    // First page should be "1 / N"
+    expect(pageText).toMatch(/^1 \//);
+
     // Verify chapter container is visible and has paragraph text
     const chapterContainer = page.locator('.chapter-container').first();
     await expect(chapterContainer).toBeVisible();
@@ -151,6 +168,11 @@ test.describe('EPUB Reader E2E', () => {
     );
     expect(transformAfterForward).not.toBe(transformInitial);
 
+    // Verify page indicator updated after forward click
+    const pageTextAfterForward = await pageInfo.textContent();
+    expect(pageTextAfterForward).toMatch(/^\d+ \/ \d+$/);
+    expect(pageTextAfterForward).toMatch(/^2 \//);
+
     // Click right zone again — transform should change again
     const transformBeforeSecond = transformAfterForward;
     await page.mouse.click(rightZoneX, centerY);
@@ -173,6 +195,10 @@ test.describe('EPUB Reader E2E', () => {
     // After going back, transform should match the first forward position
     expect(transformAfterBack).toBe(transformAfterForward);
 
+    // Verify page indicator updated after going back
+    const pageTextAfterBack = await pageInfo.textContent();
+    expect(pageTextAfterBack).toMatch(/^2 \//);
+
     // --- Keyboard navigation ---
     await page.keyboard.press('ArrowRight');
     await page.waitForTimeout(500);
@@ -192,8 +218,9 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForTimeout(500);
     await screenshot(page, '09-reader-space-forward');
 
-    // --- Navigate back to library ---
-    await page.keyboard.press('Escape');
+    // --- Navigate back to library via back button ---
+    const backBtnNav = page.locator('.back-btn');
+    await backBtnNav.click();
     await page.waitForTimeout(500);
 
     // Wait for library to reappear
@@ -211,6 +238,8 @@ test.describe('EPUB Reader E2E', () => {
     // This test uses a real-world EPUB whose metadata entries (container.xml,
     // content.opf) are deflate-compressed (ZIP method 8). The async decompression
     // path in epub_read_container_async / epub_read_opf_async handles this.
+    // Additionally, the OPF has <dc:creator id="author_0"> (attribute on tag),
+    // which tests the _find_gt metadata parsing fix.
     const consoleMessages = [];
     const pageErrors = [];
     page.on('console', msg => consoleMessages.push(`[${msg.type()}] ${msg.text()}`));
@@ -243,5 +272,40 @@ test.describe('EPUB Reader E2E', () => {
     // Verify import-done was logged (proves linear token was consumed)
     const doneLogs = consoleMessages.filter(m => m.includes('import-done'));
     expect(doneLogs.length).toBeGreaterThan(0);
+
+    // Verify metadata extraction: title and author parsed from deflate-compressed
+    // OPF with attributes on dc:creator (id="author_0")
+    const bookTitle = page.locator('.book-title');
+    await expect(bookTitle).toContainText('Gods of the North');
+    const bookAuthor = page.locator('.book-author');
+    await expect(bookAuthor).toContainText('Robert E. Howard');
+
+    // --- Open the book and verify reading works ---
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+
+    // Wait for reader with nav bar and chapter content
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForSelector('.chapter-container', { timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await screenshot(page, 'conan-reader');
+
+    // Verify nav bar appears
+    const readerNav = page.locator('.reader-nav');
+    await expect(readerNav).toBeVisible();
+    const pageInfo = page.locator('.page-info');
+    await expect(pageInfo).toBeVisible();
+
+    // Verify chapter content rendered (deflate-compressed chapter data)
+    const container = page.locator('.chapter-container').first();
+    await expect(container).toBeVisible();
+    const textLen = await container.evaluate(el => el.textContent.length);
+    expect(textLen).toBeGreaterThan(100);
+
+    // Navigate back via back button
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+    await screenshot(page, 'conan-library-after-reading');
   });
 });
