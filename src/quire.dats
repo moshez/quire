@@ -25,6 +25,7 @@ staload "./../vendor/ward/lib/decompress.sats"
 staload "./../vendor/ward/lib/xml.sats"
 staload "./../vendor/ward/lib/dom_read.sats"
 staload "./../vendor/ward/lib/window.sats"
+staload "./../vendor/ward/lib/idb.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
 staload _ = "./../vendor/ward/lib/dom.dats"
 staload _ = "./../vendor/ward/lib/listener.dats"
@@ -34,6 +35,7 @@ staload _ = "./../vendor/ward/lib/event.dats"
 staload _ = "./../vendor/ward/lib/decompress.dats"
 staload _ = "./../vendor/ward/lib/xml.dats"
 staload _ = "./../vendor/ward/lib/dom_read.dats"
+staload _ = "./../vendor/ward/lib/idb.dats"
 
 staload "./arith.sats"
 staload "./quire_ext.sats"
@@ -678,6 +680,49 @@ implement import_complete(h) = let
   val () = ward_log(1, log_import_done(), 11)
 in end
 end
+
+(* ========== Chapter load error messages ========== *)
+(* mk_ch_err builds "err-ch-XYZ" safe text where XYZ are the 3 suffix chars.
+ * Used by load_chapter to log a specific error at each failure point. *)
+fn mk_ch_err
+  {c1:int | SAFE_CHAR(c1)}
+  {c2:int | SAFE_CHAR(c2)}
+  {c3:int | SAFE_CHAR(c3)}
+  (c1: int(c1), c2: int(c2), c3: int(c3)): ward_safe_text(10) = let
+  val b = ward_text_build(10)
+  val b = ward_text_putc(b, 0, char2int1('e'))
+  val b = ward_text_putc(b, 1, char2int1('r'))
+  val b = ward_text_putc(b, 2, char2int1('r'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('c'))
+  val b = ward_text_putc(b, 5, char2int1('h'))
+  val b = ward_text_putc(b, 6, 45) (* '-' *)
+  val b = ward_text_putc(b, 7, c1)
+  val b = ward_text_putc(b, 8, c2)
+  val b = ward_text_putc(b, 9, c3)
+in ward_text_done(b) end
+
+(* CHAPTER_OUTCOME: Every code path through load_chapter either
+ * renders content (calls render_tree + measure_and_set_pages),
+ * starts async decompression (callback handles its own outcome),
+ * or logs an error (calls ward_log with level 3).
+ *
+ * BUG PREVENTED: Silent empty page — if chapter loading fails for
+ * any reason (bad index, missing ZIP entry, decompression failure,
+ * parse error), the user sees a console error instead of a blank page.
+ *
+ * Error codes:
+ *   err-ch-idx — chapter index >= spine count
+ *   err-ch-zip — spine path not found in ZIP
+ *   err-ch-ent — ZIP entry metadata read failed
+ *   err-ch-off — invalid data offset in ZIP entry
+ *   err-ch-cmp — unsupported compression method (not 0 or 8)
+ *   err-ch-sax — XML/HTML parse returned no SAX events
+ *   err-ch-dec — decompression returned no data *)
+dataprop CHAPTER_OUTCOME(ok: int) =
+  | CHAPTER_RENDERED(1)
+  | CHAPTER_ASYNC(2)
+  | CHAPTER_ERROR_LOGGED(0)
 
 (* ========== App CSS injection ========== *)
 
@@ -2151,6 +2196,9 @@ in loop(s, 0, count) end
 
 (* ========== Chapter loading ========== *)
 
+(* load_chapter: Every code path either renders content, starts async
+ * decompression (whose callback renders or logs), or logs an error.
+ * CHAPTER_OUTCOME documents this invariant — see dataprop above. *)
 fn load_chapter(file_handle: int, chapter_idx: int, container_id: int): void = let
   val ci = _checked_nat(chapter_idx)
   val count = epub_get_chapter_count()
@@ -2209,14 +2257,21 @@ in
                     val () = ward_arr_free<byte>(sax_buf)
                     val () = measure_and_set_pages(saved_cid)
                     val () = update_page_info()
+                    (* CHAPTER_OUTCOME: CHAPTER_RENDERED — content visible *)
+                  in ward_promise_return<int>(1) end
+                  else let
+                    (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — parse empty *)
+                    val () = ward_log(3, mk_ch_err(char2int1('s'), char2int1('a'), char2int1('x')), 10)
                   in ward_promise_return<int>(0) end
-                  else ward_promise_return<int>(0)
                 end
                 else let
                   val () = ward_blob_free(blob_handle)
+                  (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — decompress empty *)
+                  val () = ward_log(3, mk_ch_err(char2int1('d'), char2int1('e'), char2int1('c')), 10)
                 in ward_promise_return<int>(0) end
               end)
             val () = ward_promise_discard<int>(p2)
+            (* CHAPTER_OUTCOME: CHAPTER_ASYNC — callback handles outcome *)
           in end
           else if eq_int_int(compression, 0) then let
             (* Stored — read directly, no decompression needed *)
@@ -2242,17 +2297,114 @@ in
               val () = ward_arr_free<byte>(sax_buf)
               val () = measure_and_set_pages(container_id)
               val () = update_page_info()
+              (* CHAPTER_OUTCOME: CHAPTER_RENDERED — content visible *)
             in end
-            else ()
+            else
+              (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — parse empty *)
+              ward_log(3, mk_ch_err(char2int1('s'), char2int1('a'), char2int1('x')), 10)
           end
-          else () (* unsupported compression method *)
-        else ()
+          else
+            (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — bad compression *)
+            ward_log(3, mk_ch_err(char2int1('c'), char2int1('m'), char2int1('p')), 10)
+        else
+          (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — bad data offset *)
+          ward_log(3, mk_ch_err(char2int1('o'), char2int1('f'), char2int1('f')), 10)
       end
+      else
+        (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — entry read failed *)
+        ward_log(3, mk_ch_err(char2int1('e'), char2int1('n'), char2int1('t')), 10)
+    end
+    else
+      (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — not found in ZIP *)
+      ward_log(3, mk_ch_err(char2int1('z'), char2int1('i'), char2int1('p')), 10)
+  end
+  else
+    (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — chapter index out of bounds *)
+    ward_log(3, mk_ch_err(char2int1('i'), char2int1('d'), char2int1('x')), 10)
+end
+
+(* ========== Chapter navigation ========== *)
+
+(* Navigate forward: advance page within chapter, or load next chapter.
+ * When on the last page of the current chapter and there IS a next chapter,
+ * clears the container and loads the next chapter asynchronously. *)
+fn navigate_next(container_id: int): void = let
+  val pg = reader_get_current_page()
+  val total = reader_get_total_pages()
+in
+  if lt_int_int(pg, total - 1) then let
+    (* Within chapter — advance page *)
+    val () = reader_next_page()
+    val () = apply_page_transform(container_id)
+    val () = update_page_info()
+  in end
+  else let
+    (* At last page — try advancing chapter *)
+    val ch = reader_get_current_chapter()
+    val spine = epub_get_chapter_count()
+    val next_ch = ch + 1
+  in
+    if lt_int_int(next_ch, spine) then let
+      val spine_g1 = g1ofg0(spine)
+      val next_g1 = _checked_nat(next_ch)
+    in
+      if lt1_int_int(next_g1, spine_g1) then let
+        val () = reader_go_to_chapter(next_g1, spine_g1)
+        val () = reader_set_total_pages(1)
+        (* Clear container and load next chapter *)
+        val dom = ward_dom_init()
+        val s = ward_dom_stream_begin(dom)
+        val s = ward_dom_stream_remove_children(s, container_id)
+        val dom = ward_dom_stream_end(s)
+        val () = ward_dom_fini(dom)
+        val () = load_chapter(reader_get_file_handle(), next_ch, container_id)
+        val () = apply_page_transform(container_id)
+        val () = update_page_info()
+      in end
       else ()
     end
     else ()
   end
-  else ()
+end
+
+(* Navigate backward: go to previous page, or load previous chapter.
+ * When on page 0 and there IS a previous chapter, loads it. *)
+fn navigate_prev(container_id: int): void = let
+  val pg = reader_get_current_page()
+in
+  if gt_int_int(pg, 0) then let
+    (* Within chapter — go back a page *)
+    val () = reader_prev_page()
+    val () = apply_page_transform(container_id)
+    val () = update_page_info()
+  in end
+  else let
+    (* At first page — try going to previous chapter *)
+    val ch = reader_get_current_chapter()
+  in
+    if gt_int_int(ch, 0) then let
+      val prev_ch = ch - 1
+      val spine = epub_get_chapter_count()
+      val spine_g1 = g1ofg0(spine)
+      val prev_g1 = _checked_nat(prev_ch)
+    in
+      if lt1_int_int(prev_g1, spine_g1) then let
+        val () = reader_go_to_chapter(prev_g1, spine_g1)
+        val () = reader_set_total_pages(1)
+        (* Clear container and load previous chapter *)
+        val dom = ward_dom_init()
+        val s = ward_dom_stream_begin(dom)
+        val s = ward_dom_stream_remove_children(s, container_id)
+        val dom = ward_dom_stream_end(s)
+        val () = ward_dom_fini(dom)
+        val () = load_chapter(reader_get_file_handle(), prev_ch, container_id)
+        val () = apply_page_transform(container_id)
+        val () = update_page_info()
+      in end
+      else ()
+    end
+    else ()
+  end
 end
 
 (* ========== Forward declarations for mutual recursion ========== *)
@@ -2283,27 +2435,15 @@ in
       else ()
     else if eq_int_int(key_len, 10) then
       (* "ArrowRight": key_len=10, k0='A' (65) *)
-      if eq_int_int(k0, 65) then let
-        val () = reader_next_page()
-        val () = apply_page_transform(cid)
-        val () = update_page_info()
-      in end
+      if eq_int_int(k0, 65) then navigate_next(cid)
       else ()
     else if eq_int_int(key_len, 9) then
       (* "ArrowLeft": key_len=9, k0='A' (65) *)
-      if eq_int_int(k0, 65) then let
-        val () = reader_prev_page()
-        val () = apply_page_transform(cid)
-        val () = update_page_info()
-      in end
+      if eq_int_int(k0, 65) then navigate_prev(cid)
       else ()
     else if eq_int_int(key_len, 1) then
       (* " " (Space): key_len=1, k0=' ' (32) *)
-      if eq_int_int(k0, 32) then let
-        val () = reader_next_page()
-        val () = apply_page_transform(cid)
-        val () = update_page_info()
-      in end
+      if eq_int_int(k0, 32) then navigate_next(cid)
       else ()
     else ()
   end
@@ -2467,6 +2607,7 @@ implement render_library(root_id) = let
                         val book_idx = library_add_book()
                       in
                         if gte_int_int(book_idx, 0) then let
+                          val () = library_save()
                           val h = import_mark_success()
                           val dom = ward_dom_init()
                           val s = ward_dom_stream_begin(dom)
@@ -2617,9 +2758,7 @@ implement enter_reader(root_id, book_index) = let
   val () = ward_add_event_listener(
     prev_btn_id, evt_click(), 5, LISTENER_PREV,
     lam (_pl: int): int => let
-      val () = reader_prev_page()
-      val () = apply_page_transform(saved_container)
-      val () = update_page_info()
+      val () = navigate_prev(saved_container)
     in 0 end
   )
 
@@ -2627,9 +2766,7 @@ implement enter_reader(root_id, book_index) = let
   val () = ward_add_event_listener(
     next_btn_id, evt_click(), 5, LISTENER_NEXT,
     lam (_pl: int): int => let
-      val () = reader_next_page()
-      val () = apply_page_transform(saved_container)
-      val () = update_page_info()
+      val () = navigate_next(saved_container)
     in 0 end
   )
 
@@ -2659,14 +2796,10 @@ implement enter_reader(root_id, book_index) = let
           val threshold = div_int_int(vw, 4)
         in
           if gt_int_int(click_x, threshold) then let
-            val () = reader_next_page()
-            val () = apply_page_transform(saved_container)
-            val () = update_page_info()
+            val () = navigate_next(saved_container)
           in 0 end
           else let
-            val () = reader_prev_page()
-            val () = apply_page_transform(saved_container)
-            val () = update_page_info()
+            val () = navigate_prev(saved_container)
           in 0 end
         end
         else 0
@@ -2684,7 +2817,13 @@ in end
 implement ward_node_init(root_id) = let
   val st = app_state_init()
   val () = app_state_register(st)
-  val () = render_library(root_id)
+  val p = library_load()
+  val saved_root = root_id
+  val p2 = ward_promise_then<int><int>(p,
+    llam (_ok: int): ward_promise_chained(int) => let
+      val () = render_library(saved_root)
+    in ward_promise_return<int>(0) end)
+  val () = ward_promise_discard<int>(p2)
 in end
 
 (* Legacy callback stubs *)
