@@ -57,6 +57,9 @@ jobs:
           make PATSOPT="PATSHOME=$PATSHOME $PATSHOME/src/CBOOT/patsopt"
           test -f build/quire.wasm
 
+      - name: Validate PWA packaging
+        run: make dist
+
       - name: Upload WASM artifact
         uses: actions/upload-artifact@v4
         with:
