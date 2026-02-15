@@ -469,6 +469,13 @@ document which invariant guarantees safety.
    class of failure. Even if the fix is a one-line change, the dataprop
    analysis and implementation are mandatory.
 
+10. **Errors must be impossible or indicate bad input**: Every error
+   condition must either be (a) made impossible by dependent types /
+   dataprops (compile-time elimination), or (b) the result of invalid
+   external input (corrupt EPUB, malformed data), in which case the
+   user must see a clear visual indication of what was wrong.
+   Console-only logging is never sufficient for user-facing errors.
+
 ### Proof Architecture
 
 Proofs are enforced at three levels:
