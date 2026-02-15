@@ -476,4 +476,57 @@ test.describe('EPUB Reader E2E', () => {
     await backBtn.click();
     await page.waitForSelector('.book-card', { timeout: 10000 });
   });
+
+  test('library persists across page reload', async ({ page }) => {
+    // Import a book, reload the page, and verify the book is still there.
+    const epubBuffer = createEpub({
+      title: 'Persistence Test Book',
+      author: 'Reload Author',
+      chapters: 2,
+      paragraphsPerChapter: 3,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'persistence-test.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await screenshot(page, 'persist-01-after-import');
+
+    // Verify book title is visible
+    const titleBefore = page.locator('.book-title');
+    await expect(titleBefore).toBeVisible();
+    const titleText = await titleBefore.textContent();
+    expect(titleText).toContain('Persistence Test Book');
+
+    // Wait for IndexedDB save to complete (library_save is async)
+    await page.waitForTimeout(2000);
+
+    // Reload the page
+    await page.reload();
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    await screenshot(page, 'persist-02-after-reload');
+
+    // Verify the book card is still there after reload
+    const bookCard = page.locator('.book-card');
+    await expect(bookCard).toBeVisible({ timeout: 10000 });
+
+    // Verify title survived the reload
+    const titleAfter = page.locator('.book-title');
+    await expect(titleAfter).toBeVisible();
+    const titleAfterText = await titleAfter.textContent();
+    expect(titleAfterText).toContain('Persistence Test Book');
+
+    // Verify author survived
+    const authorAfter = page.locator('.book-author');
+    await expect(authorAfter).toBeVisible();
+    const authorText = await authorAfter.textContent();
+    expect(authorText).toContain('Reload Author');
+
+    await screenshot(page, 'persist-03-verified');
+  });
 });
