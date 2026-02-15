@@ -157,6 +157,15 @@ fun attr_aria_hidden(): ward_safe_text(11)
 fun attr_name(): ward_safe_text(4)
 fun attr_value(): ward_safe_text(5)
 
+(* ========== Skippable tag indices ========== *)
+
+(* Tag indices for elements that render_tree skips.
+ * MUST match _tag_names table indices in dom.dats.
+ * Single source of truth — if the tag table is reordered,
+ * update these constants. The constant names make the intent
+ * visible at every use site, preventing silent breakage. *)
+#define TAG_IDX_IMG 13
+
 (* ========== Tag/Attribute lookup from raw bytes ========== *)
 
 (* Look up a tag name from raw bytes. Returns safe_text index or -1.

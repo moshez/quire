@@ -1009,7 +1009,16 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
         val attr_count = ward_arr_byte(tree, attr_off, tlen)
         val after_attrs = skip_attrs(tree, attr_off + 1, attr_count, tlen)
       in
-        if tag_idx >= 0 then let
+        if tag_idx >= 0 then
+          (* Skip <img> elements: image sources are paths inside the EPUB ZIP
+           * that can't be resolved, so they show as broken.
+           * TAG_IDX_IMG defined in dom.sats — single source of truth. *)
+          if tag_idx = TAG_IDX_IMG then let
+            val end_pos = skip_element(tree, after_attrs, len, tlen)
+          in
+            loop(st, tree, end_pos, len, parent, tlen, has_child)
+          end
+          else let
           val @(tag_st, tag_st_len) = get_tag_by_index(tag_idx)
           val nid = dom_next_id()
           val st = ward_dom_stream_create_element(st, nid, parent, tag_st, tag_st_len)

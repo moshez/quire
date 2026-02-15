@@ -40,6 +40,7 @@ When completing a milestone from quire-design.md §8:
 6. **Never work around ward bugs** — if ward (vendor/ward/) has a bug, STOP and give the user a bug report instead of working around it. Do not patch vendor/ files or add workarounds in quire code. The user will report the issue upstream and have it fixed.
 7. **Minimize C code** — Quire has zero application-level C files. All app code is in ATS2. Ward's `runtime.h` provides codegen macros and `atspre_*` arithmetic. If an algorithm can be expressed with ward_arr_set/get, div/mod, and existing extern funs, it belongs in ATS2. Any new C code requires justification: (a) external research showing this operation is conventionally done in C, (b) what ATS2-only solutions were tried and why they don't work, (c) trade-offs, and (d) why the C implementation is safe.
 8. **Be fanatic about safety** — Auditing or checking are NOT RELIABLE. Only ATS2-provable safety matters. It is unacceptable to work around safety, even if it's "small". If something is truly absolutely impossible to express safely in ATS2, file a bug against ward. Note that ward might well reject any bug that is not well justified.
+9. **Fanaticism is retroactive** — If a fix uncovers previous lack of commitment to fanaticism, fixing that overrides all current concerns and must be dealt with immediately. Existing code that lacks proofs, uses magic numbers, or has dead code is not "consistent with existing patterns" — it is a deficiency that must be corrected when discovered.
 
 ## Type Safety Requirements
 

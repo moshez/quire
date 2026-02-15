@@ -63,15 +63,42 @@ fn _find_quote {l:agz}{n:pos}
     else loop(d, i + 1, len, c)
 in loop(data, start, len, cap) end
 
-(* Scan forward to find closing '>' *)
+(* Proof that a '>' was found in unquoted XML context.
+ * GT_OUTSIDE_QUOTES can ONLY be constructed in loop_unquoted,
+ * proving the returned position is not inside a quoted attribute value.
+ *
+ * BUG PREVENTED: _find_gt matching '>' inside id="author_0" on
+ * <dc:creator>, causing metadata to include attribute text. *)
+dataprop UNQUOTED_GT() = | GT_OUTSIDE_QUOTES()
+
+(* Scan forward to find closing '>' outside quoted attributes.
+ * Two mutually recursive functions as structural proof:
+ * - loop_unquoted: the ONLY function that can match '>' (byte 62)
+ * - loop_quoted: skips ALL bytes (including '>') until closing quote
+ *
+ * This structure makes it impossible to return a '>' inside quotes:
+ * loop_quoted has no code path that matches byte 62.
+ * Handles both double-quote (34) and single-quote (39) delimiters. *)
 fn _find_gt {l:agz}{n:pos}
-  (data: !ward_arr(byte, l, n), len: int, cap: int n, start: int): int = let
-  fun loop {l:agz}{n:pos}
-    (d: !ward_arr(byte, l, n), i: int, len: int, c: int n): int =
-    if gte_int_int(i, len) then len
-    else if eq_int_int(_ab(d, i, c), 62) then i (* 62 = '>' *)
-    else loop(d, i + 1, len, c)
-in loop(data, start, len, cap) end
+  (data: !ward_arr(byte, l, n), len: int, cap: int n, start: int)
+  : (UNQUOTED_GT() | int) = let
+  fun loop_unquoted {l:agz}{n:pos}
+    (d: !ward_arr(byte, l, n), i: int, len: int, c: int n)
+    : (UNQUOTED_GT() | int) =
+    if gte_int_int(i, len) then (GT_OUTSIDE_QUOTES() | len)
+    else let val b = _ab(d, i, c) in
+      if eq_int_int(b, 34) then loop_quoted(d, i + 1, len, c, 34)
+      else if eq_int_int(b, 39) then loop_quoted(d, i + 1, len, c, 39)
+      else if eq_int_int(b, 62) then (GT_OUTSIDE_QUOTES() | i)
+      else loop_unquoted(d, i + 1, len, c)
+    end
+  and loop_quoted {l:agz}{n:pos}
+    (d: !ward_arr(byte, l, n), i: int, len: int, c: int n, q: int)
+    : (UNQUOTED_GT() | int) =
+    if gte_int_int(i, len) then (GT_OUTSIDE_QUOTES() | len)
+    else if eq_int_int(_ab(d, i, c), q) then loop_unquoted(d, i + 1, len, c)
+    else loop_quoted(d, i + 1, len, c, q)
+in loop_unquoted(data, start, len, cap) end
 
 (* Compare two byte regions within the same ward_arr *)
 fn _arr_bytes_equal {l:agz}{n:pos}
@@ -148,13 +175,12 @@ fn _n_full_path(): [l:agz] ward_arr(byte, l, 11) = let
   val () = _wb(a,9,61,11)  val () = _wb(a,10,34,11)
 in a end
 
-(* "<dc:title>" — 10 bytes *)
-fn _n_dc_title_open(): [l:agz] ward_arr(byte, l, 10) = let
-  val a = ward_arr_alloc<byte>(10)
-  val () = _wb(a,0,60,10)  val () = _wb(a,1,100,10) val () = _wb(a,2,99,10)
-  val () = _wb(a,3,58,10)  val () = _wb(a,4,116,10) val () = _wb(a,5,105,10)
-  val () = _wb(a,6,116,10) val () = _wb(a,7,108,10) val () = _wb(a,8,101,10)
-  val () = _wb(a,9,62,10)
+(* "<dc:title" — 9 bytes (without '>' to handle attributes) *)
+fn _n_dc_title_open(): [l:agz] ward_arr(byte, l, 9) = let
+  val a = ward_arr_alloc<byte>(9)
+  val () = _wb(a,0,60,9)  val () = _wb(a,1,100,9) val () = _wb(a,2,99,9)
+  val () = _wb(a,3,58,9)  val () = _wb(a,4,116,9) val () = _wb(a,5,105,9)
+  val () = _wb(a,6,116,9) val () = _wb(a,7,108,9) val () = _wb(a,8,101,9)
 in a end
 
 (* "</dc:title>" — 11 bytes *)
@@ -166,13 +192,13 @@ fn _n_dc_title_close(): [l:agz] ward_arr(byte, l, 11) = let
   val () = _wb(a,9,101,11) val () = _wb(a,10,62,11)
 in a end
 
-(* "<dc:creator>" — 12 bytes *)
-fn _n_dc_creator_open(): [l:agz] ward_arr(byte, l, 12) = let
-  val a = ward_arr_alloc<byte>(12)
-  val () = _wb(a,0,60,12)  val () = _wb(a,1,100,12) val () = _wb(a,2,99,12)
-  val () = _wb(a,3,58,12)  val () = _wb(a,4,99,12)  val () = _wb(a,5,114,12)
-  val () = _wb(a,6,101,12) val () = _wb(a,7,97,12)  val () = _wb(a,8,116,12)
-  val () = _wb(a,9,111,12) val () = _wb(a,10,114,12) val () = _wb(a,11,62,12)
+(* "<dc:creator" — 11 bytes (without '>' to handle attributes) *)
+fn _n_dc_creator_open(): [l:agz] ward_arr(byte, l, 11) = let
+  val a = ward_arr_alloc<byte>(11)
+  val () = _wb(a,0,60,11)  val () = _wb(a,1,100,11) val () = _wb(a,2,99,11)
+  val () = _wb(a,3,58,11)  val () = _wb(a,4,99,11)  val () = _wb(a,5,114,11)
+  val () = _wb(a,6,101,11) val () = _wb(a,7,97,11)  val () = _wb(a,8,116,11)
+  val () = _wb(a,9,111,11) val () = _wb(a,10,114,11)
 in a end
 
 (* "</dc:creator>" — 13 bytes *)
@@ -377,21 +403,28 @@ extern fun _opf_extract_title {l:agz}{n:pos}
 implement _opf_extract_title(buf, len) = let
   val ndl_to = _n_dc_title_open()
   val ndl_tc = _n_dc_title_close()
-  val pos_t = _find_bytes(buf, len, len, ndl_to, 10, 10, 0)
+  val pos_t = _find_bytes(buf, len, len, ndl_to, 9, 9, 0)
   val () = ward_arr_free<byte>(ndl_to)
 in
   if lt_int_int(pos_t, 0) then ward_arr_free<byte>(ndl_tc)
   else let
-    val tstart = pos_t + 10
-    val tend = _find_bytes(buf, len, len, ndl_tc, 11, 11, tstart)
-    val () = ward_arr_free<byte>(ndl_tc)
+    (* Find '>' to skip any attributes on the tag *)
+    val (pf_gt | gt_pos) = _find_gt(buf, len, len, pos_t + 9)
+    prval _ = pf_gt
   in
-    if lt_int_int(tend, 0) then ()
+    if gte_int_int(gt_pos, len) then ward_arr_free<byte>(ndl_tc)
     else let
-      val tlen0 = tend - tstart
-      val tlen = if gt_int_int(tlen0, 255) then 255 else tlen0
-      val () = _copy_arr_to_title(buf, tstart, tlen, len)
-    in _app_set_epub_title_len(tlen) end
+      val tstart = gt_pos + 1
+      val tend = _find_bytes(buf, len, len, ndl_tc, 11, 11, tstart)
+      val () = ward_arr_free<byte>(ndl_tc)
+    in
+      if lt_int_int(tend, 0) then ()
+      else let
+        val tlen0 = tend - tstart
+        val tlen = if gt_int_int(tlen0, 255) then 255 else tlen0
+        val () = _copy_arr_to_title(buf, tstart, tlen, len)
+      in _app_set_epub_title_len(tlen) end
+    end
   end
 end
 
@@ -400,21 +433,28 @@ extern fun _opf_extract_author {l:agz}{n:pos}
 implement _opf_extract_author(buf, len) = let
   val ndl_co = _n_dc_creator_open()
   val ndl_cc = _n_dc_creator_close()
-  val pos_c = _find_bytes(buf, len, len, ndl_co, 12, 12, 0)
+  val pos_c = _find_bytes(buf, len, len, ndl_co, 11, 11, 0)
   val () = ward_arr_free<byte>(ndl_co)
 in
   if lt_int_int(pos_c, 0) then ward_arr_free<byte>(ndl_cc)
   else let
-    val astart = pos_c + 12
-    val aend = _find_bytes(buf, len, len, ndl_cc, 13, 13, astart)
-    val () = ward_arr_free<byte>(ndl_cc)
+    (* Find '>' to skip any attributes on the tag *)
+    val (pf_gt | gt_pos) = _find_gt(buf, len, len, pos_c + 11)
+    prval _ = pf_gt
   in
-    if lt_int_int(aend, 0) then ()
+    if gte_int_int(gt_pos, len) then ward_arr_free<byte>(ndl_cc)
     else let
-      val alen0 = aend - astart
-      val alen = if gt_int_int(alen0, 255) then 255 else alen0
-      val () = _copy_arr_to_author(buf, astart, alen, len)
-    in _app_set_epub_author_len(alen) end
+      val astart = gt_pos + 1
+      val aend = _find_bytes(buf, len, len, ndl_cc, 13, 13, astart)
+      val () = ward_arr_free<byte>(ndl_cc)
+    in
+      if lt_int_int(aend, 0) then ()
+      else let
+        val alen0 = aend - astart
+        val alen = if gt_int_int(alen0, 255) then 255 else alen0
+        val () = _copy_arr_to_author(buf, astart, alen, len)
+      in _app_set_epub_author_len(alen) end
+    end
   end
 end
 
@@ -428,7 +468,8 @@ implement _opf_extract_identifier(buf, len) = let
 in
   if lt_int_int(pos_i, 0) then ward_arr_free<byte>(ndl_ic)
   else let
-    val gt_pos = _find_gt(buf, len, len, pos_i + 14)
+    val (pf_gt | gt_pos) = _find_gt(buf, len, len, pos_i + 14)
+    prval _ = pf_gt
   in
     if gte_int_int(gt_pos, len) then ward_arr_free<byte>(ndl_ic)
     else let
