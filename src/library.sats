@@ -11,6 +11,8 @@
  * - SERIALIZE_ROUNDTRIP: Serialize then deserialize preserves library data
  *)
 
+staload "./../vendor/ward/lib/promise.sats"
+
 (* Maximum number of books in library *)
 #define MAX_LIBRARY_BOOKS 32
 
@@ -180,8 +182,10 @@ fun library_serialize(): [len:nat] int(len)
 fun library_deserialize(len: int): [r:int | r == 0 || r == 1] int(r)
 (* Save library index to IndexedDB (async) *)
 fun library_save(): void
-(* Load library index from IndexedDB (async) *)
-fun library_load(): void
+(* Load library index from IndexedDB (async).
+ * Returns a chained promise that resolves when loading is done.
+ * Resolve value: 1 = loaded successfully, 0 = no data or error. *)
+fun library_load(): ward_promise_chained(int)
 (* Handle load/save completion callbacks *)
 fun library_on_load_complete(len: int): void
 fun library_on_save_complete(success: int): void

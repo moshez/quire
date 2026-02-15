@@ -46,6 +46,8 @@ jobs:
           cp index.html dist/
           cp vendor/ward/lib/ward_bridge.mjs dist/ward_bridge.js
           sed -i "s|./vendor/ward/lib/ward_bridge.mjs|./ward_bridge.js|" dist/index.html
+          sed -i "s|>dev</div>|>${GITHUB_SHA::7}</div>|" dist/index.html
+          sed -i "s|quire-v3|quire-${GITHUB_SHA::7}|" dist/service-worker.js
           cp reader.css dist/
           cp manifest.json dist/
           cp service-worker.js dist/ 2>/dev/null || true

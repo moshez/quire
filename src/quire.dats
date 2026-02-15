@@ -25,6 +25,7 @@ staload "./../vendor/ward/lib/decompress.sats"
 staload "./../vendor/ward/lib/xml.sats"
 staload "./../vendor/ward/lib/dom_read.sats"
 staload "./../vendor/ward/lib/window.sats"
+staload "./../vendor/ward/lib/idb.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
 staload _ = "./../vendor/ward/lib/dom.dats"
 staload _ = "./../vendor/ward/lib/listener.dats"
@@ -34,6 +35,7 @@ staload _ = "./../vendor/ward/lib/event.dats"
 staload _ = "./../vendor/ward/lib/decompress.dats"
 staload _ = "./../vendor/ward/lib/xml.dats"
 staload _ = "./../vendor/ward/lib/dom_read.dats"
+staload _ = "./../vendor/ward/lib/idb.dats"
 
 staload "./arith.sats"
 staload "./quire_ext.sats"
@@ -2467,6 +2469,7 @@ implement render_library(root_id) = let
                         val book_idx = library_add_book()
                       in
                         if gte_int_int(book_idx, 0) then let
+                          val () = library_save()
                           val h = import_mark_success()
                           val dom = ward_dom_init()
                           val s = ward_dom_stream_begin(dom)
@@ -2684,7 +2687,13 @@ in end
 implement ward_node_init(root_id) = let
   val st = app_state_init()
   val () = app_state_register(st)
-  val () = render_library(root_id)
+  val p = library_load()
+  val saved_root = root_id
+  val p2 = ward_promise_then<int><int>(p,
+    llam (_ok: int): ward_promise_chained(int) => let
+      val () = render_library(saved_root)
+    in ward_promise_return<int>(0) end)
+  val () = ward_promise_discard<int>(p2)
 in end
 
 (* Legacy callback stubs *)
