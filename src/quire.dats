@@ -55,6 +55,25 @@ extern void quireSetTitle(int mode);
 #define TEXT_READING_META 7
 #define TEXT_ADDING_BOOK 8
 
+(* ========== Listener ID constants ========== *)
+
+(* Named listener IDs — single source of truth.
+ * Dataprop enum prevents arbitrary IDs in reader event listeners. *)
+dataprop READER_LISTENER(id: int) =
+  | READER_LISTEN_KEYDOWN(50)
+  | READER_LISTEN_VIEWPORT_CLICK(51)
+  | READER_LISTEN_BACK(52)
+  | READER_LISTEN_PREV(53)
+  | READER_LISTEN_NEXT(54)
+
+#define LISTENER_FILE_INPUT 1
+#define LISTENER_READ_BTN_BASE 2
+#define LISTENER_KEYDOWN 50
+#define LISTENER_VIEWPORT_CLICK 51
+#define LISTENER_BACK 52
+#define LISTENER_PREV 53
+#define LISTENER_NEXT 54
+
 (* ========== Byte-level helpers (pure ATS2) ========== *)
 
 (* Byte write to ward_arr — wraps ward_arr_write_byte with castfn index *)
@@ -662,10 +681,135 @@ end
 
 (* ========== App CSS injection ========== *)
 
-(* CSS bytes packed as little-endian int32s, written via _w4.
- * Generated from the CSS string — round-trip verified. *)
+(* ---- Linear completion tokens ---- *)
+(* CSS_READER_WRITTEN can ONLY be produced by stamp_reader_css.
+ * CSS_NAV_WRITTEN can ONLY be produced by stamp_nav_css.
+ * inject functions REQUIRE them — impossible to inject CSS
+ * without calling stamp, which enforces all proof obligations. *)
+absview CSS_READER_WRITTEN
+absview CSS_NAV_WRITTEN
+
+(* ---- CSS visibility dataprops ---- *)
+
+(* COLUMN_ALIGNED: column-width matches viewport transform stride.
+ * BUG PREVENTED: text bleeding — if ph != 0, columns != viewport width. *)
+dataprop COLUMN_ALIGNED(column_width_vw: int, container_pad_h: int) =
+  | {cw:pos}{ph:int | ph == 0} COLUMNS_MATCH_VIEWPORT(cw, ph)
+
+(* CHILD_PADDED: content children have horizontal padding > 0.
+ * Without this, text is flush against viewport edges. *)
+dataprop CHILD_PADDED(pad_left_10: int, pad_right_10: int) =
+  | {pl,pr:pos} CHILDREN_HAVE_PADDING(pl, pr)
+
+(* NAV_BTN_VISIBLE: buttons have nonzero font-size and padding.
+ * Without this, buttons render as invisible zero-size elements. *)
+dataprop NAV_BTN_VISIBLE(font_size_10: int, padding_h_10: int) =
+  | {fs,ph:pos} BTNS_HAVE_SIZE(fs, ph)
+
+(* ---- CSS property constants ---- *)
+(* #define is textual expansion — applies in BOTH dynamic and static contexts.
+ * Dataprop constructors like COLUMNS_MATCH_VIEWPORT{CSS_COL_WIDTH_VW, ...}
+ * see the #define value, so the proofs guard these values directly.
+ * Changing any value triggers a compile-time constraint failure. *)
+#define CSS_COL_WIDTH_VW 100       (* column-width: 100vw *)
+#define CSS_CONTAINER_PAD_H 0      (* padding: 2rem 0 — zero horizontal *)
+#define CSS_CHILD_PAD_L_10 15      (* padding-left: 1.5rem = 15 tenths *)
+#define CSS_CHILD_PAD_R_10 15      (* padding-right: 1.5rem = 15 tenths *)
+#define CSS_BTN_FONT_10 10         (* font-size: 1rem = 10 tenths *)
+#define CSS_BTN_PAD_H_10 3         (* padding: 0 .3rem = 3 tenths *)
+
+(* ---- CSS value writer functions ---- *)
+
+(* Write CSS "0" at offset — for properties constrained to zero *)
+fn write_css_zero {l:agz}{n:pos}{v:int | v == 0}
+  (arr: !ward_arr(byte, l, n), alen: int n, off: int, v: int(v)): void =
+  ward_arr_set_byte(arr, off, alen, 48) (* '0' *)
+
+(* Write CSS "100vw" at offset (5 bytes) *)
+fn write_css_100vw {l:agz}{n:pos}
+  (arr: !ward_arr(byte, l, n), alen: int n, off: int): void = let
+  val () = ward_arr_set_byte(arr, off, alen, 49)     (* '1' *)
+  val () = ward_arr_set_byte(arr, off+1, alen, 48)   (* '0' *)
+  val () = ward_arr_set_byte(arr, off+2, alen, 48)   (* '0' *)
+  val () = ward_arr_set_byte(arr, off+3, alen, 118)  (* 'v' *)
+  val () = ward_arr_set_byte(arr, off+4, alen, 119)  (* 'w' *)
+in end
+
+(* Write CSS rem value at offset — value in tenths, must be positive.
+ * Dispatches: 3→".3rem", 10→"1rem", 15→"1.5rem" *)
+fn write_css_rem_pos {l:agz}{n:pos}{v:pos}
+  (arr: !ward_arr(byte, l, n), alen: int n, off: int, v: int(v)): void =
+  if eq_int_int(v, 3) then let   (* .3rem — 5 bytes *)
+    val () = ward_arr_set_byte(arr, off, alen, 46)    (* '.' *)
+    val () = ward_arr_set_byte(arr, off+1, alen, 51)  (* '3' *)
+    val () = ward_arr_set_byte(arr, off+2, alen, 114) (* 'r' *)
+    val () = ward_arr_set_byte(arr, off+3, alen, 101) (* 'e' *)
+    val () = ward_arr_set_byte(arr, off+4, alen, 109) (* 'm' *)
+  in end
+  else if eq_int_int(v, 10) then let (* 1rem — 4 bytes *)
+    val () = ward_arr_set_byte(arr, off, alen, 49)    (* '1' *)
+    val () = ward_arr_set_byte(arr, off+1, alen, 114) (* 'r' *)
+    val () = ward_arr_set_byte(arr, off+2, alen, 101) (* 'e' *)
+    val () = ward_arr_set_byte(arr, off+3, alen, 109) (* 'm' *)
+  in end
+  else if eq_int_int(v, 15) then let (* 1.5rem — 6 bytes *)
+    val () = ward_arr_set_byte(arr, off, alen, 49)    (* '1' *)
+    val () = ward_arr_set_byte(arr, off+1, alen, 46)  (* '.' *)
+    val () = ward_arr_set_byte(arr, off+2, alen, 53)  (* '5' *)
+    val () = ward_arr_set_byte(arr, off+3, alen, 114) (* 'r' *)
+    val () = ward_arr_set_byte(arr, off+4, alen, 101) (* 'e' *)
+    val () = ward_arr_set_byte(arr, off+5, alen, 109) (* 'm' *)
+  in end
+  else () (* unreachable for current constants *)
+
+(* ---- CSS length constants ---- *)
+(* #define: runtime values; stadef: type-level constraints *)
 #define APP_CSS_LEN 2057
 stadef APP_CSS_LEN = 2057
+#define NAV_CSS_LEN 552
+stadef NAV_CSS_LEN = 552
+
+(* ---- Stamp functions: write proven bytes AND produce linear views ---- *)
+
+(* ONLY function that produces CSS_READER_WRITTEN.
+ * Takes proven CSS values as dependent int arguments + dataprop proofs.
+ * Writes the CSS bytes AND returns the linear view.
+ * Cannot be called without proofs. Cannot skip the byte writes. *)
+fn stamp_reader_css {l:agz}{n:int | n >= APP_CSS_LEN}
+    {cw:pos}{ph:int | ph == 0}{pl,pr:pos}
+  (pf_col: COLUMN_ALIGNED(cw, ph),
+   pf_pad: CHILD_PADDED(pl, pr) |
+   arr: !ward_arr(byte, l, n), alen: int n,
+   col_w_vw: int(cw), pad_h: int(ph),
+   child_pad_l: int(pl), child_pad_r: int(pr))
+  : (CSS_READER_WRITTEN | void) = let
+  (* Overwrite critical bytes from proven values *)
+  val () = write_css_100vw(arr, alen, 911)         (* column-width: 100vw *)
+  val () = write_css_zero(arr, alen, 943, pad_h)   (* padding: 2rem 0 *)
+  val () = write_css_rem_pos(arr, alen, 1007, child_pad_l)  (* padding-left: 1.5rem *)
+  val () = write_css_rem_pos(arr, alen, 1028, child_pad_r)  (* padding-right: 1.5rem *)
+  (* Produce the linear view — only reachable after byte writes above *)
+  extern praxi __seal_reader(): CSS_READER_WRITTEN
+  prval pf = __seal_reader()
+in (pf | ()) end
+
+(* ONLY function that produces CSS_NAV_WRITTEN.
+ * Stamps button font-size and padding bytes from proven values. *)
+fn stamp_nav_css {l:agz}{n:int | n >= NAV_CSS_LEN}
+    {fs,ph:pos}
+  (pf_btn: NAV_BTN_VISIBLE(fs, ph) |
+   arr: !ward_arr(byte, l, n), alen: int n,
+   btn_font: int(fs), btn_pad: int(ph))
+  : (CSS_NAV_WRITTEN | void) = let
+  (* Overwrite critical bytes from proven values *)
+  val () = write_css_rem_pos(arr, alen, 531, btn_font) (* font-size: 1rem *)
+  val () = write_css_rem_pos(arr, alen, 546, btn_pad)  (* padding: 0 .3rem *)
+  (* Produce the linear view — only reachable after byte writes above *)
+  extern praxi __seal_nav(): CSS_NAV_WRITTEN
+  prval pf = __seal_nav()
+in (pf | ()) end
+
+(* CSS bytes packed as little-endian int32s, written via _w4. *)
 
 (* Write 4 bytes from packed little-endian int *)
 fn _w4 {l:agz}{n:pos}
@@ -897,8 +1041,8 @@ fn fill_css_cards {l:agz}{n:pos}
   val () = ward_arr_set_byte(arr, 799, alen, 125)
 in end
 
-fn fill_css_reader {l:agz}{n:pos}
-  (arr: !ward_arr(byte, l, n), alen: int n): void = let
+fn fill_css_reader {l:agz}{n:int | n >= APP_CSS_LEN}
+  (arr: !ward_arr(byte, l, n), alen: int n): (CSS_READER_WRITTEN | void) = let
   (* .reader-viewport *)
   val () = _w4(arr, alen, 800, 1634038318)
   val () = _w4(arr, alen, 804, 762471780)
@@ -967,7 +1111,19 @@ fn fill_css_reader {l:agz}{n:pos}
   val () = _w4(arr, alen, 1048, 1919247474)
   val () = _w4(arr, alen, 1052, 2020565549)
   val () = ward_arr_set_byte(arr, 1056, alen, 125)
-in end
+
+  (* Construct proofs — solver verifies constraints *)
+  prval pf_col = COLUMNS_MATCH_VIEWPORT{CSS_COL_WIDTH_VW, CSS_CONTAINER_PAD_H}()
+  prval pf_pad = CHILDREN_HAVE_PADDING{CSS_CHILD_PAD_L_10, CSS_CHILD_PAD_R_10}()
+
+  (* Stamp: overwrite critical bytes from proven values AND produce the view.
+   * This is the ONLY way to get CSS_READER_WRITTEN. *)
+  val (pf_written | ()) = stamp_reader_css(
+    pf_col, pf_pad |
+    arr, alen,
+    CSS_COL_WIDTH_VW, CSS_CONTAINER_PAD_H,
+    CSS_CHILD_PAD_L_10, CSS_CHILD_PAD_R_10)
+in (pf_written | ()) end
 
 fn fill_css_content {l:agz}{n:pos}
   (arr: !ward_arr(byte, l, n), alen: int n): void = let
@@ -1239,22 +1395,26 @@ fn fill_css_import {l:agz}{n:pos}
   val () = _w4(arr, alen, 2053, 2104321330)
 in end
 
-fn fill_css {l:agz}{n:pos}
-  (arr: !ward_arr(byte, l, n), alen: int n): void = let
+fn fill_css {l:agz}{n:int | n >= APP_CSS_LEN}
+  (arr: !ward_arr(byte, l, n), alen: int n): (CSS_READER_WRITTEN | void) = let
   val () = fill_css_base(arr, alen)
   val () = fill_css_cards(arr, alen)
-  val () = fill_css_reader(arr, alen)
+  val (pf_reader | ()) = fill_css_reader(arr, alen)
   val () = fill_css_content(arr, alen)
   val () = fill_css_import(arr, alen)
-in end
+in (pf_reader | ()) end
 
 (* Create a <style> element under parent and fill it with app CSS.
  * Called at the start of both render_library and enter_reader so that
- * each view has its styles after remove_children clears the previous. *)
+ * each view has its styles after remove_children clears the previous.
+ * CONSUMES CSS_READER_WRITTEN — linear, must be produced by fill_css. *)
 fn inject_app_css {l:agz}
   (s: ward_dom_stream(l), parent: int): ward_dom_stream(l) = let
   val css_arr = ward_arr_alloc<byte>(APP_CSS_LEN)
-  val () = fill_css(css_arr, APP_CSS_LEN)
+  val (pf_reader | ()) = fill_css(css_arr, APP_CSS_LEN)
+  prval () = __consume(pf_reader) where {
+    extern praxi __consume(pf: CSS_READER_WRITTEN): void
+  }
   val style_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, style_id, parent, tag_style(), 5)
   val @(frozen, borrow) = ward_arr_freeze<byte>(css_arr)
@@ -1266,11 +1426,8 @@ in s end
 
 (* ========== Reader navigation CSS ========== *)
 
-#define NAV_CSS_LEN 552
-stadef NAV_CSS_LEN = 552
-
-fn fill_css_nav {l:agz}{n:pos}
-  (arr: !ward_arr(byte, l, n), alen: int n): void = let
+fn fill_css_nav {l:agz}{n:int | n >= NAV_CSS_LEN}
+  (arr: !ward_arr(byte, l, n), alen: int n): (CSS_NAV_WRITTEN | void) = let
   (* .reader-nav *)
   val () = _w4(arr, alen, 0, 1634038318)
   val () = _w4(arr, alen, 4, 762471780)
@@ -1412,13 +1569,27 @@ fn fill_css_nav {l:agz}{n:pos}
   val () = _w4(arr, alen, 540, 979857001)
   val () = _w4(arr, alen, 544, 858660912)
   val () = _w4(arr, alen, 548, 2104321394)
-in end
 
-(* Inject reader-specific nav CSS as a separate <style> element *)
+  (* Construct proof — solver verifies constraints *)
+  prval pf_btn = BTNS_HAVE_SIZE{CSS_BTN_FONT_10, CSS_BTN_PAD_H_10}()
+
+  (* Stamp: overwrite critical bytes from proven values AND produce the view.
+   * This is the ONLY way to get CSS_NAV_WRITTEN. *)
+  val (pf_written | ()) = stamp_nav_css(
+    pf_btn |
+    arr, alen,
+    CSS_BTN_FONT_10, CSS_BTN_PAD_H_10)
+in (pf_written | ()) end
+
+(* Inject reader-specific nav CSS as a separate <style> element.
+ * CONSUMES CSS_NAV_WRITTEN — linear, must be produced by fill_css_nav. *)
 fn inject_nav_css {l:agz}
   (s: ward_dom_stream(l), parent: int): ward_dom_stream(l) = let
   val nav_arr = ward_arr_alloc<byte>(NAV_CSS_LEN)
-  val () = fill_css_nav(nav_arr, NAV_CSS_LEN)
+  val (pf_nav | ()) = fill_css_nav(nav_arr, NAV_CSS_LEN)
+  prval () = __consume(pf_nav) where {
+    extern praxi __consume(pf: CSS_NAV_WRITTEN): void
+  }
   val nav_style_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, nav_style_id, parent, tag_style(), 5)
   val @(frozen, borrow) = ward_arr_freeze<byte>(nav_arr)
@@ -2152,7 +2323,7 @@ fun register_read_btns(i: int, n: int, root: int): void =
   in
     if gt_int_int(btn_id, 0) then let
       val () = ward_add_event_listener(
-        btn_id, evt_click(), 5, 2 + i,
+        btn_id, evt_click(), 5, LISTENER_READ_BTN_BASE + i,
         lam (_pl: int): int => let
           val () = enter_reader(saved_r, book_idx)
         in 0 end
@@ -2241,7 +2412,7 @@ implement render_library(root_id) = let
   val saved_span_id = span_id
   val saved_status_id = status_id
   val () = ward_add_event_listener(
-    input_id, evt_change(), 6, 1,
+    input_id, evt_change(), 6, LISTENER_FILE_INPUT,
     lam (_payload_len: int): int => let
       (* Phase 0 — visual setup *)
       prval pf0 = PHASE_OPEN()
@@ -2435,7 +2606,7 @@ implement enter_reader(root_id, book_index) = let
   val saved_root = root_id
   val saved_container = container_id
   val () = ward_add_event_listener(
-    back_btn_id, evt_click(), 5, 52,
+    back_btn_id, evt_click(), 5, LISTENER_BACK,
     lam (_pl: int): int => let
       val () = reader_save_and_exit()
       val () = render_library(saved_root)
@@ -2444,7 +2615,7 @@ implement enter_reader(root_id, book_index) = let
 
   (* Register click listener on prev button *)
   val () = ward_add_event_listener(
-    prev_btn_id, evt_click(), 5, 53,
+    prev_btn_id, evt_click(), 5, LISTENER_PREV,
     lam (_pl: int): int => let
       val () = reader_prev_page()
       val () = apply_page_transform(saved_container)
@@ -2454,7 +2625,7 @@ implement enter_reader(root_id, book_index) = let
 
   (* Register click listener on next button *)
   val () = ward_add_event_listener(
-    next_btn_id, evt_click(), 5, 54,
+    next_btn_id, evt_click(), 5, LISTENER_NEXT,
     lam (_pl: int): int => let
       val () = reader_next_page()
       val () = apply_page_transform(saved_container)
@@ -2464,7 +2635,7 @@ implement enter_reader(root_id, book_index) = let
 
   (* Register keydown listener on viewport *)
   val () = ward_add_event_listener(
-    viewport_id, evt_keydown(), 7, 50,
+    viewport_id, evt_keydown(), 7, LISTENER_KEYDOWN,
     lam (payload_len: int): int => let
       val () = on_reader_keydown(payload_len, saved_root)
     in 0 end
@@ -2472,7 +2643,7 @@ implement enter_reader(root_id, book_index) = let
 
   (* Register click listener on viewport for page navigation *)
   val () = ward_add_event_listener(
-    viewport_id, evt_click(), 5, 51,
+    viewport_id, evt_click(), 5, LISTENER_VIEWPORT_CLICK,
     lam (pl: int): int => let
       val pl1 = g1ofg0(pl)
     in

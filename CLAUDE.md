@@ -460,6 +460,15 @@ document which invariant guarantees safety.
    document it as a formal invariant in the `.sats` file with the specific bug
    class it prevents. This is standard operating procedure for all bug fixes.
 
+9. **E2E test failures require dataprop analysis**: Every e2e test failure
+   MUST result in comprehensive analysis of all potential dataprops that
+   could have prevented the failure, followed by implementation of those
+   dataprops. The analysis should identify: (a) what runtime invariant was
+   violated, (b) whether a dataprop/absprop could encode that invariant
+   at compile time, (c) what proof obligations would prevent the same
+   class of failure. Even if the fix is a one-line change, the dataprop
+   analysis and implementation are mandatory.
+
 ### Proof Architecture
 
 Proofs are enforced at three levels:
