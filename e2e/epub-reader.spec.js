@@ -284,9 +284,15 @@ test.describe('EPUB Reader E2E', () => {
     const readBtn = page.locator('.read-btn');
     await readBtn.click();
 
-    // Wait for reader with nav bar and chapter content
+    // Wait for reader with nav bar and chapter content.
+    // The real EPUB chapter must be decompressed, parsed, and rendered —
+    // wait for actual content inside the chapter container, not just the
+    // container element itself.
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
-    await page.waitForSelector('.chapter-container', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.textContent && el.textContent.length > 50;
+    }, { timeout: 30000 });
     await page.waitForTimeout(1000);
     await screenshot(page, 'conan-reader');
 
