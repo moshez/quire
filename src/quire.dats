@@ -681,6 +681,49 @@ implement import_complete(h) = let
 in end
 end
 
+(* ========== Chapter load error messages ========== *)
+(* mk_ch_err builds "err-ch-XYZ" safe text where XYZ are the 3 suffix chars.
+ * Used by load_chapter to log a specific error at each failure point. *)
+fn mk_ch_err
+  {c1:int | SAFE_CHAR(c1)}
+  {c2:int | SAFE_CHAR(c2)}
+  {c3:int | SAFE_CHAR(c3)}
+  (c1: int(c1), c2: int(c2), c3: int(c3)): ward_safe_text(10) = let
+  val b = ward_text_build(10)
+  val b = ward_text_putc(b, 0, char2int1('e'))
+  val b = ward_text_putc(b, 1, char2int1('r'))
+  val b = ward_text_putc(b, 2, char2int1('r'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('c'))
+  val b = ward_text_putc(b, 5, char2int1('h'))
+  val b = ward_text_putc(b, 6, 45) (* '-' *)
+  val b = ward_text_putc(b, 7, c1)
+  val b = ward_text_putc(b, 8, c2)
+  val b = ward_text_putc(b, 9, c3)
+in ward_text_done(b) end
+
+(* CHAPTER_OUTCOME: Every code path through load_chapter either
+ * renders content (calls render_tree + measure_and_set_pages),
+ * starts async decompression (callback handles its own outcome),
+ * or logs an error (calls ward_log with level 3).
+ *
+ * BUG PREVENTED: Silent empty page — if chapter loading fails for
+ * any reason (bad index, missing ZIP entry, decompression failure,
+ * parse error), the user sees a console error instead of a blank page.
+ *
+ * Error codes:
+ *   err-ch-idx — chapter index >= spine count
+ *   err-ch-zip — spine path not found in ZIP
+ *   err-ch-ent — ZIP entry metadata read failed
+ *   err-ch-off — invalid data offset in ZIP entry
+ *   err-ch-cmp — unsupported compression method (not 0 or 8)
+ *   err-ch-sax — XML/HTML parse returned no SAX events
+ *   err-ch-dec — decompression returned no data *)
+dataprop CHAPTER_OUTCOME(ok: int) =
+  | CHAPTER_RENDERED(1)
+  | CHAPTER_ASYNC(2)
+  | CHAPTER_ERROR_LOGGED(0)
+
 (* ========== App CSS injection ========== *)
 
 (* ---- Linear completion tokens ---- *)
@@ -2153,6 +2196,9 @@ in loop(s, 0, count) end
 
 (* ========== Chapter loading ========== *)
 
+(* load_chapter: Every code path either renders content, starts async
+ * decompression (whose callback renders or logs), or logs an error.
+ * CHAPTER_OUTCOME documents this invariant — see dataprop above. *)
 fn load_chapter(file_handle: int, chapter_idx: int, container_id: int): void = let
   val ci = _checked_nat(chapter_idx)
   val count = epub_get_chapter_count()
@@ -2211,14 +2257,21 @@ in
                     val () = ward_arr_free<byte>(sax_buf)
                     val () = measure_and_set_pages(saved_cid)
                     val () = update_page_info()
+                    (* CHAPTER_OUTCOME: CHAPTER_RENDERED — content visible *)
+                  in ward_promise_return<int>(1) end
+                  else let
+                    (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — parse empty *)
+                    val () = ward_log(3, mk_ch_err(char2int1('s'), char2int1('a'), char2int1('x')), 10)
                   in ward_promise_return<int>(0) end
-                  else ward_promise_return<int>(0)
                 end
                 else let
                   val () = ward_blob_free(blob_handle)
+                  (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — decompress empty *)
+                  val () = ward_log(3, mk_ch_err(char2int1('d'), char2int1('e'), char2int1('c')), 10)
                 in ward_promise_return<int>(0) end
               end)
             val () = ward_promise_discard<int>(p2)
+            (* CHAPTER_OUTCOME: CHAPTER_ASYNC — callback handles outcome *)
           in end
           else if eq_int_int(compression, 0) then let
             (* Stored — read directly, no decompression needed *)
@@ -2244,17 +2297,30 @@ in
               val () = ward_arr_free<byte>(sax_buf)
               val () = measure_and_set_pages(container_id)
               val () = update_page_info()
+              (* CHAPTER_OUTCOME: CHAPTER_RENDERED — content visible *)
             in end
-            else ()
+            else
+              (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — parse empty *)
+              ward_log(3, mk_ch_err(char2int1('s'), char2int1('a'), char2int1('x')), 10)
           end
-          else () (* unsupported compression method *)
-        else ()
+          else
+            (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — bad compression *)
+            ward_log(3, mk_ch_err(char2int1('c'), char2int1('m'), char2int1('p')), 10)
+        else
+          (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — bad data offset *)
+          ward_log(3, mk_ch_err(char2int1('o'), char2int1('f'), char2int1('f')), 10)
       end
-      else ()
+      else
+        (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — entry read failed *)
+        ward_log(3, mk_ch_err(char2int1('e'), char2int1('n'), char2int1('t')), 10)
     end
-    else ()
+    else
+      (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — not found in ZIP *)
+      ward_log(3, mk_ch_err(char2int1('z'), char2int1('i'), char2int1('p')), 10)
   end
-  else ()
+  else
+    (* CHAPTER_OUTCOME: CHAPTER_ERROR_LOGGED — chapter index out of bounds *)
+    ward_log(3, mk_ch_err(char2int1('i'), char2int1('d'), char2int1('x')), 10)
 end
 
 (* ========== Chapter navigation ========== *)
