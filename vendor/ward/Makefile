@@ -261,6 +261,30 @@ node-exerciser: build/node_ward.wasm node_modules
 	@echo "==> Running Node DOM exerciser"
 	@node exerciser/node_exerciser.mjs
 
+# --- Crash repro exerciser ---
+
+build/crash_repro_dats.c: exerciser/crash_repro.dats $(BRIDGE_ALL_SATS) | build
+	$(PATSOPT) -o $@ -d $<
+
+build/crash_repro_dats.o: build/crash_repro_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+CRASH_REPRO_OBJS := build/memory_node_dats.o build/dom_node_dats.o build/promise_node_dats.o \
+  build/event_dats.o build/idb_dats.o \
+  build/window_dats.o build/nav_dats.o build/dom_read_dats.o build/listener_dats.o build/callback_dats.o \
+  build/fetch_dats.o build/clipboard_dats.o build/file_dats.o build/decompress_dats.o build/xml_dats.o \
+  build/notify_dats.o \
+  build/crash_repro_dats.o build/runtime_node.o
+
+build/crash_repro.wasm: $(CRASH_REPRO_OBJS)
+	$(WASM_LD) $(WASM_LDFLAGS) --allow-undefined \
+	  $(NODE_WASM_EXPORTS) \
+	  -o $@ $^
+
+crash-repro: build/crash_repro.wasm node_modules
+	@echo "==> Running crash repro exerciser"
+	@node exerciser/crash_repro_runner.mjs
+
 test: build/node_ward.wasm node_modules
 	@echo "==> Running bridge tests"
 	@node --test tests/

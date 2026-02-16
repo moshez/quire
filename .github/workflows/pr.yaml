@@ -59,6 +59,13 @@ jobs:
           make PATSOPT="PATSHOME=$PATSHOME $PATSHOME/src/CBOOT/patsopt"
           test -f build/quire.wasm
 
+      - name: Build crash-repro.wasm (allocator diagnostic)
+        run: |
+          export PATSHOME=$HOME/ATS2-Postiats-int-${{ env.ATS_VERSION }}
+          make -C vendor/ward build/crash_repro.wasm \
+            PATSOPT="PATSHOME=$PATSHOME $PATSHOME/src/CBOOT/patsopt"
+          cp vendor/ward/build/crash_repro.wasm build/crash_repro.wasm
+
       - name: Validate PWA packaging
         run: make dist
 
@@ -66,7 +73,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: quire-wasm
-          path: build/quire.wasm
+          path: |
+            build/quire.wasm
+            build/crash_repro.wasm
           retention-days: 1
 
   e2e:
@@ -89,7 +98,9 @@ jobs:
           path: build/
 
       - name: Copy WASM to root
-        run: cp build/quire.wasm quire.wasm
+        run: |
+          cp build/quire.wasm quire.wasm
+          cp build/crash_repro.wasm crash-repro.wasm || true
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium

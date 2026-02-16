@@ -1696,4 +1696,32 @@ test.describe('EPUB Reader E2E', () => {
     await backBtn.click();
     await page.waitForSelector('.book-card', { timeout: 10000 });
   });
+
+  test('ward crash repro: oversized alloc (>4096) in Chromium', async ({ page }) => {
+    // Tests ward's allocator crash in Chromium via standalone WASM module.
+    // crash_repro.wasm exercises: alloc 6000 (oversized) → free →
+    // DOM stream cycles (262144 byte diff buffer) →
+    // alloc 5000 (oversized, image data) during active stream.
+    // This pattern crashes in Chromium but passes in Node.js.
+    const consoleMessages = [];
+    page.on('console', msg => consoleMessages.push(msg.text()));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED during ward crash repro');
+      console.error('Console:', consoleMessages);
+    });
+
+    await page.goto('/crash-repro.html');
+
+    // Wait for the repro to complete (done/error) or timeout (crash)
+    await page.waitForFunction(
+      () => window.__reproResult === 'done' || window.__reproResult?.startsWith('error'),
+      { timeout: 15000 }
+    );
+
+    const result = await page.evaluate(() => window.__reproResult);
+    console.log('Crash repro result:', result);
+    console.log('Console:', consoleMessages);
+
+    expect(result).toBe('done');
+  });
 });
