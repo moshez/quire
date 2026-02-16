@@ -2569,6 +2569,11 @@ in
                     val s = render_tree_with_images(s, saved_cid, sax_buf, sl,
                       saved_fh, dir_arr, dl_pos)
                     val dom = ward_dom_stream_end(s)
+                    (* Post-render image pass — allocations outside render loop *)
+                    val s = ward_dom_stream_begin(dom)
+                    val s = load_deferred_images(s, sax_buf, sl,
+                      saved_fh, dir_arr, dl_pos)
+                    val dom = ward_dom_stream_end(s)
                     val () = ward_dom_fini(dom)
                     val () = ward_arr_free<byte>(sax_buf)
                     val () = ward_arr_free<byte>(dir_arr)
@@ -2662,6 +2667,11 @@ in
               val s = render_tree_with_images(s, container_id, sax_buf, sl,
                 file_handle, dir_arr, dl_pos)
               val dom = ward_dom_stream_end(s)
+              (* Post-render image pass — allocations outside render loop *)
+              val s = ward_dom_stream_begin(dom)
+              val s = load_deferred_images(s, sax_buf, sl,
+                file_handle, dir_arr, dl_pos)
+              val dom = ward_dom_stream_end(s)
               val () = ward_dom_fini(dom)
               val () = ward_arr_free<byte>(sax_buf)
               val () = ward_arr_free<byte>(dir_arr)
@@ -2669,11 +2679,6 @@ in
               val () = validate_render_window(dom_get_render_ecnt(), container_id)
               val () = update_page_info()
               val () = apply_resume_page(container_id)
-              (* DIAGNOSTIC 12: malloc(4097) AFTER render, OUTSIDE render loop.
-               * try_set_image is a no-op (no malloc inside render loop).
-               * If this crashes → call context is the trigger.
-               * If this passes → render loop specifically triggers the crash. *)
-              val _p = $extfcall(ptr, "malloc", 4097)
             in end
             else let
               val s = render_tree(s, container_id, sax_buf, sl)

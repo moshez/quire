@@ -26,12 +26,45 @@ staload _ = "./../vendor/ward/lib/dom.dats"
 static int _dom_render_ecnt = 0;
 static int _dom_get_render_ecnt() { return _dom_render_ecnt; }
 #define _dom_set_render_ecnt(n) (_dom_render_ecnt = (n))
+
+/* Deferred image queue: records (node_id, src_off, src_len) per image.
+ * Filled during render_tree_with_images, processed by load_deferred_images.
+ * Fixed capacity — no dynamic allocation. */
+#define _MAX_DEFERRED_IMAGES 64
+static int _deferred_images[_MAX_DEFERRED_IMAGES * 3];
+static int _deferred_image_count = 0;
+
+static void _deferred_image_reset() { _deferred_image_count = 0; }
+
+static void _deferred_image_record(int node_id, int src_off, int src_len) {
+    if (_deferred_image_count >= _MAX_DEFERRED_IMAGES) return;
+    int base = _deferred_image_count * 3;
+    _deferred_images[base] = node_id;
+    _deferred_images[base + 1] = src_off;
+    _deferred_images[base + 2] = src_len;
+    _deferred_image_count++;
+}
+
+static int _deferred_image_get_count() { return _deferred_image_count; }
+static int _deferred_image_get_node_id(int idx) { return _deferred_images[idx * 3]; }
+static int _deferred_image_get_src_off(int idx) { return _deferred_images[idx * 3 + 1]; }
+static int _deferred_image_get_src_len(int idx) { return _deferred_images[idx * 3 + 2]; }
 %}
 
 extern fun _dom_set_render_ecnt(n: int): void = "mac#"
 extern fun _dom_get_render_ecnt_impl(): int = "mac#_dom_get_render_ecnt"
 
 implement dom_get_render_ecnt() = _dom_get_render_ecnt_impl()
+
+(* Deferred image queue accessors *)
+extern fun _deferred_image_reset_impl(): void = "mac#_deferred_image_reset"
+extern fun _deferred_image_record_impl(node_id: int, src_off: int, src_len: int): void = "mac#_deferred_image_record"
+extern fun _deferred_image_get_count_impl(): int = "mac#_deferred_image_get_count"
+extern fun _deferred_image_get_node_id_impl(idx: int): int = "mac#_deferred_image_get_node_id"
+extern fun _deferred_image_get_src_off_impl(idx: int): int = "mac#_deferred_image_get_src_off"
+extern fun _deferred_image_get_src_len_impl(idx: int): int = "mac#_deferred_image_get_src_len"
+
+implement deferred_image_queue_reset() = _deferred_image_reset_impl()
 
 (* ========== Node ID allocator ========== *)
 
@@ -1330,27 +1363,24 @@ in
   in dl + src_len end
 end
 
-(* Try to load an image from the ZIP and set it on a DOM node.
- * Resolves path, finds ZIP entry, reads stored data,
- * detects MIME, calls ward_dom_stream_set_image_src.
- * Returns the stream (possibly unchanged if image not loadable). *)
-fn try_set_image {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
-  (st: ward_dom_stream(l), nid: int,
-   tree: !ward_arr(byte, lb, n), tlen: int n,
-   src_off: int, src_len: int,
-   file_handle: int,
-   chapter_dir: !ward_arr(byte, ld, nd), dir_len: int nd)
-  : ward_dom_stream(l) = let
-  (* WAT EXTRACTION: malloc(4097) from inside render loop — crashes Chromium *)
-  val _p = $extfcall(ptr, "malloc", 4097)
-in
-  st
-end
+(* Record an image for deferred loading (post-render pass).
+ * Called from inside render_tree_with_images for each <img> with src.
+ * Zero allocation — just stores (node_id, src_off, src_len) in the queue.
+ *
+ * IMAGE_DEFERRED_POST_RENDER: This function does NO allocation.
+ * All image data loading happens in load_deferred_images, outside
+ * the render loop. This prevents Chromium renderer crashes from
+ * oversized allocations inside the hot render loop. *)
+fn record_deferred_image(nid: int, src_off: int, src_len: int): void =
+  _deferred_image_record_impl(nid, src_off, src_len)
 
 implement render_tree_with_images
   {l}{lb}{n}{ld}{nd}
   (stream, parent_id, tree, tree_len,
    file_handle, chapter_dir, chapter_dir_len) = let
+
+  (* Reset deferred image queue before each render pass *)
+  val () = deferred_image_queue_reset()
 
   fun loop {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
     (st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n),
@@ -1381,8 +1411,7 @@ implement render_tree_with_images
               st, nid, tree, attr_off + 1, attr_count, tlen, 0, 0)
           in
             if gt_int_int(src_len, 0) then let
-              val st = try_set_image(st, nid, tree, tlen,
-                src_off, src_len, fh, cdir, cdlen)
+              val () = record_deferred_image(nid, src_off, src_len)
               (* <img> is void — skip to ELEMENT_CLOSE *)
               val end_pos = skip_element_img(tree, after_attrs, len, tlen)
             in
@@ -1598,63 +1627,174 @@ in
   st
 end
 
-(* ========== Standalone crash reproduction ========== *)
+(* ========== Deferred image loading ========== *)
 
-(* SAX tree bytes for: <div><img src="x"></div>
- * ELEMENT_OPEN("div", 0 attrs) + ELEMENT_OPEN("img", 1 attr: src="x") +
- * ELEMENT_CLOSE + ELEMENT_CLOSE *)
-%{
-static unsigned char _crash_sax[] = {
-  1,                      /* ELEMENT_OPEN */
-  3,                      /* tag_name_len = 3 */
-  'd', 'i', 'v',         /* tag = "div" */
-  0,                      /* attr_count = 0 */
-  1,                      /* ELEMENT_OPEN */
-  3,                      /* tag_name_len = 3 */
-  'i', 'm', 'g',         /* tag = "img" */
-  1,                      /* attr_count = 1 */
-  3,                      /* name_len = 3 */
-  's', 'r', 'c',         /* name = "src" */
-  1, 0,                   /* val_len = 1 (u16LE) */
-  'x',                    /* value = "x" */
-  2,                      /* ELEMENT_CLOSE (img) */
-  2,                      /* ELEMENT_CLOSE (div) */
-};
-static int _crash_sax_len = sizeof(_crash_sax);
-static void *_get_crash_sax_ptr() { return _crash_sax; }
-static int _get_crash_sax_len() { return _crash_sax_len; }
-%}
+(* Detect MIME type from image src attribute value by checking file extension.
+ * Uses OR 0x20 to lowercase ASCII letters for case-insensitive comparison.
+ * Returns: 1=jpeg, 2=png, 3=gif, 4=svg, 0=unknown *)
+fn detect_mime_from_src {lb:agz}{n:pos}
+  (tree: !ward_arr(byte, lb, n), tlen: int n,
+   src_off: int, src_len: int): int =
+  if src_len < 4 then 0
+  else let
+    val dot3 = src_off + src_len - 4  (* '.' position for 3-char ext *)
+    val d = ward_arr_byte(tree, dot3, tlen)
+  in
+    if d = 46 then let (* '.' *)
+      val c1 = bor_int_int(ward_arr_byte(tree, dot3 + 1, tlen), 32)
+      val c2 = bor_int_int(ward_arr_byte(tree, dot3 + 2, tlen), 32)
+      val c3 = bor_int_int(ward_arr_byte(tree, dot3 + 3, tlen), 32)
+    in
+      if c1 = 106 then (* j *)
+        if c2 = 112 then (* p *)
+          if c3 = 103 then 1 (* g → .jpg = jpeg *)
+          else 0
+        else 0
+      else if c1 = 112 then (* p *)
+        if c2 = 110 then (* n *)
+          if c3 = 103 then 2 (* g → .png *)
+          else 0
+        else 0
+      else if c1 = 103 then (* g *)
+        if c2 = 105 then (* i *)
+          if c3 = 102 then 3 (* f → .gif *)
+          else 0
+        else 0
+      else if c1 = 115 then (* s *)
+        if c2 = 118 then (* v *)
+          if c3 = 103 then 4 (* g → .svg *)
+          else 0
+        else 0
+      else 0
+    end
+    else if src_len >= 5 then let (* check 4-char ext: .jpeg *)
+      val dot4 = src_off + src_len - 5
+      val d2 = ward_arr_byte(tree, dot4, tlen)
+    in
+      if d2 = 46 then let (* '.' *)
+        val e1 = bor_int_int(ward_arr_byte(tree, dot4 + 1, tlen), 32)
+        val e2 = bor_int_int(ward_arr_byte(tree, dot4 + 2, tlen), 32)
+        val e3 = bor_int_int(ward_arr_byte(tree, dot4 + 3, tlen), 32)
+        val e4 = bor_int_int(ward_arr_byte(tree, dot4 + 4, tlen), 32)
+      in
+        if e1 = 106 then (* j *)
+          if e2 = 112 then (* p *)
+            if e3 = 101 then (* e *)
+              if e4 = 103 then 1 (* g → .jpeg *)
+              else 0
+            else 0
+          else 0
+        else 0
+      end
+      else 0
+    end
+    else 0
+  end
 
-extern fun _get_crash_sax_ptr(): ptr = "mac#"
-extern fun _get_crash_sax_len(): int = "mac#"
-
-implement crash_repro_render() = let
-  (* Build SAX tree as ward_arr<byte> from C static data *)
-  val sax_ptr = _get_crash_sax_ptr()
-  val sax_len = _get_crash_sax_len()
-  val sax_len_pos = _checked_pos(sax_len)
-
-  (* Copy to ward_arr so we have a proper linear array *)
-  val sax = ward_arr_alloc<byte>(sax_len_pos)
-  val () = $extfcall(void, "memcpy",
-    $UN.castvwtp1{ptr}(sax), sax_ptr, sax_len)
-
-  (* Create chapter_dir (dummy — 1 byte) *)
-  val cdir = ward_arr_alloc<byte>(1)
-
-  (* Create DOM stream *)
-  val dom = ward_dom_init()
-  val s = ward_dom_stream_begin(dom)
-
-  (* Call render_tree_with_images — this triggers the crash *)
-  val s = render_tree_with_images(s, 1, sax, sax_len_pos,
-    0, cdir, 1)
-
-  (* Clean up *)
-  val dom = ward_dom_stream_end(s)
-  val () = ward_dom_fini(dom)
-  val () = ward_arr_free<byte>(sax)
-  val () = ward_arr_free<byte>(cdir)
+(* Load a single stored image from the ZIP and set it on a DOM node.
+ * Called from load_deferred_images for each entry with compression=0.
+ * Allocates a ward_arr for image bytes, reads via ward_file_read,
+ * builds MIME content text, calls ward_dom_stream_set_image_src,
+ * then frees all resources. *)
+fn load_stored_image {l:agz}{lb:agz}{n:pos}
+  (st: ward_dom_stream(l), nid: int,
+   tree: !ward_arr(byte, lb, n), tlen: int n,
+   src_off: int, src_len: int,
+   file_handle: int, data_offset: int, data_size: int)
+  : ward_dom_stream(l) = let
+  val sz = g1ofg0(data_size)
 in
-  0
+  if sz <= 0 then st
+  else let
+    val img_arr = ward_arr_alloc<byte>(sz)
+    val _rd = ward_file_read(file_handle, data_offset, img_arr, sz)
+    val mime_type = detect_mime_from_src(tree, tlen, src_off, src_len)
+  in
+    if mime_type = 1 then let (* jpeg *)
+      val @(mime, mlen) = build_mime_jpeg()
+      val @(frozen, borrow) = ward_arr_freeze<byte>(img_arr)
+      val st = ward_dom_stream_set_image_src(st, nid, borrow, sz, mime, mlen)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val img_arr = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(img_arr)
+      val () = ward_safe_content_text_free(mime)
+    in st end
+    else if mime_type = 2 then let (* png *)
+      val @(mime, mlen) = build_mime_png()
+      val @(frozen, borrow) = ward_arr_freeze<byte>(img_arr)
+      val st = ward_dom_stream_set_image_src(st, nid, borrow, sz, mime, mlen)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val img_arr = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(img_arr)
+      val () = ward_safe_content_text_free(mime)
+    in st end
+    else if mime_type = 3 then let (* gif *)
+      val @(mime, mlen) = build_mime_gif()
+      val @(frozen, borrow) = ward_arr_freeze<byte>(img_arr)
+      val st = ward_dom_stream_set_image_src(st, nid, borrow, sz, mime, mlen)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val img_arr = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(img_arr)
+      val () = ward_safe_content_text_free(mime)
+    in st end
+    else if mime_type = 4 then let (* svg *)
+      val @(mime, mlen) = build_mime_svg()
+      val @(frozen, borrow) = ward_arr_freeze<byte>(img_arr)
+      val st = ward_dom_stream_set_image_src(st, nid, borrow, sz, mime, mlen)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val img_arr = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(img_arr)
+      val () = ward_safe_content_text_free(mime)
+    in st end
+    else let (* unknown MIME — skip, free image data *)
+      val () = ward_arr_free<byte>(img_arr)
+    in st end
+  end
+end
+
+implement load_deferred_images
+  {l}{lb}{n}{ld}{nd}
+  (stream, tree, tree_len, file_handle, chapter_dir, chapter_dir_len) = let
+  val count = _deferred_image_get_count_impl()
+
+  fun process {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
+    (st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n), tlen: int n,
+     fh: int, cdir: !ward_arr(byte, ld, nd), cdlen: int nd,
+     i: int, total: int)
+    : ward_dom_stream(l) =
+    if i >= total then st
+    else let
+      val nid = _deferred_image_get_node_id_impl(i)
+      val src_off = _deferred_image_get_src_off_impl(i)
+      val src_len = _deferred_image_get_src_len_impl(i)
+
+      (* Resolve image path relative to chapter directory → sbuf *)
+      val path_len = resolve_img_src(tree, tlen, src_off, src_len, cdir, cdlen)
+
+      (* Find ZIP entry by resolved path *)
+      val entry_idx = zip_find_entry(path_len)
+    in
+      if entry_idx >= 0 then let
+        var entry: zip_entry
+        val found = zip_get_entry(entry_idx, entry)
+      in
+        if found > 0 then
+          if entry.compression = 0 then let (* stored — can read directly *)
+            val data_off = zip_get_data_offset(entry_idx)
+          in
+            if data_off >= 0 then let
+              val st = load_stored_image(st, nid, tree, tlen,
+                src_off, src_len, fh, data_off, entry.compressed_size)
+            in process(st, tree, tlen, fh, cdir, cdlen, i + 1, total) end
+            else process(st, tree, tlen, fh, cdir, cdlen, i + 1, total)
+          end
+          else (* deflated — skip for now *)
+            process(st, tree, tlen, fh, cdir, cdlen, i + 1, total)
+        else process(st, tree, tlen, fh, cdir, cdlen, i + 1, total)
+      end
+      else process(st, tree, tlen, fh, cdir, cdlen, i + 1, total)
+    end
+in
+  process(stream, tree, tree_len, file_handle,
+    chapter_dir, chapter_dir_len, 0, count)
 end

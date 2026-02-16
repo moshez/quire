@@ -278,14 +278,53 @@ fun render_tree
    tree: !ward_arr(byte, lb, n), tree_len: int n)
   : ward_dom_stream(l)
 
-(* Walk parsed HTML tree with inline image loading from EPUB ZIP.
- * Like render_tree but handles <img> tags: resolves src relative to
- * chapter_dir, reads stored image data from ZIP, sets image via
- * ward_dom_stream_set_image_src with detected MIME type.
- * Deflated or missing images degrade gracefully (element without src). *)
+(* Walk parsed HTML tree with deferred image loading from EPUB ZIP.
+ * Like render_tree but handles <img> tags: creates <img> elements,
+ * records image metadata (node_id, src offset/len) in a queue.
+ * Images are NOT loaded during the render loop — call
+ * load_deferred_images afterwards to process the queue.
+ *
+ * IMAGE_DEFERRED_POST_RENDER invariant:
+ * All image data allocations (ward_arr for image bytes) happen in
+ * load_deferred_images, which runs AFTER the render loop returns.
+ * The render loop (record_deferred_image) stores only 3 ints per image
+ * in a fixed-capacity queue — zero oversized allocations.
+ *
+ * Bug class prevented: Chromium renderer crash when malloc(>4096) is
+ * called from inside a hot WASM render loop (V8 JIT interaction).
+ * Moving allocations to a post-render pass eliminates the crash. *)
 fun render_tree_with_images
   {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
   (stream: ward_dom_stream(l), parent_id: int,
+   tree: !ward_arr(byte, lb, n), tree_len: int n,
+   file_handle: int,
+   chapter_dir: !ward_arr(byte, ld, nd), chapter_dir_len: int nd)
+  : ward_dom_stream(l)
+
+(* ========== Deferred image loading ========== *)
+
+(* Maximum images deferred per render pass.
+ * 64 is generous — most EPUB chapters have fewer than 20 images.
+ * If the queue fills, additional images are silently skipped. *)
+#define MAX_DEFERRED_IMAGES 64
+
+(* Reset the deferred image queue (called before each render pass). *)
+fun deferred_image_queue_reset(): void
+
+(* Load all deferred images from the queue.
+ * For each recorded image: resolves src path relative to chapter_dir,
+ * finds ZIP entry, reads stored data, detects MIME type, and calls
+ * ward_dom_stream_set_image_src.
+ *
+ * Precondition: tree and chapter_dir must be the SAME arrays passed
+ * to render_tree_with_images (src_off/src_len index into tree).
+ *
+ * Deflated images (compression != 0) are skipped — they require
+ * async decompression and will be handled in a future pass.
+ * Missing or unrecognized images degrade gracefully (element without src). *)
+fun load_deferred_images
+  {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
+  (stream: ward_dom_stream(l),
    tree: !ward_arr(byte, lb, n), tree_len: int n,
    file_handle: int,
    chapter_dir: !ward_arr(byte, ld, nd), chapter_dir_len: int nd)
@@ -295,10 +334,3 @@ fun render_tree_with_images
  * Stored in a C static variable — avoids struct return across compilation
  * units which causes ABI mismatch with WASM LTO. *)
 fun dom_get_render_ecnt(): int
-
-(* Standalone crash reproduction: exercises render_tree_with_images
- * with a minimal SAX tree containing <img src="x">.
- * try_set_image calls malloc(4097) which crashes Chromium's renderer
- * when called from inside the render loop.
- * Returns 0 on success (no crash). *)
-fun crash_repro_render(): int = "mac#"
