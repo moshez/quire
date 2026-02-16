@@ -450,9 +450,8 @@ test.describe('EPUB Reader E2E', () => {
 
     await screenshot(page, 'conan-chapter2-loaded');
 
-    const container = page.locator('.chapter-container').first();
-    const childCount = await container.evaluate(el => el.childElementCount);
-    expect(childCount).toBeGreaterThan(0);
+    const childCount2 = await container.evaluate(el => el.childElementCount);
+    expect(childCount2).toBeGreaterThan(0);
 
     // Navigate back to library
     const backBtn = page.locator('.back-btn');
