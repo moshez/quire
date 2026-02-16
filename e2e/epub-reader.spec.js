@@ -1097,6 +1097,47 @@ test.describe('EPUB Reader E2E', () => {
     expect(true).toBe(true);
   });
 
+  // ATS2-NATIVE CRASH REPRO: uses the REAL quire.wasm with
+  // crash_repro_render() — calls render_tree_with_images with a SAX tree
+  // containing <img src="x">. The render loop calls malloc(4097).
+  // This uses the EXACT compiled loop_280 code that crashes.
+  test('ATS2-NATIVE: crash_repro_render via real quire.wasm', async ({ page }) => {
+    let crashed = false;
+    page.on('crash', () => {
+      crashed = true;
+      console.error('ATS2-NATIVE CRASH REPRO: page crashed!');
+    });
+
+    await page.goto('/e2e/crash_repro_ats.html');
+
+    // Wait for either completion or crash
+    try {
+      await page.waitForFunction(() => {
+        return document.title === 'PASS' || document.title === 'ERROR';
+      }, { timeout: 15000 });
+
+      const title = await page.title();
+      const logContent = await page.locator('#log').textContent();
+      console.log('ATS2-NATIVE result:', title);
+      console.log('ATS2-NATIVE log:', logContent);
+
+      if (title === 'PASS') {
+        console.log('ATS2-native repro did NOT crash');
+      } else {
+        console.log('ATS2-native repro errored:', logContent);
+      }
+    } catch (e) {
+      if (crashed) {
+        console.log('ATS2-NATIVE: CRASHED! Confirmed with real code.');
+      } else {
+        console.log('ATS2-NATIVE timeout:', e.message);
+      }
+    }
+
+    // Always pass — this is a diagnostic, not a correctness test
+    expect(true).toBe(true);
+  });
+
   // DIAGNOSTIC 7: stored (uncompressed) chapter with 4097-byte image.
   // Tests whether crash is specific to async decompression callback context.
   // If this PASSES: crash is in the promise callback path (async-only).

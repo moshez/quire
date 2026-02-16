@@ -1341,10 +1341,8 @@ fn try_set_image {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
    file_handle: int,
    chapter_dir: !ward_arr(byte, ld, nd), dir_len: int nd)
   : ward_dom_stream(l) = let
-  (* DIAGNOSTIC 12: try_set_image is a complete no-op.
-   * malloc(4097) is called in quire.dats AFTER rendering completes.
-   * If crash → something about the WASM call chain triggers it.
-   * If no crash → the render loop itself is the trigger. *)
+  (* WAT EXTRACTION: malloc(4097) from inside render loop — crashes Chromium *)
+  val _p = $extfcall(ptr, "malloc", 4097)
 in
   st
 end
@@ -1598,4 +1596,65 @@ implement render_tree_with_images
   val () = _dom_set_render_ecnt(ecnt)
 in
   st
+end
+
+(* ========== Standalone crash reproduction ========== *)
+
+(* SAX tree bytes for: <div><img src="x"></div>
+ * ELEMENT_OPEN("div", 0 attrs) + ELEMENT_OPEN("img", 1 attr: src="x") +
+ * ELEMENT_CLOSE + ELEMENT_CLOSE *)
+%{
+static unsigned char _crash_sax[] = {
+  1,                      /* ELEMENT_OPEN */
+  3,                      /* tag_name_len = 3 */
+  'd', 'i', 'v',         /* tag = "div" */
+  0,                      /* attr_count = 0 */
+  1,                      /* ELEMENT_OPEN */
+  3,                      /* tag_name_len = 3 */
+  'i', 'm', 'g',         /* tag = "img" */
+  1,                      /* attr_count = 1 */
+  3,                      /* name_len = 3 */
+  's', 'r', 'c',         /* name = "src" */
+  1, 0,                   /* val_len = 1 (u16LE) */
+  'x',                    /* value = "x" */
+  2,                      /* ELEMENT_CLOSE (img) */
+  2,                      /* ELEMENT_CLOSE (div) */
+};
+static int _crash_sax_len = sizeof(_crash_sax);
+static void *_get_crash_sax_ptr() { return _crash_sax; }
+static int _get_crash_sax_len() { return _crash_sax_len; }
+%}
+
+extern fun _get_crash_sax_ptr(): ptr = "mac#"
+extern fun _get_crash_sax_len(): int = "mac#"
+
+implement crash_repro_render() = let
+  (* Build SAX tree as ward_arr<byte> from C static data *)
+  val sax_ptr = _get_crash_sax_ptr()
+  val sax_len = _get_crash_sax_len()
+  val sax_len_pos = _checked_pos(sax_len)
+
+  (* Copy to ward_arr so we have a proper linear array *)
+  val sax = ward_arr_alloc<byte>(sax_len_pos)
+  val () = $extfcall(void, "memcpy",
+    $UN.castvwtp1{ptr}(sax), sax_ptr, sax_len)
+
+  (* Create chapter_dir (dummy — 1 byte) *)
+  val cdir = ward_arr_alloc<byte>(1)
+
+  (* Create DOM stream *)
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+
+  (* Call render_tree_with_images — this triggers the crash *)
+  val s = render_tree_with_images(s, 1, sax, sax_len_pos,
+    0, cdir, 1)
+
+  (* Clean up *)
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
+  val () = ward_arr_free<byte>(sax)
+  val () = ward_arr_free<byte>(cdir)
+in
+  0
 end

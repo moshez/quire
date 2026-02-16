@@ -295,3 +295,10 @@ fun render_tree_with_images
  * Stored in a C static variable — avoids struct return across compilation
  * units which causes ABI mismatch with WASM LTO. *)
 fun dom_get_render_ecnt(): int
+
+(* Standalone crash reproduction: exercises render_tree_with_images
+ * with a minimal SAX tree containing <img src="x">.
+ * try_set_image calls malloc(4097) which crashes Chromium's renderer
+ * when called from inside the render loop.
+ * Returns 0 on success (no crash). *)
+fun crash_repro_render(): int = "mac#"

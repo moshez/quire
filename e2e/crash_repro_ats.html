@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head><title>ATS2-native WASM Crash Reproduction</title></head>
+<body>
+<h1>ATS2-native Crash Repro</h1>
+<p>Loads the real quire.wasm and calls crash_repro_render(),
+which invokes render_tree_with_images with a SAX tree containing
+&lt;img src="x"&gt;. The render loop calls malloc(4097) for the
+image buffer, which crashes Chromium's renderer process.</p>
+<pre id="log"></pre>
+<script>
+const log = document.getElementById('log');
+function logMsg(msg) {
+  log.textContent += msg + '\n';
+  console.log(msg);
+}
+
+async function run() {
+  logMsg('Loading quire.wasm...');
+
+  // Stub implementations for all 15 imports
+  const imports = {
+    env: {
+      // sig=1: (i32, i32, i32) -> nil
+      ward_js_stash_read: (a, b, c) => {},
+
+      // sig=2: (i32, i32) -> nil — DOM diff flush
+      ward_dom_flush: (bufPtr, len) => {
+        logMsg(`ward_dom_flush: ptr=${bufPtr}, len=${len}`);
+      },
+
+      // sig=2: (i32, i32) -> nil
+      ward_set_timer: (a, b) => {},
+
+      // sig=3: (i32, i32, i32, i32, i32) -> nil
+      ward_idb_js_put: (a, b, c, d, e) => {},
+
+      // sig=1: (i32, i32, i32) -> nil
+      ward_idb_js_get: (a, b, c) => {},
+
+      // sig=1: (i32, i32, i32) -> nil — log (ptr, len, level)
+      ward_js_log: (ptr, len, level) => {
+        if (instance) {
+          const mem = new Uint8Array(instance.exports.memory.buffer);
+          const bytes = mem.slice(ptr, ptr + len);
+          const text = new TextDecoder().decode(bytes);
+          logMsg(`[ward:log:${level}] ${text}`);
+        }
+      },
+
+      // sig=4: (i32) -> i32
+      ward_js_measure_node: (nodeId) => 0,
+
+      // sig=5: (i32, i32, i32, i32) -> nil
+      ward_js_add_event_listener: (a, b, c, d) => {},
+
+      // sig=2: (i32, i32) -> nil
+      ward_js_file_open: (a, b) => {},
+
+      // sig=6: (i32, i32, i32, i32) -> i32
+      ward_js_file_read: (a, b, c, d) => 0,
+
+      // sig=5: (i32, i32, i32, i32) -> nil
+      ward_js_decompress: (a, b, c, d) => {},
+
+      // sig=6: (i32, i32, i32, i32) -> i32
+      ward_js_blob_read: (a, b, c, d) => 0,
+
+      // sig=7: (i32) -> nil
+      ward_js_blob_free: (a) => {},
+
+      // sig=0: (i32, i32) -> i32
+      ward_js_parse_html: (a, b) => 0,
+
+      // sig=7: (i32) -> nil
+      quireSetTitle: (a) => {},
+    },
+  };
+
+  let instance;
+  const response = await fetch('../build/quire.wasm');
+  const bytes = await response.arrayBuffer();
+  const result = await WebAssembly.instantiate(bytes, imports);
+  instance = result.instance;
+
+  logMsg(`WASM loaded. Memory: ${instance.exports.memory.buffer.byteLength} bytes`);
+
+  // First init ward (required before any DOM operations)
+  logMsg('Calling ward_node_init(1)...');
+  instance.exports.ward_node_init(1);
+  logMsg('ward_node_init done.');
+
+  // Call crash_repro_render
+  logMsg('Calling crash_repro_render()...');
+  try {
+    const ret = instance.exports.crash_repro_render();
+    logMsg(`crash_repro_render returned: ${ret}`);
+    logMsg('NO CRASH');
+    document.title = 'PASS';
+  } catch (e) {
+    logMsg(`ERROR: ${e.message}`);
+    document.title = 'ERROR';
+  }
+}
+
+run().catch(e => {
+  logMsg(`FATAL: ${e.message}`);
+  document.title = 'ERROR';
+});
+</script>
+</body>
+</html>
