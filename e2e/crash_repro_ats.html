@@ -90,17 +90,40 @@ async function run() {
   instance.exports.ward_node_init(1);
   logMsg('ward_node_init done.');
 
-  // Call crash_repro_render
-  logMsg('Calling crash_repro_render()...');
+  // Phase 1: Warm up loop_280 to trigger V8 JIT (TurboFan).
+  // The real crash happens on chapter 2, after ch1 has run loop_280 ~250 times.
+  // V8 typically JIT-compiles hot functions after enough invocations.
+  const WARMUP = 200;
+  logMsg(`Phase 1: warming up (${WARMUP} sync calls)...`);
   try {
-    const ret = instance.exports.crash_repro_render();
-    logMsg(`crash_repro_render returned: ${ret}`);
-    logMsg('NO CRASH');
-    document.title = 'PASS';
+    for (let i = 0; i < WARMUP; i++) {
+      instance.exports.crash_repro_render();
+    }
+    logMsg(`Phase 1 done.`);
   } catch (e) {
-    logMsg(`ERROR: ${e.message}`);
+    logMsg(`Phase 1 ERROR: ${e.message}`);
     document.title = 'ERROR';
+    return;
   }
+
+  // Phase 2: Call from async context (like the real crash path).
+  // The real crash happens inside a promise callback from decompression.
+  // This simulates the WASM→JS→WASM re-entry via setTimeout.
+  logMsg('Phase 2: calling from async context...');
+  await new Promise((resolve) => {
+    setTimeout(() => {
+      try {
+        const ret = instance.exports.crash_repro_render();
+        logMsg(`Phase 2: crash_repro_render returned: ${ret}`);
+        logMsg('NO CRASH');
+        document.title = 'PASS';
+      } catch (e) {
+        logMsg(`Phase 2 ERROR: ${e.message}`);
+        document.title = 'ERROR';
+      }
+      resolve();
+    }, 100);
+  });
 }
 
 run().catch(e => {
