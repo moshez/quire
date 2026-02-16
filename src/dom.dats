@@ -1358,11 +1358,13 @@ in
           val sz = entry.uncompressed_size
           val sz1 = (if gt_int_int(sz, 0) then sz else 1): int
           val sz_pos = _checked_pos(sz1)
-          (* DIAGNOSTIC 6: alloc only, NO free, NO bridge calls.
-           * If this passes → crash is in free().
-           * If this crashes → crash is in malloc(). *)
-          val arr = ward_arr_alloc<byte>(sz_pos)
-          val _ = $UN.castvwtp0{ptr}(arr) (* leak — diagnostic only *)
+          (* DIAGNOSTIC 9: raw malloc only — NO ward_arr_alloc,
+           * NO second memset. malloc() internally zeroes via memset.
+           * ward_arr_alloc adds a SECOND memset (redundant).
+           * If this passes → double-memset in ward_arr_alloc triggers V8 bug.
+           * If this crashes → something about calling malloc from deep WASM. *)
+          val p = $extfcall(ptr, "malloc", sz_pos)
+          (* leak p — diagnostic only *)
         in st end
         else st (* bad data offset — skip *)
       end
