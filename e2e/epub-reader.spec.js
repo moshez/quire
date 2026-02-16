@@ -1093,6 +1093,103 @@ test.describe('EPUB Reader E2E', () => {
     expect(childCount).toBeGreaterThan(0);
   });
 
+  test('pure JS incremental DOM + blob URL JPEG mimics WASM path', async ({ page }) => {
+    // This test mimics the WASM path exactly:
+    // 1. Create container with CSS columns (100vw like real app)
+    // 2. Create elements ONE BY ONE via createElement/appendChild (like diff buffer)
+    // 3. Set image src via blob URL mid-stream (like wardJsSetImageSrc)
+    // 4. Continue creating more elements after the image
+    // If this crashes: it's incremental DOM + blob URL in CSS columns that crashes
+    // If this passes: something else in the WASM/bridge path triggers it
+    const epubData = readFileSync(
+      join(process.cwd(), 'test', 'fixtures', 'conan-stories.epub')
+    );
+    const illusJpg = epubData.subarray(114862, 114862 + 18538);
+    const jpegBase64 = illusJpg.toString('base64');
+
+    const consoleMessages = [];
+    page.on('console', msg => consoleMessages.push(msg.text()));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED during incremental DOM test');
+      console.error('Console:', consoleMessages);
+    });
+
+    await page.goto('about:blank');
+    await page.evaluate((b64) => {
+      // Set up CSS columns matching real app
+      const style = document.createElement('style');
+      style.textContent = `
+        .chapter-container {
+          column-width: 100vw;
+          column-gap: 0;
+          padding: 2rem 0;
+          overflow: hidden;
+          height: 100%;
+        }
+        .chapter-container>* {
+          padding-left: 1.5rem;
+          padding-right: 1.5rem;
+          box-sizing: border-box;
+        }
+        .chapter-container img {
+          max-width: 100%;
+          height: auto;
+        }
+      `;
+      document.head.appendChild(style);
+
+      // Create container
+      const container = document.createElement('div');
+      container.className = 'chapter-container';
+      document.body.appendChild(container);
+
+      // Create elements ONE BY ONE (mimicking diff buffer flushes)
+      // This is what the WASM render path does
+
+      // Heading
+      const h2 = document.createElement('h2');
+      h2.textContent = 'Test Chapter';
+      container.appendChild(h2);
+
+      // A few paragraphs before the image
+      for (let i = 0; i < 5; i++) {
+        const p = document.createElement('p');
+        p.textContent = 'Lorem ipsum dolor sit amet, paragraph ' + i;
+        container.appendChild(p);
+      }
+
+      // Create img and set blob URL (like wardJsSetImageSrc)
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'image/jpeg' });
+      const url = URL.createObjectURL(blob);
+
+      const img = document.createElement('img');
+      container.appendChild(img);
+      // Set src AFTER appendChild (like the WASM path: create element → flush → set src)
+      img.src = url;
+      console.log('DIAG: img.src set to blob URL, continuing element creation...');
+
+      // More paragraphs AFTER the image (the render continues)
+      for (let i = 0; i < 10; i++) {
+        const p = document.createElement('p');
+        p.textContent = 'More text after image, paragraph ' + i;
+        container.appendChild(p);
+      }
+
+      console.log('DIAG: all elements created, total children=' + container.childElementCount);
+    }, jpegBase64);
+
+    // Wait for rendering
+    await page.waitForTimeout(3000);
+    await screenshot(page, 'incremental-dom-blob-jpeg');
+    const childCount = await page.evaluate(() =>
+      document.querySelector('.chapter-container').childElementCount
+    );
+    expect(childCount).toBeGreaterThan(0);
+  });
+
   test('re-packaged conan EPUB does not crash on chapter transition', async ({ page }) => {
     // KEY DIAGNOSTIC: Extract ALL files from the real conan EPUB and re-package
     // them using our createZip. Same content, different ZIP binary structure.
