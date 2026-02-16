@@ -193,6 +193,14 @@ fun get_tag_by_index(idx: int): [n:pos | n <= 10] @(ward_safe_text(n), int n)
  * All attrs are <= 11 chars, so n <= 11 holds. *)
 fun get_attr_by_index(idx: int): [n:pos | n <= 11] @(ward_safe_text(n), int n)
 
+(* ========== Render limits ========== *)
+
+(* Maximum DOM elements created per render_tree / render_tree_with_images call.
+ * Prevents unbounded DOM node creation from malformed or adversarial EPUB content.
+ * 10000 is generous — real EPUB chapters rarely exceed a few hundred elements.
+ * When the limit is reached, remaining SAX events are skipped silently. *)
+#define MAX_RENDER_ELEMENTS 10000
+
 (* ========== Tree renderer ========== *)
 
 (* TEXT_RENDER_SAFE invariant (prevents set_text from destroying existing children):

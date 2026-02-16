@@ -998,9 +998,10 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
   fun loop {l:agz}{lb:agz}{n:pos}
     (st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n),
      pos: int, len: int, parent: int, tlen: int n,
-     has_child: int)
-    : @(ward_dom_stream(l), int) =
-    if pos >= len then @(st, pos)
+     has_child: int, ecnt: int)
+    : @(ward_dom_stream(l), int, int) =
+    if pos >= len then @(st, pos, ecnt)
+    else if ecnt >= MAX_RENDER_ELEMENTS then @(st, len, ecnt)
     else let
       val opc = ward_arr_byte(tree, pos, tlen)
     in
@@ -1018,14 +1019,14 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
           if tag_idx = TAG_IDX_IMG then let
             val end_pos = skip_element(tree, after_attrs, len, tlen)
           in
-            loop(st, tree, end_pos, len, parent, tlen, has_child)
+            loop(st, tree, end_pos, len, parent, tlen, has_child, ecnt)
           end
           else let
           val @(tag_st, tag_st_len) = get_tag_by_index(tag_idx)
           val nid = dom_next_id()
           val st = ward_dom_stream_create_element(st, nid, parent, tag_st, tag_st_len)
           val st = emit_attrs(st, nid, tree, attr_off + 1, attr_count, tlen)
-          val @(st, child_end) = loop(st, tree, after_attrs, len, nid, tlen, 0)
+          val @(st, child_end, ec2) = loop(st, tree, after_attrs, len, nid, tlen, 0, ecnt + 1)
         in
           (* SIBLING_CONTINUATION: after closing this element, continue
            * processing remaining siblings under the same parent.
@@ -1034,16 +1035,16 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
             val close_opc = ward_arr_byte(tree, child_end, tlen)
           in
             if close_opc = 2 then
-              loop(st, tree, child_end + 1, len, parent, tlen, 1)
+              loop(st, tree, child_end + 1, len, parent, tlen, 1, ec2)
             else
-              loop(st, tree, child_end, len, parent, tlen, 1)
+              loop(st, tree, child_end, len, parent, tlen, 1, ec2)
           end
-          else @(st, child_end)
+          else @(st, child_end, ec2)
         end
         else let
           val end_pos = skip_element(tree, after_attrs, len, tlen)
         in
-          loop(st, tree, end_pos, len, parent, tlen, has_child)
+          loop(st, tree, end_pos, len, parent, tlen, has_child, ecnt)
         end
       end
       else if opc = 3 then let (* TEXT *)
@@ -1053,7 +1054,7 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
       in
         if tl > 0 then
           if is_whitespace_only(tree, text_start, text_len, tlen) then
-            loop(st, tree, text_start + text_len, len, parent, tlen, has_child)
+            loop(st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt)
           else if tl < 65536 then
             if has_child > 0 then let
               (* TEXT_RENDER_SAFE: parent has existing children.
@@ -1069,7 +1070,7 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
               val text_arr = ward_arr_thaw<byte>(frozen)
               val () = ward_arr_free<byte>(text_arr)
             in
-              loop(st, tree, text_start + text_len, len, parent, tlen, 1)
+              loop(st, tree, text_start + text_len, len, parent, tlen, 1, ecnt + 1)
             end
             else let
               (* TEXT_RENDER_SAFE: no children yet — set_text on parent is safe *)
@@ -1081,16 +1082,16 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
               val text_arr = ward_arr_thaw<byte>(frozen)
               val () = ward_arr_free<byte>(text_arr)
             in
-              loop(st, tree, text_start + text_len, len, parent, tlen, 1)
+              loop(st, tree, text_start + text_len, len, parent, tlen, 1, ecnt)
             end
           else (* text too large for DOM buffer — skip *)
-            loop(st, tree, text_start + text_len, len, parent, tlen, has_child)
-        else loop(st, tree, text_start + text_len, len, parent, tlen, has_child)
+            loop(st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt)
+        else loop(st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt)
       end
       else if opc = 2 then (* ELEMENT_CLOSE — return to parent *)
-        @(st, pos)
+        @(st, pos, ecnt)
       else (* Unknown opcode — skip byte *)
-        loop(st, tree, pos + 1, len, parent, tlen, has_child)
+        loop(st, tree, pos + 1, len, parent, tlen, has_child, ecnt)
     end
   and skip_attrs {lb:agz}{n:pos}
     (tree: !ward_arr(byte, lb, n), pos: int, count: int, tlen: int n): int =
@@ -1164,7 +1165,7 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
       else skip_element(tree, pos + 1, len, tlen) (* unknown — skip byte *)
     end
 
-  val @(st, _) = loop(stream, tree, 0, tree_len, parent_id, tree_len, 0)
+  val @(st, _, _) = loop(stream, tree, 0, tree_len, parent_id, tree_len, 0, 0)
 in
   st
 end
@@ -1420,10 +1421,11 @@ implement render_tree_with_images
   fun loop {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
     (st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n),
      pos: int, len: int, parent: int, tlen: int n,
-     has_child: int,
+     has_child: int, ecnt: int,
      fh: int, cdir: !ward_arr(byte, ld, nd), cdlen: int nd)
-    : @(ward_dom_stream(l), int) =
-    if pos >= len then @(st, pos)
+    : @(ward_dom_stream(l), int, int) =
+    if pos >= len then @(st, pos, ecnt)
+    else if ecnt >= MAX_RENDER_ELEMENTS then @(st, len, ecnt)
     else let
       val opc = ward_arr_byte(tree, pos, tlen)
     in
@@ -1454,11 +1456,11 @@ implement render_tree_with_images
                 val close_opc = ward_arr_byte(tree, end_pos, tlen)
               in
                 if close_opc = 2 then
-                  loop(st, tree, end_pos + 1, len, parent, tlen, 1, fh, cdir, cdlen)
+                  loop(st, tree, end_pos + 1, len, parent, tlen, 1, ecnt + 1, fh, cdir, cdlen)
                 else
-                  loop(st, tree, end_pos, len, parent, tlen, 1, fh, cdir, cdlen)
+                  loop(st, tree, end_pos, len, parent, tlen, 1, ecnt + 1, fh, cdir, cdlen)
               end
-              else @(st, end_pos)
+              else @(st, end_pos, ecnt + 1)
             end
             else let
               (* No src found — element exists without image *)
@@ -1468,11 +1470,11 @@ implement render_tree_with_images
                 val close_opc = ward_arr_byte(tree, end_pos, tlen)
               in
                 if close_opc = 2 then
-                  loop(st, tree, end_pos + 1, len, parent, tlen, 1, fh, cdir, cdlen)
+                  loop(st, tree, end_pos + 1, len, parent, tlen, 1, ecnt + 1, fh, cdir, cdlen)
                 else
-                  loop(st, tree, end_pos, len, parent, tlen, 1, fh, cdir, cdlen)
+                  loop(st, tree, end_pos, len, parent, tlen, 1, ecnt + 1, fh, cdir, cdlen)
               end
-              else @(st, end_pos)
+              else @(st, end_pos, ecnt + 1)
             end
           end
           else let
@@ -1480,23 +1482,23 @@ implement render_tree_with_images
           val nid = dom_next_id()
           val st = ward_dom_stream_create_element(st, nid, parent, tag_st, tag_st_len)
           val st = emit_attrs_noimg(st, nid, tree, attr_off + 1, attr_count, tlen)
-          val @(st, child_end) = loop(st, tree, after_attrs, len, nid, tlen, 0, fh, cdir, cdlen)
+          val @(st, child_end, ec2) = loop(st, tree, after_attrs, len, nid, tlen, 0, ecnt + 1, fh, cdir, cdlen)
         in
           (* SIBLING_CONTINUATION *)
           if child_end < len then let
             val close_opc = ward_arr_byte(tree, child_end, tlen)
           in
             if close_opc = 2 then
-              loop(st, tree, child_end + 1, len, parent, tlen, 1, fh, cdir, cdlen)
+              loop(st, tree, child_end + 1, len, parent, tlen, 1, ec2, fh, cdir, cdlen)
             else
-              loop(st, tree, child_end, len, parent, tlen, 1, fh, cdir, cdlen)
+              loop(st, tree, child_end, len, parent, tlen, 1, ec2, fh, cdir, cdlen)
           end
-          else @(st, child_end)
+          else @(st, child_end, ec2)
         end
         else let
           val end_pos = skip_element_img(tree, after_attrs, len, tlen)
         in
-          loop(st, tree, end_pos, len, parent, tlen, has_child, fh, cdir, cdlen)
+          loop(st, tree, end_pos, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
         end
       end
       else if opc = 3 then let (* TEXT *)
@@ -1506,7 +1508,7 @@ implement render_tree_with_images
       in
         if tl > 0 then
           if is_whitespace_only(tree, text_start, text_len, tlen) then
-            loop(st, tree, text_start + text_len, len, parent, tlen, has_child, fh, cdir, cdlen)
+            loop(st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
           else if tl < 65536 then
             if has_child > 0 then let
               val span_id = dom_next_id()
@@ -1520,7 +1522,7 @@ implement render_tree_with_images
               val text_arr = ward_arr_thaw<byte>(frozen)
               val () = ward_arr_free<byte>(text_arr)
             in
-              loop(st, tree, text_start + text_len, len, parent, tlen, 1, fh, cdir, cdlen)
+              loop(st, tree, text_start + text_len, len, parent, tlen, 1, ecnt + 1, fh, cdir, cdlen)
             end
             else let
               val text_arr = ward_arr_alloc<byte>(tl)
@@ -1531,16 +1533,16 @@ implement render_tree_with_images
               val text_arr = ward_arr_thaw<byte>(frozen)
               val () = ward_arr_free<byte>(text_arr)
             in
-              loop(st, tree, text_start + text_len, len, parent, tlen, 1, fh, cdir, cdlen)
+              loop(st, tree, text_start + text_len, len, parent, tlen, 1, ecnt, fh, cdir, cdlen)
             end
           else
-            loop(st, tree, text_start + text_len, len, parent, tlen, has_child, fh, cdir, cdlen)
-        else loop(st, tree, text_start + text_len, len, parent, tlen, has_child, fh, cdir, cdlen)
+            loop(st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
+        else loop(st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
       end
       else if opc = 2 then (* ELEMENT_CLOSE *)
-        @(st, pos)
+        @(st, pos, ecnt)
       else
-        loop(st, tree, pos + 1, len, parent, tlen, has_child, fh, cdir, cdlen)
+        loop(st, tree, pos + 1, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
     end
   and skip_attrs_img {lb:agz}{n:pos}
     (tree: !ward_arr(byte, lb, n), pos: int, count: int, tlen: int n): int =
@@ -1655,7 +1657,7 @@ implement render_tree_with_images
       else skip_element_img(tree, pos + 1, len, tlen)
     end
 
-  val @(st, _) = loop(stream, tree, 0, tree_len, parent_id, tree_len, 0,
+  val @(st, _, _) = loop(stream, tree, 0, tree_len, parent_id, tree_len, 0, 0,
     file_handle, chapter_dir, chapter_dir_len)
 in
   st
