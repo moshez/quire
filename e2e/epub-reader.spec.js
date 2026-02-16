@@ -307,6 +307,56 @@ test.describe('EPUB Reader E2E', () => {
   });
 
   test('import real-world epub with deflate-compressed metadata', async ({ page }) => {
+    // Instrument DecompressionStream before any page JS runs to trace crash location
+    await page.addInitScript(() => {
+      const OrigDS = globalThis.DecompressionStream;
+      let dsCount = 0;
+      globalThis.DecompressionStream = function(format) {
+        const id = ++dsCount;
+        console.log('DIAG:DS#' + id + ' created format=' + format);
+        const ds = new OrigDS(format);
+
+        // The bridge does: ds.writable.getWriter() then writer.write/close
+        // and ds.readable.getReader() then reader.read() in a pump loop.
+        // We patch getWriter and getReader on the stream objects.
+        const origGetWriter = ds.writable.getWriter;
+        ds.writable.getWriter = function() {
+          const w = origGetWriter.call(ds.writable);
+          const wWrite = w.write.bind(w);
+          const wClose = w.close.bind(w);
+          w.write = function(chunk) {
+            console.log('DIAG:DS#' + id + '.write len=' + (chunk ? chunk.byteLength || chunk.length : 0));
+            return wWrite(chunk);
+          };
+          w.close = function() {
+            console.log('DIAG:DS#' + id + '.close');
+            return wClose();
+          };
+          return w;
+        };
+
+        const origGetReader = ds.readable.getReader;
+        ds.readable.getReader = function() {
+          const r = origGetReader.call(ds.readable);
+          const rRead = r.read.bind(r);
+          let readCount = 0;
+          r.read = function() {
+            return rRead().then(function(result) {
+              readCount++;
+              console.log('DIAG:DS#' + id + '.read#' + readCount +
+                ' done=' + result.done + ' len=' + (result.value ? result.value.length : 0));
+              return result;
+            });
+          };
+          return r;
+        };
+
+        return ds;
+      };
+      // Preserve prototype chain for typeof checks
+      globalThis.DecompressionStream.prototype = OrigDS.prototype;
+    });
+
     // This test uses a real-world EPUB whose metadata entries (container.xml,
     // content.opf) are deflate-compressed (ZIP method 8). The async decompression
     // path in epub_read_container_async / epub_read_opf_async handles this.
@@ -397,6 +447,49 @@ test.describe('EPUB Reader E2E', () => {
     // Then async: decompress callback → parse HTML → render_tree → DOM updates.
     // We need to know if the crash is during the sync click handler or the
     // async decompress/render callback.
+
+    // Instrument wardJsDecompress and DOM flush to trace where the crash occurs.
+    // We can't easily patch DecompressionStream after construction, so instead
+    // we wrap the WASM exports that are called after decompression completes.
+    await page.evaluate(() => {
+      // Track decompress completion callback
+      window._diagDecompressCount = 0;
+      window._diagDomFlushCount = 0;
+      window._diagSetImageCount = 0;
+      // We'll monkey-patch after WASM loads. The bridge stores instance.exports.
+      // wardJsDecompress logs before calling DecompressionStream.
+      // But we need to intercept the callback. Let's poll for the WASM instance.
+      const checkInterval = setInterval(() => {
+        // The bridge exposes the ward_on_decompress_complete export.
+        // We can find it through the instance stored in the bridge closure.
+        // Actually, we can't access the bridge's closure. Instead, let's just
+        // log from here by watching DOM mutations.
+        clearInterval(checkInterval);
+      }, 100);
+
+      // Simpler approach: observe DOM mutations on the chapter container
+      const observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          if (m.type === 'childList') {
+            const target = m.target;
+            if (target.classList && target.classList.contains('chapter-container')) {
+              console.log('DIAG:DOM mutation on .chapter-container: ' +
+                'added=' + m.addedNodes.length + ' removed=' + m.removedNodes.length +
+                ' children=' + target.childElementCount);
+            }
+          }
+        }
+      });
+      // Start observing once the container exists
+      const waitForContainer = setInterval(() => {
+        const c = document.querySelector('.chapter-container');
+        if (c) {
+          clearInterval(waitForContainer);
+          observer.observe(c, { childList: true, subtree: false });
+          console.log('DIAG:MutationObserver attached to .chapter-container');
+        }
+      }, 100);
+    });
 
     let clickCompleted = false;
     try {
