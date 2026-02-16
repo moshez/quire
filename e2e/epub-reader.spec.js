@@ -313,38 +313,62 @@ test.describe('EPUB Reader E2E', () => {
     // Additionally, the OPF has <dc:creator id="author_0"> (attribute on tag),
     // which tests the _find_gt metadata parsing fix.
 
-    // Record all WASM export calls for crash reproduction
+    // Record all WASM export + import calls for crash reproduction.
+    // WASM exports are frozen/non-writable, so we build a plain wrapper object
+    // (same pattern as bridge.js wrapExports) and return a fake result.
     await page.addInitScript(() => {
       const origInstantiate = WebAssembly.instantiate;
       WebAssembly.instantiate = async function(bytes, imports) {
+        // Wrap import functions (WASM→JS calls) to log them
+        if (imports && imports.env) {
+          for (const [name, fn] of Object.entries(imports.env)) {
+            if (typeof fn === 'function') {
+              const origFn = fn;
+              imports.env[name] = function(...args) {
+                console.log('WASM_IMP:' + name + ':' + JSON.stringify(args));
+                const ret = origFn.apply(this, args);
+                if (ret !== undefined) console.log('WASM_IMP_RET:' + name + ':' + JSON.stringify(ret));
+                return ret;
+              };
+            }
+          }
+        }
+
         const result = await origInstantiate.call(WebAssembly, bytes, imports);
-        const inst = result.instance || result;
-        const exports = inst.exports;
-        // Wrap each export to log calls
-        const skipLog = new Set(['memory', '__data_end', '__heap_base']);
-        for (const [name, fn] of Object.entries(exports)) {
-          if (typeof fn === 'function' && !skipLog.has(name)) {
-            const orig = fn;
-            exports[name] = function(...args) {
-              console.log('WASM_CALL:' + name + ':' + JSON.stringify(args));
+        const realInstance = result.instance;
+        const realExports = realInstance.exports;
+
+        // Build plain wrapper — can't modify frozen WASM exports
+        const wrappedExports = Object.create(null);
+        for (const [key, val] of Object.entries(realExports)) {
+          if (typeof val !== 'function') {
+            wrappedExports[key] = val;
+          } else {
+            const orig = val;
+            wrappedExports[key] = function(...args) {
+              console.log('WASM_CALL:' + key + ':' + JSON.stringify(args));
               try {
-                const ret = orig.apply(this, args);
-                if (ret !== undefined) console.log('WASM_RET:' + name + ':' + JSON.stringify(ret));
+                const ret = orig.apply(null, args);
+                if (ret !== undefined) console.log('WASM_RET:' + key + ':' + JSON.stringify(ret));
                 return ret;
               } catch(e) {
-                console.log('WASM_ERR:' + name + ':' + e.message);
+                console.log('WASM_ERR:' + key + ':' + e.message);
                 throw e;
               }
             };
           }
         }
-        // Log malloc/free via memory tracking
-        const mem = exports.memory;
+
+        const mem = realExports.memory;
         if (mem) {
-          const pages0 = mem.buffer.byteLength / 65536;
-          console.log('WASM_MEM:initial_pages=' + pages0);
+          console.log('WASM_MEM:initial_pages=' + (mem.buffer.byteLength / 65536));
         }
-        return result;
+
+        // Return fake result with our wrapped exports
+        return {
+          instance: { exports: wrappedExports },
+          module: result.module
+        };
       };
     });
 
@@ -354,8 +378,11 @@ test.describe('EPUB Reader E2E', () => {
     page.on('pageerror', err => pageErrors.push(err.message));
     page.on('crash', () => {
       console.error('PAGE CRASHED during import test');
-      // Dump all WASM call recordings
-      const wasmCalls = consoleMessages.filter(m => m.includes('WASM_CALL:') || m.includes('WASM_RET:') || m.includes('WASM_MEM:'));
+      // Dump all WASM recordings (exports, imports, memory)
+      const wasmCalls = consoleMessages.filter(m =>
+        m.includes('WASM_CALL:') || m.includes('WASM_RET:') ||
+        m.includes('WASM_IMP:') || m.includes('WASM_IMP_RET:') ||
+        m.includes('WASM_ERR:') || m.includes('WASM_MEM:'));
       console.error('WASM call trace (' + wasmCalls.length + ' entries):');
       wasmCalls.forEach(c => console.error(c));
     });
