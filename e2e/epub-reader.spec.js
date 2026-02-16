@@ -10,7 +10,7 @@
 
 import { test, expect } from '@playwright/test';
 import { createEpub } from './create-epub.js';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SCREENSHOT_DIR = join(process.cwd(), 'e2e', 'screenshots');
@@ -632,6 +632,81 @@ test.describe('EPUB Reader E2E', () => {
     await screenshot(page, 'svgcover-after-nav');
 
     // Navigate back to library
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+  });
+
+  test('conan chapter HTML via innerHTML does not crash Chrome', async ({ page }) => {
+    // Diagnostic: inject the EXACT conan chapter HTML into the reader
+    // container via innerHTML, WITHOUT going through the WASM render path.
+    // If THIS crashes, the issue is in Chrome's rendering of the content.
+    // If this works, the issue is in the WASM render path.
+
+    // First, import conan and navigate to the reader
+    const consoleMessages = [];
+    page.on('console', msg => consoleMessages.push(msg.text()));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED during innerHTML injection test');
+      console.error('Console:', consoleMessages);
+    });
+
+    // Import conan EPUB
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const fileInput = page.locator('input[type="file"]');
+    await fileInput.setInputFiles('test/fixtures/conan-stories.epub');
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open book (renders cover page)
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    // Read the conan chapter body HTML
+    const chapterBodyHtml = readFileSync(
+      join(process.cwd(), 'e2e', 'conan-chapter-body.html'), 'utf-8'
+    );
+
+    // Clear the container and inject conan chapter HTML directly
+    let injectCrashed = false;
+    try {
+      await page.evaluate((html) => {
+        const c = document.querySelector('.chapter-container');
+        console.log('INJECT: clearing container');
+        c.innerHTML = '';
+        console.log('INJECT: setting chapter HTML (' + html.length + ' chars)');
+        c.innerHTML = html;
+        console.log('INJECT: innerHTML set OK, childCount=' + c.childElementCount);
+      }, chapterBodyHtml);
+      console.log('Test node: innerHTML injection completed OK');
+    } catch (injectErr) {
+      console.error('Test node: innerHTML injection failed:', injectErr.message);
+      injectCrashed = true;
+    }
+
+    if (injectCrashed) {
+      console.error('CHROME CRASHES ON CONAN HTML via innerHTML — rendering bug!');
+      console.error('Console:', consoleMessages);
+      throw new Error('Chrome crashes rendering conan chapter HTML');
+    }
+
+    // Wait a moment for browser to lay out the content
+    await page.waitForTimeout(2000);
+
+    // Take screenshot of the injected content
+    await screenshot(page, 'conan-injected-chapter');
+
+    // Verify content rendered
+    const container = page.locator('.chapter-container').first();
+    const childCount = await container.evaluate(el => el.childElementCount);
+    expect(childCount).toBeGreaterThan(0);
+
+    // Navigate back
     const backBtn = page.locator('.back-btn');
     await backBtn.click();
     await page.waitForSelector('.book-card', { timeout: 10000 });
