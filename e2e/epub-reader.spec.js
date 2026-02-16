@@ -390,9 +390,41 @@ test.describe('EPUB Reader E2E', () => {
     const progressText = await pageInfo.textContent();
     expect(progressText).toMatch(/^Ch \d+\/\d+\s+\d+\/\d+$/);
 
+    // Diagnostics: add error and unhandled rejection handlers before chapter transition
+    await page.evaluate(() => {
+      window.addEventListener('error', (e) => {
+        console.error('JS_ERROR:', e.message, e.filename, e.lineno);
+      });
+      window.addEventListener('unhandledrejection', (e) => {
+        console.error('UNHANDLED_REJECTION:', String(e.reason));
+      });
+    });
+
+    // Capture DOM state before click for diagnostics
+    const domStateBefore = await page.evaluate(() => {
+      const c = document.querySelector('.chapter-container');
+      return {
+        childCount: c ? c.childElementCount : -1,
+        innerHTML: c ? c.innerHTML.substring(0, 500) : 'N/A',
+        scrollWidth: c ? c.scrollWidth : -1,
+      };
+    });
+    console.log('DOM state before click:', JSON.stringify(domStateBefore));
+
     // Test chapter transition: click Next to go from cover to chapter 1
     const nextBtn = page.locator('.next-btn');
-    await nextBtn.click();
+    try {
+      await nextBtn.click();
+    } catch (clickErr) {
+      // Capture any error logs that were captured before the crash
+      const allLogs = consoleMessages.filter(m =>
+        m.includes('ERROR') || m.includes('error') || m.includes('crash') ||
+        m.includes('RuntimeError') || m.includes('REJECTION'));
+      console.error('Click failed:', clickErr.message);
+      console.error('Error-related logs:', allLogs);
+      console.error('All console messages:', consoleMessages);
+      throw clickErr;
+    }
 
     // Wait for chapter transition (async decompression + re-render)
     await page.waitForFunction(() => {
@@ -506,6 +538,70 @@ test.describe('EPUB Reader E2E', () => {
     expect(ch1ChildCount).toBeGreaterThan(0);
     const ch1TextLen = await container.evaluate(el => el.textContent.length);
     expect(ch1TextLen).toBeGreaterThan(0);
+
+    // Navigate back to library
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+  });
+
+  test('SVG cover chapter transition does not crash', async ({ page }) => {
+    // Regression test: synthetic EPUB with SVG cover + chapter transition.
+    // Tests the same pattern as conan EPUB (SVG cover → Next → chapter load).
+    const epubBuffer = createEpub({
+      title: 'SVG Cover Nav Test',
+      author: 'Test Bot',
+      chapters: 2,
+      paragraphsPerChapter: 1,
+      svgCover: true,
+      coverImage: true,
+    });
+
+    const consoleMessages = [];
+    page.on('console', msg => consoleMessages.push(`[${msg.type()}] ${msg.text()}`));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED during SVG cover nav test');
+      console.error('Console:', consoleMessages);
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'svgcover-nav-test.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open book
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+
+    // Wait for cover to render
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    const pageInfo = page.locator('.page-info');
+    await expect(pageInfo).toBeVisible();
+    await screenshot(page, 'svgcover-before-nav');
+
+    // Click Next — transition from SVG cover to chapter 1
+    const nextBtn = page.locator('.next-btn');
+    await nextBtn.click();
+
+    // Wait for chapter content (should show Ch 2/)
+    await page.waitForFunction(() => {
+      const info = document.querySelector('.page-info');
+      return info && /^Ch 2\//.test(info.textContent);
+    }, { timeout: 15000 });
+
+    const container = page.locator('.chapter-container').first();
+    const childCount = await container.evaluate(el => el.childElementCount);
+    expect(childCount).toBeGreaterThan(0);
+    await screenshot(page, 'svgcover-after-nav');
 
     // Navigate back to library
     const backBtn = page.locator('.back-btn');
