@@ -390,10 +390,20 @@ test.describe('EPUB Reader E2E', () => {
     const progressText = await pageInfo.textContent();
     expect(progressText).toMatch(/^Ch \d+\/\d+\s+\d+\/\d+$/);
 
-    // NOTE: Chapter transitions crash the renderer due to ward bridge bug
-    // (REMOVE_CHILDREN leaks nodes Map + blobUrls — moshez/ward#15).
-    // Page walking is disabled until the ward fix lands.
-    // Image rendering is tested by the separate 'create-epub with embedded image' test.
+    // Navigate to chapter 2 (first text chapter after SVG cover)
+    const nextBtn = page.locator('.next-btn');
+    const ch1Content = await container.evaluate(el => el.textContent);
+    await nextBtn.click();
+    await page.waitForFunction((prev) => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.textContent !== prev && el.childElementCount > 0;
+    }, ch1Content, { timeout: 15000 });
+    await page.waitForTimeout(500);
+    await screenshot(page, 'conan-chapter2');
+
+    // Verify we're at chapter 2
+    const ch2ProgressText = await pageInfo.textContent();
+    expect(ch2ProgressText).toMatch(/^Ch 2\//);
 
     // Navigate back via back button
     const backBtn = page.locator('.back-btn');
