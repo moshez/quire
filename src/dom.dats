@@ -17,6 +17,21 @@ staload "./arith.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
 staload _ = "./../vendor/ward/lib/dom.dats"
 
+(* ========== Render element count side channel ========== *)
+
+(* C static variable avoids struct return across compilation units
+ * which causes ABI mismatch with WASM LTO (different tyrec typedefs). *)
+%{
+static int _dom_render_ecnt = 0;
+static int _dom_get_render_ecnt() { return _dom_render_ecnt; }
+#define _dom_set_render_ecnt(n) (_dom_render_ecnt = (n))
+%}
+
+extern fun _dom_set_render_ecnt(n: int): void = "mac#"
+extern fun _dom_get_render_ecnt_impl(): int = "mac#_dom_get_render_ecnt"
+
+implement dom_get_render_ecnt() = _dom_get_render_ecnt_impl()
+
 (* ========== Node ID allocator ========== *)
 
 (* Loads app_state from callback registry, reads/increments counter,
@@ -1165,7 +1180,8 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
       else skip_element(tree, pos + 1, len, tlen) (* unknown — skip byte *)
     end
 
-  val @(st, _, _) = loop(stream, tree, 0, tree_len, parent_id, tree_len, 0, 0)
+  val @(st, _, ecnt) = loop(stream, tree, 0, tree_len, parent_id, tree_len, 0, 0)
+  val () = _dom_set_render_ecnt(ecnt)
 in
   st
 end
@@ -1657,8 +1673,9 @@ implement render_tree_with_images
       else skip_element_img(tree, pos + 1, len, tlen)
     end
 
-  val @(st, _, _) = loop(stream, tree, 0, tree_len, parent_id, tree_len, 0, 0,
+  val @(st, _, ecnt) = loop(stream, tree, 0, tree_len, parent_id, tree_len, 0, 0,
     file_handle, chapter_dir, chapter_dir_len)
+  val () = _dom_set_render_ecnt(ecnt)
 in
   st
 end

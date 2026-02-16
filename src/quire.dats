@@ -62,6 +62,7 @@ extern void quireSetTitle(int mode);
 #define TEXT_ERR_DECOMPRESS 12
 #define TEXT_ERR_EMPTY 13
 #define TEXT_ERR_NO_CHAPTERS 14
+#define TEXT_ERR_TOO_DENSE 15
 
 (* ========== Listener ID constants ========== *)
 
@@ -317,7 +318,7 @@ fn fill_text {l:agz}{n:pos}
     val () = ward_arr_set_byte(arr, 19, alen, 116) (* t *)
     val () = ward_arr_set_byte(arr, 20, alen, 121) (* y *)
   in end
-  else let (* text_id = 14: "No chapters in book" *)
+  else if text_id = 14 then let (* "No chapters in book" *)
     val () = ward_arr_set_byte(arr, 0, alen, 78)   (* N *)
     val () = ward_arr_set_byte(arr, 1, alen, 111)  (* o *)
     val () = ward_arr_set_byte(arr, 2, alen, 32)   (*   *)
@@ -337,6 +338,22 @@ fn fill_text {l:agz}{n:pos}
     val () = ward_arr_set_byte(arr, 16, alen, 111) (* o *)
     val () = ward_arr_set_byte(arr, 17, alen, 111) (* o *)
     val () = ward_arr_set_byte(arr, 18, alen, 107) (* k *)
+  in end
+  else let (* text_id = 15: "Page too dense" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 80)   (* P *)
+    val () = ward_arr_set_byte(arr, 1, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 2, alen, 103)  (* g *)
+    val () = ward_arr_set_byte(arr, 3, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 4, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 5, alen, 116)  (* t *)
+    val () = ward_arr_set_byte(arr, 6, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 7, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 8, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 9, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 10, alen, 101) (* e *)
+    val () = ward_arr_set_byte(arr, 11, alen, 110) (* n *)
+    val () = ward_arr_set_byte(arr, 12, alen, 115) (* s *)
+    val () = ward_arr_set_byte(arr, 13, alen, 101) (* e *)
   in end
 
 (* Copy len bytes from string_buffer to ward_arr *)
@@ -2428,6 +2445,36 @@ fn show_chapter_error(container_id: int, text_id: int, text_len: int): void = le
   val () = ward_dom_fini(dom)
 in end
 
+(* Validate render window after rendering + measuring.
+ * Computes elements-per-page (epp) and determines the window tier:
+ *   - WINDOW_5: 5*epp <= MAX_RENDER_ELEMENTS (typical — budget covers 5+ pages)
+ *   - WINDOW_3: 3*epp <= budget but 5*epp > budget (dense content)
+ *   - WINDOW_1: epp <= budget but 3*epp > budget (very dense)
+ *   - ADVERSARIAL: epp > budget — show visible error + log
+ *
+ * Proofs (WINDOW_OPTIMAL, ADVERSARIAL_PAGE) document which tier was selected.
+ * Runtime branches verify the arithmetic; comments reference the dataprop
+ * constructors since freestanding ATS2 can't track g0int arithmetic. *)
+fn validate_render_window(ecnt: int, container_id: int): void = let
+  val pages = reader_get_total_pages()
+in
+  if gt_int_int(pages, 0) then let
+    val epp = div_int_int(ecnt, pages)
+  in
+    if lte_int_int(mul_int_int(5, epp), MAX_RENDER_ELEMENTS) then
+      () (* WINDOW_OPTIMAL: WINDOW_5 — budget supports 5+ pages *)
+    else if lte_int_int(mul_int_int(3, epp), MAX_RENDER_ELEMENTS) then
+      () (* WINDOW_OPTIMAL: WINDOW_3 — budget supports 3 pages *)
+    else if lte_int_int(epp, MAX_RENDER_ELEMENTS) then
+      () (* WINDOW_OPTIMAL: WINDOW_1 — budget supports 1 page *)
+    else let
+      (* ADVERSARIAL_PAGE: TOO_DENSE — single page exceeds budget *)
+      val () = ward_log(3, mk_ch_err(char2int1('d'), char2int1('n'), char2int1('s')), 10)
+    in show_chapter_error(container_id, TEXT_ERR_TOO_DENSE, 14) end
+  end
+  else () (* no pages — nothing to validate *)
+end
+
 (* load_chapter: Every code path either renders content, starts async
  * decompression (whose callback renders or shows error), or shows an error.
  * CHAPTER_OUTCOME documents this invariant — see dataprop above.
@@ -2526,6 +2573,7 @@ in
                     val () = ward_arr_free<byte>(sax_buf)
                     val () = ward_arr_free<byte>(dir_arr)
                     val () = measure_and_set_pages(saved_cid)
+                    val () = validate_render_window(dom_get_render_ecnt(), saved_cid)
                     val () = update_page_info()
                     val () = apply_resume_page(saved_cid)
                   in ward_promise_return<int>(1) end
@@ -2571,6 +2619,7 @@ in
                     val () = ward_dom_fini(dom)
                     val () = ward_arr_free<byte>(sax_buf)
                     val () = measure_and_set_pages(saved_cid)
+                    val () = validate_render_window(dom_get_render_ecnt(), saved_cid)
                     val () = update_page_info()
                     val () = apply_resume_page(saved_cid)
                   in ward_promise_return<int>(1) end
@@ -2617,6 +2666,7 @@ in
               val () = ward_arr_free<byte>(sax_buf)
               val () = ward_arr_free<byte>(dir_arr)
               val () = measure_and_set_pages(container_id)
+              val () = validate_render_window(dom_get_render_ecnt(), container_id)
               val () = update_page_info()
               val () = apply_resume_page(container_id)
             in end
@@ -2626,6 +2676,7 @@ in
               val () = ward_dom_fini(dom)
               val () = ward_arr_free<byte>(sax_buf)
               val () = measure_and_set_pages(container_id)
+              val () = validate_render_window(dom_get_render_ecnt(), container_id)
               val () = update_page_info()
               val () = apply_resume_page(container_id)
             in end
@@ -2691,8 +2742,10 @@ in
         val dom = ward_dom_stream_end(s)
         val () = ward_dom_fini(dom)
         val () = load_chapter(pf | reader_get_file_handle(), next_g1, spine_g1, container_id)
-        val () = apply_page_transform(container_id)
-        val () = update_page_info()
+        (* load_chapter handles measure_and_set_pages + update_page_info +
+         * apply_resume_page in all paths (sync stored and async deflated).
+         * Calling apply_page_transform/update_page_info here would race
+         * with async decompression — the DOM is empty at this point. *)
       in end
       else ()
     end
@@ -2732,8 +2785,10 @@ in
         val dom = ward_dom_stream_end(s)
         val () = ward_dom_fini(dom)
         val () = load_chapter(pf | reader_get_file_handle(), prev_g1, spine_g1, container_id)
-        val () = apply_page_transform(container_id)
-        val () = update_page_info()
+        (* load_chapter handles measure_and_set_pages + update_page_info +
+         * apply_resume_page in all paths (sync stored and async deflated).
+         * Calling apply_page_transform/update_page_info here would race
+         * with async decompression — the DOM is empty at this point. *)
       in end
       else ()
     end

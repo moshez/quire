@@ -22,6 +22,10 @@ npm test                # Bridge tests
 npx serve .             # Dev server
 ```
 
+**IMPORTANT:** `quire.wasm` is gitignored — NEVER commit it. CI builds WASM from source.
+
+**IMPORTANT:** Work is NOT complete until CI (including e2e tests) passes green. Always push and watch CI before declaring a task done. E2E tests cannot run locally.
+
 ## Milestone Workflow
 
 When completing a milestone from quire-design.md §8:

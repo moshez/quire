@@ -201,6 +201,26 @@ fun get_attr_by_index(idx: int): [n:pos | n <= 11] @(ward_safe_text(n), int n)
  * When the limit is reached, remaining SAX events are skipped silently. *)
 #define MAX_RENDER_ELEMENTS 10000
 
+(* ========== Windowed rendering proofs ========== *)
+
+(* RENDER_BOUNDED: element count never exceeds hard budget.
+ * Constructed after render_tree returns ecnt. *)
+dataprop RENDER_BOUNDED(ecnt: int, budget: int) =
+  | {e,b:nat | e <= b} UNDER_BUDGET(e, b)
+
+(* WINDOW_OPTIMAL: window size is the largest that fits the budget.
+ * Each constructor encodes WHY that size was chosen.
+ * epp = elements per page, budget = MAX_RENDER_ELEMENTS. *)
+dataprop WINDOW_OPTIMAL(window: int, epp: int, budget: int) =
+  | {e,b:nat | 5*e <= b} WINDOW_5(5, e, b)
+  | {e,b:nat | 3*e <= b; 5*e > b} WINDOW_3(3, e, b)
+  | {e,b:nat | e <= b; 3*e > b} WINDOW_1(1, e, b)
+
+(* ADVERSARIAL_PAGE: single page exceeds budget — content too dense.
+ * Triggers visible error + log details. *)
+dataprop ADVERSARIAL_PAGE(epp: int, budget: int) =
+  | {e,b:nat | e > b} TOO_DENSE(e, b)
+
 (* ========== Tree renderer ========== *)
 
 (* TEXT_RENDER_SAFE invariant (prevents set_text from destroying existing children):
@@ -270,3 +290,8 @@ fun render_tree_with_images
    file_handle: int,
    chapter_dir: !ward_arr(byte, ld, nd), chapter_dir_len: int nd)
   : ward_dom_stream(l)
+
+(* Get element count from the last render_tree / render_tree_with_images call.
+ * Stored in a C static variable — avoids struct return across compilation
+ * units which causes ABI mismatch with WASM LTO. *)
+fun dom_get_render_ecnt(): int
