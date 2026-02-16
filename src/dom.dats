@@ -1341,37 +1341,16 @@ fn try_set_image {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
    file_handle: int,
    chapter_dir: !ward_arr(byte, ld, nd), dir_len: int nd)
   : ward_dom_stream(l) = let
-  val resolved_len = resolve_img_src(tree, tlen, src_off, src_len,
-    chapter_dir, dir_len)
-  val zip_idx = zip_find_entry(resolved_len)
+  (* DIAGNOSTIC 10: Skip ALL zip operations. Just call malloc(4097)
+   * unconditionally when any image tag is encountered.
+   * If this crashes → malloc(4097) from deep WASM is the trigger,
+   *   zip operations are irrelevant.
+   * If this passes → zip operations (resolve_img_src, zip_find_entry,
+   *   zip_get_entry, zip_get_data_offset) corrupt memory before malloc. *)
+  val p = $extfcall(ptr, "malloc", 4097)
+  (* leak p — diagnostic only *)
 in
-  if gte_int_int(zip_idx, 0) then let
-    var entry: zip_entry
-    val found = zip_get_entry(zip_idx, entry)
-  in
-    if gt_int_int(found, 0) then
-      if eq_int_int(entry.compression, 0) then let
-        (* Stored — can read synchronously *)
-        val data_off = zip_get_data_offset(zip_idx)
-      in
-        if gt_int_int(data_off, 0) then let
-          val sz = entry.uncompressed_size
-          val sz1 = (if gt_int_int(sz, 0) then sz else 1): int
-          val sz_pos = _checked_pos(sz1)
-          (* DIAGNOSTIC 9: raw malloc only — NO ward_arr_alloc,
-           * NO second memset. malloc() internally zeroes via memset.
-           * ward_arr_alloc adds a SECOND memset (redundant).
-           * If this passes → double-memset in ward_arr_alloc triggers V8 bug.
-           * If this crashes → something about calling malloc from deep WASM. *)
-          val p = $extfcall(ptr, "malloc", sz_pos)
-          (* leak p — diagnostic only *)
-        in st end
-        else st (* bad data offset — skip *)
-      end
-      else st (* deflated image — skip for now *)
-    else st (* entry not readable *)
-  end
-  else st (* not found in ZIP *)
+  st
 end
 
 implement render_tree_with_images
