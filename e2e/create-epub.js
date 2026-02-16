@@ -5,7 +5,7 @@
  * using Node.js zlib for deflate compression. No external dependencies.
  */
 
-import { deflateRawSync } from 'node:zlib';
+import { deflateRawSync, inflateRawSync } from 'node:zlib';
 
 // CRC-32 lookup table
 const crcTable = (() => {
@@ -115,6 +115,72 @@ function createZip(entries) {
   eocd.writeUInt16LE(0, 20);               // comment length
 
   return Buffer.concat([...localHeaders, ...centralEntries, eocd]);
+}
+
+/**
+ * Re-package an existing EPUB (ZIP) file using our createZip.
+ * Reads all entries from the source ZIP, decompresses any deflated entries,
+ * and re-creates the ZIP with our implementation.
+ * The mimetype entry is stored uncompressed; all others are deflated.
+ *
+ * @param {Buffer} zipData - Raw ZIP file bytes
+ * @returns {Buffer} Re-packaged ZIP file
+ */
+export function repackageEpub(zipData) {
+  // Parse central directory from the end of the ZIP
+  // Find EOCD signature (0x06054b50) scanning backwards
+  let eocdOff = -1;
+  for (let i = zipData.length - 22; i >= 0; i--) {
+    if (zipData.readUInt32LE(i) === 0x06054B50) {
+      eocdOff = i;
+      break;
+    }
+  }
+  if (eocdOff < 0) throw new Error('No EOCD found');
+
+  const entryCount = zipData.readUInt16LE(eocdOff + 10);
+  const cdSize = zipData.readUInt32LE(eocdOff + 12);
+  const cdOffset = zipData.readUInt32LE(eocdOff + 16);
+
+  const entries = [];
+  let pos = cdOffset;
+  for (let i = 0; i < entryCount; i++) {
+    if (zipData.readUInt32LE(pos) !== 0x02014B50) throw new Error('Bad CD entry');
+    const method = zipData.readUInt16LE(pos + 10);
+    const crc = zipData.readUInt32LE(pos + 16);
+    const csize = zipData.readUInt32LE(pos + 20);
+    const usize = zipData.readUInt32LE(pos + 24);
+    const nameLen = zipData.readUInt16LE(pos + 28);
+    const extraLen = zipData.readUInt16LE(pos + 30);
+    const commentLen = zipData.readUInt16LE(pos + 32);
+    const localOff = zipData.readUInt32LE(pos + 42);
+    const name = zipData.subarray(pos + 46, pos + 46 + nameLen).toString('utf-8');
+
+    // Read data from local file header
+    const localNameLen = zipData.readUInt16LE(localOff + 26);
+    const localExtraLen = zipData.readUInt16LE(localOff + 28);
+    const dataOff = localOff + 30 + localNameLen + localExtraLen;
+    const compressedData = zipData.subarray(dataOff, dataOff + csize);
+
+    let data;
+    if (method === 0) {
+      data = Buffer.from(compressedData); // stored — copy as-is
+    } else if (method === 8) {
+      data = inflateRawSync(compressedData); // deflated — decompress
+    } else {
+      throw new Error(`Unsupported compression method ${method}`);
+    }
+
+    // mimetype must be stored uncompressed per EPUB spec.
+    // Images should be stored (uncompressed) to match original behavior —
+    // Quire's try_set_image only handles stored images (compression=0).
+    const isImage = /\.(jpg|jpeg|png|gif|svg)$/i.test(name);
+    const shouldStore = name === 'mimetype' || (method === 0 && isImage);
+    entries.push({ name, data, store: shouldStore });
+    pos += 46 + nameLen + extraLen + commentLen;
+  }
+
+  return createZip(entries);
 }
 
 /**

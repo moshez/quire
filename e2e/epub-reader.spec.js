@@ -9,7 +9,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { createEpub, TINY_PNG } from './create-epub.js';
+import { createEpub, TINY_PNG, repackageEpub } from './create-epub.js';
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -838,6 +838,62 @@ test.describe('EPUB Reader E2E', () => {
     const childCount = await container.evaluate(el => el.childElementCount);
     expect(childCount).toBeGreaterThan(0);
     await screenshot(page, 'conan-html-withimg-rendered');
+
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+  });
+
+  test('re-packaged conan EPUB does not crash on chapter transition', async ({ page }) => {
+    // KEY DIAGNOSTIC: Extract ALL files from the real conan EPUB and re-package
+    // them using our createZip. Same content, different ZIP binary structure.
+    // If this passes → crash is about the original ZIP binary structure
+    // If this crashes → crash is about the content itself
+    const epubData = readFileSync(
+      join(process.cwd(), 'test', 'fixtures', 'conan-stories.epub')
+    );
+    const repackaged = repackageEpub(epubData);
+
+    const consoleMessages = [];
+    page.on('console', msg => consoleMessages.push(msg.text()));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED during re-packaged conan test');
+      console.error('Console:', consoleMessages);
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'conan-repackaged.epub');
+    writeFileSync(epubPath, repackaged);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open book
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    await screenshot(page, 'conan-repackaged-cover');
+
+    // Click Next — SVG cover → chapter 1 (h-0)
+    const nextBtn = page.locator('.next-btn');
+    await nextBtn.click();
+
+    // Wait for chapter content
+    await page.waitForFunction(() => {
+      const info = document.querySelector('.page-info');
+      return info && /^Ch 2\//.test(info.textContent);
+    }, { timeout: 15000 });
+
+    const container = page.locator('.chapter-container').first();
+    const childCount = await container.evaluate(el => el.childElementCount);
+    expect(childCount).toBeGreaterThan(0);
+    await screenshot(page, 'conan-repackaged-chapter1');
 
     const backBtn = page.locator('.back-btn');
     await backBtn.click();
