@@ -937,6 +937,130 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 10000 });
   });
 
+  test('minimal HTML + real 18KB JPEG isolates crash trigger', async ({ page }) => {
+    // MINIMAL ISOLATION: simplest possible HTML body + real JPEG from conan.
+    // If this crashes: the JPEG data itself triggers the Chrome renderer crash.
+    // If this passes: it's the combination of complex HTML + JPEG that crashes.
+    const epubData = readFileSync(
+      join(process.cwd(), 'test', 'fixtures', 'conan-stories.epub')
+    );
+    const illusJpg = epubData.subarray(114862, 114862 + 18538);
+
+    const consoleMessages = [];
+    page.on('console', msg => consoleMessages.push(msg.text()));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED during minimal-jpeg isolation test');
+      console.error('Console:', consoleMessages);
+    });
+
+    const epubBuffer = createEpub({
+      title: 'Minimal JPEG Test',
+      author: 'Test Bot',
+      svgCover: true,
+      coverImage: true,
+      rawChapters: [{ body: '<p>Hello world</p><img src="test.jpg" alt="test"/>' }],
+      extraImages: [
+        { name: 'test.jpg', data: illusJpg },
+      ],
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'minimal-jpeg-test.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    // Click Next — SVG cover → minimal chapter with JPEG
+    const nextBtn = page.locator('.next-btn');
+    await nextBtn.click();
+
+    // Wait for chapter content
+    await page.waitForFunction(() => {
+      const info = document.querySelector('.page-info');
+      return info && /^Ch 2\//.test(info.textContent);
+    }, { timeout: 15000 });
+
+    const container = page.locator('.chapter-container').first();
+    const childCount = await container.evaluate(el => el.childElementCount);
+    expect(childCount).toBeGreaterThan(0);
+    await screenshot(page, 'minimal-jpeg-rendered');
+
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+  });
+
+  test('pure JS blob URL with conan JPEG in CSS columns isolates Chrome bug', async ({ page }) => {
+    // STANDALONE ISOLATION: no WASM, no EPUB, no bridge.
+    // Creates a blob URL from the real JPEG and inserts it into CSS columns.
+    // If this crashes: it's a Chrome rendering bug with JPEG blob URLs in CSS columns.
+    // If this passes: the crash is in our WASM/bridge code path.
+    const epubData = readFileSync(
+      join(process.cwd(), 'test', 'fixtures', 'conan-stories.epub')
+    );
+    const illusJpg = epubData.subarray(114862, 114862 + 18538);
+    const jpegBase64 = illusJpg.toString('base64');
+
+    const consoleMessages = [];
+    page.on('console', msg => consoleMessages.push(msg.text()));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED during pure-JS blob URL test');
+      console.error('Console:', consoleMessages);
+    });
+
+    // Navigate to a blank page and inject CSS columns + blob URL image
+    await page.goto('about:blank');
+    await page.evaluate((b64) => {
+      // Decode base64 to Uint8Array
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+      // Create blob URL (same as wardJsSetImageSrc)
+      const blob = new Blob([bytes], { type: 'image/jpeg' });
+      const url = URL.createObjectURL(blob);
+
+      // Set up CSS columns (same as .chapter-container)
+      document.body.innerHTML = `
+        <style>
+          .chapter-container {
+            column-width: 300px;
+            column-gap: 0;
+            column-fill: auto;
+            height: 100vh;
+            overflow: hidden;
+          }
+        </style>
+        <div class="chapter-container">
+          <p>Hello world before image</p>
+          <img src="${url}" alt="test"/>
+          <p>Hello world after image</p>
+        </div>
+      `;
+      console.log('DIAG: blob URL set, waiting for render');
+    }, jpegBase64);
+
+    // Wait for image to load
+    await page.waitForTimeout(3000);
+
+    // If we get here without crash, the pure JS path is fine
+    await screenshot(page, 'pure-js-blob-jpeg');
+    const childCount = await page.evaluate(() =>
+      document.querySelector('.chapter-container').childElementCount
+    );
+    expect(childCount).toBeGreaterThan(0);
+  });
+
   test('re-packaged conan EPUB does not crash on chapter transition', async ({ page }) => {
     // KEY DIAGNOSTIC: Extract ALL files from the real conan EPUB and re-package
     // them using our createZip. Same content, different ZIP binary structure.
