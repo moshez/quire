@@ -9,7 +9,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { createEpub } from './create-epub.js';
+import { createEpub, TINY_PNG } from './create-epub.js';
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -707,6 +707,134 @@ test.describe('EPUB Reader E2E', () => {
     expect(childCount).toBeGreaterThan(0);
 
     // Navigate back
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+  });
+
+  test('WASM render of conan HTML (no image) via synthetic EPUB', async ({ page }) => {
+    // Key diagnostic: Use conan's ACTUAL chapter body HTML (without img tag)
+    // in a synthetic EPUB, going through the WASM render path.
+    // This isolates: complex HTML structure vs image loading.
+    // If CRASH: the complex HTML structure causes the crash
+    // If OK: the crash is specifically in image loading (try_set_image)
+    const fullBody = readFileSync(
+      join(process.cwd(), 'e2e', 'conan-chapter-body.html'), 'utf-8'
+    );
+    // Remove img tag to isolate HTML structure from image loading
+    const bodyNoImg = fullBody.replace(/<img[^>]*>/g, '');
+
+    const consoleMessages = [];
+    page.on('console', msg => consoleMessages.push(msg.text()));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED during conan-html-noimg test');
+      console.error('Console:', consoleMessages);
+    });
+
+    const epubBuffer = createEpub({
+      title: 'Conan HTML NoImg',
+      author: 'Test Bot',
+      svgCover: true,
+      coverImage: true,
+      rawChapters: [{ body: bodyNoImg }],
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'conan-html-noimg-test.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    // Click Next — SVG cover → conan chapter (without image)
+    const nextBtn = page.locator('.next-btn');
+    await nextBtn.click();
+
+    // Wait for chapter content
+    await page.waitForFunction(() => {
+      const info = document.querySelector('.page-info');
+      return info && /^Ch 2\//.test(info.textContent);
+    }, { timeout: 15000 });
+
+    const container = page.locator('.chapter-container').first();
+    const childCount = await container.evaluate(el => el.childElementCount);
+    expect(childCount).toBeGreaterThan(0);
+    await screenshot(page, 'conan-html-noimg-rendered');
+
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+  });
+
+  test('WASM render of conan HTML (with image) via synthetic EPUB', async ({ page }) => {
+    // Same as above but WITH the img tag and a real image file in the ZIP.
+    // This tests whether try_set_image + blob URL creation during async
+    // render causes the crash.
+    const fullBody = readFileSync(
+      join(process.cwd(), 'e2e', 'conan-chapter-body.html'), 'utf-8'
+    );
+    // The img src references "70880881323834106_illus.jpg" — we'll include
+    // a valid PNG file at that path (the WASM detects MIME from extension,
+    // so .jpg gets image/jpeg MIME, but the data is PNG — Chrome handles this fine)
+
+    const consoleMessages = [];
+    page.on('console', msg => consoleMessages.push(msg.text()));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED during conan-html-withimg test');
+      console.error('Console:', consoleMessages);
+    });
+
+    const epubBuffer = createEpub({
+      title: 'Conan HTML WithImg',
+      author: 'Test Bot',
+      svgCover: true,
+      coverImage: true,
+      rawChapters: [{ body: fullBody }],
+      extraImages: [
+        { name: '70880881323834106_illus.jpg', data: TINY_PNG },
+      ],
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'conan-html-withimg-test.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    // Click Next — SVG cover → conan chapter (with image)
+    const nextBtn = page.locator('.next-btn');
+    await nextBtn.click();
+
+    // Wait for chapter content
+    await page.waitForFunction(() => {
+      const info = document.querySelector('.page-info');
+      return info && /^Ch 2\//.test(info.textContent);
+    }, { timeout: 15000 });
+
+    const container = page.locator('.chapter-container').first();
+    const childCount = await container.evaluate(el => el.childElementCount);
+    expect(childCount).toBeGreaterThan(0);
+    await screenshot(page, 'conan-html-withimg-rendered');
+
     const backBtn = page.locator('.back-btn');
     await backBtn.click();
     await page.waitForSelector('.book-card', { timeout: 10000 });

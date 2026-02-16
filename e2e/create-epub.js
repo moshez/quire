@@ -145,7 +145,7 @@ function loremParagraph(seed) {
  * @returns {Buffer} EPUB file contents
  */
 // Minimal 1x1 red PNG (68 bytes) for testing image rendering
-const TINY_PNG = Buffer.from(
+export const TINY_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8D4HwAFBQIAX8jx0gAAAABJRU5ErkJggg==',
   'base64'
 );
@@ -157,6 +157,7 @@ export function createEpub(opts = {}) {
   const parasPerChapter = opts.paragraphsPerChapter || 12;
   const coverImage = opts.coverImage || false;
   const svgCover = opts.svgCover || false;
+  const rawChapters = opts.rawChapters || null; // array of {body, images?}
 
   // mimetype must be first entry, stored uncompressed
   const mimetype = 'application/epub+zip';
@@ -181,21 +182,34 @@ export function createEpub(opts = {}) {
     spineItems += `    <itemref idref="coverpage-wrapper"/>\n`;
   }
 
-  for (let i = 1; i <= numChapters; i++) {
+  const effectiveChapters = rawChapters ? rawChapters.length : numChapters;
+  for (let i = 1; i <= effectiveChapters; i++) {
     manifestItems += `    <item id="ch${i}" href="chapter${i}.xhtml" media-type="application/xhtml+xml"/>\n`;
     spineItems += `    <itemref idref="ch${i}"/>\n`;
 
-    // Generate chapter XHTML with enough text to fill multiple pages
-    let body = '';
-    if (coverImage && i === 1) {
-      body += `<img src="images/cover.png" alt="Cover" />\n`;
-    }
-    body += `<h1>Chapter ${i}</h1>\n`;
-    for (let p = 0; p < parasPerChapter; p++) {
-      body += `      <p>${loremParagraph(i * 100 + p)}</p>\n`;
-    }
-
-    const xhtml = `<?xml version="1.0" encoding="UTF-8"?>
+    let xhtml;
+    if (rawChapters && rawChapters[i - 1]) {
+      // Use raw body content provided by the caller
+      const rawBody = rawChapters[i - 1].body;
+      xhtml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Chapter ${i}</title></head>
+<body>
+${rawBody}
+</body>
+</html>`;
+    } else {
+      // Generate chapter XHTML with enough text to fill multiple pages
+      let body = '';
+      if (coverImage && i === 1) {
+        body += `<img src="images/cover.png" alt="Cover" />\n`;
+      }
+      body += `<h1>Chapter ${i}</h1>\n`;
+      for (let p = 0; p < parasPerChapter; p++) {
+        body += `      <p>${loremParagraph(i * 100 + p)}</p>\n`;
+      }
+      xhtml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head><title>Chapter ${i}</title></head>
@@ -203,6 +217,7 @@ export function createEpub(opts = {}) {
       ${body}
 </body>
 </html>`;
+    }
     chapters.push({ name: `OEBPS/chapter${i}.xhtml`, data: xhtml });
   }
 
@@ -279,6 +294,13 @@ ${spineItems}  </spine>
   // Add cover image as stored (uncompressed) entry for synchronous reading
   if (coverImage) {
     zipEntries.push({ name: 'OEBPS/images/cover.png', data: TINY_PNG, store: true });
+  }
+
+  // Add extra images (for rawChapters that reference images)
+  if (opts.extraImages) {
+    for (const img of opts.extraImages) {
+      zipEntries.push({ name: `OEBPS/${img.name}`, data: img.data, store: true });
+    }
   }
 
   return createZip(zipEntries);
