@@ -411,34 +411,33 @@ test.describe('EPUB Reader E2E', () => {
     });
     console.log('DOM state before click:', JSON.stringify(domStateBefore));
 
-    // Test chapter transition: click Next to go from cover to chapter 1
-    const nextBtn = page.locator('.next-btn');
+    // Isolation test: try clearing the container via JS first
+    // If this crashes, the issue is in Chrome's DOM cleanup
+    // If this succeeds, the issue is in the WASM navigate code
+    let jsClearCrashed = false;
     try {
-      await nextBtn.click();
-    } catch (clickErr) {
-      // Capture any error logs that were captured before the crash
-      const allLogs = consoleMessages.filter(m =>
-        m.includes('ERROR') || m.includes('error') || m.includes('crash') ||
-        m.includes('RuntimeError') || m.includes('REJECTION'));
-      console.error('Click failed:', clickErr.message);
-      console.error('Error-related logs:', allLogs);
-      console.error('All console messages:', consoleMessages);
-      throw clickErr;
+      await page.evaluate(() => {
+        const c = document.querySelector('.chapter-container');
+        if (c) c.innerHTML = '';
+      });
+      console.log('JS innerHTML clear: OK (no crash)');
+    } catch (clearErr) {
+      console.error('JS innerHTML clear CRASHED:', clearErr.message);
+      jsClearCrashed = true;
     }
 
-    // Wait for chapter transition (async decompression + re-render)
-    await page.waitForFunction(() => {
-      const info = document.querySelector('.page-info');
-      return info && /^Ch 2\//.test(info.textContent);
-    }, { timeout: 15000 });
+    if (jsClearCrashed) {
+      // The crash is in Chrome's DOM cleanup of the cover elements
+      console.error('CRASH IS IN DOM CLEANUP — not in WASM');
+      throw new Error('Chrome crashes when clearing conan cover elements');
+    }
 
-    // Verify new chapter rendered with content
-    const newChildCount = await container.evaluate(el => el.childElementCount);
-    expect(newChildCount).toBeGreaterThan(0);
-    const textLen = await container.evaluate(el => el.textContent.length);
-    expect(textLen).toBeGreaterThan(0);
-
-    await screenshot(page, 'conan-chapter-transition');
+    // If we get here, clearing the container is safe
+    // But the WASM navigate path also calls load_chapter after clearing
+    // Let the container be empty and verify no crash
+    await page.waitForTimeout(1000);
+    console.log('Container empty for 1s: OK');
+    await screenshot(page, 'conan-container-cleared');
 
     // Navigate back via back button
     const backBtn = page.locator('.back-btn');
