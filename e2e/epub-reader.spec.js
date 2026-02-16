@@ -312,13 +312,52 @@ test.describe('EPUB Reader E2E', () => {
     // path in epub_read_container_async / epub_read_opf_async handles this.
     // Additionally, the OPF has <dc:creator id="author_0"> (attribute on tag),
     // which tests the _find_gt metadata parsing fix.
+
+    // Record all WASM export calls for crash reproduction
+    await page.addInitScript(() => {
+      const origInstantiate = WebAssembly.instantiate;
+      WebAssembly.instantiate = async function(bytes, imports) {
+        const result = await origInstantiate.call(WebAssembly, bytes, imports);
+        const inst = result.instance || result;
+        const exports = inst.exports;
+        // Wrap each export to log calls
+        const skipLog = new Set(['memory', '__data_end', '__heap_base']);
+        for (const [name, fn] of Object.entries(exports)) {
+          if (typeof fn === 'function' && !skipLog.has(name)) {
+            const orig = fn;
+            exports[name] = function(...args) {
+              console.log('WASM_CALL:' + name + ':' + JSON.stringify(args));
+              try {
+                const ret = orig.apply(this, args);
+                if (ret !== undefined) console.log('WASM_RET:' + name + ':' + JSON.stringify(ret));
+                return ret;
+              } catch(e) {
+                console.log('WASM_ERR:' + name + ':' + e.message);
+                throw e;
+              }
+            };
+          }
+        }
+        // Log malloc/free via memory tracking
+        const mem = exports.memory;
+        if (mem) {
+          const pages0 = mem.buffer.byteLength / 65536;
+          console.log('WASM_MEM:initial_pages=' + pages0);
+        }
+        return result;
+      };
+    });
+
     const consoleMessages = [];
     const pageErrors = [];
     page.on('console', msg => consoleMessages.push(`[${msg.type()}] ${msg.text()}`));
     page.on('pageerror', err => pageErrors.push(err.message));
     page.on('crash', () => {
       console.error('PAGE CRASHED during import test');
-      console.error('Console:', consoleMessages);
+      // Dump all WASM call recordings
+      const wasmCalls = consoleMessages.filter(m => m.includes('WASM_CALL:') || m.includes('WASM_RET:') || m.includes('WASM_MEM:'));
+      console.error('WASM call trace (' + wasmCalls.length + ' entries):');
+      wasmCalls.forEach(c => console.error(c));
     });
 
     // Navigate to app and wait for library
@@ -390,11 +429,13 @@ test.describe('EPUB Reader E2E', () => {
     const progressText = await pageInfo.textContent();
     expect(progressText).toMatch(/^Ch \d+\/\d+\s+\d+\/\d+$/);
 
-    // Chapter navigation (clicking Next) crashes the Chromium renderer
-    // for this specific EPUB. Tracked as ward#15 — the crash occurs during
-    // synchronous WASM processing of the click event and has defied
-    // reproduction in standalone tests. Skip chapter navigation until
-    // the root cause is resolved at the ward level.
+    // Navigate to chapter 2 — expected to crash (ward#18 reproduction)
+    const nextBtn = page.locator('.next-btn');
+    await nextBtn.click();
+    await page.waitForFunction(() => {
+      const info = document.querySelector('.page-info');
+      return info && /^Ch 2\//.test(info.textContent);
+    }, { timeout: 15000 });
 
     // Navigate back to library
     const backBtn = page.locator('.back-btn');
