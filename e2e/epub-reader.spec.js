@@ -937,174 +937,70 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 10000 });
   });
 
-  test('18KB JPEG with Blob/URL interceptors narrows crash location', async ({ page }) => {
-    // NARROWING: We know the crash is BEFORE el.src = url.
-    // Intercept Blob constructor and URL.createObjectURL to determine if the
-    // crash is before or after those APIs. Also intercept readBytes via
-    // ArrayBuffer/Uint8Array to trace memory access.
-    const epubData = readFileSync(
-      join(process.cwd(), 'test', 'fixtures', 'conan-stories.epub')
-    );
-    const illusJpg = epubData.subarray(114862, 114862 + 18538);
+  // Size threshold tests: find the exact size boundary that triggers the crash.
+  // TINY_PNG (68 bytes) works. 18538 bytes crashes. Test intermediate sizes.
+  // Allocator size classes: 32, 128, 512, 4096, then oversized.
+  for (const testSize of [100, 512, 4096, 4097, 5000, 8000, 10000, 18538]) {
+    test(`image size ${testSize} bytes via WASM (size threshold test)`, async ({ page }) => {
+      const imageData = Buffer.alloc(testSize);
+      for (let i = 0; i < imageData.length; i++) {
+        imageData[i] = (i * 7 + 13) & 0xFF; // deterministic pattern
+      }
 
-    const consoleMessages = [];
-    page.on('console', msg => consoleMessages.push(msg.text()));
-    page.on('crash', () => {
-      console.error('PAGE CRASHED during Blob/URL interceptor test');
-      console.error('Console:', consoleMessages);
+      const consoleMessages = [];
+      page.on('console', msg => consoleMessages.push(msg.text()));
+      page.on('crash', () => {
+        console.error(`PAGE CRASHED: image size ${testSize} bytes`);
+        console.error('Console:', consoleMessages);
+      });
+
+      const epubBuffer = createEpub({
+        title: `Size ${testSize} Test`,
+        author: 'Test Bot',
+        svgCover: true,
+        coverImage: true,
+        rawChapters: [{ body: `<p>Image size test: ${testSize} bytes</p><img src="test.jpg" alt="test"/>` }],
+        extraImages: [
+          { name: 'test.jpg', data: imageData },
+        ],
+      });
+
+      await page.goto('/');
+      await page.waitForSelector('.library-list', { timeout: 15000 });
+      const fileInput = page.locator('input[type="file"]');
+      const epubPath = join(SCREENSHOT_DIR, `size-${testSize}-test.epub`);
+      writeFileSync(epubPath, epubBuffer);
+      await fileInput.setInputFiles(epubPath);
+      await page.waitForSelector('.book-card', { timeout: 30000 });
+
+      const readBtn = page.locator('.read-btn');
+      await readBtn.click();
+      await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+      await page.waitForFunction(() => {
+        const el = document.querySelector('.chapter-container');
+        return el && el.childElementCount > 0;
+      }, { timeout: 15000 });
+
+      // Click Next — SVG cover → chapter with test image
+      const nextBtn = page.locator('.next-btn');
+      await nextBtn.click();
+
+      // Wait for chapter content
+      await page.waitForFunction(() => {
+        const info = document.querySelector('.page-info');
+        return info && /^Ch 2\//.test(info.textContent);
+      }, { timeout: 15000 });
+
+      const container = page.locator('.chapter-container').first();
+      const childCount = await container.evaluate(el => el.childElementCount);
+      expect(childCount).toBeGreaterThan(0);
+      await screenshot(page, `size-${testSize}-rendered`);
+
+      const backBtn = page.locator('.back-btn');
+      await backBtn.click();
+      await page.waitForSelector('.book-card', { timeout: 10000 });
     });
-
-    // Intercept Blob constructor, URL.createObjectURL, AND img.src
-    await page.addInitScript(() => {
-      // 1. Blob constructor
-      const OrigBlob = globalThis.Blob;
-      let blobCount = 0;
-      globalThis.Blob = class PatchedBlob extends OrigBlob {
-        constructor(parts, opts) {
-          blobCount++;
-          const partLen = parts && parts[0] ? (parts[0].length || parts[0].byteLength || '?') : '?';
-          console.log('DIAG:BLOB#' + blobCount + ' type=' + (opts && opts.type || '??') +
-            ' partLen=' + partLen);
-          super(parts, opts);
-        }
-      };
-
-      // 2. URL.createObjectURL
-      const origCOU = URL.createObjectURL;
-      let couCount = 0;
-      URL.createObjectURL = function(obj) {
-        couCount++;
-        console.log('DIAG:CREATE_OBJ_URL#' + couCount + ' type=' + obj.type + ' size=' + obj.size);
-        const result = origCOU.call(this, obj);
-        console.log('DIAG:CREATE_OBJ_URL#' + couCount + ' result=' + result.substring(0, 50));
-        return result;
-      };
-
-      // 3. HTMLImageElement.prototype.src
-      const srcDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
-      const origSetter = srcDesc.set;
-      let imgSetCount = 0;
-      srcDesc.set = function(val) {
-        imgSetCount++;
-        console.log('DIAG:IMG_SRC#' + imgSetCount + ' val=' + String(val).substring(0, 60));
-        return origSetter.call(this, val);
-      };
-      Object.defineProperty(HTMLImageElement.prototype, 'src', srcDesc);
-
-      console.log('DIAG:ALL_INTERCEPTORS installed');
-    });
-
-    const epubBuffer = createEpub({
-      title: 'Blob Interceptor Test',
-      author: 'Test Bot',
-      svgCover: true,
-      coverImage: true,
-      rawChapters: [{ body: '<p>Hello world</p><img src="test.jpg" alt="test"/>' }],
-      extraImages: [
-        { name: 'test.jpg', data: illusJpg },
-      ],
-    });
-
-    await page.goto('/');
-    await page.waitForSelector('.library-list', { timeout: 15000 });
-    const fileInput = page.locator('input[type="file"]');
-    const epubPath = join(SCREENSHOT_DIR, 'blob-intercept-test.epub');
-    writeFileSync(epubPath, epubBuffer);
-    await fileInput.setInputFiles(epubPath);
-    await page.waitForSelector('.book-card', { timeout: 30000 });
-
-    const readBtn = page.locator('.read-btn');
-    await readBtn.click();
-    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
-    await page.waitForFunction(() => {
-      const el = document.querySelector('.chapter-container');
-      return el && el.childElementCount > 0;
-    }, { timeout: 15000 });
-
-    // Click Next — SVG cover → minimal chapter with JPEG
-    const nextBtn = page.locator('.next-btn');
-    await nextBtn.click();
-
-    // Wait for chapter content
-    await page.waitForFunction(() => {
-      const info = document.querySelector('.page-info');
-      return info && /^Ch 2\//.test(info.textContent);
-    }, { timeout: 15000 });
-
-    const container = page.locator('.chapter-container').first();
-    const childCount = await container.evaluate(el => el.childElementCount);
-    expect(childCount).toBeGreaterThan(0);
-    await screenshot(page, 'blob-intercept-rendered');
-
-    const backBtn = page.locator('.back-btn');
-    await backBtn.click();
-    await page.waitForSelector('.book-card', { timeout: 10000 });
-  });
-
-  test('random 18KB bytes (not JPEG) via WASM isolates size vs content', async ({ page }) => {
-    // If this ALSO crashes → the crash is about 18KB allocation/transfer SIZE
-    // If this PASSES → the crash is about JPEG content specifically
-    // Generate random 18538 bytes (same size as conan JPEG)
-    const randomBytes = Buffer.alloc(18538);
-    for (let i = 0; i < randomBytes.length; i++) {
-      randomBytes[i] = Math.floor(Math.random() * 256);
-    }
-    // Give it a .jpg extension so MIME detection picks "image/jpeg"
-    // (the content is garbage but the bridge doesn't validate image data)
-
-    const consoleMessages = [];
-    page.on('console', msg => consoleMessages.push(msg.text()));
-    page.on('crash', () => {
-      console.error('PAGE CRASHED during random-bytes test');
-      console.error('Console:', consoleMessages);
-    });
-
-    const epubBuffer = createEpub({
-      title: 'Random Bytes Test',
-      author: 'Test Bot',
-      svgCover: true,
-      coverImage: true,
-      rawChapters: [{ body: '<p>Hello world</p><img src="random.jpg" alt="test"/>' }],
-      extraImages: [
-        { name: 'random.jpg', data: randomBytes },
-      ],
-    });
-
-    await page.goto('/');
-    await page.waitForSelector('.library-list', { timeout: 15000 });
-    const fileInput = page.locator('input[type="file"]');
-    const epubPath = join(SCREENSHOT_DIR, 'random-bytes-test.epub');
-    writeFileSync(epubPath, epubBuffer);
-    await fileInput.setInputFiles(epubPath);
-    await page.waitForSelector('.book-card', { timeout: 30000 });
-
-    const readBtn = page.locator('.read-btn');
-    await readBtn.click();
-    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
-    await page.waitForFunction(() => {
-      const el = document.querySelector('.chapter-container');
-      return el && el.childElementCount > 0;
-    }, { timeout: 15000 });
-
-    // Click Next — SVG cover → chapter with random bytes as "image"
-    const nextBtn = page.locator('.next-btn');
-    await nextBtn.click();
-
-    // Wait for chapter content
-    await page.waitForFunction(() => {
-      const info = document.querySelector('.page-info');
-      return info && /^Ch 2\//.test(info.textContent);
-    }, { timeout: 15000 });
-
-    const container = page.locator('.chapter-container').first();
-    const childCount = await container.evaluate(el => el.childElementCount);
-    expect(childCount).toBeGreaterThan(0);
-    await screenshot(page, 'random-bytes-rendered');
-
-    const backBtn = page.locator('.back-btn');
-    await backBtn.click();
-    await page.waitForSelector('.book-card', { timeout: 10000 });
-  });
+  }
 
   test('pure JS blob URL with conan JPEG in CSS columns isolates Chrome bug', async ({ page }) => {
     // STANDALONE ISOLATION: no WASM, no EPUB, no bridge.
