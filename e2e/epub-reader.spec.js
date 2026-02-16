@@ -775,32 +775,36 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 10000 });
   });
 
-  test('WASM render of conan HTML (with image) via synthetic EPUB', async ({ page }) => {
-    // Same as above but WITH the img tag and a real image file in the ZIP.
-    // This tests whether try_set_image + blob URL creation during async
-    // render causes the crash.
+  test('WASM render of conan HTML with REAL illus.jpg via synthetic EPUB', async ({ page }) => {
+    // KEY DIAGNOSTIC: Use conan's ACTUAL HTML + ACTUAL 18KB JPEG illustration
+    // in a synthetic EPUB. This isolates whether the JPEG image data + blob URL
+    // creation during async render causes the crash.
     const fullBody = readFileSync(
       join(process.cwd(), 'e2e', 'conan-chapter-body.html'), 'utf-8'
     );
-    // The img src references "70880881323834106_illus.jpg" — we'll include
-    // a valid PNG file at that path (the WASM detects MIME from extension,
-    // so .jpg gets image/jpeg MIME, but the data is PNG — Chrome handles this fine)
+
+    // Extract the real illus.jpg from the conan fixture
+    // From ZIP analysis: data_off=114862, size=18538 (stored, method 0)
+    const epubData = readFileSync(
+      join(process.cwd(), 'test', 'fixtures', 'conan-stories.epub')
+    );
+    const illusJpg = epubData.subarray(114862, 114862 + 18538);
 
     const consoleMessages = [];
     page.on('console', msg => consoleMessages.push(msg.text()));
     page.on('crash', () => {
-      console.error('PAGE CRASHED during conan-html-withimg test');
+      console.error('PAGE CRASHED during conan-html-with-real-jpeg test');
       console.error('Console:', consoleMessages);
     });
 
     const epubBuffer = createEpub({
-      title: 'Conan HTML WithImg',
+      title: 'Conan HTML RealJPEG',
       author: 'Test Bot',
       svgCover: true,
       coverImage: true,
       rawChapters: [{ body: fullBody }],
       extraImages: [
-        { name: '70880881323834106_illus.jpg', data: TINY_PNG },
+        { name: '70880881323834106_illus.jpg', data: illusJpg },
       ],
     });
 
