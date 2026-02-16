@@ -385,30 +385,20 @@ test.describe('EPUB Reader E2E', () => {
     const childCount = await container.evaluate(el => el.childElementCount);
     expect(childCount).toBeGreaterThan(0);
 
-    // Verify image rendering: the cover page should have an <img> element
-    // with a blob: URL src (set via ward_dom_stream_set_image_src)
-    const imgCount = await container.evaluate(el => {
-      const imgs = el.querySelectorAll('img');
-      return imgs.length;
-    });
-    expect(imgCount).toBeGreaterThan(0);
-
-    const imgSrc = await container.evaluate(el => {
-      const img = el.querySelector('img');
-      return img ? img.src : '';
-    });
-    expect(imgSrc).toMatch(/^blob:/);
-    await screenshot(page, 'conan-cover-image');
-
     // Verify chapter progress format: "Ch X/Y  N/M"
     const pageInfo = page.locator('.page-info');
     const progressText = await pageInfo.textContent();
     expect(progressText).toMatch(/^Ch \d+\/\d+\s+\d+\/\d+$/);
 
+    // The cover page (spine entry 0) uses SVG <image>, not HTML <img>.
+    // The actual <img> tag is in the second spine entry (the chapter content).
+    // Walk pages until we reach chapter 2, then verify image rendering.
+    const nextBtn = page.locator('.next-btn');
+
     // --- Walk 50 pages through the book ---
     // Tests sustained rendering across chapter boundaries with images,
     // deflate-compressed chapters, and page measurement.
-    const nextBtn = page.locator('.next-btn');
+    let foundImg = false;
     for (let i = 0; i < 50; i++) {
       await nextBtn.click();
       // Small delay to let async chapter loads complete
@@ -418,8 +408,21 @@ test.describe('EPUB Reader E2E', () => {
         const el = document.querySelector('.chapter-container');
         return el && el.childElementCount > 0;
       }, { timeout: 10000 });
+
+      // Check for <img> with blob: src once we reach the chapter with images
+      if (!foundImg) {
+        const hasImg = await container.evaluate(el => {
+          const img = el.querySelector('img');
+          return img ? img.src.startsWith('blob:') : false;
+        });
+        if (hasImg) foundImg = true;
+      }
     }
     await screenshot(page, 'conan-after-50-pages');
+
+    // Verify image was rendered somewhere during the 50-page walk.
+    // The illustration <img> is in the second spine entry.
+    expect(foundImg).toBe(true);
 
     // Verify page info still shows valid format after 50 clicks
     const pageInfoAfter50 = await pageInfo.textContent();
@@ -691,6 +694,63 @@ test.describe('EPUB Reader E2E', () => {
     // Format: "Ch X/Y  N/M" where Y is total chapters (5)
     expect(text).toMatch(/^Ch 1\/5\s+1\/\d+$/);
     await screenshot(page, 'progress-format');
+
+    // Navigate back
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+  });
+
+  test('SVG cover page renders without crashing', async ({ page }) => {
+    // Emulates the real-world pattern where EPUB covers use
+    // <svg><image xlink:href="cover.png"/> instead of <img>.
+    // Verifies the SVG structure renders (childElementCount > 0) and
+    // navigation to subsequent chapters works correctly.
+    const epubBuffer = createEpub({
+      title: 'SVG Cover Book',
+      author: 'SVG Bot',
+      chapters: 2,
+      paragraphsPerChapter: 6,
+      svgCover: true,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'svg-cover-test.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open book — first spine entry is the SVG cover page
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    // Cover page should render SVG elements (not crash)
+    const container = page.locator('.chapter-container').first();
+    const childCount = await container.evaluate(el => el.childElementCount);
+    expect(childCount).toBeGreaterThan(0);
+    await screenshot(page, 'svg-cover-page');
+
+    // Navigate to next chapter (actual text content)
+    const nextBtn = page.locator('.next-btn');
+    await nextBtn.click();
+    await page.waitForTimeout(500);
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    // Chapter 1 should have text content
+    const textContent = await container.evaluate(el => el.textContent);
+    expect(textContent.length).toBeGreaterThan(50);
+    await screenshot(page, 'svg-cover-chapter1');
 
     // Navigate back
     const backBtn = page.locator('.back-btn');

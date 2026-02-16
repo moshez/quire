@@ -156,6 +156,7 @@ export function createEpub(opts = {}) {
   const numChapters = opts.chapters || 3;
   const parasPerChapter = opts.paragraphsPerChapter || 12;
   const coverImage = opts.coverImage || false;
+  const svgCover = opts.svgCover || false;
 
   // mimetype must be first entry, stored uncompressed
   const mimetype = 'application/epub+zip';
@@ -172,6 +173,13 @@ export function createEpub(opts = {}) {
   let manifestItems = '';
   let spineItems = '';
   const chapters = [];
+
+  // SVG cover wrap page (like real-world EPUBs that use <svg><image> for covers)
+  if (svgCover) {
+    manifestItems += `    <item id="coverpage-wrapper" href="wrap0000.xhtml" media-type="application/xhtml+xml" properties="svg"/>\n`;
+    manifestItems += `    <item id="cover-img" href="images/cover.png" media-type="image/png" properties="cover-image"/>\n`;
+    spineItems += `    <itemref idref="coverpage-wrapper"/>\n`;
+  }
 
   for (let i = 1; i <= numChapters; i++) {
     manifestItems += `    <item id="ch${i}" href="chapter${i}.xhtml" media-type="application/xhtml+xml"/>\n`;
@@ -246,8 +254,27 @@ ${spineItems}  </spine>
     { name: 'META-INF/container.xml', data: containerXml, store: true },
     { name: 'OEBPS/content.opf', data: contentOpf, store: true },
     { name: 'OEBPS/nav.xhtml', data: navXhtml },
-    ...chapters,
   ];
+
+  // SVG cover wrap page (emulates real-world pattern: <svg><image xlink:href="...">)
+  if (svgCover) {
+    const wrapXhtml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Cover</title></head>
+<body>
+  <div>
+    <svg xmlns="http://www.w3.org/2000/svg" height="100%" preserveAspectRatio="xMidYMid meet" version="1.1" viewBox="0 0 1 1" width="100%" xmlns:xlink="http://www.w3.org/1999/xlink">
+      <image width="1" height="1" xlink:href="images/cover.png"/>
+    </svg>
+  </div>
+</body>
+</html>`;
+    zipEntries.push({ name: 'OEBPS/wrap0000.xhtml', data: wrapXhtml });
+    zipEntries.push({ name: 'OEBPS/images/cover.png', data: TINY_PNG, store: true });
+  }
+
+  zipEntries.push(...chapters);
 
   // Add cover image as stored (uncompressed) entry for synchronous reading
   if (coverImage) {
