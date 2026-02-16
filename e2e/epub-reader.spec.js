@@ -973,4 +973,38 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 10000 });
   });
 
+  test('ward crash_repro exerciser does not crash Chromium', async ({ page }) => {
+    // Tests whether ward's DOM operations alone (without quire) crash Chromium.
+    // If this crashes: the bug is in ward (bridge + WASM interaction).
+    // If this passes: the bug is in quire-specific code, not ward.
+    //
+    // The exerciser reproduces the exact memory lifecycle from the conan
+    // crash trace: ZIP alloc/free, multiple DOM cycles, decompress metadata,
+    // cover chapter render, REMOVE_CHILDREN + large chapter render with
+    // allocations during the DOM stream, then post-render allocations.
+    const crashed = { value: false };
+    page.on('crash', () => { crashed.value = true; });
+
+    await page.goto('/vendor/ward/exerciser/crash_repro.html');
+
+    // Wait for the exerciser to complete or crash
+    try {
+      await page.waitForFunction(() => {
+        const log = document.getElementById('log');
+        return log && (log.textContent.includes('SUCCESS') || log.textContent.includes('FATAL'));
+      }, { timeout: 30000 });
+
+      const logContent = await page.evaluate(() => document.getElementById('log').textContent);
+      console.log('crash_repro log:', logContent);
+      expect(logContent).toContain('SUCCESS');
+      expect(crashed.value).toBe(false);
+    } catch (e) {
+      if (crashed.value) {
+        console.error('WARD CRASH_REPRO CRASHED CHROMIUM — this is a ward bug');
+        throw new Error('crash_repro.wasm + ward_bridge.mjs crashed Chromium renderer');
+      }
+      throw e;
+    }
+  });
+
 });

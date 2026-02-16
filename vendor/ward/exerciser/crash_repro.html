@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head><title>crash_repro ward#18</title></head>
+<body>
+<div id="ward-root"></div>
+<pre id="log"></pre>
+<script type="module">
+import { loadWard } from './../lib/ward_bridge.mjs';
+
+const log = document.getElementById('log');
+function logMsg(msg) {
+  log.textContent += msg + '\n';
+  console.log(msg);
+}
+
+async function main() {
+  logMsg('Loading crash_repro.wasm...');
+  const root = document.getElementById('ward-root');
+  // In CI, crash_repro.wasm is at /crash-repro.wasm (copied from build artifact).
+  // Locally, try vendor/ward/build/ first, fallback to root.
+  let resp = await fetch('/crash-repro.wasm').catch(() => null);
+  if (!resp || !resp.ok)
+    resp = await fetch('./../build/crash_repro.wasm');
+  const wasmBytes = await resp.arrayBuffer();
+
+  logMsg('Instantiating...');
+  const { exports, nodes, done } = await loadWard(wasmBytes, root);
+
+  logMsg('Running...');
+  await done;
+
+  logMsg('Done! nodes=' + nodes.size);
+  const container = root.firstElementChild;
+  logMsg('children=' + (container?.childElementCount ?? 0));
+  logMsg('innerHTML.length=' + root.innerHTML.length);
+  logMsg('SUCCESS');
+}
+
+main().catch(err => logMsg('FATAL: ' + err.message));
+</script>
+</body>
+</html>
