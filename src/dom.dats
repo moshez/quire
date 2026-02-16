@@ -14,6 +14,7 @@ staload "./dom.sats"
 staload "./zip.sats"
 staload "./app_state.sats"
 staload "./arith.sats"
+staload UN = "prelude/SATS/unsafe.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
 staload _ = "./../vendor/ward/lib/dom.dats"
 
@@ -1357,70 +1358,12 @@ in
           val sz = entry.uncompressed_size
           val sz1 = (if gt_int_int(sz, 0) then sz else 1): int
           val sz_pos = _checked_pos(sz1)
+          (* DIAGNOSTIC 6: alloc only, NO free, NO bridge calls.
+           * If this passes → crash is in free().
+           * If this crashes → crash is in malloc(). *)
           val arr = ward_arr_alloc<byte>(sz_pos)
-          val _rd = ward_file_read(file_handle, data_off, arr, sz_pos)
-          val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
-
-          (* Detect MIME from last 3 bytes of resolved path.
-           * resolved_len > 3 guaranteed by any valid image filename. *)
-          val b2 = _app_sbuf_get_u8(resolved_len - 1) (* last char *)
-          val b1 = _app_sbuf_get_u8(resolved_len - 2)
-          val b0 = _app_sbuf_get_u8(resolved_len - 3)
-        in
-          (* jpg: ends in "jpg" or "peg" (from .jpeg) *)
-          if b0 = 106 then let (* 'j' *)
-            val @(mime, ml) = build_mime_jpeg()
-            val st = ward_dom_stream_set_image_src(st, nid, borrow, sz_pos, mime, ml)
-            val () = ward_safe_content_text_free(mime)
-            val () = ward_arr_drop<byte>(frozen, borrow)
-            val arr = ward_arr_thaw<byte>(frozen)
-            val () = ward_arr_free<byte>(arr)
-          in st end
-          else if b0 = 112 then let (* 'p' — "peg" or "png" *)
-            (* Distinguish: b1='n' → png, b1='e' → jpeg *)
-          in
-            if b1 = 110 then let (* 'n' → png *)
-              val @(mime, ml) = build_mime_png()
-              val st = ward_dom_stream_set_image_src(st, nid, borrow, sz_pos, mime, ml)
-              val () = ward_safe_content_text_free(mime)
-              val () = ward_arr_drop<byte>(frozen, borrow)
-              val arr = ward_arr_thaw<byte>(frozen)
-              val () = ward_arr_free<byte>(arr)
-            in st end
-            else let (* assume jpeg: "peg" *)
-              val @(mime, ml) = build_mime_jpeg()
-              val st = ward_dom_stream_set_image_src(st, nid, borrow, sz_pos, mime, ml)
-              val () = ward_safe_content_text_free(mime)
-              val () = ward_arr_drop<byte>(frozen, borrow)
-              val arr = ward_arr_thaw<byte>(frozen)
-              val () = ward_arr_free<byte>(arr)
-            in st end
-          end
-          else if b0 = 103 then let (* 'g' → gif *)
-            val @(mime, ml) = build_mime_gif()
-            val st = ward_dom_stream_set_image_src(st, nid, borrow, sz_pos, mime, ml)
-            val () = ward_safe_content_text_free(mime)
-            val () = ward_arr_drop<byte>(frozen, borrow)
-            val arr = ward_arr_thaw<byte>(frozen)
-            val () = ward_arr_free<byte>(arr)
-          in st end
-          else if b0 = 118 then let (* 'v' → svg *)
-            val @(mime, ml) = build_mime_svg()
-            val st = ward_dom_stream_set_image_src(st, nid, borrow, sz_pos, mime, ml)
-            val () = ward_safe_content_text_free(mime)
-            val () = ward_arr_drop<byte>(frozen, borrow)
-            val arr = ward_arr_thaw<byte>(frozen)
-            val () = ward_arr_free<byte>(arr)
-          in st end
-          else let (* default: png *)
-            val @(mime, ml) = build_mime_png()
-            val st = ward_dom_stream_set_image_src(st, nid, borrow, sz_pos, mime, ml)
-            val () = ward_safe_content_text_free(mime)
-            val () = ward_arr_drop<byte>(frozen, borrow)
-            val arr = ward_arr_thaw<byte>(frozen)
-            val () = ward_arr_free<byte>(arr)
-          in st end
-        end
+          val _ = $UN.castvwtp0{ptr}(arr) (* leak — diagnostic only *)
+        in st end
         else st (* bad data offset — skip *)
       end
       else st (* deflated image — skip for now *)
