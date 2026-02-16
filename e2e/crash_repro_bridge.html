@@ -25,7 +25,11 @@ async function run() {
 
   let ward;
   try {
-    ward = await loadWard(bytes, root);
+    ward = await loadWard(bytes, root, {
+      extraImports: {
+        quireSetTitle: () => {},
+      },
+    });
   } catch (e) {
     logMsg(`loadWard error: ${e.message}`);
     document.title = 'ERROR';
