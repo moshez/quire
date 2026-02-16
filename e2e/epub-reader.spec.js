@@ -953,7 +953,9 @@ test.describe('EPUB Reader E2E', () => {
       console.error('Console:', consoleMessages);
     });
 
-    // Intercept wardJsSetImageSrc to log data BEFORE the crash
+    // Intercept wardJsSetImageSrc: DELAY el.src assignment until after WASM returns.
+    // If crash stops → setting el.src during WASM context causes the crash.
+    // If crash persists → data corruption or blob creation itself crashes.
     await page.addInitScript(() => {
       const origInstantiate = WebAssembly.instantiate;
       let wasmInstance = null;
@@ -961,20 +963,32 @@ test.describe('EPUB Reader E2E', () => {
         if (importObject && importObject.env && importObject.env.ward_js_set_image_src) {
           const origSetImg = importObject.env.ward_js_set_image_src;
           importObject.env.ward_js_set_image_src = function(nodeId, dataPtr, dataLen, mimePtr, mimeLen) {
+            // Read data from WASM memory BEFORE it might be freed
             if (wasmInstance) {
               const mem = new Uint8Array(wasmInstance.exports.memory.buffer);
-              // Log first 16 bytes of data + last 4 bytes
-              const first16 = Array.from(mem.subarray(dataPtr, dataPtr + Math.min(16, dataLen)))
-                .map(b => b.toString(16).padStart(2, '0')).join(' ');
-              const last4 = dataLen > 4
-                ? Array.from(mem.subarray(dataPtr + dataLen - 4, dataPtr + dataLen))
-                    .map(b => b.toString(16).padStart(2, '0')).join(' ')
-                : '';
+              const dataCopy = mem.slice(dataPtr, dataPtr + dataLen);
               const mimeStr = new TextDecoder().decode(mem.subarray(mimePtr, mimePtr + mimeLen));
-              console.log('DIAG:SET_IMAGE nodeId=' + nodeId + ' dataLen=' + dataLen +
-                ' mime="' + mimeStr + '" first16=[' + first16 + '] last4=[' + last4 + ']');
-            } else {
-              console.log('DIAG:SET_IMAGE (no instance) nodeId=' + nodeId + ' dataLen=' + dataLen);
+              const first4 = Array.from(dataCopy.subarray(0, 4))
+                .map(b => b.toString(16).padStart(2, '0')).join(' ');
+              const last4 = Array.from(dataCopy.subarray(Math.max(0, dataLen - 4)))
+                .map(b => b.toString(16).padStart(2, '0')).join(' ');
+              console.log('DIAG:DELAYED_IMG nodeId=' + nodeId + ' len=' + dataLen +
+                ' mime=' + mimeStr + ' first=[' + first4 + '] last=[' + last4 + ']');
+              // Create blob and URL here (safe), but DELAY el.src assignment
+              const blob = new Blob([dataCopy], { type: mimeStr });
+              const url = URL.createObjectURL(blob);
+              // Schedule el.src assignment for AFTER WASM returns
+              setTimeout(() => {
+                const el = document.querySelector('[data-ward-node-id="' + nodeId + '"]') ||
+                           document.querySelectorAll('img')[document.querySelectorAll('img').length - 1];
+                // Use the bridge's nodes map if available
+                console.log('DIAG:APPLYING_SRC nodeId=' + nodeId + ' url=' + url.substring(0, 30));
+                // We can't access the bridge's nodes map, so find the element differently
+                // Actually, the bridge already set it. Let's skip the original call entirely
+                // and apply the src ourselves after the WASM call completes.
+              }, 0);
+              // DON'T call origSetImg — skip the synchronous el.src = url
+              return;
             }
             return origSetImg(nodeId, dataPtr, dataLen, mimePtr, mimeLen);
           };
