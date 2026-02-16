@@ -1060,14 +1060,24 @@ test.describe('EPUB Reader E2E', () => {
   // Tests whether crash is specific to async decompression callback context.
   // If this PASSES: crash is in the promise callback path (async-only).
   // If this CRASHES: crash is in malloc/ward_bump regardless of context.
-  test('DIAGNOSTIC: stored chapter with 4097-byte image (sync path)', async ({ page }) => {
+  test('DIAGNOSTIC 11: malloc(4097) from JS after book import — memory state test', async ({ page }) => {
     const imageData = Buffer.alloc(4097);
     for (let i = 0; i < imageData.length; i++) {
       imageData[i] = (i * 7 + 13) & 0xFF;
     }
 
+    // Intercept WebAssembly.instantiate to capture exports
+    await page.addInitScript(() => {
+      const origInstantiate = WebAssembly.instantiate;
+      WebAssembly.instantiate = async function(...args) {
+        const result = await origInstantiate.apply(this, args);
+        window.__wasmExports = result.instance.exports;
+        return result;
+      };
+    });
+
     page.on('crash', () => {
-      console.error('PAGE CRASHED: stored chapter + 4097-byte image (sync path)');
+      console.error('PAGE CRASHED: diagnostic 11');
     });
 
     const epubBuffer = createEpub({
@@ -1082,12 +1092,35 @@ test.describe('EPUB Reader E2E', () => {
 
     await page.goto('/');
     await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Step 1: malloc(4097) from JS BEFORE import
+    const preImport = await page.evaluate(() => {
+      const e = window.__wasmExports;
+      if (!e || !e.malloc) return 'NO_EXPORTS';
+      const p = e.malloc(4097);
+      return `pre-import:malloc(4097)=ptr:${p}`;
+    });
+    console.log('DIAG11:', preImport);
+
+    // Step 2: Import the book
     const fileInput = page.locator('input[type="file"]');
     const epubPath = join(SCREENSHOT_DIR, 'stored-chapter-4097.epub');
     writeFileSync(epubPath, epubBuffer);
     await fileInput.setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
+    // Step 3: malloc(4097) from JS AFTER import (same memory state as render)
+    const postImport = await page.evaluate(() => {
+      const e = window.__wasmExports;
+      const p = e.malloc(4097);
+      const mem = new Uint8Array(e.memory.buffer);
+      mem[p] = 42;
+      mem[p + 4096] = 43;
+      return `post-import:malloc(4097)=ptr:${p},write_ok`;
+    });
+    console.log('DIAG11:', postImport);
+
+    // Step 4: Open the book and navigate to chapter 2 (with the image)
     const readBtn = page.locator('.read-btn');
     await readBtn.click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
@@ -1096,6 +1129,18 @@ test.describe('EPUB Reader E2E', () => {
       return el && el.childElementCount > 0;
     }, { timeout: 15000 });
 
+    // Step 5: malloc(4097) from JS AFTER chapter 1 rendered
+    const postCh1 = await page.evaluate(() => {
+      const e = window.__wasmExports;
+      const p = e.malloc(4097);
+      const mem = new Uint8Array(e.memory.buffer);
+      mem[p] = 42;
+      mem[p + 4096] = 43;
+      return `post-ch1:malloc(4097)=ptr:${p},write_ok`;
+    });
+    console.log('DIAG11:', postCh1);
+
+    // Step 6: Navigate to chapter 2 — this is where WASM calls malloc(4097) internally
     const nextBtn = page.locator('.next-btn');
     await nextBtn.click();
 
@@ -1107,11 +1152,8 @@ test.describe('EPUB Reader E2E', () => {
     const container = page.locator('.chapter-container').first();
     const childCount = await container.evaluate(el => el.childElementCount);
     expect(childCount).toBeGreaterThan(0);
-    await screenshot(page, 'stored-chapter-4097-rendered');
-
-    const backBtn = page.locator('.back-btn');
-    await backBtn.click();
-    await page.waitForSelector('.book-card', { timeout: 10000 });
+    console.log('DIAG11: chapter 2 rendered successfully, childCount:', childCount);
+    await screenshot(page, 'diag11-ch2-rendered');
   });
 
   test('WASM import interceptor: trace ward_js_file_read and ward_dom_flush', async ({ page }) => {
