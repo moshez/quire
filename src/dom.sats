@@ -169,6 +169,9 @@ dataprop SKIPPABLE_TAG(idx: int) =
 
 #define TAG_IDX_IMG 13
 
+(* Attribute index for src — matches _attr_names table *)
+#define ATTR_IDX_SRC 6
+
 (* ========== Tag/Attribute lookup from raw bytes ========== *)
 
 (* Look up a tag name from raw bytes. Returns safe_text index or -1.
@@ -189,6 +192,34 @@ fun get_tag_by_index(idx: int): [n:pos | n <= 10] @(ward_safe_text(n), int n)
 (* Get an attr safe_text by index (returned by lookup_attr).
  * All attrs are <= 11 chars, so n <= 11 holds. *)
 fun get_attr_by_index(idx: int): [n:pos | n <= 11] @(ward_safe_text(n), int n)
+
+(* ========== Render limits ========== *)
+
+(* Maximum DOM elements created per render_tree / render_tree_with_images call.
+ * Prevents unbounded DOM node creation from malformed or adversarial EPUB content.
+ * 10000 is generous — real EPUB chapters rarely exceed a few hundred elements.
+ * When the limit is reached, remaining SAX events are skipped silently. *)
+#define MAX_RENDER_ELEMENTS 10000
+
+(* ========== Windowed rendering proofs ========== *)
+
+(* RENDER_BOUNDED: element count never exceeds hard budget.
+ * Constructed after render_tree returns ecnt. *)
+dataprop RENDER_BOUNDED(ecnt: int, budget: int) =
+  | {e,b:nat | e <= b} UNDER_BUDGET(e, b)
+
+(* WINDOW_OPTIMAL: window size is the largest that fits the budget.
+ * Each constructor encodes WHY that size was chosen.
+ * epp = elements per page, budget = MAX_RENDER_ELEMENTS. *)
+dataprop WINDOW_OPTIMAL(window: int, epp: int, budget: int) =
+  | {e,b:nat | 5*e <= b} WINDOW_5(5, e, b)
+  | {e,b:nat | 3*e <= b; 5*e > b} WINDOW_3(3, e, b)
+  | {e,b:nat | e <= b; 3*e > b} WINDOW_1(1, e, b)
+
+(* ADVERSARIAL_PAGE: single page exceeds budget — content too dense.
+ * Triggers visible error + log details. *)
+dataprop ADVERSARIAL_PAGE(epp: int, budget: int) =
+  | {e,b:nat | e > b} TOO_DENSE(e, b)
 
 (* ========== Tree renderer ========== *)
 
@@ -246,3 +277,21 @@ fun render_tree
   (stream: ward_dom_stream(l), parent_id: int,
    tree: !ward_arr(byte, lb, n), tree_len: int n)
   : ward_dom_stream(l)
+
+(* Walk parsed HTML tree with inline image loading from EPUB ZIP.
+ * Like render_tree but handles <img> tags: resolves src relative to
+ * chapter_dir, reads stored image data from ZIP, sets image via
+ * ward_dom_stream_set_image_src with detected MIME type.
+ * Deflated or missing images degrade gracefully (element without src). *)
+fun render_tree_with_images
+  {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
+  (stream: ward_dom_stream(l), parent_id: int,
+   tree: !ward_arr(byte, lb, n), tree_len: int n,
+   file_handle: int,
+   chapter_dir: !ward_arr(byte, ld, nd), chapter_dir_len: int nd)
+  : ward_dom_stream(l)
+
+(* Get element count from the last render_tree / render_tree_with_images call.
+ * Stored in a C static variable — avoids struct return across compilation
+ * units which causes ABI mismatch with WASM LTO. *)
+fun dom_get_render_ecnt(): int

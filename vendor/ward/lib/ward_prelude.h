@@ -15,6 +15,8 @@
 #define ward_safe_text(...) atstype_ptrk
 #define ward_text_builder(...) atstype_ptrk
 #define ward_text_result(...) atstype_ptrk
+#define ward_safe_content_text(...) atstype_ptrk
+#define ward_content_text_builder(...) atstype_ptrk
 
 /* Promise types */
 #define ward_promise(...) atstype_ptrk
@@ -22,6 +24,30 @@
 
 /* Promise chain resolution (implemented in promise.dats) */
 void _ward_resolve_chain(void *p, void *v);
+
+/* Promise field access — direct struct access for _ward_resolve_chain.
+   Layout matches postiats_tysum for promise_mk(state, value, cb, chain).
+   These helpers let _ward_resolve_chain avoid ATS2 datavtype casting
+   for the "user holds reference" case, eliminating [U4] forget. */
+static inline int _ward_promise_get_state_tag(void *p) {
+    return (int)(long)(((void**)p)[0]);
+}
+static inline void *_ward_promise_get_value(void *p) {
+    return ((void**)p)[1];
+}
+static inline void *_ward_promise_get_cb(void *p) {
+    return ((void**)p)[2];
+}
+static inline void *_ward_promise_get_chain(void *p) {
+    return ((void**)p)[3];
+}
+static inline void _ward_promise_set_resolved(void *p, void *value) {
+    ((void**)p)[0] = (void*)2;  /* PState_resolved tag */
+    ((void**)p)[1] = value;
+}
+static inline void _ward_promise_set_chain(void *p, void *chain) {
+    ((void**)p)[3] = chain;
+}
 
 /* Invoke a cloref1 closure: first word is function pointer */
 static inline void *ward_cloref1_invoke(void *clo, void *arg) {
@@ -67,6 +93,9 @@ static inline void ward_copy_at(void *dst, int off, const void *src, int n) {
   memcpy((char*)dst + off, src, n);
 }
 static inline void ward_dom_flush(void *buf, int len) {
+  /* stub — in WASM, this calls the JS bridge */
+}
+static inline void ward_js_set_image_src(int n, void *d, int dl, void *m, int ml) {
   /* stub — in WASM, this calls the JS bridge */
 }
 

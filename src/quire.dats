@@ -62,6 +62,7 @@ extern void quireSetTitle(int mode);
 #define TEXT_ERR_DECOMPRESS 12
 #define TEXT_ERR_EMPTY 13
 #define TEXT_ERR_NO_CHAPTERS 14
+#define TEXT_ERR_TOO_DENSE 15
 
 (* ========== Listener ID constants ========== *)
 
@@ -317,7 +318,7 @@ fn fill_text {l:agz}{n:pos}
     val () = ward_arr_set_byte(arr, 19, alen, 116) (* t *)
     val () = ward_arr_set_byte(arr, 20, alen, 121) (* y *)
   in end
-  else let (* text_id = 14: "No chapters in book" *)
+  else if text_id = 14 then let (* "No chapters in book" *)
     val () = ward_arr_set_byte(arr, 0, alen, 78)   (* N *)
     val () = ward_arr_set_byte(arr, 1, alen, 111)  (* o *)
     val () = ward_arr_set_byte(arr, 2, alen, 32)   (*   *)
@@ -337,6 +338,22 @@ fn fill_text {l:agz}{n:pos}
     val () = ward_arr_set_byte(arr, 16, alen, 111) (* o *)
     val () = ward_arr_set_byte(arr, 17, alen, 111) (* o *)
     val () = ward_arr_set_byte(arr, 18, alen, 107) (* k *)
+  in end
+  else let (* text_id = 15: "Page too dense" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 80)   (* P *)
+    val () = ward_arr_set_byte(arr, 1, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 2, alen, 103)  (* g *)
+    val () = ward_arr_set_byte(arr, 3, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 4, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 5, alen, 116)  (* t *)
+    val () = ward_arr_set_byte(arr, 6, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 7, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 8, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 9, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 10, alen, 101) (* e *)
+    val () = ward_arr_set_byte(arr, 11, alen, 110) (* n *)
+    val () = ward_arr_set_byte(arr, 12, alen, 115) (* s *)
+    val () = ward_arr_set_byte(arr, 13, alen, 101) (* e *)
   in end
 
 (* Copy len bytes from string_buffer to ward_arr *)
@@ -2088,23 +2105,38 @@ in
   else ()
 end
 
-(* Update page indicator text: "X / Y" where X = current page + 1, Y = total pages.
- * Uses standalone DOM stream — safe to call from event handlers. *)
+(* Update page indicator text: "Ch X/Y  N/M" showing chapter and page position.
+ * Uses standalone DOM stream — safe to call from event handlers.
+ * Format: "Ch 1/5  3/10" — chapter 1 of 5, page 3 of 10.
+ * Buffer: 48 bytes, max realistic content ~20 chars. *)
 fn update_page_info(): void = let
   val nid = reader_get_page_indicator_id()
 in
   if gt_int_int(nid, 0) then let
-    val cur = reader_get_current_page()
-    val total = reader_get_total_pages()
+    val cur_ch = reader_get_current_chapter()
+    val total_ch = reader_get_chapter_count()
+    val cur_pg = reader_get_current_page()
+    val total_pg = reader_get_total_pages()
     val arr = ward_arr_alloc<byte>(48)
-    (* Write "X / Y" — e.g. "1 / 5" *)
-    val pg_digits = itoa_to_arr(arr, cur + 1, 0)
-    val p = pg_digits
-    val () = ward_arr_set<byte>(arr, _idx48(p), _byte(32))       (* ' ' *)
-    val () = ward_arr_set<byte>(arr, _idx48(p + 1), _byte(47))   (* '/' *)
-    val () = ward_arr_set<byte>(arr, _idx48(p + 2), _byte(32))   (* ' ' *)
-    val tot_digits = itoa_to_arr(arr, total, p + 3)
-    val total_len = p + 3 + tot_digits
+    (* Write "Ch " prefix — 67='C' 104='h' 32=' ' *)
+    val () = ward_arr_set<byte>(arr, _idx48(0), _byte(67))
+    val () = ward_arr_set<byte>(arr, _idx48(1), _byte(104))
+    val () = ward_arr_set<byte>(arr, _idx48(2), _byte(32))
+    (* Chapter number (1-indexed) *)
+    val ch_digits = itoa_to_arr(arr, cur_ch + 1, 3)
+    val p = 3 + ch_digits
+    val () = ward_arr_set<byte>(arr, _idx48(p), _byte(47))     (* '/' *)
+    val tch_digits = itoa_to_arr(arr, total_ch, p + 1)
+    val p2 = p + 1 + tch_digits
+    (* Two-space separator *)
+    val () = ward_arr_set<byte>(arr, _idx48(p2), _byte(32))
+    val () = ward_arr_set<byte>(arr, _idx48(p2 + 1), _byte(32))
+    (* Page number (1-indexed) *)
+    val pg_digits = itoa_to_arr(arr, cur_pg + 1, p2 + 2)
+    val p3 = p2 + 2 + pg_digits
+    val () = ward_arr_set<byte>(arr, _idx48(p3), _byte(47))    (* '/' *)
+    val tpg_digits = itoa_to_arr(arr, total_pg, p3 + 1)
+    val total_len = p3 + 1 + tpg_digits
     val tl = g1ofg0(total_len)
   in
     if tl > 0 then
@@ -2139,6 +2171,21 @@ fn reader_save_and_exit(): void = let
   prval pf = SAVED()
 in
   reader_exit(pf)
+end
+
+(* Apply resume page after chapter loads.
+ * If reader_get_resume_page() > 0, go to that page (clamped to total),
+ * apply transform, clear resume page. Called after measure_and_set_pages. *)
+fn apply_resume_page(container_id: int): void = let
+  val resume_pg = reader_get_resume_page()
+in
+  if gt_int_int(resume_pg, 0) then let
+    val () = reader_go_to_page(resume_pg)
+    val () = apply_page_transform(container_id)
+    val () = update_page_info()
+    val () = reader_set_resume_page(0)
+  in end
+  else ()
 end
 
 (* ========== EPUB import: read and parse ZIP entries (async) ========== *)
@@ -2398,14 +2445,76 @@ fn show_chapter_error(container_id: int, text_id: int, text_len: int): void = le
   val () = ward_dom_fini(dom)
 in end
 
+(* Validate render window after rendering + measuring.
+ * Computes elements-per-page (epp) and determines the window tier:
+ *   - WINDOW_5: 5*epp <= MAX_RENDER_ELEMENTS (typical — budget covers 5+ pages)
+ *   - WINDOW_3: 3*epp <= budget but 5*epp > budget (dense content)
+ *   - WINDOW_1: epp <= budget but 3*epp > budget (very dense)
+ *   - ADVERSARIAL: epp > budget — show visible error + log
+ *
+ * Proofs (WINDOW_OPTIMAL, ADVERSARIAL_PAGE) document which tier was selected.
+ * Runtime branches verify the arithmetic; comments reference the dataprop
+ * constructors since freestanding ATS2 can't track g0int arithmetic. *)
+fn validate_render_window(ecnt: int, container_id: int): void = let
+  val pages = reader_get_total_pages()
+in
+  if gt_int_int(pages, 0) then let
+    val epp = div_int_int(ecnt, pages)
+  in
+    if lte_int_int(mul_int_int(5, epp), MAX_RENDER_ELEMENTS) then
+      () (* WINDOW_OPTIMAL: WINDOW_5 — budget supports 5+ pages *)
+    else if lte_int_int(mul_int_int(3, epp), MAX_RENDER_ELEMENTS) then
+      () (* WINDOW_OPTIMAL: WINDOW_3 — budget supports 3 pages *)
+    else if lte_int_int(epp, MAX_RENDER_ELEMENTS) then
+      () (* WINDOW_OPTIMAL: WINDOW_1 — budget supports 1 page *)
+    else let
+      (* ADVERSARIAL_PAGE: TOO_DENSE — single page exceeds budget *)
+      val () = ward_log(3, mk_ch_err(char2int1('d'), char2int1('n'), char2int1('s')), 10)
+    in show_chapter_error(container_id, TEXT_ERR_TOO_DENSE, 14) end
+  end
+  else () (* no pages — nothing to validate *)
+end
+
 (* load_chapter: Every code path either renders content, starts async
  * decompression (whose callback renders or shows error), or shows an error.
  * CHAPTER_OUTCOME documents this invariant — see dataprop above.
  * Requires SPINE_ORDERED proof — chapter index bounds eliminated at compile time. *)
+(* Extract chapter directory from spine path in sbuf.
+ * Scans sbuf[0..path_len-1] backward for last '/'.
+ * Returns directory length (including trailing '/'), or 0 if no '/'.
+ * E.g., "OEBPS/Text/ch1.xhtml" → dir_len=11 ("OEBPS/Text/") *)
+fn find_chapter_dir_len(path_len: int): [d:nat] int(d) = let
+  fun scan(pos: int): int =
+    if pos < 0 then 0
+    else if _app_sbuf_get_u8(pos) = 47 (* '/' *)
+    then pos + 1
+    else scan(pos - 1)
+  val d = scan(path_len - 1)
+in
+  if d >= 0 then _checked_nat(d)
+  else _checked_nat(0)
+end
+
+(* Allocate a ward_arr and copy sbuf[0..len-1] into it.
+ * Used to capture chapter directory before sbuf is reused. *)
+fn copy_sbuf_to_arr {dl:pos}
+  (dl: int dl): [l:agz] ward_arr(byte, l, dl) = let
+  val arr = ward_arr_alloc<byte>(dl)
+  fun copy_loop {l:agz}{n:pos}
+    (a: !ward_arr(byte, l, n), alen: int n, i: int, count: int): void =
+    if i < count then let
+      val b = _app_sbuf_get_u8(i)
+      val () = ward_arr_write_byte(a, _ward_idx(i, alen), _checked_byte(b))
+    in copy_loop(a, alen, i + 1, count) end
+  val () = copy_loop(arr, dl, 0, dl)
+in arr end
+
 fn load_chapter {c,t:nat | c < t}
   (pf: SPINE_ORDERED(c, t) |
    file_handle: int, chapter_idx: int(c), spine_count: int(t), container_id: int): void = let
   val path_len = epub_copy_spine_path(pf | chapter_idx, spine_count, 0)
+  (* Extract chapter directory for image path resolution *)
+  val dir_len = find_chapter_dir_len(path_len)
   val zip_idx = zip_find_entry(path_len)
 in
   if gte_int_int(zip_idx, 0) then let
@@ -2431,50 +2540,103 @@ in
           val arr = ward_arr_thaw<byte>(frozen)
           val () = ward_arr_free<byte>(arr)
           val saved_cid = container_id
-          val p2 = ward_promise_then<int><int>(p,
-            llam (blob_handle: int): ward_promise_chained(int) => let
-              val dlen = ward_decompress_get_len()
-            in
-              if gt_int_int(dlen, 0) then let
-                val dl = _checked_pos(dlen)
-                val arr2 = ward_arr_alloc<byte>(dl)
-                val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
-                val () = ward_blob_free(blob_handle)
-                val @(frozen2, borrow2) = ward_arr_freeze<byte>(arr2)
-                val sax_len = ward_xml_parse_html(borrow2, dl)
-                val () = ward_arr_drop<byte>(frozen2, borrow2)
-                val arr2 = ward_arr_thaw<byte>(frozen2)
-                val () = ward_arr_free<byte>(arr2)
+          val saved_fh = file_handle
+          (* Capture chapter dir before async — sbuf will be reused *)
+        in
+          if gt_int_int(dir_len, 0) then let
+            val dl_pos = _checked_pos(dir_len)
+            val dir_arr = copy_sbuf_to_arr(dl_pos)
+            val p2 = ward_promise_then<int><int>(p,
+              llam (blob_handle: int): ward_promise_chained(int) => let
+                val dlen = ward_decompress_get_len()
               in
-                if gt_int_int(sax_len, 0) then let
-                  val sl = _checked_pos(sax_len)
-                  val sax_buf = ward_xml_get_result(sl)
-                  val dom = ward_dom_init()
-                  val s = ward_dom_stream_begin(dom)
-                  val s = render_tree(s, saved_cid, sax_buf, sl)
-                  val dom = ward_dom_stream_end(s)
-                  val () = ward_dom_fini(dom)
-                  val () = ward_arr_free<byte>(sax_buf)
-                  val () = measure_and_set_pages(saved_cid)
-                  val () = update_page_info()
-                  (* CHAPTER_OUTCOME: CHAPTER_RENDERED — content visible *)
-                in ward_promise_return<int>(1) end
+                if gt_int_int(dlen, 0) then let
+                  val dl = _checked_pos(dlen)
+                  val arr2 = ward_arr_alloc<byte>(dl)
+                  val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
+                  val () = ward_blob_free(blob_handle)
+                  val @(frozen2, borrow2) = ward_arr_freeze<byte>(arr2)
+                  val sax_len = ward_xml_parse_html(borrow2, dl)
+                  val () = ward_arr_drop<byte>(frozen2, borrow2)
+                  val arr2 = ward_arr_thaw<byte>(frozen2)
+                  val () = ward_arr_free<byte>(arr2)
+                in
+                  if gt_int_int(sax_len, 0) then let
+                    val sl = _checked_pos(sax_len)
+                    val sax_buf = ward_xml_get_result(sl)
+                    val dom = ward_dom_init()
+                    val s = ward_dom_stream_begin(dom)
+                    val s = render_tree_with_images(s, saved_cid, sax_buf, sl,
+                      saved_fh, dir_arr, dl_pos)
+                    val dom = ward_dom_stream_end(s)
+                    val () = ward_dom_fini(dom)
+                    val () = ward_arr_free<byte>(sax_buf)
+                    val () = ward_arr_free<byte>(dir_arr)
+                    val () = measure_and_set_pages(saved_cid)
+                    val () = validate_render_window(dom_get_render_ecnt(), saved_cid)
+                    val () = update_page_info()
+                    val () = apply_resume_page(saved_cid)
+                  in ward_promise_return<int>(1) end
+                  else let
+                    val () = ward_arr_free<byte>(dir_arr)
+                    val () = ward_log(3, mk_ch_err(char2int1('s'), char2int1('a'), char2int1('x')), 10)
+                    val () = show_chapter_error(saved_cid, TEXT_ERR_EMPTY, 21)
+                  in ward_promise_return<int>(0) end
+                end
                 else let
-                  (* CHAPTER_OUTCOME: CHAPTER_ERROR_SHOWN — parse empty *)
-                  val () = ward_log(3, mk_ch_err(char2int1('s'), char2int1('a'), char2int1('x')), 10)
-                  val () = show_chapter_error(saved_cid, TEXT_ERR_EMPTY, 21)
+                  val () = ward_blob_free(blob_handle)
+                  val () = ward_arr_free<byte>(dir_arr)
+                  val () = ward_log(3, mk_ch_err(char2int1('d'), char2int1('e'), char2int1('c')), 10)
+                  val () = show_chapter_error(saved_cid, TEXT_ERR_DECOMPRESS, 20)
                 in ward_promise_return<int>(0) end
-              end
-              else let
-                val () = ward_blob_free(blob_handle)
-                (* CHAPTER_OUTCOME: CHAPTER_ERROR_SHOWN — decompress empty *)
-                val () = ward_log(3, mk_ch_err(char2int1('d'), char2int1('e'), char2int1('c')), 10)
-                val () = show_chapter_error(saved_cid, TEXT_ERR_DECOMPRESS, 20)
-              in ward_promise_return<int>(0) end
-            end)
-          val () = ward_promise_discard<int>(p2)
-          (* CHAPTER_OUTCOME: CHAPTER_ASYNC — callback handles outcome *)
-        in end
+              end)
+            val () = ward_promise_discard<int>(p2)
+          in end
+          else let
+            (* No directory prefix — use render_tree without images *)
+            val p2 = ward_promise_then<int><int>(p,
+              llam (blob_handle: int): ward_promise_chained(int) => let
+                val dlen = ward_decompress_get_len()
+              in
+                if gt_int_int(dlen, 0) then let
+                  val dl = _checked_pos(dlen)
+                  val arr2 = ward_arr_alloc<byte>(dl)
+                  val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
+                  val () = ward_blob_free(blob_handle)
+                  val @(frozen2, borrow2) = ward_arr_freeze<byte>(arr2)
+                  val sax_len = ward_xml_parse_html(borrow2, dl)
+                  val () = ward_arr_drop<byte>(frozen2, borrow2)
+                  val arr2 = ward_arr_thaw<byte>(frozen2)
+                  val () = ward_arr_free<byte>(arr2)
+                in
+                  if gt_int_int(sax_len, 0) then let
+                    val sl = _checked_pos(sax_len)
+                    val sax_buf = ward_xml_get_result(sl)
+                    val dom = ward_dom_init()
+                    val s = ward_dom_stream_begin(dom)
+                    val s = render_tree(s, saved_cid, sax_buf, sl)
+                    val dom = ward_dom_stream_end(s)
+                    val () = ward_dom_fini(dom)
+                    val () = ward_arr_free<byte>(sax_buf)
+                    val () = measure_and_set_pages(saved_cid)
+                    val () = validate_render_window(dom_get_render_ecnt(), saved_cid)
+                    val () = update_page_info()
+                    val () = apply_resume_page(saved_cid)
+                  in ward_promise_return<int>(1) end
+                  else let
+                    val () = ward_log(3, mk_ch_err(char2int1('s'), char2int1('a'), char2int1('x')), 10)
+                    val () = show_chapter_error(saved_cid, TEXT_ERR_EMPTY, 21)
+                  in ward_promise_return<int>(0) end
+                end
+                else let
+                  val () = ward_blob_free(blob_handle)
+                  val () = ward_log(3, mk_ch_err(char2int1('d'), char2int1('e'), char2int1('c')), 10)
+                  val () = show_chapter_error(saved_cid, TEXT_ERR_DECOMPRESS, 20)
+                in ward_promise_return<int>(0) end
+              end)
+            val () = ward_promise_discard<int>(p2)
+          in end
+        end
         else if eq_int_int(compression, 0) then let
           (* Stored — read directly, no decompression needed *)
           val us1 = (if gt_int_int(uncompressed_size, 0)
@@ -2493,14 +2655,32 @@ in
             val sax_buf = ward_xml_get_result(sl)
             val dom = ward_dom_init()
             val s = ward_dom_stream_begin(dom)
-            val s = render_tree(s, container_id, sax_buf, sl)
-            val dom = ward_dom_stream_end(s)
-            val () = ward_dom_fini(dom)
-            val () = ward_arr_free<byte>(sax_buf)
-            val () = measure_and_set_pages(container_id)
-            val () = update_page_info()
-            (* CHAPTER_OUTCOME: CHAPTER_RENDERED — content visible *)
-          in end
+          in
+            if gt_int_int(dir_len, 0) then let
+              val dl_pos = _checked_pos(dir_len)
+              val dir_arr = copy_sbuf_to_arr(dl_pos)
+              val s = render_tree_with_images(s, container_id, sax_buf, sl,
+                file_handle, dir_arr, dl_pos)
+              val dom = ward_dom_stream_end(s)
+              val () = ward_dom_fini(dom)
+              val () = ward_arr_free<byte>(sax_buf)
+              val () = ward_arr_free<byte>(dir_arr)
+              val () = measure_and_set_pages(container_id)
+              val () = validate_render_window(dom_get_render_ecnt(), container_id)
+              val () = update_page_info()
+              val () = apply_resume_page(container_id)
+            in end
+            else let
+              val s = render_tree(s, container_id, sax_buf, sl)
+              val dom = ward_dom_stream_end(s)
+              val () = ward_dom_fini(dom)
+              val () = ward_arr_free<byte>(sax_buf)
+              val () = measure_and_set_pages(container_id)
+              val () = validate_render_window(dom_get_render_ecnt(), container_id)
+              val () = update_page_info()
+              val () = apply_resume_page(container_id)
+            in end
+          end
           else let
             (* CHAPTER_OUTCOME: CHAPTER_ERROR_SHOWN — parse empty *)
             val () = ward_log(3, mk_ch_err(char2int1('s'), char2int1('a'), char2int1('x')), 10)
@@ -2562,8 +2742,10 @@ in
         val dom = ward_dom_stream_end(s)
         val () = ward_dom_fini(dom)
         val () = load_chapter(pf | reader_get_file_handle(), next_g1, spine_g1, container_id)
-        val () = apply_page_transform(container_id)
-        val () = update_page_info()
+        (* load_chapter handles measure_and_set_pages + update_page_info +
+         * apply_resume_page in all paths (sync stored and async deflated).
+         * Calling apply_page_transform/update_page_info here would race
+         * with async decompression — the DOM is empty at this point. *)
       in end
       else ()
     end
@@ -2603,8 +2785,10 @@ in
         val dom = ward_dom_stream_end(s)
         val () = ward_dom_fini(dom)
         val () = load_chapter(pf | reader_get_file_handle(), prev_g1, spine_g1, container_id)
-        val () = apply_page_transform(container_id)
-        val () = update_page_info()
+        (* load_chapter handles measure_and_set_pages + update_page_info +
+         * apply_resume_page in all paths (sync stored and async deflated).
+         * Calling apply_page_transform/update_page_info here would race
+         * with async decompression — the DOM is empty at this point. *)
       in end
       else ()
     end
@@ -3013,14 +3197,21 @@ implement enter_reader(root_id, book_index) = let
     end
   )
 
-  (* Load first chapter — dependent types eliminate bounds check *)
+  (* Restore saved chapter/page or start at chapter 0, page 0 *)
   val spine = epub_get_chapter_count()
   val spine_g1 = g1ofg0(spine)
-  val zero = _checked_nat(0)
+  val saved_ch = library_get_chapter(book_index)
+  val saved_pg = library_get_page(book_index)
+  (* Clamp saved chapter to valid range *)
+  val start_ch = (if lt_int_int(saved_ch, spine) then saved_ch else 0): int
+  val start_ch_nat = _checked_nat(start_ch)
 in
-  if lt1_int_int(zero, spine_g1) then let
+  if lt1_int_int(start_ch_nat, spine_g1) then let
     prval pf = SPINE_ENTRY()
-    val () = load_chapter(pf | file_handle, zero, spine_g1, container_id)
+    val () = reader_go_to_chapter(start_ch_nat, spine_g1)
+    (* Set resume page — applied after chapter content loads and is measured *)
+    val () = reader_set_resume_page(saved_pg)
+    val () = load_chapter(pf | file_handle, start_ch_nat, spine_g1, container_id)
   in end
   else show_chapter_error(container_id, TEXT_ERR_NO_CHAPTERS, 19)
 end

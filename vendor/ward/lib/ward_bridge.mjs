@@ -54,6 +54,23 @@ export async function loadWard(wasmBytes, root, opts) {
     }
   }
 
+  // Blob URL lifecycle tracking — revoked when element gets new image or is removed
+  const blobUrls = new Map();
+
+  // --- DOM helpers ---
+
+  // Remove all descendant entries from `nodes` and revoke their blob URLs.
+  // Called before clearing or removing an element that may have registered children.
+  function cleanDescendants(parentEl) {
+    for (const [id, node] of nodes) {
+      if (id !== 0 && node !== parentEl && parentEl.contains(node)) {
+        const oldUrl = blobUrls.get(id);
+        if (oldUrl) { URL.revokeObjectURL(oldUrl); blobUrls.delete(id); }
+        nodes.delete(id);
+      }
+    }
+  }
+
   // --- DOM flush ---
 
   function wardDomFlush(bufPtr, len) {
@@ -97,13 +114,22 @@ export async function loadWard(wasmBytes, root, opts) {
         }
         case 3: { // REMOVE_CHILDREN
           const el = nodes.get(nodeId);
-          if (el) el.innerHTML = '';
+          if (el) {
+            cleanDescendants(el);
+            el.innerHTML = '';
+          }
           pos += 5;
           break;
         }
         case 5: { // REMOVE_CHILD
           const el = nodes.get(nodeId);
-          if (el) el.remove();
+          if (el) {
+            cleanDescendants(el);
+            el.remove();
+          }
+          const oldUrl = blobUrls.get(nodeId);
+          if (oldUrl) { URL.revokeObjectURL(oldUrl); blobUrls.delete(nodeId); }
+          nodes.delete(nodeId);
           pos += 5;
           break;
         }
@@ -111,6 +137,20 @@ export async function loadWard(wasmBytes, root, opts) {
           throw new Error(`Unknown ward DOM op: ${op} at offset ${pos}`);
       }
     }
+  }
+
+  // --- Image src (direct bridge call, not diff buffer) ---
+
+  function wardJsSetImageSrc(nodeId, dataPtr, dataLen, mimePtr, mimeLen) {
+    const mime = readString(mimePtr, mimeLen);
+    const bytes = readBytes(dataPtr, dataLen);
+    const oldUrl = blobUrls.get(nodeId);
+    if (oldUrl) URL.revokeObjectURL(oldUrl);
+    const blob = new Blob([bytes], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const el = nodes.get(nodeId);
+    if (el) el.src = url;
+    blobUrls.set(nodeId, url);
   }
 
   // --- Timer ---
@@ -701,6 +741,7 @@ export async function loadWard(wasmBytes, root, opts) {
     env: {
       ...extraImports,
       ward_dom_flush: wardDomFlush,
+      ward_js_set_image_src: wardJsSetImageSrc,
       ward_set_timer: wardSetTimer,
       ward_exit: () => { resolveDone(); },
       // IDB

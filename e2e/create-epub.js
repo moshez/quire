@@ -144,11 +144,19 @@ function loremParagraph(seed) {
  * @param {number} opts.paragraphsPerChapter - Paragraphs per chapter (default 12)
  * @returns {Buffer} EPUB file contents
  */
+// Minimal 1x1 red PNG (68 bytes) for testing image rendering
+const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8D4HwAFBQIAX8jx0gAAAABJRU5ErkJggg==',
+  'base64'
+);
+
 export function createEpub(opts = {}) {
   const title = opts.title || 'Test Book';
   const author = opts.author || 'Test Author';
   const numChapters = opts.chapters || 3;
   const parasPerChapter = opts.paragraphsPerChapter || 12;
+  const coverImage = opts.coverImage || false;
+  const svgCover = opts.svgCover || false;
 
   // mimetype must be first entry, stored uncompressed
   const mimetype = 'application/epub+zip';
@@ -166,12 +174,23 @@ export function createEpub(opts = {}) {
   let spineItems = '';
   const chapters = [];
 
+  // SVG cover wrap page (like real-world EPUBs that use <svg><image> for covers)
+  if (svgCover) {
+    manifestItems += `    <item id="coverpage-wrapper" href="wrap0000.xhtml" media-type="application/xhtml+xml" properties="svg"/>\n`;
+    manifestItems += `    <item id="cover-img" href="images/cover.png" media-type="image/png" properties="cover-image"/>\n`;
+    spineItems += `    <itemref idref="coverpage-wrapper"/>\n`;
+  }
+
   for (let i = 1; i <= numChapters; i++) {
     manifestItems += `    <item id="ch${i}" href="chapter${i}.xhtml" media-type="application/xhtml+xml"/>\n`;
     spineItems += `    <itemref idref="ch${i}"/>\n`;
 
     // Generate chapter XHTML with enough text to fill multiple pages
-    let body = `<h1>Chapter ${i}</h1>\n`;
+    let body = '';
+    if (coverImage && i === 1) {
+      body += `<img src="images/cover.png" alt="Cover" />\n`;
+    }
+    body += `<h1>Chapter ${i}</h1>\n`;
     for (let p = 0; p < parasPerChapter; p++) {
       body += `      <p>${loremParagraph(i * 100 + p)}</p>\n`;
     }
@@ -185,6 +204,11 @@ export function createEpub(opts = {}) {
 </body>
 </html>`;
     chapters.push({ name: `OEBPS/chapter${i}.xhtml`, data: xhtml });
+  }
+
+  // Add cover image if requested
+  if (coverImage) {
+    manifestItems += `    <item id="cover-img" href="images/cover.png" media-type="image/png"/>\n`;
   }
 
   // Build TOC nav document
@@ -230,8 +254,32 @@ ${spineItems}  </spine>
     { name: 'META-INF/container.xml', data: containerXml, store: true },
     { name: 'OEBPS/content.opf', data: contentOpf, store: true },
     { name: 'OEBPS/nav.xhtml', data: navXhtml },
-    ...chapters,
   ];
+
+  // SVG cover wrap page (emulates real-world pattern: <svg><image xlink:href="...">)
+  if (svgCover) {
+    const wrapXhtml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Cover</title></head>
+<body>
+  <div>
+    <svg xmlns="http://www.w3.org/2000/svg" height="100%" preserveAspectRatio="xMidYMid meet" version="1.1" viewBox="0 0 1 1" width="100%" xmlns:xlink="http://www.w3.org/1999/xlink">
+      <image width="1" height="1" xlink:href="images/cover.png"/>
+    </svg>
+  </div>
+</body>
+</html>`;
+    zipEntries.push({ name: 'OEBPS/wrap0000.xhtml', data: wrapXhtml });
+    zipEntries.push({ name: 'OEBPS/images/cover.png', data: TINY_PNG, store: true });
+  }
+
+  zipEntries.push(...chapters);
+
+  // Add cover image as stored (uncompressed) entry for synchronous reading
+  if (coverImage) {
+    zipEntries.push({ name: 'OEBPS/images/cover.png', data: TINY_PNG, store: true });
+  }
 
   return createZip(zipEntries);
 }

@@ -45,9 +45,16 @@ static inline int ward_bucket(unsigned int n) {
 static void *ward_bump(unsigned int usable) {
     unsigned long a = (unsigned long)heap_ptr;
     a = (a + 7u) & ~7u;                       /* align block start */
+    unsigned long end = a + WARD_HEADER + usable;
+    unsigned long limit = (unsigned long)__builtin_wasm_memory_size(0) * 65536UL;
+    if (end > limit) {
+        unsigned long pages = (end - limit + 65535UL) / 65536UL;
+        if (__builtin_wasm_memory_grow(0, pages) == (unsigned long)(-1))
+            return (void*)0; /* memory.grow failed — let caller handle OOM */
+    }
     *(unsigned int *)a = usable;               /* write size header */
     void *p = (void *)(a + WARD_HEADER);       /* user pointer      */
-    heap_ptr = (unsigned char *)(a + WARD_HEADER + usable);
+    heap_ptr = (unsigned char *)end;
     return p;
 }
 
@@ -149,7 +156,7 @@ int ward_resolver_stash(void *resolver) {
             return i;
         }
     }
-    __builtin_trap(); /* resolver table full — 64 concurrent async ops exceeded */
+    return -1; /* resolver table full — 64 concurrent async ops exceeded */
 }
 
 void *ward_resolver_unstash(int id) {

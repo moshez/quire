@@ -12,6 +12,11 @@ staload _ = "./memory.dats"
 extern fun _ward_dom_flush
   (buf: ptr, len: int): void = "mac#ward_dom_flush"
 
+(* Image src — direct bridge call, bypasses diff buffer *)
+extern fun _ward_js_set_image_src
+  (node_id: int, data: ptr, data_len: int, mime: ptr, mime_len: int)
+  : void = "mac#ward_js_set_image_src"
+
 local
 
 datavtype stream_vt(l:addr) =
@@ -227,5 +232,35 @@ ward_dom_stream_set_attr_safe{l}{nl}{vl}
   val () = cursor := g0ofg1(c + op_size)
   prval () = fold@(stream)
 in stream end
+
+(*
+ * [RT2] castvwtp1{ptr}(data), castvwtp1{ptr}(mime_type) in
+ *   ward_dom_stream_set_image_src:
+ *   Extracts raw pointers from borrow and content_text to pass to
+ *   ward_js_set_image_src bridge import. Same WASM/JS boundary crossing
+ *   as [RT1]. Alternative considered: no ATS2-level alternative exists
+ *   — the host API requires raw memory addresses.
+ *   User safety: both are !T (not consumed), MIME type uses
+ *   ward_safe_content_text (compile-time character checked), data length
+ *   is dependent-typed. No sequence of public API calls can trigger
+ *   unsoundness.
+ *)
+
+implement
+ward_dom_stream_set_image_src{l}{ld}{n}{lm}{m}
+  (stream, node_id, data, data_len, mime_type, mime_len) = let
+  (* Flush current buffer to preserve operation ordering *)
+  val+ @stream_mk(buf, cursor) = stream
+  val c0 = cursor
+  val () = if c0 > 0 then _flush_arr(buf, c0)
+  val () = cursor := 0
+  prval () = fold@(stream)
+  (* Direct bridge call — image data can exceed diff buffer capacity *)
+  val dp = $UNSAFE.castvwtp1{ptr}(data) (* [RT2] *)
+  val mp = $UNSAFE.castvwtp1{ptr}(mime_type) (* [RT2] *)
+in
+  _ward_js_set_image_src(node_id, dp, data_len, mp, mime_len);
+  stream
+end
 
 end (* local *)

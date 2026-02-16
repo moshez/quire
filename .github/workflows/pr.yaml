@@ -3,9 +3,11 @@ name: PR Checks
 on:
   pull_request:
     branches: [main]
+  push:
+    branches-ignore: [main]
 
 concurrency:
-  group: pr-${{ github.head_ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 env:
