@@ -307,56 +307,6 @@ test.describe('EPUB Reader E2E', () => {
   });
 
   test('import real-world epub with deflate-compressed metadata', async ({ page }) => {
-    // Instrument DecompressionStream before any page JS runs to trace crash location
-    await page.addInitScript(() => {
-      const OrigDS = globalThis.DecompressionStream;
-      let dsCount = 0;
-      globalThis.DecompressionStream = function(format) {
-        const id = ++dsCount;
-        console.log('DIAG:DS#' + id + ' created format=' + format);
-        const ds = new OrigDS(format);
-
-        // The bridge does: ds.writable.getWriter() then writer.write/close
-        // and ds.readable.getReader() then reader.read() in a pump loop.
-        // We patch getWriter and getReader on the stream objects.
-        const origGetWriter = ds.writable.getWriter;
-        ds.writable.getWriter = function() {
-          const w = origGetWriter.call(ds.writable);
-          const wWrite = w.write.bind(w);
-          const wClose = w.close.bind(w);
-          w.write = function(chunk) {
-            console.log('DIAG:DS#' + id + '.write len=' + (chunk ? chunk.byteLength || chunk.length : 0));
-            return wWrite(chunk);
-          };
-          w.close = function() {
-            console.log('DIAG:DS#' + id + '.close');
-            return wClose();
-          };
-          return w;
-        };
-
-        const origGetReader = ds.readable.getReader;
-        ds.readable.getReader = function() {
-          const r = origGetReader.call(ds.readable);
-          const rRead = r.read.bind(r);
-          let readCount = 0;
-          r.read = function() {
-            return rRead().then(function(result) {
-              readCount++;
-              console.log('DIAG:DS#' + id + '.read#' + readCount +
-                ' done=' + result.done + ' len=' + (result.value ? result.value.length : 0));
-              return result;
-            });
-          };
-          return r;
-        };
-
-        return ds;
-      };
-      // Preserve prototype chain for typeof checks
-      globalThis.DecompressionStream.prototype = OrigDS.prototype;
-    });
-
     // This test uses a real-world EPUB whose metadata entries (container.xml,
     // content.opf) are deflate-compressed (ZIP method 8). The async decompression
     // path in epub_read_container_async / epub_read_opf_async handles this.
