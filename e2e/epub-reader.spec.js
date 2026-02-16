@@ -953,50 +953,33 @@ test.describe('EPUB Reader E2E', () => {
       console.error('Console:', consoleMessages);
     });
 
-    // Intercept wardJsSetImageSrc: DELAY el.src assignment until after WASM returns.
-    // If crash stops → setting el.src during WASM context causes the crash.
-    // If crash persists → data corruption or blob creation itself crashes.
+    // Patch HTMLImageElement.prototype.src to intercept ALL blob URL assignments.
+    // Previous WebAssembly.instantiate patch didn't work.
+    // This is more reliable — patches the DOM API directly.
     await page.addInitScript(() => {
-      const origInstantiate = WebAssembly.instantiate;
-      let wasmInstance = null;
-      WebAssembly.instantiate = async function(source, importObject) {
-        if (importObject && importObject.env && importObject.env.ward_js_set_image_src) {
-          const origSetImg = importObject.env.ward_js_set_image_src;
-          importObject.env.ward_js_set_image_src = function(nodeId, dataPtr, dataLen, mimePtr, mimeLen) {
-            // Read data from WASM memory BEFORE it might be freed
-            if (wasmInstance) {
-              const mem = new Uint8Array(wasmInstance.exports.memory.buffer);
-              const dataCopy = mem.slice(dataPtr, dataPtr + dataLen);
-              const mimeStr = new TextDecoder().decode(mem.subarray(mimePtr, mimePtr + mimeLen));
-              const first4 = Array.from(dataCopy.subarray(0, 4))
-                .map(b => b.toString(16).padStart(2, '0')).join(' ');
-              const last4 = Array.from(dataCopy.subarray(Math.max(0, dataLen - 4)))
-                .map(b => b.toString(16).padStart(2, '0')).join(' ');
-              console.log('DIAG:DELAYED_IMG nodeId=' + nodeId + ' len=' + dataLen +
-                ' mime=' + mimeStr + ' first=[' + first4 + '] last=[' + last4 + ']');
-              // Create blob and URL here (safe), but DELAY el.src assignment
-              const blob = new Blob([dataCopy], { type: mimeStr });
-              const url = URL.createObjectURL(blob);
-              // Schedule el.src assignment for AFTER WASM returns
-              setTimeout(() => {
-                const el = document.querySelector('[data-ward-node-id="' + nodeId + '"]') ||
-                           document.querySelectorAll('img')[document.querySelectorAll('img').length - 1];
-                // Use the bridge's nodes map if available
-                console.log('DIAG:APPLYING_SRC nodeId=' + nodeId + ' url=' + url.substring(0, 30));
-                // We can't access the bridge's nodes map, so find the element differently
-                // Actually, the bridge already set it. Let's skip the original call entirely
-                // and apply the src ourselves after the WASM call completes.
-              }, 0);
-              // DON'T call origSetImg — skip the synchronous el.src = url
-              return;
-            }
-            return origSetImg(nodeId, dataPtr, dataLen, mimePtr, mimeLen);
-          };
+      const srcDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+      const origSetter = srcDesc.set;
+      let imgSetCount = 0;
+      srcDesc.set = function(val) {
+        imgSetCount++;
+        const isBlobUrl = typeof val === 'string' && val.startsWith('blob:');
+        console.log('DIAG:IMG_SRC #' + imgSetCount + ' blob=' + isBlobUrl +
+          ' val=' + String(val).substring(0, 50));
+        if (isBlobUrl) {
+          // DEFER blob URL assignment to next microtask
+          const el = this;
+          const url = val;
+          console.log('DIAG:DEFERRING blob src #' + imgSetCount);
+          setTimeout(() => {
+            console.log('DIAG:APPLYING deferred blob src #' + imgSetCount);
+            origSetter.call(el, url);
+          }, 0);
+          return;
         }
-        const result = await origInstantiate.call(this, source, importObject);
-        wasmInstance = result.instance;
-        return result;
+        return origSetter.call(this, val);
       };
+      Object.defineProperty(HTMLImageElement.prototype, 'src', srcDesc);
+      console.log('DIAG:IMG_SRC_INTERCEPTOR installed');
     });
 
     const epubBuffer = createEpub({
