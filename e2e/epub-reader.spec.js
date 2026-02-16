@@ -390,60 +390,89 @@ test.describe('EPUB Reader E2E', () => {
     const progressText = await pageInfo.textContent();
     expect(progressText).toMatch(/^Ch \d+\/\d+\s+\d+\/\d+$/);
 
-    // Diagnostics: add error and unhandled rejection handlers before chapter transition
-    await page.evaluate(() => {
-      window.addEventListener('error', (e) => {
-        console.error('JS_ERROR:', e.message, e.filename, e.lineno);
-      });
-      window.addEventListener('unhandledrejection', (e) => {
-        console.error('UNHANDLED_REJECTION:', String(e.reason));
-      });
-    });
+    // === DIAGNOSTIC: Sync vs async crash determination ===
+    // Click Next via page.evaluate to catch sync errors and trace timing.
+    // The WASM navigate_next path: remove_children (sync DOM) → load_chapter
+    //   (sync file read + start async decompress) → return.
+    // Then async: decompress callback → parse HTML → render_tree → DOM updates.
+    // We need to know if the crash is during the sync click handler or the
+    // async decompress/render callback.
 
-    // Capture DOM state before click for diagnostics
-    const domStateBefore = await page.evaluate(() => {
-      const c = document.querySelector('.chapter-container');
-      return {
-        childCount: c ? c.childElementCount : -1,
-        innerHTML: c ? c.innerHTML.substring(0, 500) : 'N/A',
-        scrollWidth: c ? c.scrollWidth : -1,
-      };
-    });
-    console.log('DOM state before click:', JSON.stringify(domStateBefore));
-
-    // Isolation test: try clearing the container via JS first
-    // If this crashes, the issue is in Chrome's DOM cleanup
-    // If this succeeds, the issue is in the WASM navigate code
-    let jsClearCrashed = false;
+    let clickCompleted = false;
     try {
       await page.evaluate(() => {
-        const c = document.querySelector('.chapter-container');
-        if (c) c.innerHTML = '';
+        window._diagMessages = [];
+        window.addEventListener('error', (e) => {
+          window._diagMessages.push('ERROR:' + e.message);
+        });
+        window.addEventListener('unhandledrejection', (e) => {
+          window._diagMessages.push('REJECTION:' + String(e.reason));
+        });
+        const btn = document.querySelector('.next-btn');
+        console.log('DIAG:pre-click');
+        btn.click(); // Synchronous: triggers ward_on_event → navigate_next
+        console.log('DIAG:post-click');
+        // If we get here, the click handler completed synchronously.
+        // The async decompress callback hasn't fired yet.
       });
-      console.log('JS innerHTML clear: OK (no crash)');
-    } catch (clearErr) {
-      console.error('JS innerHTML clear CRASHED:', clearErr.message);
-      jsClearCrashed = true;
+      clickCompleted = true;
+      console.log('DIAG: page.evaluate completed — click handler was synchronous and OK');
+    } catch (clickErr) {
+      console.error('DIAG: page.evaluate failed:', clickErr.message);
+      // Check which console messages we got before the crash
+      console.error('DIAG: console messages captured:', JSON.stringify(consoleMessages));
     }
 
-    if (jsClearCrashed) {
-      // The crash is in Chrome's DOM cleanup of the cover elements
-      console.error('CRASH IS IN DOM CLEANUP — not in WASM');
-      throw new Error('Chrome crashes when clearing conan cover elements');
+    if (clickCompleted) {
+      // Click handler completed OK. Now wait for the async decompress/render.
+      console.log('DIAG: waiting for async decompress/render...');
+      try {
+        // Wait up to 15s for new chapter content to appear
+        await page.waitForFunction(() => {
+          const info = document.querySelector('.page-info');
+          return info && /^Ch 2\//.test(info.textContent);
+        }, { timeout: 15000 });
+        console.log('DIAG: chapter 2 loaded successfully!');
+        await screenshot(page, 'conan-chapter2-loaded');
+
+        // Check for any errors that occurred during async rendering
+        const diagMsgs = await page.evaluate(() => window._diagMessages || []);
+        if (diagMsgs.length > 0) {
+          console.log('DIAG: errors during async render:', diagMsgs);
+        }
+
+        // Navigate back to library
+        const backBtn = page.locator('.back-btn');
+        await backBtn.click();
+        await page.waitForSelector('.book-card', { timeout: 10000 });
+        await screenshot(page, 'conan-library-after-reading');
+      } catch (asyncErr) {
+        console.error('DIAG: async phase failed:', asyncErr.message);
+        console.error('DIAG: console messages:', JSON.stringify(consoleMessages));
+        // Try to capture any diagnostic info
+        try {
+          const diagMsgs = await page.evaluate(() => window._diagMessages || []);
+          console.error('DIAG: page errors:', diagMsgs);
+        } catch (_) { /* page might be crashed */ }
+        throw asyncErr;
+      }
+    } else {
+      // The click itself crashed the page.
+      // Check console messages to determine sync vs async:
+      // - If we see "DIAG:post-click", the crash was async (during microtask)
+      // - If we only see "DIAG:pre-click", the crash was during btn.click()
+      const preClick = consoleMessages.some(m => m.includes('DIAG:pre-click'));
+      const postClick = consoleMessages.some(m => m.includes('DIAG:post-click'));
+      console.error(`DIAG: pre-click=${preClick} post-click=${postClick}`);
+      if (postClick) {
+        console.error('CRASH IS ASYNC — happens after click handler returns (decompress/render)');
+      } else if (preClick) {
+        console.error('CRASH IS SYNC — happens during btn.click() (navigate_next WASM code)');
+      } else {
+        console.error('CRASH IS VERY EARLY — even pre-click log not captured');
+      }
+      throw new Error(`Conan chapter transition crashed (pre=${preClick} post=${postClick})`);
     }
-
-    // If we get here, clearing the container is safe
-    // But the WASM navigate path also calls load_chapter after clearing
-    // Let the container be empty and verify no crash
-    await page.waitForTimeout(1000);
-    console.log('Container empty for 1s: OK');
-    await screenshot(page, 'conan-container-cleared');
-
-    // Navigate back via back button
-    const backBtn = page.locator('.back-btn');
-    await backBtn.click();
-    await page.waitForSelector('.book-card', { timeout: 10000 });
-    await screenshot(page, 'conan-library-after-reading');
   });
 
   test('chapter navigation: Next crosses to next chapter', async ({ page }) => {
@@ -601,6 +630,70 @@ test.describe('EPUB Reader E2E', () => {
     const childCount = await container.evaluate(el => el.childElementCount);
     expect(childCount).toBeGreaterThan(0);
     await screenshot(page, 'svgcover-after-nav');
+
+    // Navigate back to library
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+  });
+
+  test('large chapter with SVG cover and image does not crash', async ({ page }) => {
+    // Diagnostic test: synthetic EPUB with SVG cover + large chapters (~21KB like
+    // conan) + cover image. Tests whether chapter SIZE triggers the crash.
+    const epubBuffer = createEpub({
+      title: 'Large Chapter Test',
+      author: 'Test Bot',
+      chapters: 2,
+      paragraphsPerChapter: 80,  // ~21KB like conan's h-0
+      svgCover: true,
+      coverImage: true,
+    });
+
+    const consoleMessages = [];
+    page.on('console', msg => consoleMessages.push(`[${msg.type()}] ${msg.text()}`));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED during large chapter test');
+      console.error('Console:', consoleMessages);
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'large-chapter-test.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open book
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+
+    // Wait for cover to render
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    await screenshot(page, 'largechapter-cover');
+
+    // Click Next — transition from SVG cover to large chapter 1
+    const nextBtn = page.locator('.next-btn');
+    await nextBtn.click();
+
+    // Wait for chapter content (should show Ch 2/)
+    await page.waitForFunction(() => {
+      const info = document.querySelector('.page-info');
+      return info && /^Ch 2\//.test(info.textContent);
+    }, { timeout: 15000 });
+
+    const container = page.locator('.chapter-container').first();
+    const childCount = await container.evaluate(el => el.childElementCount);
+    expect(childCount).toBeGreaterThan(0);
+    const textLen = await container.evaluate(el => el.textContent.length);
+    expect(textLen).toBeGreaterThan(100);
+    await screenshot(page, 'largechapter-chapter1');
 
     // Navigate back to library
     const backBtn = page.locator('.back-btn');
