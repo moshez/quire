@@ -939,8 +939,8 @@ test.describe('EPUB Reader E2E', () => {
 
   test('minimal HTML + real 18KB JPEG isolates crash trigger', async ({ page }) => {
     // MINIMAL ISOLATION: simplest possible HTML body + real JPEG from conan.
-    // If this crashes: the JPEG data itself triggers the Chrome renderer crash.
-    // If this passes: it's the combination of complex HTML + JPEG that crashes.
+    // Pure JS blob URL test PASSES with same data, so this must be our WASM path.
+    // Intercept wardJsSetImageSrc to log data before the crash.
     const epubData = readFileSync(
       join(process.cwd(), 'test', 'fixtures', 'conan-stories.epub')
     );
@@ -951,6 +951,38 @@ test.describe('EPUB Reader E2E', () => {
     page.on('crash', () => {
       console.error('PAGE CRASHED during minimal-jpeg isolation test');
       console.error('Console:', consoleMessages);
+    });
+
+    // Intercept wardJsSetImageSrc to log data BEFORE the crash
+    await page.addInitScript(() => {
+      const origInstantiate = WebAssembly.instantiate;
+      let wasmInstance = null;
+      WebAssembly.instantiate = async function(source, importObject) {
+        if (importObject && importObject.env && importObject.env.ward_js_set_image_src) {
+          const origSetImg = importObject.env.ward_js_set_image_src;
+          importObject.env.ward_js_set_image_src = function(nodeId, dataPtr, dataLen, mimePtr, mimeLen) {
+            if (wasmInstance) {
+              const mem = new Uint8Array(wasmInstance.exports.memory.buffer);
+              // Log first 16 bytes of data + last 4 bytes
+              const first16 = Array.from(mem.subarray(dataPtr, dataPtr + Math.min(16, dataLen)))
+                .map(b => b.toString(16).padStart(2, '0')).join(' ');
+              const last4 = dataLen > 4
+                ? Array.from(mem.subarray(dataPtr + dataLen - 4, dataPtr + dataLen))
+                    .map(b => b.toString(16).padStart(2, '0')).join(' ')
+                : '';
+              const mimeStr = new TextDecoder().decode(mem.subarray(mimePtr, mimePtr + mimeLen));
+              console.log('DIAG:SET_IMAGE nodeId=' + nodeId + ' dataLen=' + dataLen +
+                ' mime="' + mimeStr + '" first16=[' + first16 + '] last4=[' + last4 + ']');
+            } else {
+              console.log('DIAG:SET_IMAGE (no instance) nodeId=' + nodeId + ' dataLen=' + dataLen);
+            }
+            return origSetImg(nodeId, dataPtr, dataLen, mimePtr, mimeLen);
+          };
+        }
+        const result = await origInstantiate.call(this, source, importObject);
+        wasmInstance = result.instance;
+        return result;
+      };
     });
 
     const epubBuffer = createEpub({
