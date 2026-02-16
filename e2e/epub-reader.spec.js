@@ -1138,6 +1138,39 @@ test.describe('EPUB Reader E2E', () => {
     expect(true).toBe(true);
   });
 
+  // BRIDGE CRASH REPRO: uses REAL ward bridge with DOM manipulation.
+  // Unlike the ATS2-native test (which uses stub imports), this creates
+  // real DOM elements via the bridge. Tests whether the crash requires
+  // DOM GC pressure from real element creation.
+  test('BRIDGE: crash_repro_render with real ward bridge + DOM', async ({ page }) => {
+    let crashed = false;
+    page.on('crash', () => {
+      crashed = true;
+      console.error('BRIDGE CRASH REPRO: page crashed!');
+    });
+
+    await page.goto('/e2e/crash_repro_bridge.html');
+
+    try {
+      await page.waitForFunction(() => {
+        return document.title === 'PASS' || document.title === 'ERROR';
+      }, { timeout: 30000 });
+
+      const title = await page.title();
+      const logContent = await page.locator('#log').textContent();
+      console.log('BRIDGE REPRO result:', title);
+      console.log('BRIDGE REPRO log:', logContent);
+    } catch (e) {
+      if (crashed) {
+        console.log('BRIDGE REPRO: CRASHED! Real DOM is the trigger.');
+      } else {
+        console.log('BRIDGE REPRO timeout:', e.message);
+      }
+    }
+
+    expect(true).toBe(true);
+  });
+
   // DIAGNOSTIC 7: stored (uncompressed) chapter with 4097-byte image.
   // Tests whether crash is specific to async decompression callback context.
   // If this PASSES: crash is in the promise callback path (async-only).
