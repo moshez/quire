@@ -937,14 +937,13 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 10000 });
   });
 
-  // Size threshold tests: find the exact size boundary that triggers the crash.
-  // TINY_PNG (68 bytes) works. 18538 bytes crashes. Test intermediate sizes.
-  // Allocator size classes: 32, 128, 512, 4096, then oversized.
-  for (const testSize of [100, 512, 4096, 4097, 5000, 8000, 10000, 18538]) {
-    test(`image size ${testSize} bytes via WASM (size threshold test)`, async ({ page }) => {
+  // ESTABLISHED: crash boundary is exactly 4096→4097 (allocator bucket/oversized).
+  // Keep only the boundary confirmation tests.
+  for (const testSize of [4096, 4097]) {
+    test(`image size ${testSize} bytes — ${testSize <= 4096 ? 'bucketed (should pass)' : 'oversized (crashes)'}`, async ({ page }) => {
       const imageData = Buffer.alloc(testSize);
       for (let i = 0; i < imageData.length; i++) {
-        imageData[i] = (i * 7 + 13) & 0xFF; // deterministic pattern
+        imageData[i] = (i * 7 + 13) & 0xFF;
       }
 
       const consoleMessages = [];
@@ -981,11 +980,9 @@ test.describe('EPUB Reader E2E', () => {
         return el && el.childElementCount > 0;
       }, { timeout: 15000 });
 
-      // Click Next — SVG cover → chapter with test image
       const nextBtn = page.locator('.next-btn');
       await nextBtn.click();
 
-      // Wait for chapter content
       await page.waitForFunction(() => {
         const info = document.querySelector('.page-info');
         return info && /^Ch 2\//.test(info.textContent);
@@ -1001,6 +998,149 @@ test.describe('EPUB Reader E2E', () => {
       await page.waitForSelector('.book-card', { timeout: 10000 });
     });
   }
+
+  test('WASM import interceptor: trace ward_js_file_read and ward_dom_flush', async ({ page }) => {
+    // NARROWING: crash is in oversized alloc path (>4096).
+    // Intercept WebAssembly.instantiate to wrap ward_js_file_read,
+    // ward_dom_flush, and ward_js_set_image_src with logging.
+    // This tells us exactly which bridge function crashes.
+    const imageData = Buffer.alloc(5000);
+    for (let i = 0; i < imageData.length; i++) {
+      imageData[i] = (i * 7 + 13) & 0xFF;
+    }
+
+    const consoleMessages = [];
+    page.on('console', msg => consoleMessages.push(msg.text()));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED during WASM import interceptor test');
+      console.error('Console:', consoleMessages);
+    });
+
+    // Robust WebAssembly.instantiate interception
+    await page.addInitScript(() => {
+      const origInstantiate = WebAssembly.instantiate;
+      const origStreaming = WebAssembly.instantiateStreaming;
+
+      function wrapImports(imports) {
+        if (!imports || !imports.env) return imports;
+        const env = imports.env;
+        const wrapped = Object.assign({}, env);
+
+        // Wrap ward_js_file_read(handle, fileOffset, len, outPtr)
+        if (env.ward_js_file_read) {
+          const orig = env.ward_js_file_read;
+          wrapped.ward_js_file_read = function(handle, fileOffset, len, outPtr) {
+            console.log('DIAG:FILE_READ_ENTER handle=' + handle + ' off=' + fileOffset +
+              ' len=' + len + ' outPtr=' + outPtr);
+            try {
+              const result = orig(handle, fileOffset, len, outPtr);
+              console.log('DIAG:FILE_READ_EXIT result=' + result);
+              return result;
+            } catch(e) {
+              console.log('DIAG:FILE_READ_ERROR ' + e.message);
+              throw e;
+            }
+          };
+        }
+
+        // Wrap ward_dom_flush(bufPtr, len)
+        if (env.ward_dom_flush) {
+          const orig = env.ward_dom_flush;
+          let flushCount = 0;
+          wrapped.ward_dom_flush = function(bufPtr, len) {
+            flushCount++;
+            console.log('DIAG:DOM_FLUSH_ENTER#' + flushCount + ' bufPtr=' + bufPtr + ' len=' + len);
+            try {
+              orig(bufPtr, len);
+              console.log('DIAG:DOM_FLUSH_EXIT#' + flushCount);
+            } catch(e) {
+              console.log('DIAG:DOM_FLUSH_ERROR#' + flushCount + ' ' + e.message);
+              throw e;
+            }
+          };
+        }
+
+        // Wrap ward_js_set_image_src(nodeId, dataPtr, dataLen, mimePtr, mimeLen)
+        if (env.ward_js_set_image_src) {
+          const orig = env.ward_js_set_image_src;
+          wrapped.ward_js_set_image_src = function(nodeId, dataPtr, dataLen, mimePtr, mimeLen) {
+            console.log('DIAG:SET_IMG_ENTER node=' + nodeId + ' dataPtr=' + dataPtr +
+              ' dataLen=' + dataLen + ' mimePtr=' + mimePtr + ' mimeLen=' + mimeLen);
+            try {
+              orig(nodeId, dataPtr, dataLen, mimePtr, mimeLen);
+              console.log('DIAG:SET_IMG_EXIT');
+            } catch(e) {
+              console.log('DIAG:SET_IMG_ERROR ' + e.message);
+              throw e;
+            }
+          };
+        }
+
+        return Object.assign({}, imports, { env: wrapped });
+      }
+
+      WebAssembly.instantiate = async function(source, imports) {
+        console.log('DIAG:WI_CALLED type=' + (source instanceof ArrayBuffer ? 'buffer' :
+          source instanceof WebAssembly.Module ? 'module' : typeof source));
+        const wrappedImports = wrapImports(imports);
+        return origInstantiate.call(this, source, wrappedImports);
+      };
+
+      if (origStreaming) {
+        WebAssembly.instantiateStreaming = async function(source, imports) {
+          console.log('DIAG:WIS_CALLED');
+          const wrappedImports = wrapImports(imports);
+          return origStreaming.call(this, source, wrappedImports);
+        };
+      }
+
+      console.log('DIAG:WI_PATCH installed');
+    });
+
+    const epubBuffer = createEpub({
+      title: 'Import Interceptor Test',
+      author: 'Test Bot',
+      svgCover: true,
+      coverImage: true,
+      rawChapters: [{ body: '<p>Import intercept test</p><img src="test.jpg" alt="test"/>' }],
+      extraImages: [
+        { name: 'test.jpg', data: imageData },
+      ],
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'import-intercept-test.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    const nextBtn = page.locator('.next-btn');
+    await nextBtn.click();
+
+    await page.waitForFunction(() => {
+      const info = document.querySelector('.page-info');
+      return info && /^Ch 2\//.test(info.textContent);
+    }, { timeout: 15000 });
+
+    const container = page.locator('.chapter-container').first();
+    const childCount = await container.evaluate(el => el.childElementCount);
+    expect(childCount).toBeGreaterThan(0);
+    await screenshot(page, 'import-intercept-rendered');
+
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+  });
 
   test('pure JS blob URL with conan JPEG in CSS columns isolates Chrome bug', async ({ page }) => {
     // STANDALONE ISOLATION: no WASM, no EPUB, no bridge.
