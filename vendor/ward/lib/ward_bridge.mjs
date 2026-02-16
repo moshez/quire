@@ -54,6 +54,9 @@ export async function loadWard(wasmBytes, root, opts) {
     }
   }
 
+  // Blob URL lifecycle tracking — revoked when element gets new image or is removed
+  const blobUrls = new Map();
+
   // --- DOM flush ---
 
   function wardDomFlush(bufPtr, len) {
@@ -104,6 +107,8 @@ export async function loadWard(wasmBytes, root, opts) {
         case 5: { // REMOVE_CHILD
           const el = nodes.get(nodeId);
           if (el) el.remove();
+          const oldUrl = blobUrls.get(nodeId);
+          if (oldUrl) { URL.revokeObjectURL(oldUrl); blobUrls.delete(nodeId); }
           pos += 5;
           break;
         }
@@ -111,6 +116,20 @@ export async function loadWard(wasmBytes, root, opts) {
           throw new Error(`Unknown ward DOM op: ${op} at offset ${pos}`);
       }
     }
+  }
+
+  // --- Image src (direct bridge call, not diff buffer) ---
+
+  function wardJsSetImageSrc(nodeId, dataPtr, dataLen, mimePtr, mimeLen) {
+    const mime = readString(mimePtr, mimeLen);
+    const bytes = readBytes(dataPtr, dataLen);
+    const oldUrl = blobUrls.get(nodeId);
+    if (oldUrl) URL.revokeObjectURL(oldUrl);
+    const blob = new Blob([bytes], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const el = nodes.get(nodeId);
+    if (el) el.src = url;
+    blobUrls.set(nodeId, url);
   }
 
   // --- Timer ---
@@ -701,6 +720,7 @@ export async function loadWard(wasmBytes, root, opts) {
     env: {
       ...extraImports,
       ward_dom_flush: wardDomFlush,
+      ward_js_set_image_src: wardJsSetImageSrc,
       ward_set_timer: wardSetTimer,
       ward_exit: () => { resolveDone(); },
       // IDB

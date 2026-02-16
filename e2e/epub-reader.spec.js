@@ -133,11 +133,11 @@ test.describe('EPUB Reader E2E', () => {
     const pageInfo = page.locator('.page-info');
     await expect(pageInfo).toBeVisible();
 
-    // Page indicator should show "1 / N" format after chapter loads
+    // Page indicator should show "Ch X/Y  N/M" format after chapter loads
     const pageText = await pageInfo.textContent();
-    expect(pageText).toMatch(/^\d+ \/ \d+$/);
-    // First page should be "1 / N"
-    expect(pageText).toMatch(/^1 \//);
+    expect(pageText).toMatch(/^Ch \d+\/\d+\s+\d+\/\d+$/);
+    // First chapter, first page: "Ch 1/3  1/N"
+    expect(pageText).toMatch(/^Ch 1\//);
 
     // Verify chapter container is visible and has paragraph text
     const chapterContainer = page.locator('.chapter-container').first();
@@ -205,8 +205,9 @@ test.describe('EPUB Reader E2E', () => {
 
     // Verify page indicator updated after forward click
     const pageTextAfterForward = await pageInfo.textContent();
-    expect(pageTextAfterForward).toMatch(/^\d+ \/ \d+$/);
-    expect(pageTextAfterForward).toMatch(/^2 \//);
+    expect(pageTextAfterForward).toMatch(/^Ch \d+\/\d+\s+\d+\/\d+$/);
+    // Page 2: "Ch 1/3  2/N"
+    expect(pageTextAfterForward).toMatch(/\s+2\/\d+$/);
 
     // RENDERING PROOF: after forward, transform shifts by exactly viewport width
     const transformPx = await chapterContainer.evaluate(el => {
@@ -223,7 +224,7 @@ test.describe('EPUB Reader E2E', () => {
 
     // Should be back at page 1
     const pageTextAfterPrev = await pageInfo.textContent();
-    expect(pageTextAfterPrev).toMatch(/^1 \//);
+    expect(pageTextAfterPrev).toMatch(/\s+1\/\d+$/);
 
     // --- Test next button navigation ---
     await nextBtn.click();
@@ -232,10 +233,10 @@ test.describe('EPUB Reader E2E', () => {
 
     // Should be at page 2
     const pageTextAfterNext = await pageInfo.textContent();
-    expect(pageTextAfterNext).toMatch(/^2 \//);
+    expect(pageTextAfterNext).toMatch(/\s+2\/\d+$/);
 
-    // Determine total pages — wider viewports may have fewer pages
-    const totalPages = parseInt(pageTextAfterNext.split(' / ')[1]);
+    // Determine total pages — extract from "Ch X/Y  N/M" format
+    const totalPages = parseInt(pageTextAfterNext.match(/\s+\d+\/(\d+)$/)[1]);
 
     // Click right zone again only if more pages exist in this chapter.
     // At wide viewports (2 pages), clicking Next would cross to chapter 2.
@@ -260,7 +261,7 @@ test.describe('EPUB Reader E2E', () => {
 
     // Verify page indicator shows page 2 (went back from 3, or stayed at 2)
     const pageTextAfterBack = await pageInfo.textContent();
-    expect(pageTextAfterBack).toMatch(/^2 \//);
+    expect(pageTextAfterBack).toMatch(/\s+2\/\d+$/);
 
     // --- Keyboard navigation ---
     // Ensure the viewport has focus for keyboard events.
@@ -275,7 +276,7 @@ test.describe('EPUB Reader E2E', () => {
 
     // Should be at page 1
     const pageTextAfterArrowLeft = await pageInfo.textContent();
-    expect(pageTextAfterArrowLeft).toMatch(/^1 \//);
+    expect(pageTextAfterArrowLeft).toMatch(/\s+1\/\d+$/);
 
     await page.keyboard.press('ArrowRight');
     await page.waitForTimeout(500);
@@ -283,7 +284,7 @@ test.describe('EPUB Reader E2E', () => {
 
     // Should be at page 2
     const pageTextAfterArrowRight = await pageInfo.textContent();
-    expect(pageTextAfterArrowRight).toMatch(/^2 \//);
+    expect(pageTextAfterArrowRight).toMatch(/\s+2\/\d+$/);
 
     await page.keyboard.press('Space');
     await page.waitForTimeout(500);
@@ -377,12 +378,56 @@ test.describe('EPUB Reader E2E', () => {
     await expect(page.locator('.page-info')).toBeVisible();
 
     // Verify chapter content rendered (deflate-compressed chapter data).
-    // The first spine entry is a cover page with SVG — check child elements,
+    // The first spine entry is a cover page — check child elements,
     // not text content, to confirm the chapter was decompressed and rendered.
     const container = page.locator('.chapter-container').first();
     await expect(container).toBeVisible();
     const childCount = await container.evaluate(el => el.childElementCount);
     expect(childCount).toBeGreaterThan(0);
+
+    // Verify image rendering: the cover page should have an <img> element
+    // with a blob: URL src (set via ward_dom_stream_set_image_src)
+    const imgCount = await container.evaluate(el => {
+      const imgs = el.querySelectorAll('img');
+      return imgs.length;
+    });
+    expect(imgCount).toBeGreaterThan(0);
+
+    const imgSrc = await container.evaluate(el => {
+      const img = el.querySelector('img');
+      return img ? img.src : '';
+    });
+    expect(imgSrc).toMatch(/^blob:/);
+    await screenshot(page, 'conan-cover-image');
+
+    // Verify chapter progress format: "Ch X/Y  N/M"
+    const pageInfo = page.locator('.page-info');
+    const progressText = await pageInfo.textContent();
+    expect(progressText).toMatch(/^Ch \d+\/\d+\s+\d+\/\d+$/);
+
+    // --- Walk 50 pages through the book ---
+    // Tests sustained rendering across chapter boundaries with images,
+    // deflate-compressed chapters, and page measurement.
+    const nextBtn = page.locator('.next-btn');
+    for (let i = 0; i < 50; i++) {
+      await nextBtn.click();
+      // Small delay to let async chapter loads complete
+      await page.waitForTimeout(200);
+      // Wait for content to be present after potential chapter transition
+      await page.waitForFunction(() => {
+        const el = document.querySelector('.chapter-container');
+        return el && el.childElementCount > 0;
+      }, { timeout: 10000 });
+    }
+    await screenshot(page, 'conan-after-50-pages');
+
+    // Verify page info still shows valid format after 50 clicks
+    const pageInfoAfter50 = await pageInfo.textContent();
+    expect(pageInfoAfter50).toMatch(/^Ch \d+\/\d+\s+\d+\/\d+$/);
+
+    // Should have advanced past chapter 1
+    const chapterNum = parseInt(pageInfoAfter50.match(/^Ch (\d+)/)[1]);
+    expect(chapterNum).toBeGreaterThan(1);
 
     // Navigate back via back button
     const backBtn = page.locator('.back-btn');
@@ -429,7 +474,7 @@ test.describe('EPUB Reader E2E', () => {
     // Should be at page 1 of chapter 1 (only 1 page with 1 paragraph)
     const pageInfo = page.locator('.page-info');
     const initialText = await pageInfo.textContent();
-    expect(initialText).toMatch(/^1 \//);
+    expect(initialText).toMatch(/^Ch 1\//);
 
     // Get initial chapter content
     const container = page.locator('.chapter-container').first();
@@ -447,9 +492,9 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForTimeout(500);
     await screenshot(page, 'chapnav-02-chapter2');
 
-    // Page info should reset to "1 / ..." for the new chapter
+    // Page info should show chapter 2: "Ch 2/..."
     const ch2Text = await pageInfo.textContent();
-    expect(ch2Text).toMatch(/^1 \//);
+    expect(ch2Text).toMatch(/^Ch 2\//);
 
     // Verify content actually changed (different chapter heading)
     const newContent = await container.textContent();
@@ -467,9 +512,9 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForTimeout(500);
     await screenshot(page, 'chapnav-03-back-to-chapter1');
 
-    // Should be at page 1 of chapter 1 again
+    // Should be at chapter 1 again
     const backText = await pageInfo.textContent();
-    expect(backText).toMatch(/^1 \//);
+    expect(backText).toMatch(/^Ch 1\//);
 
     // Navigate back to library
     const backBtn = page.locator('.back-btn');
@@ -528,5 +573,172 @@ test.describe('EPUB Reader E2E', () => {
     expect(authorText).toContain('Reload Author');
 
     await screenshot(page, 'persist-03-verified');
+  });
+
+  test('reading position is restored when re-entering book', async ({ page }) => {
+    // Import a multi-chapter book, navigate to chapter 2, go back to library,
+    // re-enter the book, and verify it resumes at chapter 2.
+    const epubBuffer = createEpub({
+      title: 'Position Restore Test',
+      author: 'Resume Bot',
+      chapters: 3,
+      paragraphsPerChapter: 1,  // Short chapters — 1 page each
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'position-restore.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open book
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    // Should start at chapter 1
+    const pageInfo = page.locator('.page-info');
+    const initialText = await pageInfo.textContent();
+    expect(initialText).toMatch(/^Ch 1\//);
+
+    // Navigate to chapter 2
+    const nextBtn = page.locator('.next-btn');
+    const container = page.locator('.chapter-container').first();
+    const ch1Content = await container.textContent();
+    await nextBtn.click();
+    await page.waitForFunction((prev) => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.textContent !== prev && el.childElementCount > 0;
+    }, ch1Content, { timeout: 15000 });
+    await page.waitForTimeout(500);
+
+    // Verify we're at chapter 2
+    const ch2Text = await pageInfo.textContent();
+    expect(ch2Text).toMatch(/^Ch 2\//);
+    await screenshot(page, 'position-01-at-chapter2');
+
+    // Go back to library
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+
+    // Verify position is saved (should show "Ch 2" in library)
+    const posText = await page.locator('.book-position').textContent();
+    expect(posText).toMatch(/Ch 2/);
+    await screenshot(page, 'position-02-library-saved');
+
+    // Re-enter the book
+    const readBtn2 = page.locator('.read-btn');
+    await readBtn2.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    // Verify position restored: should be at chapter 2
+    const restoredText = await pageInfo.textContent();
+    expect(restoredText).toMatch(/^Ch 2\//);
+    await screenshot(page, 'position-03-restored');
+
+    // Navigate back
+    const backBtn2 = page.locator('.back-btn');
+    await backBtn2.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+  });
+
+  test('chapter progress shows Ch X/Y format', async ({ page }) => {
+    // Verify the page info displays chapter progress in "Ch X/Y  N/M" format
+    const epubBuffer = createEpub({
+      title: 'Progress Format Test',
+      author: 'Format Bot',
+      chapters: 5,
+      paragraphsPerChapter: 3,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'progress-format.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open book
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    // Verify "Ch 1/5  1/N" format
+    const pageInfo = page.locator('.page-info');
+    const text = await pageInfo.textContent();
+    // Format: "Ch X/Y  N/M" where Y is total chapters (5)
+    expect(text).toMatch(/^Ch 1\/5\s+1\/\d+$/);
+    await screenshot(page, 'progress-format');
+
+    // Navigate back
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+  });
+
+  test('create-epub with embedded image', async ({ page }) => {
+    // Test that our EPUB creator can include images and they render
+    const epubBuffer = createEpub({
+      title: 'Image Test Book',
+      author: 'Image Bot',
+      chapters: 1,
+      paragraphsPerChapter: 3,
+      coverImage: true,  // Include a tiny PNG in chapter 1
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'image-test.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open book
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    // Verify image element exists with blob: src
+    const imgInfo = await page.evaluate(() => {
+      const img = document.querySelector('.chapter-container img');
+      return img ? { src: img.src, hasBlob: img.src.startsWith('blob:') } : null;
+    });
+    expect(imgInfo).not.toBeNull();
+    expect(imgInfo.hasBlob).toBe(true);
+    await screenshot(page, 'embedded-image');
+
+    // Navigate back
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
   });
 });

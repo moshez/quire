@@ -202,3 +202,5 @@ fun reader_set_total_pages(n: int): void
 fun reader_set_page_info_id(id: int): void
 fun reader_set_nav_id(id: int): void
 fun reader_get_nav_id(): int
+fun reader_set_resume_page(page: int): void
+fun reader_get_resume_page(): int

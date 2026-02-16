@@ -169,6 +169,9 @@ dataprop SKIPPABLE_TAG(idx: int) =
 
 #define TAG_IDX_IMG 13
 
+(* Attribute index for src — matches _attr_names table *)
+#define ATTR_IDX_SRC 6
+
 (* ========== Tag/Attribute lookup from raw bytes ========== *)
 
 (* Look up a tag name from raw bytes. Returns safe_text index or -1.
@@ -245,4 +248,17 @@ fun render_tree
   {l:agz}{lb:agz}{n:pos}
   (stream: ward_dom_stream(l), parent_id: int,
    tree: !ward_arr(byte, lb, n), tree_len: int n)
+  : ward_dom_stream(l)
+
+(* Walk parsed HTML tree with inline image loading from EPUB ZIP.
+ * Like render_tree but handles <img> tags: resolves src relative to
+ * chapter_dir, reads stored image data from ZIP, sets image via
+ * ward_dom_stream_set_image_src with detected MIME type.
+ * Deflated or missing images degrade gracefully (element without src). *)
+fun render_tree_with_images
+  {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
+  (stream: ward_dom_stream(l), parent_id: int,
+   tree: !ward_arr(byte, lb, n), tree_len: int n,
+   file_handle: int,
+   chapter_dir: !ward_arr(byte, ld, nd), chapter_dir_len: int nd)
   : ward_dom_stream(l)

@@ -248,3 +248,15 @@ implement reader_get_nav_id() = let
   val v = app_get_rdr_nav_id(st)
   val () = app_state_store(st)
 in v end
+
+implement reader_set_resume_page(page) = let
+  val st = app_state_load()
+  val () = app_set_rdr_resume_page(st, page)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_resume_page() = let
+  val st = app_state_load()
+  val v = app_get_rdr_resume_page(st)
+  val () = app_state_store(st)
+in v end

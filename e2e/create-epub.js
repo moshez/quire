@@ -144,11 +144,18 @@ function loremParagraph(seed) {
  * @param {number} opts.paragraphsPerChapter - Paragraphs per chapter (default 12)
  * @returns {Buffer} EPUB file contents
  */
+// Minimal 1x1 red PNG (68 bytes) for testing image rendering
+const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8D4HwAFBQIAX8jx0gAAAABJRU5ErkJggg==',
+  'base64'
+);
+
 export function createEpub(opts = {}) {
   const title = opts.title || 'Test Book';
   const author = opts.author || 'Test Author';
   const numChapters = opts.chapters || 3;
   const parasPerChapter = opts.paragraphsPerChapter || 12;
+  const coverImage = opts.coverImage || false;
 
   // mimetype must be first entry, stored uncompressed
   const mimetype = 'application/epub+zip';
@@ -171,7 +178,11 @@ export function createEpub(opts = {}) {
     spineItems += `    <itemref idref="ch${i}"/>\n`;
 
     // Generate chapter XHTML with enough text to fill multiple pages
-    let body = `<h1>Chapter ${i}</h1>\n`;
+    let body = '';
+    if (coverImage && i === 1) {
+      body += `<img src="images/cover.png" alt="Cover" />\n`;
+    }
+    body += `<h1>Chapter ${i}</h1>\n`;
     for (let p = 0; p < parasPerChapter; p++) {
       body += `      <p>${loremParagraph(i * 100 + p)}</p>\n`;
     }
@@ -185,6 +196,11 @@ export function createEpub(opts = {}) {
 </body>
 </html>`;
     chapters.push({ name: `OEBPS/chapter${i}.xhtml`, data: xhtml });
+  }
+
+  // Add cover image if requested
+  if (coverImage) {
+    manifestItems += `    <item id="cover-img" href="images/cover.png" media-type="image/png"/>\n`;
   }
 
   // Build TOC nav document
@@ -232,6 +248,11 @@ ${spineItems}  </spine>
     { name: 'OEBPS/nav.xhtml', data: navXhtml },
     ...chapters,
   ];
+
+  // Add cover image as stored (uncompressed) entry for synchronous reading
+  if (coverImage) {
+    zipEntries.push({ name: 'OEBPS/images/cover.png', data: TINY_PNG, store: true });
+  }
 
   return createZip(zipEntries);
 }

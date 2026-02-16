@@ -9,7 +9,9 @@
 #include "share/atspre_staload.hats"
 staload "./../vendor/ward/lib/memory.sats"
 staload "./../vendor/ward/lib/dom.sats"
+staload "./../vendor/ward/lib/file.sats"
 staload "./dom.sats"
+staload "./zip.sats"
 staload "./app_state.sats"
 staload "./arith.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
@@ -1163,6 +1165,498 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
     end
 
   val @(st, _) = loop(stream, tree, 0, tree_len, parent_id, tree_len, 0)
+in
+  st
+end
+
+(* ========== Image-aware tree renderer ========== *)
+
+(* Build a ward_safe_content_text for a MIME type string.
+ * All MIME chars (a-z, /, +) are SAFE_CONTENT_CHAR.
+ * Returns the content text and its length. *)
+fn build_mime_jpeg()
+  : [l:agz] @(ward_safe_content_text(l, 10), int 10) = let
+  (* "image/jpeg" = 10 chars *)
+  val b = ward_content_text_build(10)
+  val b = ward_content_text_putc(b, 0, char2int1('i'))
+  val b = ward_content_text_putc(b, 1, char2int1('m'))
+  val b = ward_content_text_putc(b, 2, char2int1('a'))
+  val b = ward_content_text_putc(b, 3, char2int1('g'))
+  val b = ward_content_text_putc(b, 4, char2int1('e'))
+  val b = ward_content_text_putc(b, 5, 47) (* '/' *)
+  val b = ward_content_text_putc(b, 6, char2int1('j'))
+  val b = ward_content_text_putc(b, 7, char2int1('p'))
+  val b = ward_content_text_putc(b, 8, char2int1('e'))
+  val b = ward_content_text_putc(b, 9, char2int1('g'))
+in @(ward_content_text_done(b), 10) end
+
+fn build_mime_png()
+  : [l:agz] @(ward_safe_content_text(l, 9), int 9) = let
+  (* "image/png" = 9 chars *)
+  val b = ward_content_text_build(9)
+  val b = ward_content_text_putc(b, 0, char2int1('i'))
+  val b = ward_content_text_putc(b, 1, char2int1('m'))
+  val b = ward_content_text_putc(b, 2, char2int1('a'))
+  val b = ward_content_text_putc(b, 3, char2int1('g'))
+  val b = ward_content_text_putc(b, 4, char2int1('e'))
+  val b = ward_content_text_putc(b, 5, 47) (* '/' *)
+  val b = ward_content_text_putc(b, 6, char2int1('p'))
+  val b = ward_content_text_putc(b, 7, char2int1('n'))
+  val b = ward_content_text_putc(b, 8, char2int1('g'))
+in @(ward_content_text_done(b), 9) end
+
+fn build_mime_gif()
+  : [l:agz] @(ward_safe_content_text(l, 9), int 9) = let
+  (* "image/gif" = 9 chars *)
+  val b = ward_content_text_build(9)
+  val b = ward_content_text_putc(b, 0, char2int1('i'))
+  val b = ward_content_text_putc(b, 1, char2int1('m'))
+  val b = ward_content_text_putc(b, 2, char2int1('a'))
+  val b = ward_content_text_putc(b, 3, char2int1('g'))
+  val b = ward_content_text_putc(b, 4, char2int1('e'))
+  val b = ward_content_text_putc(b, 5, 47) (* '/' *)
+  val b = ward_content_text_putc(b, 6, char2int1('g'))
+  val b = ward_content_text_putc(b, 7, char2int1('i'))
+  val b = ward_content_text_putc(b, 8, char2int1('f'))
+in @(ward_content_text_done(b), 9) end
+
+fn build_mime_svg()
+  : [l:agz] @(ward_safe_content_text(l, 13), int 13) = let
+  (* "image/svg+xml" = 13 chars *)
+  val b = ward_content_text_build(13)
+  val b = ward_content_text_putc(b, 0, char2int1('i'))
+  val b = ward_content_text_putc(b, 1, char2int1('m'))
+  val b = ward_content_text_putc(b, 2, char2int1('a'))
+  val b = ward_content_text_putc(b, 3, char2int1('g'))
+  val b = ward_content_text_putc(b, 4, char2int1('e'))
+  val b = ward_content_text_putc(b, 5, 47) (* '/' *)
+  val b = ward_content_text_putc(b, 6, char2int1('s'))
+  val b = ward_content_text_putc(b, 7, char2int1('v'))
+  val b = ward_content_text_putc(b, 8, char2int1('g'))
+  val b = ward_content_text_putc(b, 9, 43) (* '+' *)
+  val b = ward_content_text_putc(b, 10, char2int1('x'))
+  val b = ward_content_text_putc(b, 11, char2int1('m'))
+  val b = ward_content_text_putc(b, 12, char2int1('l'))
+in @(ward_content_text_done(b), 13) end
+
+(* Resolve image src path relative to chapter directory.
+ * Writes resolved path to the string buffer (via _app_sbuf_set_u8).
+ * Handles "../" by stripping one directory level from chapter_dir.
+ * Returns the resolved path length in the sbuf. *)
+fn resolve_img_src {lb:agz}{n:pos}{ld:agz}{nd:pos}
+  (tree: !ward_arr(byte, lb, n), tlen: int n,
+   src_off: int, src_len: int,
+   chapter_dir: !ward_arr(byte, ld, nd), dir_len: int nd): int = let
+  (* Check for "../" prefix *)
+  val has_dotdot =
+    if gte_int_int(src_len, 3) then
+      if ward_arr_byte(tree, src_off, tlen) = 46 then     (* '.' *)
+        if ward_arr_byte(tree, src_off + 1, tlen) = 46 then (* '.' *)
+          if ward_arr_byte(tree, src_off + 2, tlen) = 47 then (* '/' *)
+            1
+          else 0
+        else 0
+      else 0
+    else 0
+
+  val dl = g0ofg1(dir_len)
+in
+  if gt_int_int(has_dotdot, 0) then let
+    (* Strip one directory level from chapter_dir.
+     * e.g., "OEBPS/Text/" + "../Images/cover.jpg" → "OEBPS/Images/cover.jpg"
+     * Find second-to-last '/' in chapter_dir (which ends with '/') *)
+    fun find_parent_slash {ld:agz}{nd:pos}
+      (d: !ward_arr(byte, ld, nd), dlen: int nd, pos: int): int =
+      if pos < 0 then 0
+      else if ward_arr_byte(d, pos, dlen) = 47 (* '/' *)
+      then pos + 1
+      else find_parent_slash(d, dlen, pos - 1)
+    val parent_len = find_parent_slash(chapter_dir, dir_len, dl - 2)
+    (* Copy parent dir to sbuf *)
+    fun copy_dir {ld:agz}{nd:pos}
+      (d: !ward_arr(byte, ld, nd), dlen: int nd, i: int, count: int): void =
+      if i < count then let
+        val b = ward_arr_byte(d, i, dlen)
+        val _ = _app_sbuf_set_u8(i, b)
+      in copy_dir(d, dlen, i + 1, count) end
+    val () = copy_dir(chapter_dir, dir_len, 0, parent_len)
+    (* Copy src after "../" to sbuf[parent_len..] *)
+    val skip = 3 (* skip "../" *)
+    val remain = src_len - skip
+    fun copy_src {lb:agz}{n:pos}
+      (tree: !ward_arr(byte, lb, n), tlen: int n,
+       src_start: int, i: int, count: int, dst: int): void =
+      if i < count then let
+        val b = ward_arr_byte(tree, src_start + i, tlen)
+        val _ = _app_sbuf_set_u8(dst + i, b)
+      in copy_src(tree, tlen, src_start, i + 1, count, dst) end
+    val () = copy_src(tree, tlen, src_off + skip, 0, remain, parent_len)
+  in parent_len + remain end
+  else let
+    (* No "../" — prepend chapter_dir *)
+    fun copy_dir2 {ld:agz}{nd:pos}
+      (d: !ward_arr(byte, ld, nd), dlen: int nd, i: int, count: int): void =
+      if i < count then let
+        val b = ward_arr_byte(d, i, dlen)
+        val _ = _app_sbuf_set_u8(i, b)
+      in copy_dir2(d, dlen, i + 1, count) end
+    val () = copy_dir2(chapter_dir, dir_len, 0, dl)
+    fun copy_src2 {lb:agz}{n:pos}
+      (tree: !ward_arr(byte, lb, n), tlen: int n,
+       src_start: int, i: int, count: int, dst: int): void =
+      if i < count then let
+        val b = ward_arr_byte(tree, src_start + i, tlen)
+        val _ = _app_sbuf_set_u8(dst + i, b)
+      in copy_src2(tree, tlen, src_start, i + 1, count, dst) end
+    val () = copy_src2(tree, tlen, src_off, 0, src_len, dl)
+  in dl + src_len end
+end
+
+(* Try to load an image from the ZIP and set it on a DOM node.
+ * Resolves path, finds ZIP entry, reads stored data,
+ * detects MIME, calls ward_dom_stream_set_image_src.
+ * Returns the stream (possibly unchanged if image not loadable). *)
+fn try_set_image {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
+  (st: ward_dom_stream(l), nid: int,
+   tree: !ward_arr(byte, lb, n), tlen: int n,
+   src_off: int, src_len: int,
+   file_handle: int,
+   chapter_dir: !ward_arr(byte, ld, nd), dir_len: int nd)
+  : ward_dom_stream(l) = let
+  val resolved_len = resolve_img_src(tree, tlen, src_off, src_len,
+    chapter_dir, dir_len)
+  val zip_idx = zip_find_entry(resolved_len)
+in
+  if gte_int_int(zip_idx, 0) then let
+    var entry: zip_entry
+    val found = zip_get_entry(zip_idx, entry)
+  in
+    if gt_int_int(found, 0) then
+      if eq_int_int(entry.compression, 0) then let
+        (* Stored — can read synchronously *)
+        val data_off = zip_get_data_offset(zip_idx)
+      in
+        if gt_int_int(data_off, 0) then let
+          val sz = entry.uncompressed_size
+          val sz1 = (if gt_int_int(sz, 0) then sz else 1): int
+          val sz_pos = _checked_pos(sz1)
+          val arr = ward_arr_alloc<byte>(sz_pos)
+          val _rd = ward_file_read(file_handle, data_off, arr, sz_pos)
+          val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+
+          (* Detect MIME from last 3 bytes of resolved path.
+           * resolved_len > 3 guaranteed by any valid image filename. *)
+          val b2 = _app_sbuf_get_u8(resolved_len - 1) (* last char *)
+          val b1 = _app_sbuf_get_u8(resolved_len - 2)
+          val b0 = _app_sbuf_get_u8(resolved_len - 3)
+        in
+          (* jpg: ends in "jpg" or "peg" (from .jpeg) *)
+          if b0 = 106 then let (* 'j' *)
+            val @(mime, ml) = build_mime_jpeg()
+            val st = ward_dom_stream_set_image_src(st, nid, borrow, sz_pos, mime, ml)
+            val () = ward_safe_content_text_free(mime)
+            val () = ward_arr_drop<byte>(frozen, borrow)
+            val arr = ward_arr_thaw<byte>(frozen)
+            val () = ward_arr_free<byte>(arr)
+          in st end
+          else if b0 = 112 then let (* 'p' — "peg" or "png" *)
+            (* Distinguish: b1='n' → png, b1='e' → jpeg *)
+          in
+            if b1 = 110 then let (* 'n' → png *)
+              val @(mime, ml) = build_mime_png()
+              val st = ward_dom_stream_set_image_src(st, nid, borrow, sz_pos, mime, ml)
+              val () = ward_safe_content_text_free(mime)
+              val () = ward_arr_drop<byte>(frozen, borrow)
+              val arr = ward_arr_thaw<byte>(frozen)
+              val () = ward_arr_free<byte>(arr)
+            in st end
+            else let (* assume jpeg: "peg" *)
+              val @(mime, ml) = build_mime_jpeg()
+              val st = ward_dom_stream_set_image_src(st, nid, borrow, sz_pos, mime, ml)
+              val () = ward_safe_content_text_free(mime)
+              val () = ward_arr_drop<byte>(frozen, borrow)
+              val arr = ward_arr_thaw<byte>(frozen)
+              val () = ward_arr_free<byte>(arr)
+            in st end
+          end
+          else if b0 = 103 then let (* 'g' → gif *)
+            val @(mime, ml) = build_mime_gif()
+            val st = ward_dom_stream_set_image_src(st, nid, borrow, sz_pos, mime, ml)
+            val () = ward_safe_content_text_free(mime)
+            val () = ward_arr_drop<byte>(frozen, borrow)
+            val arr = ward_arr_thaw<byte>(frozen)
+            val () = ward_arr_free<byte>(arr)
+          in st end
+          else if b0 = 118 then let (* 'v' → svg *)
+            val @(mime, ml) = build_mime_svg()
+            val st = ward_dom_stream_set_image_src(st, nid, borrow, sz_pos, mime, ml)
+            val () = ward_safe_content_text_free(mime)
+            val () = ward_arr_drop<byte>(frozen, borrow)
+            val arr = ward_arr_thaw<byte>(frozen)
+            val () = ward_arr_free<byte>(arr)
+          in st end
+          else let (* default: png *)
+            val @(mime, ml) = build_mime_png()
+            val st = ward_dom_stream_set_image_src(st, nid, borrow, sz_pos, mime, ml)
+            val () = ward_safe_content_text_free(mime)
+            val () = ward_arr_drop<byte>(frozen, borrow)
+            val arr = ward_arr_thaw<byte>(frozen)
+            val () = ward_arr_free<byte>(arr)
+          in st end
+        end
+        else st (* bad data offset — skip *)
+      end
+      else st (* deflated image — skip for now *)
+    else st (* entry not readable *)
+  end
+  else st (* not found in ZIP *)
+end
+
+implement render_tree_with_images
+  {l}{lb}{n}{ld}{nd}
+  (stream, parent_id, tree, tree_len,
+   file_handle, chapter_dir, chapter_dir_len) = let
+
+  fun loop {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
+    (st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n),
+     pos: int, len: int, parent: int, tlen: int n,
+     has_child: int,
+     fh: int, cdir: !ward_arr(byte, ld, nd), cdlen: int nd)
+    : @(ward_dom_stream(l), int) =
+    if pos >= len then @(st, pos)
+    else let
+      val opc = ward_arr_byte(tree, pos, tlen)
+    in
+      if opc = 1 then let (* ELEMENT_OPEN *)
+        val tag_len = ward_arr_byte(tree, pos + 1, tlen)
+        val tag_idx = lookup_tag(tree, tlen, pos + 2, tag_len)
+        val attr_off = pos + 2 + tag_len
+        val attr_count = ward_arr_byte(tree, attr_off, tlen)
+        val after_attrs = skip_attrs_img(tree, attr_off + 1, attr_count, tlen)
+      in
+        if tag_idx >= 0 then
+          if tag_idx = TAG_IDX_IMG then let
+            (* Create <img> element and handle src attribute *)
+            val @(tag_st, tag_st_len) = get_tag_by_index(tag_idx)
+            val nid = dom_next_id()
+            val st = ward_dom_stream_create_element(st, nid, parent, tag_st, tag_st_len)
+            (* Emit non-src attributes and collect src info *)
+            val @(st, src_off, src_len) = emit_attrs_img(
+              st, nid, tree, attr_off + 1, attr_count, tlen, 0, 0)
+          in
+            if gt_int_int(src_len, 0) then let
+              val st = try_set_image(st, nid, tree, tlen,
+                src_off, src_len, fh, cdir, cdlen)
+              (* <img> is void — skip to ELEMENT_CLOSE *)
+              val end_pos = skip_element_img(tree, after_attrs, len, tlen)
+            in
+              if end_pos < len then let
+                val close_opc = ward_arr_byte(tree, end_pos, tlen)
+              in
+                if close_opc = 2 then
+                  loop(st, tree, end_pos + 1, len, parent, tlen, 1, fh, cdir, cdlen)
+                else
+                  loop(st, tree, end_pos, len, parent, tlen, 1, fh, cdir, cdlen)
+              end
+              else @(st, end_pos)
+            end
+            else let
+              (* No src found — element exists without image *)
+              val end_pos = skip_element_img(tree, after_attrs, len, tlen)
+            in
+              if end_pos < len then let
+                val close_opc = ward_arr_byte(tree, end_pos, tlen)
+              in
+                if close_opc = 2 then
+                  loop(st, tree, end_pos + 1, len, parent, tlen, 1, fh, cdir, cdlen)
+                else
+                  loop(st, tree, end_pos, len, parent, tlen, 1, fh, cdir, cdlen)
+              end
+              else @(st, end_pos)
+            end
+          end
+          else let
+          val @(tag_st, tag_st_len) = get_tag_by_index(tag_idx)
+          val nid = dom_next_id()
+          val st = ward_dom_stream_create_element(st, nid, parent, tag_st, tag_st_len)
+          val st = emit_attrs_noimg(st, nid, tree, attr_off + 1, attr_count, tlen)
+          val @(st, child_end) = loop(st, tree, after_attrs, len, nid, tlen, 0, fh, cdir, cdlen)
+        in
+          (* SIBLING_CONTINUATION *)
+          if child_end < len then let
+            val close_opc = ward_arr_byte(tree, child_end, tlen)
+          in
+            if close_opc = 2 then
+              loop(st, tree, child_end + 1, len, parent, tlen, 1, fh, cdir, cdlen)
+            else
+              loop(st, tree, child_end, len, parent, tlen, 1, fh, cdir, cdlen)
+          end
+          else @(st, child_end)
+        end
+        else let
+          val end_pos = skip_element_img(tree, after_attrs, len, tlen)
+        in
+          loop(st, tree, end_pos, len, parent, tlen, has_child, fh, cdir, cdlen)
+        end
+      end
+      else if opc = 3 then let (* TEXT *)
+        val text_len = rd_u16(tree, pos + 1, tlen)
+        val text_start = pos + 3
+        val tl = g1ofg0(text_len)
+      in
+        if tl > 0 then
+          if is_whitespace_only(tree, text_start, text_len, tlen) then
+            loop(st, tree, text_start + text_len, len, parent, tlen, has_child, fh, cdir, cdlen)
+          else if tl < 65536 then
+            if has_child > 0 then let
+              val span_id = dom_next_id()
+              val st = ward_dom_stream_create_element(
+                st, span_id, parent, tag_span(), 4)
+              val text_arr = ward_arr_alloc<byte>(tl)
+              val () = copy_arr_bytes(text_arr, tl, tree, tlen, text_start, text_len)
+              val @(frozen, borrow) = ward_arr_freeze<byte>(text_arr)
+              val st = ward_dom_stream_set_text(st, span_id, borrow, tl)
+              val () = ward_arr_drop<byte>(frozen, borrow)
+              val text_arr = ward_arr_thaw<byte>(frozen)
+              val () = ward_arr_free<byte>(text_arr)
+            in
+              loop(st, tree, text_start + text_len, len, parent, tlen, 1, fh, cdir, cdlen)
+            end
+            else let
+              val text_arr = ward_arr_alloc<byte>(tl)
+              val () = copy_arr_bytes(text_arr, tl, tree, tlen, text_start, text_len)
+              val @(frozen, borrow) = ward_arr_freeze<byte>(text_arr)
+              val st = ward_dom_stream_set_text(st, parent, borrow, tl)
+              val () = ward_arr_drop<byte>(frozen, borrow)
+              val text_arr = ward_arr_thaw<byte>(frozen)
+              val () = ward_arr_free<byte>(text_arr)
+            in
+              loop(st, tree, text_start + text_len, len, parent, tlen, 1, fh, cdir, cdlen)
+            end
+          else
+            loop(st, tree, text_start + text_len, len, parent, tlen, has_child, fh, cdir, cdlen)
+        else loop(st, tree, text_start + text_len, len, parent, tlen, has_child, fh, cdir, cdlen)
+      end
+      else if opc = 2 then (* ELEMENT_CLOSE *)
+        @(st, pos)
+      else
+        loop(st, tree, pos + 1, len, parent, tlen, has_child, fh, cdir, cdlen)
+    end
+  and skip_attrs_img {lb:agz}{n:pos}
+    (tree: !ward_arr(byte, lb, n), pos: int, count: int, tlen: int n): int =
+    if count <= 0 then pos
+    else let
+      val name_len = ward_arr_byte(tree, pos, tlen)
+      val val_len = rd_u16(tree, pos + 1 + name_len, tlen)
+    in
+      skip_attrs_img(tree, pos + 1 + name_len + 2 + val_len, count - 1, tlen)
+    end
+  and emit_attrs_noimg {l:agz}{lb:agz}{n:pos}
+    (st: ward_dom_stream(l), nid: int, tree: !ward_arr(byte, lb, n),
+     pos: int, count: int, tlen: int n)
+    : ward_dom_stream(l) =
+    if count <= 0 then st
+    else let
+      val name_len = ward_arr_byte(tree, pos, tlen)
+      val attr_idx = lookup_attr(tree, tlen, pos + 1, name_len)
+      val val_off = pos + 1 + name_len
+      val val_len = rd_u16(tree, val_off, tlen)
+      val val_start = val_off + 2
+    in
+      if attr_idx >= 0 then let
+        val @(attr_st, attr_st_len) = get_attr_by_index(attr_idx)
+        val vl = g1ofg0(val_len)
+      in
+        if vl > 0 then
+          if vl < 65536 then
+          if attr_st_len + vl + 8 <= 262144 then let
+            val val_arr = ward_arr_alloc<byte>(vl)
+            val () = copy_arr_bytes(val_arr, vl, tree, tlen, val_start, val_len)
+            val @(frozen, borrow) = ward_arr_freeze<byte>(val_arr)
+            val st = ward_dom_stream_set_attr(st, nid, attr_st, attr_st_len, borrow, vl)
+            val () = ward_arr_drop<byte>(frozen, borrow)
+            val val_arr = ward_arr_thaw<byte>(frozen)
+            val () = ward_arr_free<byte>(val_arr)
+          in
+            emit_attrs_noimg(st, nid, tree, val_start + val_len, count - 1, tlen)
+          end
+          else emit_attrs_noimg(st, nid, tree, val_start + val_len, count - 1, tlen)
+          else emit_attrs_noimg(st, nid, tree, val_start + val_len, count - 1, tlen)
+        else emit_attrs_noimg(st, nid, tree, val_start, count - 1, tlen)
+      end
+      else emit_attrs_noimg(st, nid, tree, val_start + val_len, count - 1, tlen)
+    end
+  and emit_attrs_img {l:agz}{lb:agz}{n:pos}
+    (st: ward_dom_stream(l), nid: int, tree: !ward_arr(byte, lb, n),
+     pos: int, count: int, tlen: int n,
+     found_src_off: int, found_src_len: int)
+    : @(ward_dom_stream(l), int, int) =
+    if count <= 0 then @(st, found_src_off, found_src_len)
+    else let
+      val name_len = ward_arr_byte(tree, pos, tlen)
+      val attr_idx = lookup_attr(tree, tlen, pos + 1, name_len)
+      val val_off = pos + 1 + name_len
+      val val_len = rd_u16(tree, val_off, tlen)
+      val val_start = val_off + 2
+    in
+      if attr_idx = ATTR_IDX_SRC then
+        (* Save src offset/len but don't emit as normal attribute *)
+        emit_attrs_img(st, nid, tree, val_start + val_len, count - 1, tlen,
+          val_start, val_len)
+      else if attr_idx >= 0 then let
+        val @(attr_st, attr_st_len) = get_attr_by_index(attr_idx)
+        val vl = g1ofg0(val_len)
+      in
+        if vl > 0 then
+          if vl < 65536 then
+          if attr_st_len + vl + 8 <= 262144 then let
+            val val_arr = ward_arr_alloc<byte>(vl)
+            val () = copy_arr_bytes(val_arr, vl, tree, tlen, val_start, val_len)
+            val @(frozen, borrow) = ward_arr_freeze<byte>(val_arr)
+            val st = ward_dom_stream_set_attr(st, nid, attr_st, attr_st_len, borrow, vl)
+            val () = ward_arr_drop<byte>(frozen, borrow)
+            val val_arr = ward_arr_thaw<byte>(frozen)
+            val () = ward_arr_free<byte>(val_arr)
+          in
+            emit_attrs_img(st, nid, tree, val_start + val_len, count - 1, tlen,
+              found_src_off, found_src_len)
+          end
+          else emit_attrs_img(st, nid, tree, val_start + val_len, count - 1, tlen,
+            found_src_off, found_src_len)
+          else emit_attrs_img(st, nid, tree, val_start + val_len, count - 1, tlen,
+            found_src_off, found_src_len)
+        else emit_attrs_img(st, nid, tree, val_start, count - 1, tlen,
+          found_src_off, found_src_len)
+      end
+      else emit_attrs_img(st, nid, tree, val_start + val_len, count - 1, tlen,
+        found_src_off, found_src_len)
+    end
+  and skip_element_img {lb:agz}{n:pos}
+    (tree: !ward_arr(byte, lb, n), pos: int, len: int, tlen: int n): int =
+    if pos >= len then pos
+    else let
+      val opc = ward_arr_byte(tree, pos, tlen)
+    in
+      if opc = 2 then pos + 1
+      else if opc = 1 then let
+        val tag_len = ward_arr_byte(tree, pos + 1, tlen)
+        val attr_off = pos + 2 + tag_len
+        val attr_count = ward_arr_byte(tree, attr_off, tlen)
+        val after_attrs = skip_attrs_img(tree, attr_off + 1, attr_count, tlen)
+        val end_inner = skip_element_img(tree, after_attrs, len, tlen)
+      in
+        skip_element_img(tree, end_inner, len, tlen)
+      end
+      else if opc = 3 then let
+        val text_len = rd_u16(tree, pos + 1, tlen)
+      in
+        skip_element_img(tree, pos + 3 + text_len, len, tlen)
+      end
+      else skip_element_img(tree, pos + 1, len, tlen)
+    end
+
+  val @(st, _) = loop(stream, tree, 0, tree_len, parent_id, tree_len, 0,
+    file_handle, chapter_dir, chapter_dir_len)
 in
   st
 end
