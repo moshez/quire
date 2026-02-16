@@ -1341,14 +1341,10 @@ fn try_set_image {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
    file_handle: int,
    chapter_dir: !ward_arr(byte, ld, nd), dir_len: int nd)
   : ward_dom_stream(l) = let
-  (* DIAGNOSTIC 10: Skip ALL zip operations. Just call malloc(4097)
-   * unconditionally when any image tag is encountered.
-   * If this crashes → malloc(4097) from deep WASM is the trigger,
-   *   zip operations are irrelevant.
-   * If this passes → zip operations (resolve_img_src, zip_find_entry,
-   *   zip_get_entry, zip_get_data_offset) corrupt memory before malloc. *)
-  val p = $extfcall(ptr, "malloc", 4097)
-  (* leak p — diagnostic only *)
+  (* DIAGNOSTIC 12: try_set_image is a complete no-op.
+   * malloc(4097) is called in quire.dats AFTER rendering completes.
+   * If crash → something about the WASM call chain triggers it.
+   * If no crash → the render loop itself is the trigger. *)
 in
   st
 end
