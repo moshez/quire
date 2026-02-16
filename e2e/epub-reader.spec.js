@@ -999,6 +999,63 @@ test.describe('EPUB Reader E2E', () => {
     });
   }
 
+  // DIAGNOSTIC 8: call malloc(4097) directly from JS after app init.
+  // Tests whether the crash is in the WASM malloc function itself
+  // or in the code path that CALLS malloc within WASM.
+  // If this PASSES: the WASM malloc works fine when called from JS,
+  //   crash is in the WASM-to-WASM call chain.
+  // If this CRASHES: the WASM binary/memory state is broken.
+  test('DIAGNOSTIC: direct malloc(4097) from JS after app init', async ({ page }) => {
+    // Intercept WebAssembly.instantiate to capture exports
+    await page.addInitScript(() => {
+      const origInstantiate = WebAssembly.instantiate;
+      WebAssembly.instantiate = async function(...args) {
+        const result = await origInstantiate.apply(this, args);
+        window.__wasmExports = result.instance.exports;
+        return result;
+      };
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Call malloc directly from JS
+    const result = await page.evaluate(() => {
+      const exports = window.__wasmExports;
+      if (!exports) return 'NO_EXPORTS';
+      if (!exports.malloc) return 'NO_MALLOC';
+
+      const results = [];
+
+      // Test 1: small alloc (should always work)
+      const p1 = exports.malloc(32);
+      results.push(`small(32)=ptr:${p1}`);
+
+      // Test 2: bucket boundary (4096)
+      const p2 = exports.malloc(4096);
+      results.push(`bucket(4096)=ptr:${p2}`);
+
+      // Test 3: oversized (4097) — this is the crash boundary
+      const p3 = exports.malloc(4097);
+      results.push(`oversized(4097)=ptr:${p3}`);
+
+      // Test 4: large oversized (18538 — illus.jpg size)
+      const p4 = exports.malloc(18538);
+      results.push(`large(18538)=ptr:${p4}`);
+
+      // Verify we can write to the allocations
+      const mem = new Uint8Array(exports.memory.buffer);
+      mem[p3] = 42;
+      mem[p3 + 4096] = 43;
+      results.push('write_ok');
+
+      return results.join('; ');
+    });
+
+    console.log('DIAGNOSTIC 8 result:', result);
+    expect(result).toContain('write_ok');
+  });
+
   // DIAGNOSTIC 7: stored (uncompressed) chapter with 4097-byte image.
   // Tests whether crash is specific to async decompression callback context.
   // If this PASSES: crash is in the promise callback path (async-only).
