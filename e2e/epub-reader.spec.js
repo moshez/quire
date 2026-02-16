@@ -390,10 +390,23 @@ test.describe('EPUB Reader E2E', () => {
     const progressText = await pageInfo.textContent();
     expect(progressText).toMatch(/^Ch \d+\/\d+\s+\d+\/\d+$/);
 
-    // NOTE: Chapter transitions crash the WASM renderer for this real-world EPUB
-    // due to a ward bridge bug (REMOVE_CHILDREN — moshez/ward#15).
-    // Page walking and chapter navigation are tested with synthetic EPUBs
-    // in the 'chapter navigation' test below.
+    // Test chapter transition: click Next to go from cover to chapter 1
+    const nextBtn = page.locator('.next-btn');
+    await nextBtn.click();
+
+    // Wait for chapter transition (async decompression + re-render)
+    await page.waitForFunction(() => {
+      const info = document.querySelector('.page-info');
+      return info && /^Ch 2\//.test(info.textContent);
+    }, { timeout: 15000 });
+
+    // Verify new chapter rendered with content
+    const newChildCount = await container.evaluate(el => el.childElementCount);
+    expect(newChildCount).toBeGreaterThan(0);
+    const textLen = await container.evaluate(el => el.textContent.length);
+    expect(textLen).toBeGreaterThan(0);
+
+    await screenshot(page, 'conan-chapter-transition');
 
     // Navigate back via back button
     const backBtn = page.locator('.back-btn');
