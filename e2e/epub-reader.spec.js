@@ -999,6 +999,64 @@ test.describe('EPUB Reader E2E', () => {
     });
   }
 
+  // DIAGNOSTIC 7: stored (uncompressed) chapter with 4097-byte image.
+  // Tests whether crash is specific to async decompression callback context.
+  // If this PASSES: crash is in the promise callback path (async-only).
+  // If this CRASHES: crash is in malloc/ward_bump regardless of context.
+  test('DIAGNOSTIC: stored chapter with 4097-byte image (sync path)', async ({ page }) => {
+    const imageData = Buffer.alloc(4097);
+    for (let i = 0; i < imageData.length; i++) {
+      imageData[i] = (i * 7 + 13) & 0xFF;
+    }
+
+    page.on('crash', () => {
+      console.error('PAGE CRASHED: stored chapter + 4097-byte image (sync path)');
+    });
+
+    const epubBuffer = createEpub({
+      title: 'Stored Chapter Test',
+      author: 'Diagnostic',
+      svgCover: true,
+      coverImage: true,
+      storeChapters: true,
+      rawChapters: [{ body: '<p>Stored chapter with image</p><img src="test.jpg" alt="test"/>' }],
+      extraImages: [{ name: 'test.jpg', data: imageData }],
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'stored-chapter-4097.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    const nextBtn = page.locator('.next-btn');
+    await nextBtn.click();
+
+    await page.waitForFunction(() => {
+      const info = document.querySelector('.page-info');
+      return info && /^Ch 2\//.test(info.textContent);
+    }, { timeout: 15000 });
+
+    const container = page.locator('.chapter-container').first();
+    const childCount = await container.evaluate(el => el.childElementCount);
+    expect(childCount).toBeGreaterThan(0);
+    await screenshot(page, 'stored-chapter-4097-rendered');
+
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+  });
+
   test('WASM import interceptor: trace ward_js_file_read and ward_dom_flush', async ({ page }) => {
     // NARROWING: crash is in oversized alloc path (>4096).
     // Intercept WebAssembly.instantiate to wrap ward_js_file_read,

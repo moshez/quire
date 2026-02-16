@@ -355,6 +355,10 @@ ${spineItems}  </spine>
     zipEntries.push({ name: 'OEBPS/images/cover.png', data: TINY_PNG, store: true });
   }
 
+  // storeChapters: true → store chapters uncompressed (diagnostic: test sync path)
+  if (opts.storeChapters) {
+    chapters.forEach(ch => { ch.store = true; });
+  }
   zipEntries.push(...chapters);
 
   // Add cover image as stored (uncompressed) entry for synchronous reading

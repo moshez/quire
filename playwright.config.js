@@ -6,6 +6,9 @@ const chromiumArgs = [
   '--disable-gpu',
   '--disable-dev-shm-usage',
   '--disable-software-rasterizer',
+  // DIAGNOSTIC: disable TurboFan for WASM — use only Liftoff baseline compiler.
+  // Tests whether crash is a TurboFan JIT bug triggered by oversized malloc code.
+  '--js-flags=--liftoff-only',
 ];
 
 export default defineConfig({
