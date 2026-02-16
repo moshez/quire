@@ -11,7 +11,7 @@ WASM_LD  := wasm-ld
 WARD_DIR := vendor/ward/lib
 
 # WASM compilation flags
-WASM_CFLAGS := --target=wasm32 -O2 -flto -nostdlib -ffreestanding \
+WASM_CFLAGS := --target=wasm32 -O0 -nostdlib -ffreestanding \
   -I$(WARD_DIR)/../exerciser/wasm_stubs \
   -I$(PATSHOME) -I$(PATSHOME)/ccomp/runtime \
   -D_ATS_CCOMP_HEADER_NONE_ \
@@ -20,7 +20,7 @@ WASM_CFLAGS := --target=wasm32 -O2 -flto -nostdlib -ffreestanding \
   -DWARD_NO_DOM_STUB \
   -include $(WARD_DIR)/runtime.h
 
-WASM_LDFLAGS := --no-entry --allow-undefined --lto-O2 \
+WASM_LDFLAGS := --no-entry --allow-undefined \
   -z stack-size=262144 --initial-memory=16777216 --max-memory=268435456
 
 # WASM exports for bridge protocol
