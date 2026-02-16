@@ -1355,12 +1355,11 @@ in
       in
         if gt_int_int(data_off, 0) then let
           val sz = entry.uncompressed_size
-        in
-          (* DIAGNOSTIC: skip oversized images to isolate crash *)
-          if gt_int_int(sz, 4096) then st
-          else let
           val sz1 = (if gt_int_int(sz, 0) then sz else 1): int
           val sz_pos = _checked_pos(sz1)
+          (* DIAGNOSTIC: probe alloc+free before real alloc *)
+          val probe = ward_arr_alloc<byte>(sz_pos)
+          val () = ward_arr_free<byte>(probe)
           val arr = ward_arr_alloc<byte>(sz_pos)
           val _rd = ward_file_read(file_handle, data_off, arr, sz_pos)
           val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
@@ -1424,8 +1423,7 @@ in
             val arr = ward_arr_thaw<byte>(frozen)
             val () = ward_arr_free<byte>(arr)
           in st end
-        end (* else let: sz <= 4096 *)
-        end (* if gt_int_int(data_off, 0) *)
+        end
         else st (* bad data offset — skip *)
       end
       else st (* deflated image — skip for now *)
