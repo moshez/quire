@@ -1056,6 +1056,47 @@ test.describe('EPUB Reader E2E', () => {
     expect(result).toContain('write_ok');
   });
 
+  // STANDALONE CRASH REPRO: minimal WASM module with allocator +
+  // recursive render loop that calls malloc(4097).
+  // If this crashes in Chromium: V8 bug confirmed with minimal repro.
+  // If this passes: need to add more complexity to trigger.
+  test('STANDALONE: crash_repro.wasm — recursive render loop + malloc(4097)', async ({ page }) => {
+    let crashed = false;
+    page.on('crash', () => {
+      crashed = true;
+      console.error('STANDALONE CRASH REPRO: page crashed!');
+    });
+
+    await page.goto('/e2e/crash_repro.html');
+
+    // Wait for either completion or crash
+    try {
+      await page.waitForFunction(() => {
+        return document.title === 'PASS' || document.title === 'ERROR';
+      }, { timeout: 15000 });
+
+      const title = await page.title();
+      const logContent = await page.locator('#log').textContent();
+      console.log('STANDALONE REPRO result:', title);
+      console.log('STANDALONE REPRO log:', logContent);
+
+      if (title === 'PASS') {
+        console.log('Standalone repro did NOT crash — need more complexity');
+      } else {
+        console.log('Standalone repro errored:', logContent);
+      }
+    } catch (e) {
+      if (crashed) {
+        console.log('STANDALONE REPRO: CRASHED! V8 bug confirmed.');
+      } else {
+        console.log('STANDALONE REPRO timeout:', e.message);
+      }
+    }
+
+    // Always pass — this is a diagnostic, not a correctness test
+    expect(true).toBe(true);
+  });
+
   // DIAGNOSTIC 7: stored (uncompressed) chapter with 4097-byte image.
   // Tests whether crash is specific to async decompression callback context.
   // If this PASSES: crash is in the promise callback path (async-only).

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head><title>Chromium WASM Crash Reproduction</title></head>
+<body>
+<h1>WASM Crash Repro</h1>
+<pre id="log"></pre>
+<script>
+const log = document.getElementById('log');
+function logMsg(msg) {
+  log.textContent += msg + '\n';
+  console.log(msg);
+}
+
+async function run() {
+  logMsg('Loading WASM module...');
+
+  const imports = {
+    env: {
+      dom_flush: (bufPtr, len) => {
+        logMsg(`dom_flush: ptr=${bufPtr}, len=${len}`);
+      },
+      log_int: (val) => {
+        logMsg(`log_int: ${val}`);
+      },
+    },
+  };
+
+  const response = await fetch('crash_repro.wasm');
+  const bytes = await response.arrayBuffer();
+  const { instance } = await WebAssembly.instantiate(bytes, imports);
+
+  logMsg('WASM loaded. Testing JS→malloc(4097)...');
+
+  // Test 1: JS→malloc(4097) — should work
+  const p = instance.exports.malloc(4097);
+  logMsg(`JS→malloc(4097) = ptr:${p} ✓`);
+
+  // Test 2: Run the repro (WASM render loop → malloc(4097))
+  logMsg('Running render loop repro...');
+  try {
+    const ecnt = instance.exports.run_repro();
+    logMsg(`run_repro returned ecnt=${ecnt} ✓`);
+    logMsg('NO CRASH — repro did not trigger the bug');
+    document.title = 'PASS';
+  } catch (e) {
+    logMsg(`ERROR: ${e.message}`);
+    document.title = 'ERROR';
+  }
+}
+
+run().catch(e => {
+  logMsg(`FATAL: ${e.message}`);
+  document.title = 'ERROR';
+});
+</script>
+</body>
+</html>
