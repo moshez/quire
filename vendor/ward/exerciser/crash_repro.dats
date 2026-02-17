@@ -103,6 +103,20 @@ fn mk_span (): ward_safe_text(4) = let
   val b = ward_text_putc(b, 3, char2int1('n'))
 in ward_text_done(b) end
 
+fn mk_dummy_text (): ward_safe_text(10) = let
+  val b = ward_text_build(10)
+  val b = ward_text_putc(b, 0, char2int1('a'))
+  val b = ward_text_putc(b, 1, char2int1('b'))
+  val b = ward_text_putc(b, 2, char2int1('c'))
+  val b = ward_text_putc(b, 3, char2int1('d'))
+  val b = ward_text_putc(b, 4, char2int1('e'))
+  val b = ward_text_putc(b, 5, char2int1('f'))
+  val b = ward_text_putc(b, 6, char2int1('g'))
+  val b = ward_text_putc(b, 7, char2int1('h'))
+  val b = ward_text_putc(b, 8, char2int1('i'))
+  val b = ward_text_putc(b, 9, char2int1('j'))
+in ward_text_done(b) end
+
 (* --- Bounds-checked byte write ---
  * pos is g0int (plain), uses g1ofg0 + dependent lt1 for ward_arr_set *)
 
@@ -150,7 +164,7 @@ fun write_paras {l:agz}{n:pos}
  * Structure: <html><body>\n + 108 paragraphs + </body></html>
  * Returns frozen array + borrow for passing to ward_xml_parse_html *)
 
-#define HTML_SIZE 22000
+#define HTML_SIZE 110000
 
 fn build_html (): [l:agz] ward_arr(byte, l, HTML_SIZE) = let
   val buf = ward_arr_alloc<byte>(HTML_SIZE)
@@ -168,8 +182,8 @@ fn build_html (): [l:agz] ward_arr(byte, l, HTML_SIZE) = let
   val () = wb(buf, 10, 121, HTML_SIZE)  (* y *)
   val () = wb(buf, 11, 62, HTML_SIZE)   (* > *)
   val () = wb(buf, 12, 10, HTML_SIZE)   (* \n *)
-  (* 108 paragraphs *)
-  val end_pos = write_paras(buf, 13, 108, HTML_SIZE)
+  (* 550 paragraphs — produces ~100KB HTML, enough DOM ops for ~21KB diff *)
+  val end_pos = write_paras(buf, 13, 550, HTML_SIZE)
   (* </body></html> = 14 bytes *)
   val () = wb(buf, end_pos, 60, HTML_SIZE)                     (* < *)
   val () = wb(buf, add_int_int(end_pos, 1), 47, HTML_SIZE)    (* / *)
@@ -194,7 +208,8 @@ in buf end
 fun render_sax {l:agz}{lb:agz}{n:pos}
   (s: ward_dom_stream(l),
    sax: !ward_arr_borrow(byte, lb, n), sax_len: int n,
-   parent: int, pos: int, next_id: int): @(ward_dom_stream(l), int, int) =
+   parent: int, pos: int, next_id: int,
+   dtxt: ward_safe_text(10)): @(ward_dom_stream(l), int, int) =
   if lt_int_int(pos, 0) then @(s, pos, next_id)
   else let
     val p = g1ofg0(pos)
@@ -226,9 +241,9 @@ fun render_sax {l:agz}{lb:agz}{n:pos}
         val s = ward_dom_stream_create_element(s, nid, parent, mk_p(), 1)
         (* Recurse into children *)
         val @(s, after_children, nid2) =
-          render_sax(s, sax, sax_len, nid, child_pos, add_int_int(next_id, 1))
+          render_sax(s, sax, sax_len, nid, child_pos, add_int_int(next_id, 1), dtxt)
         (* Continue with siblings *)
-      in render_sax(s, sax, sax_len, parent, after_children, nid2) end
+      in render_sax(s, sax, sax_len, parent, after_children, nid2, dtxt) end
 
       else if eq_int_int(opc, WARD_XML_ELEMENT_CLOSE) then
         (* Return to parent — pos+1 is the next sibling position *)
@@ -237,14 +252,14 @@ fun render_sax {l:agz}{lb:agz}{n:pos}
       else if eq_int_int(opc, WARD_XML_TEXT) then let
         val @(text_off, text_len, next_pos) =
           ward_xml_read_text(sax, p, sax_len)
-        val tl = g1ofg0(text_len)
       in
         if gt_int_int(text_len, 0) then let
-          (* Create a span for the text *)
+          (* Create a span for the text, then set text content *)
           val nid = next_id
           val s = ward_dom_stream_create_element(s, nid, parent, mk_span(), 4)
-        in render_sax(s, sax, sax_len, parent, next_pos, add_int_int(next_id, 1)) end
-        else render_sax(s, sax, sax_len, parent, next_pos, next_id)
+          val s = ward_dom_stream_set_safe_text(s, nid, dtxt, 10)
+        in render_sax(s, sax, sax_len, parent, next_pos, add_int_int(next_id, 1), dtxt) end
+        else render_sax(s, sax, sax_len, parent, next_pos, next_id, dtxt)
       end
 
       else (* unknown opcode — skip *)
@@ -312,7 +327,8 @@ in
       val dom3 = ward_dom_init()
       val s3 = ward_dom_stream_begin(dom3)
       val s3 = ward_dom_stream_remove_children(s3, 1)
-      val @(s3, _, _) = render_sax(s3, sax_borrow, sax_g1, 1, 0, 100)
+      val dtxt = mk_dummy_text()
+      val @(s3, _, _) = render_sax(s3, sax_borrow, sax_g1, 1, 0, 100, dtxt)
       val dom3 = ward_dom_stream_end(s3)
       val () = ward_dom_fini(dom3)
 
