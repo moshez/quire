@@ -1890,8 +1890,16 @@ in s end
 
 (* ========== Management toolbar CSS ========== *)
 
+(* BUG CLASS PREVENTED: CSS_NULL_BYTE_CORRUPTION
+ * The CSS fill writes 4 bytes per _w4 call. If MGMT_CSS_LEN is not
+ * a multiple of 4, the last write pads with null bytes, which corrupt
+ * the <style> text content and prevent CSS parsing in the browser.
+ * The constraint MGMT_CSS_LEN == MGMT_CSS_WRITES * 4 proves alignment.
+ * If someone changes the CSS content length, they must also update
+ * MGMT_CSS_WRITES to match, or the solver rejects. *)
+stadef MGMT_CSS_WRITES = 69
+stadef MGMT_CSS_LEN = MGMT_CSS_WRITES * 4
 #define MGMT_CSS_LEN 276
-stadef MGMT_CSS_LEN = 276
 
 fn fill_css_mgmt {l:agz}{n:int | n >= MGMT_CSS_LEN}
   (arr: !ward_arr(byte, l, n), alen: int n): void = let
@@ -2730,6 +2738,34 @@ fn render_position_text {l:agz}
     else let val () = ward_arr_free<byte>(arr) in s end
   end
 
+(* BUG CLASS PREVENTED: VIEW_FILTER_MISMATCH
+ * count_visible_books and render_library_with_books MUST agree on which
+ * books are visible. Both route through filter_book_visible, which validates
+ * inputs and calls should_render_book (proven correct by VIEW_FILTER_CORRECT).
+ * A toddler cannot get the filter wrong: should_render_book's dataprop
+ * constructors enforce that active view shows active books, archived view
+ * shows archived books. Duplicating the logic with raw comparisons allowed
+ * the original bug where count showed 0 visible but render would have shown cards. *)
+fn filter_book_visible(vm: int, book_idx: int): int = let
+  val archived = library_get_archived(book_idx)
+  val vm_dep = _checked_nat(vm)
+in
+  if eq_g1(vm_dep, 0) then
+    if eq_g1(archived, 0) then let
+      val (_ | r) = should_render_book(VIEW_ACTIVE(), ACTIVE() | 0, archived)
+    in r end
+    else let
+      val (_ | r) = should_render_book(VIEW_ACTIVE(), ARCHIVED() | 0, archived)
+    in r end
+  else
+    if eq_g1(archived, 0) then let
+      val (_ | r) = should_render_book(VIEW_ARCHIVED(), ACTIVE() | 1, archived)
+    in r end
+    else let
+      val (_ | r) = should_render_book(VIEW_ARCHIVED(), ARCHIVED() | 1, archived)
+    in r end
+end
+
 fn render_library_with_books {l:agz}
   (s: ward_dom_stream(l), list_id: int, view_mode: int)
   : ward_dom_stream(l) = let
@@ -2739,12 +2775,8 @@ fn render_library_with_books {l:agz}
   fun loop {l:agz}(s: ward_dom_stream(l), i: int, n: int, vm: int): ward_dom_stream(l) =
     if gte_int_int(i, n) then s
     else let
-      val archived = library_get_archived(i)
-      (* Active view (vm=0): show non-archived; Archived view (vm=1): show archived *)
-      val do_render = if eq_int_int(vm, 0) then
-        (if eq_int_int(archived, 0) then 1 else 0): int
-      else
-        (if eq_int_int(archived, 1) then 1 else 0): int
+      (* Proven filter: routes through should_render_book with VIEW_FILTER_CORRECT *)
+      val do_render = filter_book_visible(vm, i)
     in
       if gt_int_int(do_render, 0) then let
         val card_id = dom_next_id()
@@ -3327,17 +3359,17 @@ fn add_import_section {l:agz}
   in s end
   else s
 
-(* Helper: set empty library text *)
-(* Count books matching the given view mode *)
+(* Count books matching the given view mode — uses proven filter *)
 fun count_visible_books(i: int, n: int, vm: int): int =
   if gte_int_int(i, n) then 0
   else let
-    val archived = library_get_archived(i)
-    val matches = if eq_int_int(vm, 0) then
-      (if eq_int_int(archived, 0) then 1 else 0): int
+    val do_render = filter_book_visible(vm, i)
+  in
+    if gt_int_int(do_render, 0) then
+      add_int_int(1, count_visible_books(add_int_int(i, 1), n, vm))
     else
-      (if eq_int_int(archived, 1) then 1 else 0): int
-  in add_int_int(matches, count_visible_books(i + 1, n, vm)) end
+      count_visible_books(add_int_int(i, 1), n, vm)
+  end
 
 fn set_empty_text {l:agz}
   (s: ward_dom_stream(l), node: int, view_mode: int)
