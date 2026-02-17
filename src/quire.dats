@@ -1320,10 +1320,14 @@ fn fill_css_reader {l:agz}{n:int | n >= APP_CSS_LEN}
   val () = _w4(arr, alen, 932, 1852400740)
   val () = _w4(arr, alen, 936, 1915894375)
   val () = _w4(arr, alen, 940, 807431525)
-  val () = _w4(arr, alen, 944, 1702260539)
-  val () = _w4(arr, alen, 948, 1869375090)
-  val () = _w4(arr, alen, 952, 1768438391)
-  val () = _w4(arr, alen, 956, 1852138596)
+  (* Was overflow:hidden — removed because it clips CSS column content
+   * beyond the first column. The parent .reader-viewport already has
+   * overflow:hidden for visual clipping. Replaced with z-index:initial
+   * (harmless no-op, same byte length) to preserve template offsets. *)
+  val () = _w4(arr, alen, 944, 1764588091)  (* ';z-i' *)
+  val () = _w4(arr, alen, 948, 2019910766)  (* 'ndex' *)
+  val () = _w4(arr, alen, 952, 1768843578)  (* ':ini' *)
+  val () = _w4(arr, alen, 956, 1818323316)  (* 'tial' *)
   val () = _w4(arr, alen, 960, 1768253499)
   val () = _w4(arr, alen, 964, 980707431)
   val () = _w4(arr, alen, 968, 623915057)
