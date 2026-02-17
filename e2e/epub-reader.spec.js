@@ -1099,11 +1099,13 @@ test.describe('EPUB Reader E2E', () => {
     await fileInput.setInputFiles(path1);
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
-    // Wait for first import to fully complete before starting second
-    await page.waitForSelector('label.import-btn', { timeout: 15000 });
-    await page.waitForTimeout(500);
+    // Wait for IndexedDB save, then reload to get a fresh state
+    await page.waitForTimeout(2000);
+    await page.reload();
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    await page.waitForSelector('.book-card', { timeout: 15000 });
 
-    // Import second book
+    // Import second book on the fresh page
     const fileInput2 = page.locator('input[type="file"]');
     const path2 = join(SCREENSHOT_DIR, 'sort-test2.epub');
     writeFileSync(path2, epub2);

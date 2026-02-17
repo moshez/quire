@@ -3328,6 +3328,17 @@ fn add_import_section {l:agz}
   else s
 
 (* Helper: set empty library text *)
+(* Count books matching the given view mode *)
+fun count_visible_books(i: int, n: int, vm: int): int =
+  if gte_int_int(i, n) then 0
+  else let
+    val archived = library_get_archived(i)
+    val matches = if eq_int_int(vm, 0) then
+      (if eq_int_int(archived, 0) then 1 else 0): int
+    else
+      (if eq_int_int(archived, 1) then 1 else 0): int
+  in add_int_int(matches, count_visible_books(i + 1, n, vm)) end
+
 fn set_empty_text {l:agz}
   (s: ward_dom_stream(l), node: int, view_mode: int)
   : [l2:agz] ward_dom_stream(l2) =
@@ -3388,8 +3399,9 @@ implement render_library(root_id) = let
   val s = ward_dom_stream_set_attr_safe(s, list_id, attr_class(), 5, cls_library_list(), 12)
 
   val count = library_get_count()
+  val visible = count_visible_books(0, count, view_mode)
   val () =
-    if gt_int_int(count, 0) then let
+    if gt_int_int(visible, 0) then let
       (* Render book cards filtered by view_mode *)
       val s = render_library_with_books(s, list_id, view_mode)
       val dom = ward_dom_stream_end(s)
