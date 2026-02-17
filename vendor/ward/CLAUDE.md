@@ -58,12 +58,14 @@ All functions prefixed `ward_` for easy auditing. No raw pointer extraction -- s
 | `ward_promise_resolver(a)` | Linear write-end, consumed by `resolve` |
 | `ward_dom_state(l)` | Linear DOM diff buffer at address `l` (256KB) |
 | `ward_dom_stream(l)` | Linear stream that accumulates ops, auto-flushes |
+| `ward_arena(l, max, k)` | Linear arena for bulk allocation, `k` outstanding tokens |
+| `ward_arena_token(la, l, n)` | Linear witness linking arena allocation to its arena |
 
 ### Memory Functions
 
 | Function | Signature |
 |----------|-----------|
-| `ward_arr_alloc<a>(n)` | `{n:pos} -> [l:agz] ward_arr(a, l, n)` |
+| `ward_arr_alloc<a>(n)` | `{n:pos \| n <= 1048576} -> [l:agz] ward_arr(a, l, n)` |
 | `ward_arr_free<a>(arr)` | `ward_arr(a, l, n) -> void` |
 | `ward_arr_get<a>(arr, i)` | Read element `i`, `{i < n}` |
 | `ward_arr_set<a>(arr, i, v)` | Write element `i`, `{i < n}` |
@@ -87,6 +89,15 @@ All functions prefixed `ward_` for easy auditing. No raw pointer extraction -- s
 | `ward_safe_content_text_get(t, i)` | Read byte `i` from content text (borrowed) |
 | `ward_safe_content_text_free(t)` | Consume content text |
 | `ward_text_to_content(t, len)` | `ward_safe_text(n) -> [l:agz] ward_safe_content_text(l, n)` (copies) |
+
+### Arena Functions
+
+| Function | Signature |
+|----------|-----------|
+| `ward_arena_create(max_size)` | `{max:pos \| max <= 268435456} -> [l:agz] ward_arena(l, max, 0)` |
+| `ward_arena_alloc<a>(arena, n)` | `(!ward_arena >> ward_arena(k+1), n) -> @(ward_arena_token, ward_arr(a, l, n))` |
+| `ward_arena_return<a>(arena, token, arr)` | `(!ward_arena >> ward_arena(k-1), token, arr) -> void` |
+| `ward_arena_destroy(arena)` | `ward_arena(l, max, 0) -> void` |
 
 ### Promise Functions
 
@@ -144,7 +155,7 @@ Used for attribute values and MIME types. `SAFE_CHAR` is a subset of `SAFE_CONTE
 ## Files
 
 ### Library (`lib/`)
-- `memory.sats` -- type declarations (the specification): 8 types, 31 functions
+- `memory.sats` -- type declarations (the specification): 10 types, 35 functions
 - `memory.dats` -- implementations (the "unsafe core" behind the safe interface)
 - `dom.sats` -- DOM streaming specification: 2 types (state, stream), 12 functions
 - `dom.dats` -- DOM streaming implementation (datavtype stream, auto-flush, image bridge)
@@ -166,7 +177,7 @@ Used for attribute values and MIME types. `SAFE_CHAR` is a subset of `SAFE_CONTE
 - `dom_read.sats` / `dom_read.dats` -- DOM measurement and query
 - `ward_bridge.mjs` -- JS bridge: binary diff protocol, event listeners, data stash, HTML parsing
 - `runtime.h` -- freestanding WASM runtime: ATS2 macro infrastructure + ward type definitions
-- `runtime.c` -- free-list allocator (size classes: 32/128/512/4096 + oversized) for WASM
+- `runtime.c` -- free-list allocator (size classes: 32/128/512/4096/8192/16384/65536/262144/1048576 + oversized), arena allocator for WASM
 - `ward_prelude.h` -- native build: ward type macros for gcc
 
 ### Exerciser (`exerciser/`)
@@ -175,11 +186,12 @@ Used for attribute values and MIME types. `SAFE_CHAR` is a subset of `SAFE_CONTE
 - `dom_exerciser.dats` -- WASM DOM exerciser (pure safe ATS2, no $UNSAFE)
 - `node_exerciser.mjs` -- Node.js wrapper: loads jsdom, runs ward via bridge
 - `wasm_stubs/` -- empty stubs for libats CATS files (not needed in freestanding mode)
-- `anti/` -- anti-exerciser: code that MUST fail to compile (15 files):
+- `anti/` -- anti-exerciser: code that MUST fail to compile (17 files):
   buffer_overflow, double_free, leak, out_of_bounds, thaw_with_borrows,
   use_after_free, write_while_frozen, unsafe_char, unsafe_content_char,
   double_resolve, extract_pending, extract_chained, forget_resolver,
-  use_after_then, use_stream_after_end
+  use_after_then, use_stream_after_end, arr_too_large,
+  arena_destroy_with_borrows
 
 ### Tests (`tests/`)
 - `helpers.mjs` -- shared test utilities (creates ward instance with jsdom)

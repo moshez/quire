@@ -1691,22 +1691,26 @@ fn detect_mime_from_src {lb:agz}{n:pos}
     else 0
   end
 
-(* Load a single stored image from the ZIP and set it on a DOM node.
+(* Load a single stored image from the ZIP using arena allocation.
  * Called from load_deferred_images for each entry with compression=0.
- * Allocates a ward_arr for image bytes, reads via ward_file_read,
+ * Allocates from the per-page arena, reads image bytes via ward_file_read,
  * builds MIME content text, calls ward_dom_stream_set_image_src,
- * then frees all resources. *)
-fn load_stored_image {l:agz}{lb:agz}{n:pos}
+ * then returns the arena allocation (token + arr).
+ *
+ * Arena alloc/return within one function: k → k+1 → k (net zero change). *)
+fn load_stored_image_arena
+  {l:agz}{lb:agz}{n:pos}{la:agz}{max:pos}{k:nat}
   (st: ward_dom_stream(l), nid: int,
    tree: !ward_arr(byte, lb, n), tlen: int n,
    src_off: int, src_len: int,
-   file_handle: int, data_offset: int, data_size: int)
+   file_handle: int, data_offset: int, data_size: int,
+   arena: !ward_arena(la, max, k) >> ward_arena(la, max, k))
   : ward_dom_stream(l) = let
   val sz = g1ofg0(data_size)
 in
   if sz <= 0 then st
   else let
-    val img_arr = ward_arr_alloc<byte>(sz)
+    val @(token, img_arr) = ward_arena_alloc<byte>(arena, sz)
     val _rd = ward_file_read(file_handle, data_offset, img_arr, sz)
     val mime_type = detect_mime_from_src(tree, tlen, src_off, src_len)
   in
@@ -1716,7 +1720,7 @@ in
       val st = ward_dom_stream_set_image_src(st, nid, borrow, sz, mime, mlen)
       val () = ward_arr_drop<byte>(frozen, borrow)
       val img_arr = ward_arr_thaw<byte>(frozen)
-      val () = ward_arr_free<byte>(img_arr)
+      val () = ward_arena_return<byte>(arena, token, img_arr)
       val () = ward_safe_content_text_free(mime)
     in st end
     else if mime_type = 2 then let (* png *)
@@ -1725,7 +1729,7 @@ in
       val st = ward_dom_stream_set_image_src(st, nid, borrow, sz, mime, mlen)
       val () = ward_arr_drop<byte>(frozen, borrow)
       val img_arr = ward_arr_thaw<byte>(frozen)
-      val () = ward_arr_free<byte>(img_arr)
+      val () = ward_arena_return<byte>(arena, token, img_arr)
       val () = ward_safe_content_text_free(mime)
     in st end
     else if mime_type = 3 then let (* gif *)
@@ -1734,7 +1738,7 @@ in
       val st = ward_dom_stream_set_image_src(st, nid, borrow, sz, mime, mlen)
       val () = ward_arr_drop<byte>(frozen, borrow)
       val img_arr = ward_arr_thaw<byte>(frozen)
-      val () = ward_arr_free<byte>(img_arr)
+      val () = ward_arena_return<byte>(arena, token, img_arr)
       val () = ward_safe_content_text_free(mime)
     in st end
     else if mime_type = 4 then let (* svg *)
@@ -1743,58 +1747,105 @@ in
       val st = ward_dom_stream_set_image_src(st, nid, borrow, sz, mime, mlen)
       val () = ward_arr_drop<byte>(frozen, borrow)
       val img_arr = ward_arr_thaw<byte>(frozen)
-      val () = ward_arr_free<byte>(img_arr)
+      val () = ward_arena_return<byte>(arena, token, img_arr)
       val () = ward_safe_content_text_free(mime)
     in st end
-    else let (* unknown MIME — skip, free image data *)
-      val () = ward_arr_free<byte>(img_arr)
+    else let (* unknown MIME — return arena allocation *)
+      val () = ward_arena_return<byte>(arena, token, img_arr)
     in st end
   end
 end
+
+(* Pre-scan: compute total bytes needed for arena.
+ * Iterates the deferred image queue, resolves each image path,
+ * looks up the ZIP entry, and sums compressed_size for stored entries.
+ * Adds 8 bytes per image for arena bump-allocator alignment. *)
+fun compute_arena_size {lb:agz}{n:pos}{ld:agz}{nd:pos}
+  (tree: !ward_arr(byte, lb, n), tlen: int n,
+   cdir: !ward_arr(byte, ld, nd), cdlen: int nd,
+   i: int, total: int, acc: int): int =
+  if i >= total then acc
+  else let
+    val src_off = _deferred_image_get_src_off_impl(i)
+    val src_len = _deferred_image_get_src_len_impl(i)
+    val path_len = resolve_img_src(tree, tlen, src_off, src_len, cdir, cdlen)
+    val entry_idx = zip_find_entry(path_len)
+  in
+    if entry_idx >= 0 then let
+      var entry: zip_entry
+      val found = zip_get_entry(entry_idx, entry)
+    in
+      if found > 0 then
+        if entry.compression = 0 then let
+          val sz = entry.compressed_size
+        in
+          if sz > 0 then
+            compute_arena_size(tree, tlen, cdir, cdlen,
+              i + 1, total, acc + sz + 8)
+          else
+            compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc)
+        end
+        else compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc)
+      else compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc)
+    end
+    else compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc)
+  end
 
 implement load_deferred_images
   {l}{lb}{n}{ld}{nd}
   (stream, tree, tree_len, file_handle, chapter_dir, chapter_dir_len) = let
   val count = _deferred_image_get_count_impl()
 
-  fun process {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
-    (st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n), tlen: int n,
-     fh: int, cdir: !ward_arr(byte, ld, nd), cdlen: int nd,
-     i: int, total: int)
-    : ward_dom_stream(l) =
-    if i >= total then st
-    else let
-      val nid = _deferred_image_get_node_id_impl(i)
-      val src_off = _deferred_image_get_src_off_impl(i)
-      val src_len = _deferred_image_get_src_len_impl(i)
-
-      (* Resolve image path relative to chapter directory → sbuf *)
-      val path_len = resolve_img_src(tree, tlen, src_off, src_len, cdir, cdlen)
-
-      (* Find ZIP entry by resolved path *)
-      val entry_idx = zip_find_entry(path_len)
-    in
-      if entry_idx >= 0 then let
-        var entry: zip_entry
-        val found = zip_get_entry(entry_idx, entry)
-      in
-        if found > 0 then
-          if entry.compression = 0 then let (* stored — can read directly *)
-            val data_off = zip_get_data_offset(entry_idx)
-          in
-            if data_off >= 0 then let
-              val st = load_stored_image(st, nid, tree, tlen,
-                src_off, src_len, fh, data_off, entry.compressed_size)
-            in process(st, tree, tlen, fh, cdir, cdlen, i + 1, total) end
-            else process(st, tree, tlen, fh, cdir, cdlen, i + 1, total)
-          end
-          else (* deflated — skip for now *)
-            process(st, tree, tlen, fh, cdir, cdlen, i + 1, total)
-        else process(st, tree, tlen, fh, cdir, cdlen, i + 1, total)
-      end
-      else process(st, tree, tlen, fh, cdir, cdlen, i + 1, total)
-    end
+  (* Pass 1: compute total arena size *)
+  val arena_size = compute_arena_size(tree, tree_len,
+    chapter_dir, chapter_dir_len, 0, count, 0)
+  val arena_size_g1 = g1ofg0(arena_size)
 in
-  process(stream, tree, tree_len, file_handle,
-    chapter_dir, chapter_dir_len, 0, count)
+  if arena_size_g1 <= 0 then stream (* no stored images to load *)
+  else if arena_size_g1 > 268435456 then stream (* arena cap exceeded — skip images *)
+  else let
+    (* Pass 2: create arena and process images *)
+    val arena = ward_arena_create(arena_size_g1)
+
+    fun process {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}{la:agz}{max:pos}{k:nat}
+      (st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n), tlen: int n,
+       fh: int, cdir: !ward_arr(byte, ld, nd), cdlen: int nd,
+       arena: !ward_arena(la, max, k) >> ward_arena(la, max, k),
+       i: int, total: int)
+      : ward_dom_stream(l) =
+      if i >= total then st
+      else let
+        val nid = _deferred_image_get_node_id_impl(i)
+        val src_off = _deferred_image_get_src_off_impl(i)
+        val src_len = _deferred_image_get_src_len_impl(i)
+        val path_len = resolve_img_src(tree, tlen, src_off, src_len, cdir, cdlen)
+        val entry_idx = zip_find_entry(path_len)
+      in
+        if entry_idx >= 0 then let
+          var entry: zip_entry
+          val found = zip_get_entry(entry_idx, entry)
+        in
+          if found > 0 then
+            if entry.compression = 0 then let (* stored — can read directly *)
+              val data_off = zip_get_data_offset(entry_idx)
+            in
+              if data_off >= 0 then let
+                val st = load_stored_image_arena(st, nid, tree, tlen,
+                  src_off, src_len, fh, data_off, entry.compressed_size, arena)
+              in process(st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total) end
+              else process(st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
+            end
+            else (* deflated — skip for now *)
+              process(st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
+          else process(st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
+        end
+        else process(st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
+      end
+
+    val stream = process(stream, tree, tree_len, file_handle,
+      chapter_dir, chapter_dir_len, arena, 0, count)
+    val () = ward_arena_destroy(arena)
+  in
+    stream
+  end
 end

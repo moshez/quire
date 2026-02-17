@@ -57,6 +57,17 @@ git commit -m "Vendor ward $(cat vendor/ward/WARD_VERSION)"
 
 To update, repeat the process and diff `WARD_VERSION`.
 
+### Claude Code rules
+
+Symlink the platform usage guidelines into your project's Claude Code rules so they are always active:
+
+```bash
+mkdir -p .claude/rules
+ln -s ../../vendor/ward/docs/platform-usage.md .claude/rules/platform-usage.md
+```
+
+Adjust the relative path if your vendor directory is located elsewhere.
+
 ## Using Ward
 
 ### 1. Write ATS2 code

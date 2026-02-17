@@ -21,9 +21,11 @@ All functions are prefixed `ward_` for easy auditing. Types are abstract (`absvt
 #### Allocate / free
 
 ```ats
-fun{a:t@ype} ward_arr_alloc {n:pos} (n: int n): [l:agz] ward_arr(a, l, n)
+fun{a:t@ype} ward_arr_alloc {n:pos | n <= 1048576} (n: int n): [l:agz] ward_arr(a, l, n)
 fun{a:t@ype} ward_arr_free {l:agz}{n:nat} (arr: ward_arr(a, l, n)): void
 ```
+
+For allocations larger than 1MB, use arenas (see Arena section below).
 
 #### Element access (bounds-checked)
 
@@ -99,6 +101,41 @@ fun ward_safe_text_get {n,i:nat | i < n} (t: ward_safe_text(n), i: int i): byte
 ```ats
 fun ward_int2byte(i: int): byte
 ```
+
+#### Arena -- bulk allocation with token-tracked lifecycle
+
+Arena arrays ARE `ward_arr` values -- all existing operations (get, set, freeze, thaw, split, join, borrow, read) work on arena-allocated arrays with zero duplication.
+
+##### Types
+
+| Type | Kind | Description |
+|------|------|-------------|
+| `ward_arena(l, max, k)` | linear | Arena for bulk allocation, `k` outstanding tokens |
+| `ward_arena_token(la, l, n)` | linear | Witness linking each allocation to its arena |
+
+##### Functions
+
+```ats
+fun ward_arena_create {max:pos | max <= 268435456}
+  (max_size: int max): [l:agz] ward_arena(l, max, 0)
+
+fun{a:t@ype} ward_arena_alloc {la:agz}{max:pos}{k:nat}{n:pos}
+  (arena: !ward_arena(la, max, k) >> ward_arena(la, max, k+1), n: int n)
+  : [l:agz] @(ward_arena_token(la, l, n), ward_arr(a, l, n))
+
+fun{a:t@ype} ward_arena_return {la:agz}{max:pos}{k:pos}{l:agz}{n:pos}
+  (arena: !ward_arena(la, max, k) >> ward_arena(la, max, k-1),
+   token: ward_arena_token(la, l, n), arr: ward_arr(a, l, n)): void
+
+fun ward_arena_destroy {l:agz}{max:nat}
+  (arena: ward_arena(l, max, 0)): void
+```
+
+**Safety invariants:**
+- Can't `ward_arr_free` arena arrays -- the token would be left unconsumed (linearity violation)
+- Can't return the wrong array -- token and arr share the same existential `l` and `n`
+- Can't split-and-cheat -- after `ward_arr_split`, pieces have different `n` than the token requires
+- Can't destroy early -- `ward_arena_destroy` requires `k = 0`; outstanding tokens keep `k > 0`
 
 ---
 

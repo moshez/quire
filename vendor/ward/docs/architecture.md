@@ -56,7 +56,7 @@ All proofs are erased at runtime. There are no runtime bounds checks, no referen
 
 ## Anti-exerciser
 
-The `exerciser/anti/` directory contains 13 files that **must fail to compile**. `make anti-exerciser` runs `patsopt` on each and verifies it is rejected. This is a regression test for the type system -- if any file compiles, it means the safety specification has a hole.
+The `exerciser/anti/` directory contains 17 files that **must fail to compile**. `make anti-exerciser` runs `patsopt` on each and verifies it is rejected. This is a regression test for the type system -- if any file compiles, it means the safety specification has a hole.
 
 | File | Rejected pattern |
 |------|-----------------|
@@ -73,6 +73,8 @@ The `exerciser/anti/` directory contains 13 files that **must fail to compile**.
 | `forget_resolver.dats` | Dropping a resolver without resolving |
 | `use_after_then.dats` | Using a promise after passing it to `then` |
 | `use_stream_after_end.dats` | Using a DOM stream after `stream_end` |
+| `arr_too_large.dats` | Array exceeding 1MB size limit |
+| `arena_destroy_with_borrows.dats` | Destroying arena with outstanding tokens |
 
 ## Runtime architecture
 
@@ -89,7 +91,8 @@ Replaces the ATS2 standard runtime headers that require libc. Provides:
 
 ### `runtime.c` -- Free-list allocator and support
 
-- **Free-list allocator** -- segregated-list `malloc` with 4 size classes (32, 128, 512, 4096 bytes) and oversized free list (first-fit). `free` returns blocks to the appropriate list.
+- **Free-list allocator** -- segregated-list `malloc` with 9 size classes (32, 128, 512, 4096, 8192, 16384, 65536, 262144, 1048576 bytes) and oversized free list (first-fit). `free` returns blocks to the appropriate list.
+- **Arena allocator** -- `ward_arena_create/alloc/destroy` for bulk allocation with explicit lifetime management. Arena block layout: `[max:4][used:4][data]` with 8-byte aligned bump allocation.
 - **memset/memcpy** -- freestanding implementations
 - **Bridge int stash** -- 4-slot integer array for stash IDs and metadata
 - **Resolver table** -- 64-slot linear clear-on-take table for async resolvers

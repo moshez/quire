@@ -148,7 +148,7 @@ in end
 
 (* Helper: allocate ward_arr<byte> and cast to ptr for datavtype storage *)
 fn _alloc_buf (sz: int): ptr = let
-  val arr = ward_arr_alloc<byte>(_checked_pos(sz))
+  val arr = ward_arr_alloc<byte>(_checked_arr_size(sz))
   val p = $UN.castvwtp0{ptr}(arr)
 in p end
 

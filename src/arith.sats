@@ -42,6 +42,9 @@ castfn _checked_pos(x: int): [n:pos] int n
 castfn _checked_nat(x: int): [n:nat] int n
 castfn _checked_byte(x: int): [v:nat | v < 256] int v
 
+(* Bounded positive — for ward_arr_alloc which requires n <= 1048576 *)
+castfn _checked_arr_size(x: int): [n:pos | n <= 1048576] int n
+
 (* Index castfn — asserts offset is within [0, n) for ward_arr access.
  * Replaces runtime bounds check of _ward_arr_byte macro. *)
 castfn _ward_idx {n:pos} (x: int, len: int n): [i:nat | i < n] int i

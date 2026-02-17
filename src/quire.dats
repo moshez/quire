@@ -2220,7 +2220,7 @@ in
           (* Deflated — async decompression *)
           val cs1 = (if gt_int_int(compressed_size, 0)
             then compressed_size else 1): int
-          val cs_pos = _checked_pos(cs1)
+          val cs_pos = _checked_arr_size(cs1)
           val arr = ward_arr_alloc<byte>(cs_pos)
           val _rd = ward_file_read(handle, data_off, arr, cs_pos)
           val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
@@ -2233,7 +2233,7 @@ in
             val dlen = ward_decompress_get_len()
           in
             if gt_int_int(dlen, 0) then let
-              val dl = _checked_pos(dlen)
+              val dl = _checked_arr_size(dlen)
               val arr2 = ward_arr_alloc<byte>(dl)
               val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
               val () = ward_blob_free(blob_handle)
@@ -2247,7 +2247,7 @@ in
         end
         else let
           (* Stored — synchronous read *)
-          val usize1 = _checked_pos(usize)
+          val usize1 = _checked_arr_size(usize)
           val arr = ward_arr_alloc<byte>(usize1)
           val _rd = ward_file_read(handle, data_off, arr, usize1)
           val result = epub_parse_container_bytes(arr, usize1)
@@ -2284,7 +2284,7 @@ in
           (* Deflated — async decompression *)
           val cs1 = (if gt_int_int(compressed_size, 0)
             then compressed_size else 1): int
-          val cs_pos = _checked_pos(cs1)
+          val cs_pos = _checked_arr_size(cs1)
           val arr = ward_arr_alloc<byte>(cs_pos)
           val _rd = ward_file_read(handle, data_off, arr, cs_pos)
           val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
@@ -2297,7 +2297,7 @@ in
             val dlen = ward_decompress_get_len()
           in
             if gt_int_int(dlen, 0) then let
-              val dl = _checked_pos(dlen)
+              val dl = _checked_arr_size(dlen)
               val arr2 = ward_arr_alloc<byte>(dl)
               val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
               val () = ward_blob_free(blob_handle)
@@ -2311,7 +2311,7 @@ in
         end
         else let
           (* Stored — synchronous read *)
-          val usize1 = _checked_pos(usize)
+          val usize1 = _checked_arr_size(usize)
           val arr = ward_arr_alloc<byte>(usize1)
           val _rd = ward_file_read(handle, data_off, arr, usize1)
           val result = epub_parse_opf_bytes(arr, usize1)
@@ -2497,7 +2497,7 @@ end
 
 (* Allocate a ward_arr and copy sbuf[0..len-1] into it.
  * Used to capture chapter directory before sbuf is reused. *)
-fn copy_sbuf_to_arr {dl:pos}
+fn copy_sbuf_to_arr {dl:pos | dl <= 1048576}
   (dl: int dl): [l:agz] ward_arr(byte, l, dl) = let
   val arr = ward_arr_alloc<byte>(dl)
   fun copy_loop {l:agz}{n:pos}
@@ -2531,7 +2531,7 @@ in
         if eq_int_int(compression, 8) then let
           (* Deflated — async decompression *)
           val cs1 = (if gt_int_int(compressed_size, 0) then compressed_size else 1): int
-          val cs_pos = _checked_pos(cs1)
+          val cs_pos = _checked_arr_size(cs1)
           val arr = ward_arr_alloc<byte>(cs_pos)
           val _rd = ward_file_read(file_handle, data_off, arr, cs_pos)
           val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
@@ -2544,14 +2544,14 @@ in
           (* Capture chapter dir before async — sbuf will be reused *)
         in
           if gt_int_int(dir_len, 0) then let
-            val dl_pos = _checked_pos(dir_len)
+            val dl_pos = _checked_arr_size(dir_len)
             val dir_arr = copy_sbuf_to_arr(dl_pos)
             val p2 = ward_promise_then<int><int>(p,
               llam (blob_handle: int): ward_promise_chained(int) => let
                 val dlen = ward_decompress_get_len()
               in
                 if gt_int_int(dlen, 0) then let
-                  val dl = _checked_pos(dlen)
+                  val dl = _checked_arr_size(dlen)
                   val arr2 = ward_arr_alloc<byte>(dl)
                   val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
                   val () = ward_blob_free(blob_handle)
@@ -2604,7 +2604,7 @@ in
                 val dlen = ward_decompress_get_len()
               in
                 if gt_int_int(dlen, 0) then let
-                  val dl = _checked_pos(dlen)
+                  val dl = _checked_arr_size(dlen)
                   val arr2 = ward_arr_alloc<byte>(dl)
                   val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
                   val () = ward_blob_free(blob_handle)
@@ -2646,7 +2646,7 @@ in
           (* Stored — read directly, no decompression needed *)
           val us1 = (if gt_int_int(uncompressed_size, 0)
             then uncompressed_size else 1): int
-          val us_pos = _checked_pos(us1)
+          val us_pos = _checked_arr_size(us1)
           val arr = ward_arr_alloc<byte>(us_pos)
           val _rd = ward_file_read(file_handle, data_off, arr, us_pos)
           val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
@@ -2662,7 +2662,7 @@ in
             val s = ward_dom_stream_begin(dom)
           in
             if gt_int_int(dir_len, 0) then let
-              val dl_pos = _checked_pos(dir_len)
+              val dl_pos = _checked_arr_size(dir_len)
               val dir_arr = copy_sbuf_to_arr(dl_pos)
               val s = render_tree_with_images(s, container_id, sax_buf, sl,
                 file_handle, dir_arr, dl_pos)

@@ -311,10 +311,16 @@ fun render_tree_with_images
 (* Reset the deferred image queue (called before each render pass). *)
 fun deferred_image_queue_reset(): void
 
-(* Load all deferred images from the queue.
+(* Load all deferred images from the queue using an arena allocator.
  * For each recorded image: resolves src path relative to chapter_dir,
  * finds ZIP entry, reads stored data, detects MIME type, and calls
  * ward_dom_stream_set_image_src.
+ *
+ * Uses a per-page arena for all image byte allocations. The arena is
+ * created at the start (sized to total image bytes) and destroyed at
+ * the end, eliminating memory fragmentation from individual alloc/free
+ * pairs. Arena tokens track each allocation and are returned before
+ * the arena is destroyed.
  *
  * Precondition: tree and chapter_dir must be the SAME arrays passed
  * to render_tree_with_images (src_off/src_len index into tree).

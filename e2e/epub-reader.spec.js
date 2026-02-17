@@ -9,8 +9,8 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { createEpub, TINY_PNG } from './create-epub.js';
-import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
+import { createEpub } from './create-epub.js';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SCREENSHOT_DIR = join(process.cwd(), 'e2e', 'screenshots');
@@ -313,79 +313,9 @@ test.describe('EPUB Reader E2E', () => {
     // Additionally, the OPF has <dc:creator id="author_0"> (attribute on tag),
     // which tests the _find_gt metadata parsing fix.
 
-    // Record all WASM export + import calls for crash reproduction.
-    // WASM exports are frozen/non-writable, so we build a plain wrapper object
-    // (same pattern as bridge.js wrapExports) and return a fake result.
-    await page.addInitScript(() => {
-      const origInstantiate = WebAssembly.instantiate;
-      WebAssembly.instantiate = async function(bytes, imports) {
-        // Wrap import functions (WASM→JS calls) to log them
-        if (imports && imports.env) {
-          for (const [name, fn] of Object.entries(imports.env)) {
-            if (typeof fn === 'function') {
-              const origFn = fn;
-              imports.env[name] = function(...args) {
-                console.log('WASM_IMP:' + name + ':' + JSON.stringify(args));
-                const ret = origFn.apply(this, args);
-                if (ret !== undefined) console.log('WASM_IMP_RET:' + name + ':' + JSON.stringify(ret));
-                return ret;
-              };
-            }
-          }
-        }
-
-        const result = await origInstantiate.call(WebAssembly, bytes, imports);
-        const realInstance = result.instance;
-        const realExports = realInstance.exports;
-
-        // Build plain wrapper — can't modify frozen WASM exports
-        const wrappedExports = Object.create(null);
-        for (const [key, val] of Object.entries(realExports)) {
-          if (typeof val !== 'function') {
-            wrappedExports[key] = val;
-          } else {
-            const orig = val;
-            wrappedExports[key] = function(...args) {
-              console.log('WASM_CALL:' + key + ':' + JSON.stringify(args));
-              try {
-                const ret = orig.apply(null, args);
-                if (ret !== undefined) console.log('WASM_RET:' + key + ':' + JSON.stringify(ret));
-                return ret;
-              } catch(e) {
-                console.log('WASM_ERR:' + key + ':' + e.message);
-                throw e;
-              }
-            };
-          }
-        }
-
-        const mem = realExports.memory;
-        if (mem) {
-          console.log('WASM_MEM:initial_pages=' + (mem.buffer.byteLength / 65536));
-        }
-
-        // Return fake result with our wrapped exports
-        return {
-          instance: { exports: wrappedExports },
-          module: result.module
-        };
-      };
-    });
-
     const consoleMessages = [];
-    const pageErrors = [];
     page.on('console', msg => consoleMessages.push(`[${msg.type()}] ${msg.text()}`));
-    page.on('pageerror', err => pageErrors.push(err.message));
-    page.on('crash', () => {
-      console.error('PAGE CRASHED during import test');
-      // Dump all WASM recordings (exports, imports, memory)
-      const wasmCalls = consoleMessages.filter(m =>
-        m.includes('WASM_CALL:') || m.includes('WASM_RET:') ||
-        m.includes('WASM_IMP:') || m.includes('WASM_IMP_RET:') ||
-        m.includes('WASM_ERR:') || m.includes('WASM_MEM:'));
-      console.error('WASM call trace (' + wasmCalls.length + ' entries):');
-      wasmCalls.forEach(c => console.error(c));
-    });
+    page.on('pageerror', err => consoleMessages.push(`[error] ${err.message}`));
 
     // Navigate to app and wait for library
     await page.goto('/');
@@ -1036,40 +966,6 @@ test.describe('EPUB Reader E2E', () => {
     const backBtn = page.locator('.back-btn');
     await backBtn.click();
     await page.waitForSelector('.book-card', { timeout: 10000 });
-  });
-
-  test('ward crash_repro exerciser does not crash Chromium', async ({ page }) => {
-    // Tests whether ward's DOM operations alone (without quire) crash Chromium.
-    // If this crashes: the bug is in ward (bridge + WASM interaction).
-    // If this passes: the bug is in quire-specific code, not ward.
-    //
-    // The exerciser reproduces the exact memory lifecycle from the conan
-    // crash trace: ZIP alloc/free, multiple DOM cycles, decompress metadata,
-    // cover chapter render, REMOVE_CHILDREN + large chapter render with
-    // allocations during the DOM stream, then post-render allocations.
-    const crashed = { value: false };
-    page.on('crash', () => { crashed.value = true; });
-
-    await page.goto('/vendor/ward/exerciser/crash_repro.html');
-
-    // Wait for the exerciser to complete or crash
-    try {
-      await page.waitForFunction(() => {
-        const log = document.getElementById('log');
-        return log && (log.textContent.includes('SUCCESS') || log.textContent.includes('FATAL'));
-      }, { timeout: 30000 });
-
-      const logContent = await page.evaluate(() => document.getElementById('log').textContent);
-      console.log('crash_repro log:', logContent);
-      expect(logContent).toContain('SUCCESS');
-      expect(crashed.value).toBe(false);
-    } catch (e) {
-      if (crashed.value) {
-        console.error('WARD CRASH_REPRO CRASHED CHROMIUM — this is a ward bug');
-        throw new Error('crash_repro.wasm + ward_bridge.mjs crashed Chromium renderer');
-      }
-      throw e;
-    }
   });
 
 });

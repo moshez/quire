@@ -17,6 +17,8 @@
 #define ward_text_result(...) atstype_ptrk
 #define ward_safe_content_text(...) atstype_ptrk
 #define ward_content_text_builder(...) atstype_ptrk
+#define ward_arena(...) atstype_ptrk
+#define ward_arena_token(...) atstype_ptrk
 
 /* Promise types */
 #define ward_promise(...) atstype_ptrk
@@ -107,6 +109,25 @@ static inline int ward_bridge_stash_get_int(int slot) { return _ward_bridge_stas
 /* JS data stash stub (native build — no-op) */
 static inline void ward_js_stash_read(int stash_id, void *dest, int len) { /* stub */ }
 
+/* Arena stubs (native build parity with runtime.c) */
+static inline void *ward_arena_create(int max_size) {
+    void *p = malloc(max_size + 8);
+    if (!p) return (void*)0;
+    *(int *)p = max_size;
+    *((int *)p + 1) = 0;
+    memset((char *)p + 8, 0, max_size);
+    return p;
+}
+static inline void *ward_arena_alloc(void *arena, int size) {
+    int max_size = *(int *)arena;
+    int used = *((int *)arena + 1);
+    used = (used + 7) & ~7;
+    if (used + size > max_size) return (void*)0;
+    *((int *)arena + 1) = used + size;
+    return (char *)arena + 8 + used;
+}
+static inline void ward_arena_destroy(void *arena) { free(arena); }
+
 /* Measure stash stubs */
 static int _ward_measure[6] = {0};
 static inline void ward_measure_set(int slot, int v) { _ward_measure[slot] = v; }
@@ -130,7 +151,7 @@ static inline int ward_resolver_stash(void *resolver) {
     for (int i = 0; i < WARD_MAX_RESOLVERS; i++) {
         if (!_ward_resolver_table[i]) { _ward_resolver_table[i] = resolver; return i; }
     }
-    __builtin_trap(); /* resolver table full — 64 concurrent async ops exceeded */
+    return -1; /* resolver table full — 64 concurrent async ops exceeded */
 }
 static inline void *ward_resolver_unstash(int id) {
     if (id < 0 || id >= WARD_MAX_RESOLVERS) return (void*)0;

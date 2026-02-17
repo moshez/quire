@@ -249,6 +249,8 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define ward_text_result(...) atstype_ptrk
 #define ward_safe_content_text(...) atstype_ptrk
 #define ward_content_text_builder(...) atstype_ptrk
+#define ward_arena(...) atstype_ptrk
+#define ward_arena_token(...) atstype_ptrk
 
 /* Memory operations (implemented in runtime.c) */
 void *malloc(int size);
@@ -256,6 +258,11 @@ void free(void *ptr);
 void *memset(void *s, int c, unsigned int n);
 void *memcpy(void *dst, const void *src, unsigned int n);
 static inline void *calloc(int n, int sz) { return malloc(n * sz); }
+
+/* Arena (implemented in runtime.c) */
+void *ward_arena_create(int max_size);
+void *ward_arena_alloc(void *arena, int size);
+void ward_arena_destroy(void *arena);
 
 /* Promise types */
 #define ward_promise(...) atstype_ptrk

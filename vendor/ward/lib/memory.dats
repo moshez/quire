@@ -12,6 +12,8 @@ local
   assume ward_arr_borrow(a, l, n) = ptr l
   assume ward_safe_text(n) = ptr
   assume ward_text_builder(n, i) = ptr
+  assume ward_arena(l, max, k) = ptr l
+  assume ward_arena_token(la, l, n) = ptr l
 in
 
 (*
@@ -195,6 +197,42 @@ ward_arr_write_u16le{l}{n}{i}{v}(arr, i, v) = let
   val () = $extfcall(void, "ward_set_byte", arr, i, v0)
   val () = $extfcall(void, "ward_set_byte", arr, i + 1, v0 / 256)
 in () end
+
+(* Arena — $UNSAFE justification:
+ *
+ * [A1] castvwtp1{ptr}(arena) in ward_arena_alloc:
+ *   Extracts raw pointer from borrowed !ward_arena for C call.
+ *   Alternative: $UNSAFE.cast would consume the linear arena.
+ *   castvwtp1 borrows without consuming — standard pattern for !T params.
+ *   API safety: arena is !T (borrowed), users cannot double-free.
+ *   Borrow count k is proof-only; >>-transition enforced by .sats signature.
+ *   Token linking (la, l, n) prevents returning wrong arrays to wrong arenas.
+ *)
+
+extern fun _ward_arena_create
+  (max: int): [l:agz] ptr l = "mac#ward_arena_create"
+
+extern fun _ward_arena_alloc_bytes
+  (arena: ptr, size: int): [l:agz] ptr l = "mac#ward_arena_alloc"
+
+extern fun _ward_arena_destroy
+  (arena: ptr): void = "mac#ward_arena_destroy"
+
+implement
+ward_arena_create{max}(max_size) = _ward_arena_create(max_size)
+
+implement{a}
+ward_arena_alloc{la}{max}{k}{n}(arena, n) = let
+  val nbytes = n * sz2i(sizeof<a>)
+  val p = _ward_arena_alloc_bytes(
+    $UNSAFE.castvwtp1{ptr}(arena), nbytes) (* [A1] *)
+in @(p, p) end
+
+implement{a}
+ward_arena_return{la}{max}{k}{l}{n}(arena, token, arr) = ()
+
+implement
+ward_arena_destroy{l}{max}(arena) = _ward_arena_destroy(arena)
 
 end (* local -- ward_arr, safe_text *)
 
