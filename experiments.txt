@@ -136,8 +136,30 @@ What quire does that the exerciser doesn't (and may cause the crash):
   5. Inline CSS styles on elements (render_tree sets styles)
   6. Complex element hierarchy (not flat p+span)
 
-NEXT STEPS (for quire, not ward):
-  - Narrow down which of the above operations triggers the crash
-  - Create a synthetic EPUB with conan-like content structure
-  - Check if wardJsParseHtml on 21KB HTML alone triggers the crash
-  - Check if measure_and_set_pages triggers synchronous layout crash
+---
+
+EXPERIMENT 6: crash_repro with HTML parsing + SAX rendering
+Status: PENDING (CI running)
+
+Rebuilt crash_repro.dats to include the previously-missing wardJsParseHtml path:
+  1. Build ~100KB HTML in WASM memory (550 paragraphs of 190 bytes each)
+  2. Call ward_xml_parse_html (DOMParser in JS → binary SAX buffer)
+  3. Walk SAX binary: ELEMENT_OPEN → create <p>, TEXT → create <span> + set_safe_text
+  4. REMOVE_CHILDREN + full SAX render in single DOM stream → flush
+
+Node.js result: 1653 nodes, 1101 children, 29KB innerHTML — PASSED
+Chromium result: PENDING (CI)
+
+Key differences from experiment 5:
+  + wardJsParseHtml (DOMParser creates full DOM tree from ~100KB HTML)
+  + SAX walking (binary protocol decode)
+  + SET_SAFE_TEXT on text nodes (adds ~9KB to diff buffer)
+  + 550 paragraphs (vs 500 flat elements)
+  - Still missing: images, CSS styles, complex nesting, layout measurement
+
+---
+
+NEXT STEPS:
+  - If experiment 6 crashes: standalone repro achieved
+  - If experiment 6 passes: add CSS styles, complex nesting, or images
+  - Consider adding measure_and_set_pages (synchronous layout trigger)

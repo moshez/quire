@@ -1,14 +1,13 @@
 (* crash_repro.dats — Reproduce Chromium renderer crash (ward#18).
  *
- * Uses the EXACT 21138-byte HTML from conan-stories.epub chapter 0.
- * Render is deferred to an async timer callback (matching quire's
- * decompress → callback → render path).
+ * Uses the EXACT 21138-byte HTML from conan-stories.epub chapter 0,
+ * compressed as 9213 bytes of deflate-raw data. Matches the exact
+ * quire crash path:
  *
- * Crash path:
  *   1. ward_node_init: create container + 15 cover elements
- *   2. Timer(0) fires asynchronously
- *   3. Callback: build_html → ward_xml_parse_html → SAX walk → DOM render
- *   4. ward_dom_stream_end flushes diffs (with text) → CRASH?
+ *   2. ward_decompress: async DecompressionStream (deflate-raw)
+ *   3. Callback: ward_blob_read → ward_xml_parse_html → SAX render
+ *   4. ward_dom_stream_end flushes diffs → CRASH?
  *   5. ward_measure_node forces synchronous layout reflow
  *
  * Build: make crash-repro   (in vendor/ward/)
@@ -104,23 +103,17 @@ fn mk_span (): ward_safe_text(4) = let
   val b = ward_text_putc(b, 3, char2int1('n'))
 in ward_text_done(b) end
 
-(* --- Real conan chapter HTML (21138 bytes) embedded as C static array ---
- * Uses the exact HTML from OEBPS/2919505986938560309_42664-h-0.htm.xhtml
- * in conan-stories.epub. This matches the crash path exactly. *)
+(* --- Compressed conan chapter (9213 bytes deflate-raw → 21138 bytes) ---
+ * Uses the exact compressed data from conan-stories.epub chapter 0. *)
 
 %{
-#include "../exerciser/conan_chapter.h"
+#include "../exerciser/conan_compressed.h"
 %}
 
-extern fun copy_conan_html {l:agz}
-  (dst: !ward_arr(byte, l, 21138)): void = "mac#"
+extern fun copy_conan_compressed {l:agz}
+  (dst: !ward_arr(byte, l, 9213)): void = "mac#"
 
-#define HTML_SIZE 21138
-
-fn build_html (): [l:agz] ward_arr(byte, l, HTML_SIZE) = let
-  val buf = ward_arr_alloc<byte>(HTML_SIZE)
-  val () = copy_conan_html(buf)
-in buf end
+#define COMP_SIZE 9213
 
 (* --- Copy bytes from SAX borrow to a new mutable ward_arr ---
  * Since ward_arr_borrow and ward_arr are different types, we read byte-by-byte
@@ -268,50 +261,71 @@ implement ward_node_init (root_id) = let
   val () = ward_dom_fini(dom2)
 
   (* ============================================================
-   * Phase 3: Defer render to async timer callback.
-   * In quire, the render happens in a decompress callback, NOT
-   * in ward_node_init. This means the render runs in a separate
-   * WASM invocation from a JS setTimeout/callback context.
+   * Phase 3: Decompress chapter via DecompressionStream.
+   * This is the EXACT path quire takes: compressed ZIP entry →
+   * ward_decompress(deflate-raw) → async callback → blob_read →
+   * parse HTML → render DOM.
    * ============================================================ *)
-  val timer_p = ward_timer_set(0)
-  val render_p = ward_promise_then<int><int>(timer_p,
-    llam (_x: int) => let
-      (* Build ~21KB HTML in WASM memory (real conan chapter) *)
-      val html_buf = build_html()
+  val comp_buf = ward_arr_alloc<byte>(COMP_SIZE)
+  val () = copy_conan_compressed(comp_buf)
+  val @(c_frozen, c_borrow) = ward_arr_freeze<byte>(comp_buf)
+  val decomp_p = ward_decompress(c_borrow, COMP_SIZE, 2)
+  (* JS pipes data synchronously into DecompressionStream — safe to free *)
+  val () = ward_arr_drop<byte>(c_frozen, c_borrow)
+  val comp_buf2 = ward_arr_thaw<byte>(c_frozen)
+  val () = ward_arr_free<byte>(comp_buf2)
 
-      (* Parse HTML via ward_xml_parse_html (calls JS DOMParser) *)
-      val @(frozen, borrow) = ward_arr_freeze<byte>(html_buf)
-      val sax_len = ward_xml_parse_html(borrow, HTML_SIZE)
-      val () = ward_arr_drop<byte>(frozen, borrow)
-      val html_buf2 = ward_arr_thaw<byte>(frozen)
-      val () = ward_arr_free<byte>(html_buf2)
+  (* ============================================================
+   * Phase 4: Decompress callback — read blob, parse HTML, render
+   * ============================================================ *)
+  val render_p = ward_promise_then<int><int>(decomp_p,
+    llam (blob_handle: int) => let
+      val decomp_len = ward_decompress_get_len()
+      val dl = g1ofg0(decomp_len)
     in
-      if gt_int_int(sax_len, 0) then let
-        val sax_g1 = g1ofg0(sax_len)
+      if lt1_int_int(0, dl) then let
+        (* Read decompressed HTML from blob into ward_arr *)
+        val html_buf = ward_arr_alloc<byte>(dl)
+        val _bytes = ward_blob_read(blob_handle, 0, html_buf, dl)
+        val () = ward_blob_free(blob_handle)
+
+        (* Parse HTML via ward_xml_parse_html (calls JS DOMParser) *)
+        val @(h_frozen, h_borrow) = ward_arr_freeze<byte>(html_buf)
+        val sax_len = ward_xml_parse_html(h_borrow, dl)
+        val () = ward_arr_drop<byte>(h_frozen, h_borrow)
+        val html_buf2 = ward_arr_thaw<byte>(h_frozen)
+        val () = ward_arr_free<byte>(html_buf2)
       in
-        if lt1_int_int(0, sax_g1) then let
-          (* Retrieve SAX binary *)
-          val sax = ward_xml_get_result(sax_g1)
-          val @(sax_frozen, sax_borrow) = ward_arr_freeze<byte>(sax)
+        if gt_int_int(sax_len, 0) then let
+          val sax_g1 = g1ofg0(sax_len)
+        in
+          if lt1_int_int(0, sax_g1) then let
+            (* Retrieve SAX binary result *)
+            val sax = ward_xml_get_result(sax_g1)
+            val @(sax_frozen, sax_borrow) = ward_arr_freeze<byte>(sax)
 
-          (* REMOVE_CHILDREN + render from SAX with text content *)
-          val dom3 = ward_dom_init()
-          val s3 = ward_dom_stream_begin(dom3)
-          val s3 = ward_dom_stream_remove_children(s3, 1)
-          val @(s3, _, _) = render_sax(s3, sax_borrow, sax_g1, 1, 0, 100, 0)
-          val dom3 = ward_dom_stream_end(s3)
-          val () = ward_dom_fini(dom3)
+            (* REMOVE_CHILDREN + render from SAX with text content *)
+            val dom3 = ward_dom_init()
+            val s3 = ward_dom_stream_begin(dom3)
+            val s3 = ward_dom_stream_remove_children(s3, 1)
+            val @(s3, _, _) = render_sax(s3, sax_borrow, sax_g1, 1, 0, 100, 0)
+            val dom3 = ward_dom_stream_end(s3)
+            val () = ward_dom_fini(dom3)
 
-          (* Phase 4: Measure container — forces synchronous layout reflow *)
-          val _found = ward_measure_node(1)
+            (* Measure container — forces synchronous layout reflow *)
+            val _found = ward_measure_node(1)
 
-          val () = ward_arr_drop<byte>(sax_frozen, sax_borrow)
-          val sax2 = ward_arr_thaw<byte>(sax_frozen)
-          val () = ward_arr_free<byte>(sax2)
-        in ward_promise_return<int>(0) end
+            val () = ward_arr_drop<byte>(sax_frozen, sax_borrow)
+            val sax2 = ward_arr_thaw<byte>(sax_frozen)
+            val () = ward_arr_free<byte>(sax2)
+          in ward_promise_return<int>(0) end
+          else ward_promise_return<int>(0)
+        end
         else ward_promise_return<int>(0)
       end
-      else ward_promise_return<int>(0)
+      else let
+        val () = ward_blob_free(blob_handle)
+      in ward_promise_return<int>(0) end
     end)
   val exit_p = ward_promise_then<int><int>(render_p,
     llam (_x: int) => let
