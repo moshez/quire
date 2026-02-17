@@ -1,14 +1,15 @@
 (* crash_repro.dats — Reproduce Chromium renderer crash (ward#18).
  *
- * The crash occurs when quire loads a 21KB deflate-compressed HTML chapter
- * from the conan EPUB. Previous versions of this exerciser did NOT crash
- * because they skipped text content in DOM diffs (flush was too small).
+ * Uses the EXACT 21138-byte HTML from conan-stories.epub chapter 0.
+ * Render is deferred to an async timer callback (matching quire's
+ * decompress → callback → render path).
  *
- * This exerciser replicates the exact crash path:
- *   1. Build ~21KB HTML string in WASM memory (matching conan chapter size)
- *   2. Call ward_xml_parse_html (DOMParser in JS → binary SAX)
- *   3. Walk SAX and render DOM via ward_dom_stream including set_text
- *   4. ward_dom_stream_end flushes DOM diffs with real text → CRASH
+ * Crash path:
+ *   1. ward_node_init: create container + 15 cover elements
+ *   2. Timer(0) fires asynchronously
+ *   3. Callback: build_html → ward_xml_parse_html → SAX walk → DOM render
+ *   4. ward_dom_stream_end flushes diffs (with text) → CRASH?
+ *   5. ward_measure_node forces synchronous layout reflow
  *
  * Build: make crash-repro   (in vendor/ward/)
  * Run:   open exerciser/crash_repro.html in Chromium *)
@@ -267,58 +268,54 @@ implement ward_node_init (root_id) = let
   val () = ward_dom_fini(dom2)
 
   (* ============================================================
-   * Phase 3: Navigate next — REMOVE_CHILDREN + HTML parse + render
-   * This is the crash path: build HTML, parse via DOMParser,
-   * walk SAX, render DOM elements + text producing ~21KB flush.
+   * Phase 3: Defer render to async timer callback.
+   * In quire, the render happens in a decompress callback, NOT
+   * in ward_node_init. This means the render runs in a separate
+   * WASM invocation from a JS setTimeout/callback context.
    * ============================================================ *)
+  val timer_p = ward_timer_set(0)
+  val render_p = ward_promise_then<int><int>(timer_p,
+    llam (_x: int) => let
+      (* Build ~21KB HTML in WASM memory (real conan chapter) *)
+      val html_buf = build_html()
 
-  (* Build ~21KB HTML in WASM memory *)
-  val html_buf = build_html()
+      (* Parse HTML via ward_xml_parse_html (calls JS DOMParser) *)
+      val @(frozen, borrow) = ward_arr_freeze<byte>(html_buf)
+      val sax_len = ward_xml_parse_html(borrow, HTML_SIZE)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val html_buf2 = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(html_buf2)
+    in
+      if gt_int_int(sax_len, 0) then let
+        val sax_g1 = g1ofg0(sax_len)
+      in
+        if lt1_int_int(0, sax_g1) then let
+          (* Retrieve SAX binary *)
+          val sax = ward_xml_get_result(sax_g1)
+          val @(sax_frozen, sax_borrow) = ward_arr_freeze<byte>(sax)
 
-  (* Parse HTML via ward_xml_parse_html (calls JS DOMParser) *)
-  val @(frozen, borrow) = ward_arr_freeze<byte>(html_buf)
-  val sax_len = ward_xml_parse_html(borrow, HTML_SIZE)
-  val () = ward_arr_drop<byte>(frozen, borrow)
-  val html_buf2 = ward_arr_thaw<byte>(frozen)
-  val () = ward_arr_free<byte>(html_buf2)
+          (* REMOVE_CHILDREN + render from SAX with text content *)
+          val dom3 = ward_dom_init()
+          val s3 = ward_dom_stream_begin(dom3)
+          val s3 = ward_dom_stream_remove_children(s3, 1)
+          val @(s3, _, _) = render_sax(s3, sax_borrow, sax_g1, 1, 0, 100, 0)
+          val dom3 = ward_dom_stream_end(s3)
+          val () = ward_dom_fini(dom3)
 
-  val sax_g1 = g1ofg0(sax_len)
-in
-  if gt_int_int(sax_len, 0) then let
-    val sax_g1 = g1ofg0(sax_len)
-  in
-    if lt1_int_int(0, sax_g1) then let
-      (* Retrieve SAX binary *)
-      val sax = ward_xml_get_result(sax_g1)
-      val @(sax_frozen, sax_borrow) = ward_arr_freeze<byte>(sax)
+          (* Phase 4: Measure container — forces synchronous layout reflow *)
+          val _found = ward_measure_node(1)
 
-      (* REMOVE_CHILDREN + render from SAX with text content *)
-      val dom3 = ward_dom_init()
-      val s3 = ward_dom_stream_begin(dom3)
-      val s3 = ward_dom_stream_remove_children(s3, 1)
-      val @(s3, _, _) = render_sax(s3, sax_borrow, sax_g1, 1, 0, 100, 0)
-      val dom3 = ward_dom_stream_end(s3)
-      val () = ward_dom_fini(dom3)
-
-      (* ============================================================
-       * Phase 4: Measure container (forces synchronous layout reflow)
-       * Matches quire's measure_and_set_pages after render_tree.
-       * This is a known crash trigger — Chromium must lay out all
-       * newly created elements before returning the measurement.
-       * ============================================================ *)
-      val _found = ward_measure_node(1)
-
-      val () = ward_arr_drop<byte>(sax_frozen, sax_borrow)
-      val sax2 = ward_arr_thaw<byte>(sax_frozen)
-      val () = ward_arr_free<byte>(sax2)
-
+          val () = ward_arr_drop<byte>(sax_frozen, sax_borrow)
+          val sax2 = ward_arr_thaw<byte>(sax_frozen)
+          val () = ward_arr_free<byte>(sax2)
+        in ward_promise_return<int>(0) end
+        else ward_promise_return<int>(0)
+      end
+      else ward_promise_return<int>(0)
+    end)
+  val exit_p = ward_promise_then<int><int>(render_p,
+    llam (_x: int) => let
       val () = ward_exit()
-    in end
-    else let
-      val () = ward_exit()
-    in end
-  end
-  else let
-    val () = ward_exit()
-  in end
-end
+    in ward_promise_return<int>(0) end)
+  val () = ward_promise_discard(exit_p)
+in end
