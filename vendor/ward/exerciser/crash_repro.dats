@@ -130,47 +130,33 @@ in
   else ()
 end
 
-(* --- Create elements with text wrapping (simulates render_tree) ---
- * For every 3rd element, simulate the text-wrapping pattern:
- *   1. Create a <span> child
- *   2. Allocate a buffer for the text content
- *   3. Freeze, set_text via borrow, drop, thaw, free
- * This exercises the allocator DURING an active DOM stream,
- * matching what render_tree does for text after child elements. *)
-fun create_many_with_allocs {l:agz}
+(* --- Create small chapter (cover page, ~15 elements) --- *)
+fun create_small_chapter {l:agz}
   (s: ward_dom_stream(l), parent: int, base: int,
    i: int, n: int): ward_dom_stream(l) =
   if i >= n then s
   else let
-    val nid = base + i * 2
+    val nid = base + i
     val s = ward_dom_stream_create_element(s, nid, parent, mk_p(), 1)
-  in
-    if i mod 3 = 0 then let
-      (* Text-wrapping path: create <span>, alloc text buffer, set_text *)
-      val span_nid = nid + 1
-      val s = ward_dom_stream_create_element(s, span_nid, nid, mk_span(), 4)
-      (* Allocate text buffer — this exercises malloc during DOM stream *)
-      val txt_buf = ward_arr_alloc<byte>(5)
-      val () = ward_arr_set<byte>(txt_buf, 0, ward_int2byte(104)) (* h *)
-      val () = ward_arr_set<byte>(txt_buf, 1, ward_int2byte(101)) (* e *)
-      val () = ward_arr_set<byte>(txt_buf, 2, ward_int2byte(108)) (* l *)
-      val () = ward_arr_set<byte>(txt_buf, 3, ward_int2byte(108)) (* l *)
-      val () = ward_arr_set<byte>(txt_buf, 4, ward_int2byte(111)) (* o *)
-      val @(frozen, borrow) = ward_arr_freeze<byte>(txt_buf)
-      val s = ward_dom_stream_set_text(s, span_nid, borrow, 5)
-      val () = ward_arr_drop<byte>(frozen, borrow)
-      val txt_buf2 = ward_arr_thaw<byte>(frozen)
-      val () = ward_arr_free<byte>(txt_buf2)
-    in
-      create_many_with_allocs(s, parent, base, i + 1, n)
-    end
-    else let
-      (* Direct safe text path *)
-      val s = ward_dom_stream_set_safe_text(s, nid, mk_text(), 5)
-    in
-      create_many_with_allocs(s, parent, base, i + 1, n)
-    end
-  end
+    val s = ward_dom_stream_set_safe_text(s, nid, mk_text(), 5)
+  in create_small_chapter(s, parent, base, i + 1, n) end
+
+(* --- Create large chapter with long text + attributes ---
+ * Each element: create_element("p") + set_attr("class","demo") + set_text(100 bytes)
+ * Per element: 11 + 17 + 107 = 135 bytes in diff buffer.
+ * 160 elements → ~21,600 bytes (matches conan's 21,452-byte flush).
+ * Text borrow is reused across all elements (frozen once). *)
+fun create_large_chapter {l:agz}{lb:agz}
+  (s: ward_dom_stream(l), parent: int, base: int,
+   text_borrow: !ward_arr_borrow(byte, lb, 100),
+   i: int, n: int): ward_dom_stream(l) =
+  if i >= n then s
+  else let
+    val nid = base + i
+    val s = ward_dom_stream_create_element(s, nid, parent, mk_p(), 1)
+    val s = ward_dom_stream_set_attr_safe(s, nid, mk_class(), 5, mk_demo(), 4)
+    val s = ward_dom_stream_set_text(s, nid, text_borrow, 100)
+  in create_large_chapter(s, parent, base, text_borrow, i + 1, n) end
 
 (* WASM export: entry point *)
 extern fun ward_node_init (root_id: int): void = "ext#ward_node_init"
@@ -223,7 +209,7 @@ implement ward_node_init (root_id) = let
 
   val dom3 = ward_dom_init()
   val s3 = ward_dom_stream_begin(dom3)
-  val s3 = create_many_with_allocs(s3, 1, 10, 0, 15)
+  val s3 = create_small_chapter(s3, 1, 10, 0, 15)
   val dom3 = ward_dom_stream_end(s3)
   val () = ward_dom_fini(dom3)
 
@@ -232,6 +218,10 @@ implement ward_node_init (root_id) = let
   (* ============================================================
    * Phase 5: Navigate next — REMOVE_CHILDREN + large chapter
    * Matches: decompress 9213→21138, SAX 20684, flush 21452
+   *
+   * Target: single flush of ~21KB to match the conan crash point.
+   * 160 elements × 135 bytes/element = 21,600 bytes + 5 bytes
+   * for REMOVE_CHILDREN = ~21,605 total.
    * ============================================================ *)
   val () = alloc_and_free(9213)
   val () = alloc_and_free(21138)
@@ -240,15 +230,127 @@ implement ward_node_init (root_id) = let
   val sax_buf2 = ward_arr_alloc<byte>(20684)
   val () = ward_arr_set<byte>(sax_buf2, 0, ward_int2byte(1))
 
+  (* Allocate reusable 100-byte text buffer — frozen once, borrow reused *)
+  val text_buf = ward_arr_alloc<byte>(100)
+  (* Fill with repeating ASCII: "The gods of the north were wild and..." *)
+  val () = ward_arr_set<byte>(text_buf, 0, ward_int2byte(84))  (* T *)
+  val () = ward_arr_set<byte>(text_buf, 1, ward_int2byte(104)) (* h *)
+  val () = ward_arr_set<byte>(text_buf, 2, ward_int2byte(101)) (* e *)
+  val () = ward_arr_set<byte>(text_buf, 3, ward_int2byte(32))  (*   *)
+  val () = ward_arr_set<byte>(text_buf, 4, ward_int2byte(103)) (* g *)
+  val () = ward_arr_set<byte>(text_buf, 5, ward_int2byte(111)) (* o *)
+  val () = ward_arr_set<byte>(text_buf, 6, ward_int2byte(100)) (* d *)
+  val () = ward_arr_set<byte>(text_buf, 7, ward_int2byte(115)) (* s *)
+  val () = ward_arr_set<byte>(text_buf, 8, ward_int2byte(32))  (*   *)
+  val () = ward_arr_set<byte>(text_buf, 9, ward_int2byte(111)) (* o *)
+  (* Fill rest with repeating space + lowercase pattern *)
+  val () = ward_arr_set<byte>(text_buf, 10, ward_int2byte(102))
+  val () = ward_arr_set<byte>(text_buf, 11, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 12, ward_int2byte(116))
+  val () = ward_arr_set<byte>(text_buf, 13, ward_int2byte(104))
+  val () = ward_arr_set<byte>(text_buf, 14, ward_int2byte(101))
+  val () = ward_arr_set<byte>(text_buf, 15, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 16, ward_int2byte(110))
+  val () = ward_arr_set<byte>(text_buf, 17, ward_int2byte(111))
+  val () = ward_arr_set<byte>(text_buf, 18, ward_int2byte(114))
+  val () = ward_arr_set<byte>(text_buf, 19, ward_int2byte(116))
+  (* positions 20-99: fill with space-separated word pattern *)
+  val () = ward_arr_set<byte>(text_buf, 20, ward_int2byte(104))
+  val () = ward_arr_set<byte>(text_buf, 21, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 22, ward_int2byte(119))
+  val () = ward_arr_set<byte>(text_buf, 23, ward_int2byte(101))
+  val () = ward_arr_set<byte>(text_buf, 24, ward_int2byte(114))
+  val () = ward_arr_set<byte>(text_buf, 25, ward_int2byte(101))
+  val () = ward_arr_set<byte>(text_buf, 26, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 27, ward_int2byte(119))
+  val () = ward_arr_set<byte>(text_buf, 28, ward_int2byte(105))
+  val () = ward_arr_set<byte>(text_buf, 29, ward_int2byte(108))
+  val () = ward_arr_set<byte>(text_buf, 30, ward_int2byte(100))
+  val () = ward_arr_set<byte>(text_buf, 31, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 32, ward_int2byte(97))
+  val () = ward_arr_set<byte>(text_buf, 33, ward_int2byte(110))
+  val () = ward_arr_set<byte>(text_buf, 34, ward_int2byte(100))
+  val () = ward_arr_set<byte>(text_buf, 35, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 36, ward_int2byte(115))
+  val () = ward_arr_set<byte>(text_buf, 37, ward_int2byte(116))
+  val () = ward_arr_set<byte>(text_buf, 38, ward_int2byte(114))
+  val () = ward_arr_set<byte>(text_buf, 39, ward_int2byte(97))
+  (* bytes 40-99: repeat "nge and fierce " pattern *)
+  val () = ward_arr_set<byte>(text_buf, 40, ward_int2byte(110))
+  val () = ward_arr_set<byte>(text_buf, 41, ward_int2byte(103))
+  val () = ward_arr_set<byte>(text_buf, 42, ward_int2byte(101))
+  val () = ward_arr_set<byte>(text_buf, 43, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 44, ward_int2byte(97))
+  val () = ward_arr_set<byte>(text_buf, 45, ward_int2byte(110))
+  val () = ward_arr_set<byte>(text_buf, 46, ward_int2byte(100))
+  val () = ward_arr_set<byte>(text_buf, 47, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 48, ward_int2byte(102))
+  val () = ward_arr_set<byte>(text_buf, 49, ward_int2byte(105))
+  val () = ward_arr_set<byte>(text_buf, 50, ward_int2byte(101))
+  val () = ward_arr_set<byte>(text_buf, 51, ward_int2byte(114))
+  val () = ward_arr_set<byte>(text_buf, 52, ward_int2byte(99))
+  val () = ward_arr_set<byte>(text_buf, 53, ward_int2byte(101))
+  val () = ward_arr_set<byte>(text_buf, 54, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 55, ward_int2byte(98))
+  val () = ward_arr_set<byte>(text_buf, 56, ward_int2byte(101))
+  val () = ward_arr_set<byte>(text_buf, 57, ward_int2byte(121))
+  val () = ward_arr_set<byte>(text_buf, 58, ward_int2byte(111))
+  val () = ward_arr_set<byte>(text_buf, 59, ward_int2byte(110))
+  val () = ward_arr_set<byte>(text_buf, 60, ward_int2byte(100))
+  val () = ward_arr_set<byte>(text_buf, 61, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 62, ward_int2byte(116))
+  val () = ward_arr_set<byte>(text_buf, 63, ward_int2byte(104))
+  val () = ward_arr_set<byte>(text_buf, 64, ward_int2byte(101))
+  val () = ward_arr_set<byte>(text_buf, 65, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 66, ward_int2byte(105))
+  val () = ward_arr_set<byte>(text_buf, 67, ward_int2byte(99))
+  val () = ward_arr_set<byte>(text_buf, 68, ward_int2byte(101))
+  val () = ward_arr_set<byte>(text_buf, 69, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 70, ward_int2byte(98))
+  val () = ward_arr_set<byte>(text_buf, 71, ward_int2byte(111))
+  val () = ward_arr_set<byte>(text_buf, 72, ward_int2byte(117))
+  val () = ward_arr_set<byte>(text_buf, 73, ward_int2byte(110))
+  val () = ward_arr_set<byte>(text_buf, 74, ward_int2byte(100))
+  val () = ward_arr_set<byte>(text_buf, 75, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 76, ward_int2byte(119))
+  val () = ward_arr_set<byte>(text_buf, 77, ward_int2byte(97))
+  val () = ward_arr_set<byte>(text_buf, 78, ward_int2byte(115))
+  val () = ward_arr_set<byte>(text_buf, 79, ward_int2byte(116))
+  val () = ward_arr_set<byte>(text_buf, 80, ward_int2byte(101))
+  val () = ward_arr_set<byte>(text_buf, 81, ward_int2byte(115))
+  val () = ward_arr_set<byte>(text_buf, 82, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 83, ward_int2byte(119))
+  val () = ward_arr_set<byte>(text_buf, 84, ward_int2byte(104))
+  val () = ward_arr_set<byte>(text_buf, 85, ward_int2byte(101))
+  val () = ward_arr_set<byte>(text_buf, 86, ward_int2byte(114))
+  val () = ward_arr_set<byte>(text_buf, 87, ward_int2byte(101))
+  val () = ward_arr_set<byte>(text_buf, 88, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 89, ward_int2byte(116))
+  val () = ward_arr_set<byte>(text_buf, 90, ward_int2byte(104))
+  val () = ward_arr_set<byte>(text_buf, 91, ward_int2byte(101))
+  val () = ward_arr_set<byte>(text_buf, 92, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 93, ward_int2byte(119))
+  val () = ward_arr_set<byte>(text_buf, 94, ward_int2byte(105))
+  val () = ward_arr_set<byte>(text_buf, 95, ward_int2byte(110))
+  val () = ward_arr_set<byte>(text_buf, 96, ward_int2byte(100))
+  val () = ward_arr_set<byte>(text_buf, 97, ward_int2byte(32))
+  val () = ward_arr_set<byte>(text_buf, 98, ward_int2byte(104))
+  val () = ward_arr_set<byte>(text_buf, 99, ward_int2byte(111))
+  val @(text_frozen, text_borrow) = ward_arr_freeze<byte>(text_buf)
+
   val dom4 = ward_dom_init()
   val s4 = ward_dom_stream_begin(dom4)
   val s4 = ward_dom_stream_remove_children(s4, 1)
-  (* Create 500 elements with allocs (matching render_tree's text wrapping).
-   * Each element ~= 2 node IDs (p + span for wrapping).
-   * Produces ~20000+ bytes of DOM diffs. *)
-  val s4 = create_many_with_allocs(s4, 1, 100, 0, 500)
+  (* Create 160 elements with text + class attr.
+   * 160 × 135 bytes/element + 5 REMOVE_CHILDREN = ~21,605 bytes.
+   * Single flush matches conan's ward_dom_flush(ptr, 21452). *)
+  val s4 = create_large_chapter(s4, 1, 100, text_borrow, 0, 160)
   val dom4 = ward_dom_stream_end(s4)
   val () = ward_dom_fini(dom4)
+
+  val () = ward_arr_drop<byte>(text_frozen, text_borrow)
+  val text_thaw = ward_arr_thaw<byte>(text_frozen)
+  val () = ward_arr_free<byte>(text_thaw)
 
   val () = ward_arr_free<byte>(sax_buf2)
 
