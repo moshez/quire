@@ -111,6 +111,28 @@ fn mk_span (): ward_safe_text(4) = let
   val b = ward_text_putc(b, 3, char2int1('n'))
 in ward_text_done(b) end
 
+fn mk_img (): ward_safe_text(3) = let
+  val b = ward_text_build(3)
+  val b = ward_text_putc(b, 0, char2int1('i'))
+  val b = ward_text_putc(b, 1, char2int1('m'))
+  val b = ward_text_putc(b, 2, char2int1('g'))
+in ward_text_done(b) end
+
+(* "image/jpeg" — 10 chars, for ward_dom_stream_set_image_src MIME type *)
+fn mk_mime_jpeg (): [l:agz] ward_safe_content_text(l, 10) = let
+  val b = ward_content_text_build(10)
+  val b = ward_content_text_putc(b, 0, char2int1('i'))
+  val b = ward_content_text_putc(b, 1, char2int1('m'))
+  val b = ward_content_text_putc(b, 2, char2int1('a'))
+  val b = ward_content_text_putc(b, 3, char2int1('g'))
+  val b = ward_content_text_putc(b, 4, char2int1('e'))
+  val b = ward_content_text_putc(b, 5, 47) (* '/' *)
+  val b = ward_content_text_putc(b, 6, char2int1('j'))
+  val b = ward_content_text_putc(b, 7, char2int1('p'))
+  val b = ward_content_text_putc(b, 8, char2int1('e'))
+  val b = ward_content_text_putc(b, 9, char2int1('g'))
+in ward_content_text_done(b) end
+
 (* --- Compressed conan chapter (9213 bytes deflate-raw → 21138 bytes) ---
  * Uses the exact compressed data from conan-stories.epub chapter 0. *)
 
@@ -129,6 +151,17 @@ static void copy_transform_zero(void *dst) {
   int i;
   for (i = 0; i < 25; i++) d[i] = transform_zero[i];
 }
+
+/* Dummy JPEG data — 18538 bytes (matches conan illustration size).
+ * Just zeros — bridge creates Blob regardless of content. */
+#define DUMMY_IMG_SIZE 18538
+static void fill_dummy_jpeg(void *dst) {
+  unsigned char *d = (unsigned char *)dst;
+  /* JPEG SOI marker so Chromium treats it as image data */
+  d[0] = 0xFF; d[1] = 0xD8;
+  int i;
+  for (i = 2; i < DUMMY_IMG_SIZE; i++) d[i] = 0;
+}
 %}
 
 extern fun copy_conan_compressed {l:agz}
@@ -137,8 +170,12 @@ extern fun copy_conan_compressed {l:agz}
 extern fun copy_transform_zero {l:agz}
   (dst: !ward_arr(byte, l, 25)): void = "mac#"
 
+extern fun fill_dummy_jpeg {l:agz}
+  (dst: !ward_arr(byte, l, 18538)): void = "mac#"
+
 #define COMP_SIZE 9213
 #define TRANSFORM_SIZE 25
+#define IMG_SIZE 18538
 
 (* --- Copy bytes from SAX borrow to a new mutable ward_arr ---
  * Since ward_arr_borrow and ward_arr are different types, we read byte-by-byte
@@ -358,6 +395,27 @@ implement ward_node_init (root_id) = let
             val s4 = ward_dom_stream_begin(dom4)
             val @(s4, _, _) = render_sax(s4, sax_borrow, sax_g1, 2, 0, 100, 0)
             val dom4 = ward_dom_stream_end(s4)
+
+            (* --------------------------------------------------------
+             * Load deferred image — matches quire's load_deferred_images.
+             * Creates a new DOM stream, adds an <img> element, calls
+             * ward_dom_stream_set_image_src with 18538 bytes of image data
+             * (matches the conan illustration size). This creates a Blob
+             * URL and sets el.src, triggering Chromium's image decoder
+             * between the large DOM flush and the synchronous reflow.
+             * -------------------------------------------------------- *)
+            val s4b = ward_dom_stream_begin(dom4)
+            val s4b = ward_dom_stream_create_element(s4b, 50, 2, mk_img(), 3)
+            val img_arr = ward_arr_alloc<byte>(IMG_SIZE)
+            val () = fill_dummy_jpeg(img_arr)
+            val @(img_frozen, img_borrow) = ward_arr_freeze<byte>(img_arr)
+            val mime = mk_mime_jpeg()
+            val s4b = ward_dom_stream_set_image_src(s4b, 50, img_borrow, IMG_SIZE, mime, 10)
+            val () = ward_safe_content_text_free(mime)
+            val () = ward_arr_drop<byte>(img_frozen, img_borrow)
+            val img_arr2 = ward_arr_thaw<byte>(img_frozen)
+            val () = ward_arr_free<byte>(img_arr2)
+            val dom4 = ward_dom_stream_end(s4b)
             val () = ward_dom_fini(dom4)
 
             (* Measure container (scrollWidth) + viewport (width).
