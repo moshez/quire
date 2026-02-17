@@ -1024,7 +1024,7 @@ fn stamp_reader_css {l:agz}{n:int | n >= APP_CSS_LEN}
   : (CSS_READER_WRITTEN | void) = let
   (* Overwrite critical bytes from proven values *)
   val () = write_css_100vw(arr, alen, 911)         (* column-width: 100vw *)
-  val () = write_css_zero(arr, alen, 943, pad_h)   (* padding: 2rem 0 *)
+  val () = write_css_zero(arr, alen, 936, pad_h)   (* padding: 2rem 0 — offset shifted by gap shorthand *)
   val () = write_css_rem_pos(arr, alen, 1007, child_pad_l)  (* padding-left: 1.5rem *)
   val () = write_css_rem_pos(arr, alen, 1028, child_pad_r)  (* padding-right: 1.5rem *)
   (* Produce the linear view — only reachable after byte writes above *)
@@ -1313,24 +1313,26 @@ fn fill_css_reader {l:agz}{n:int | n >= APP_CSS_LEN}
   val () = _w4(arr, alen, 904, 1684633389)
   val () = _w4(arr, alen, 908, 825911412)
   val () = _w4(arr, alen, 912, 2004234288)
-  val () = _w4(arr, alen, 916, 1819239227)
-  val () = _w4(arr, alen, 920, 762211701)
-  val () = _w4(arr, alen, 924, 980443495)
-  val () = _w4(arr, alen, 928, 1634745136)
-  val () = _w4(arr, alen, 932, 1852400740)
-  val () = _w4(arr, alen, 936, 1915894375)
-  val () = _w4(arr, alen, 940, 807431525)
-  (* Was overflow:hidden — removed because it clips CSS column content
-   * beyond the first column. The parent .reader-viewport already has
-   * overflow:hidden for visual clipping. Replaced with z-index:initial
-   * (harmless no-op, same byte length) to preserve template offsets. *)
-  val () = _w4(arr, alen, 944, 1764588091)  (* ';z-i' *)
-  val () = _w4(arr, alen, 948, 2019910766)  (* 'ndex' *)
-  val () = _w4(arr, alen, 952, 1768843578)  (* ':ini' *)
-  val () = _w4(arr, alen, 956, 1818323316)  (* 'tial' *)
-  val () = _w4(arr, alen, 960, 1768253499)
-  val () = _w4(arr, alen, 964, 980707431)
-  val () = _w4(arr, alen, 968, 623915057)
+  (* CSS uses 'gap' shorthand (saves 7 chars vs 'column-gap') to make
+   * room for will-change:transform. will-change:transform forces the
+   * browser to create a GPU compositing layer that includes ALL CSS
+   * column content — without it, browsers skip painting columns that
+   * start off-screen, making pages 2+ invisible even after translateX
+   * brings them into view. *)
+  val () = _w4(arr, alen, 916, 1885431611)  (* ';gap' *)
+  val () = _w4(arr, alen, 920, 1882927162)  (* ':0;p' *)
+  val () = _w4(arr, alen, 924, 1768186977)  (* 'addi' *)
+  val () = _w4(arr, alen, 928, 842688366)   (* 'ng:2' *)
+  val () = _w4(arr, alen, 932, 544040306)   (* 'rem ' *)
+  val () = _w4(arr, alen, 936, 1701329712)  (* '0;he' *)
+  val () = _w4(arr, alen, 940, 1952999273)  (* 'ight' *)
+  val () = _w4(arr, alen, 944, 808464698)   (* ':100' *)
+  val () = _w4(arr, alen, 948, 1769421605)  (* '%;wi' *)
+  val () = _w4(arr, alen, 952, 1663921260)  (* 'll-c' *)
+  val () = _w4(arr, alen, 956, 1735287144)  (* 'hang' *)
+  val () = _w4(arr, alen, 960, 1920219749)  (* 'e:tr' *)
+  val () = _w4(arr, alen, 964, 1718840929)  (* 'ansf' *)
+  val () = _w4(arr, alen, 968, 997028463)   (* 'orm;' *)
   val () = _w4(arr, alen, 972, 1751330429)
   (* .chapter-container>* *)
   val () = _w4(arr, alen, 976, 1702129761)
