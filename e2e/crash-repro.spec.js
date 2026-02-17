@@ -45,3 +45,38 @@ test('crash_repro completes without renderer crash', async ({ page }) => {
 
   expect(logText).toContain('SUCCESS');
 });
+
+test('crash_repro_static (pure HTML/CSS) completes without renderer crash', async ({ page }) => {
+  const info = test.info();
+  test.skip(info.project.name !== 'desktop', 'skip non-desktop viewports');
+
+  let crashed = false;
+  page.on('crash', () => { crashed = true; });
+
+  await page.goto('/vendor/ward/exerciser/crash_repro_static.html', {
+    waitUntil: 'domcontentloaded',
+    timeout: 15000,
+  });
+
+  try {
+    await page.waitForFunction(
+      () => {
+        const log = document.getElementById('log');
+        return log && (log.textContent.includes('SUCCESS') || log.textContent.includes('FATAL:'));
+      },
+      { timeout: 30000 }
+    );
+  } catch (e) {
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  if (crashed) {
+    test.fail(true, 'Chromium renderer crashed — pure HTML/CSS reproduction!');
+    return;
+  }
+
+  const logText = await page.evaluate(() => document.getElementById('log')?.textContent || '');
+  console.log('crash_repro_static log:', logText);
+  await page.screenshot({ path: 'e2e/screenshots/crash-repro-static.png' });
+  expect(logText).toContain('SUCCESS');
+});
