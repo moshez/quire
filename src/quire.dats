@@ -70,6 +70,7 @@ extern void quireSetTitle(int mode);
 #define TEXT_ARCHIVE 20
 #define TEXT_UNARCHIVE 21
 #define TEXT_NO_ARCHIVED 22
+#define TEXT_ERR_DUP_ID 23
 
 (* ========== Listener ID constants ========== *)
 
@@ -424,7 +425,7 @@ fn fill_text {l:agz}{n:pos}
     val () = ward_arr_set_byte(arr, 5, alen, 114)  (* r *)
     val () = ward_arr_set_byte(arr, 6, alen, 101)  (* e *)
   in end
-  else let (* text_id = 22: "No archived books" *)
+  else if text_id = 22 then let (* "No archived books" *)
     val () = ward_arr_set_byte(arr, 0, alen, 78)   (* N *)
     val () = ward_arr_set_byte(arr, 1, alen, 111)  (* o *)
     val () = ward_arr_set_byte(arr, 2, alen, 32)   (*   *)
@@ -442,6 +443,25 @@ fn fill_text {l:agz}{n:pos}
     val () = ward_arr_set_byte(arr, 14, alen, 111) (* o *)
     val () = ward_arr_set_byte(arr, 15, alen, 107) (* k *)
     val () = ward_arr_set_byte(arr, 16, alen, 115) (* s *)
+  in end
+  else let (* text_id = 23: "Duplicate book ID" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 68)   (* D *)
+    val () = ward_arr_set_byte(arr, 1, alen, 117)  (* u *)
+    val () = ward_arr_set_byte(arr, 2, alen, 112)  (* p *)
+    val () = ward_arr_set_byte(arr, 3, alen, 108)  (* l *)
+    val () = ward_arr_set_byte(arr, 4, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 5, alen, 99)   (* c *)
+    val () = ward_arr_set_byte(arr, 6, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 7, alen, 116)  (* t *)
+    val () = ward_arr_set_byte(arr, 8, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 9, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 10, alen, 98)  (* b *)
+    val () = ward_arr_set_byte(arr, 11, alen, 111) (* o *)
+    val () = ward_arr_set_byte(arr, 12, alen, 111) (* o *)
+    val () = ward_arr_set_byte(arr, 13, alen, 107) (* k *)
+    val () = ward_arr_set_byte(arr, 14, alen, 32)  (*   *)
+    val () = ward_arr_set_byte(arr, 15, alen, 73)  (* I *)
+    val () = ward_arr_set_byte(arr, 16, alen, 68)  (* D *)
   in end
 
 (* Copy len bytes from string_buffer to ward_arr *)
@@ -1003,6 +1023,21 @@ fn log_err_lib_full(): ward_safe_text(12) = let
   val b = ward_text_putc(b, 9, char2int1('u'))
   val b = ward_text_putc(b, 10, char2int1('l'))
   val b = ward_text_putc(b, 11, char2int1('l'))
+in ward_text_done(b) end
+
+(* "err-dup-id" = 10 chars — duplicate book ID with different title *)
+fn log_err_dup_id(): ward_safe_text(10) = let
+  val b = ward_text_build(10)
+  val b = ward_text_putc(b, 0, char2int1('e'))
+  val b = ward_text_putc(b, 1, char2int1('r'))
+  val b = ward_text_putc(b, 2, char2int1('r'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('d'))
+  val b = ward_text_putc(b, 5, char2int1('u'))
+  val b = ward_text_putc(b, 6, char2int1('p'))
+  val b = ward_text_putc(b, 7, 45) (* '-' *)
+  val b = ward_text_putc(b, 8, char2int1('i'))
+  val b = ward_text_putc(b, 9, char2int1('d'))
 in ward_text_done(b) end
 
 (* ========== Linear import outcome proof ========== *)
@@ -3544,7 +3579,12 @@ implement render_library(root_id) = let
                     val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
                     val () =
                       if gt_int_int(ok2, 0) then let
-                        val book_idx = library_add_book()
+                        val (pf_result | book_idx) = library_add_book()
+                        (* ADD_BOOK_RESULT proof consumed — construction-site
+                         * guarantee: each return in library_add_book has a
+                         * matching dataprop constructor. Adding a new error
+                         * code without a constructor fails at the cast site. *)
+                        prval _ = pf_result
                       in
                         if gte_int_int(book_idx, 0) then let
                           val () = library_save()
@@ -3557,6 +3597,11 @@ implement render_library(root_id) = let
                           val btn_count = library_get_count()
                           val () = register_card_btns(0, btn_count, ssr, 0)
                         in import_finish(h, sslbl, ssspn, sssts) end
+                        else if eq_int_int(book_idx, 0 - 2) then let
+                          val () = update_status_text(sssts, TEXT_ERR_DUP_ID, 17)
+                        in import_finish(
+                          import_mark_failed(log_err_dup_id(), 10),
+                          sslbl, ssspn, sssts) end
                         else import_finish(
                           import_mark_failed(log_err_lib_full(), 12),
                           sslbl, ssspn, sssts)

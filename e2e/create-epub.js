@@ -319,7 +319,7 @@ ${tocItems}    </ol>
     <dc:title>${title}</dc:title>
     <dc:creator>${author}</dc:creator>
     <dc:language>en</dc:language>
-    <dc:identifier id="uid">urn:uuid:${crypto.randomUUID()}</dc:identifier>
+    <dc:identifier id="uid">urn:uuid:${opts.bookId || crypto.randomUUID()}</dc:identifier>
   </metadata>
   <manifest>
 ${manifestItems}  </manifest>

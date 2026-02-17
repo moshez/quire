@@ -1152,6 +1152,78 @@ test.describe('EPUB Reader E2E', () => {
     expect(authorBtnClass).toContain('sort-active');
   });
 
+  test('reject EPUB with duplicate book ID but different title', async ({ page }) => {
+    // Two EPUBs with the same UUID but different titles should trigger
+    // a "Duplicate book ID" error on the second import.
+    const sharedId = '00000000-0000-0000-0000-000000000001';
+    const epub1 = createEpub({
+      title: 'First Book Title',
+      author: 'Author One',
+      chapters: 1,
+      paragraphsPerChapter: 2,
+      bookId: sharedId,
+    });
+    const epub2 = createEpub({
+      title: 'Different Book Title',
+      author: 'Author Two',
+      chapters: 1,
+      paragraphsPerChapter: 2,
+      bookId: sharedId,
+    });
+
+    const consoleMessages = [];
+    page.on('console', msg => consoleMessages.push(`[${msg.type()}] ${msg.text()}`));
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import first EPUB — should succeed
+    const fileInput = page.locator('input[type="file"]');
+    const path1 = join(SCREENSHOT_DIR, 'dup-id-book1.epub');
+    writeFileSync(path1, epub1);
+    await fileInput.setInputFiles(path1);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await screenshot(page, 'dup-id-01-first-imported');
+
+    // Verify first book is in the library
+    const bookTitle = page.locator('.book-title');
+    await expect(bookTitle).toContainText('First Book Title');
+
+    // Wait for IndexedDB save, then reload to get fresh state
+    await page.waitForTimeout(2000);
+    await page.reload();
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    await page.waitForSelector('.book-card', { timeout: 15000 });
+
+    // Import second EPUB with same UUID but different title — should fail
+    const fileInput2 = page.locator('input[type="file"]');
+    const path2 = join(SCREENSHOT_DIR, 'dup-id-book2.epub');
+    writeFileSync(path2, epub2);
+    await fileInput2.setInputFiles(path2);
+
+    // Wait for import to complete (error or success)
+    // The import status should show "Duplicate book ID"
+    const statusDiv = page.locator('.import-status');
+    await expect(statusDiv).toContainText('Duplicate book ID', { timeout: 30000 });
+    await screenshot(page, 'dup-id-02-error-shown');
+
+    // Verify only 1 book card is shown (second import was rejected)
+    const bookCards = page.locator('.book-card');
+    expect(await bookCards.count()).toBe(1);
+
+    // Verify the error was logged
+    const errLogs = consoleMessages.filter(m => m.includes('err-dup-id'));
+    expect(errLogs.length).toBeGreaterThan(0);
+
+    // Verify import-done was logged (linear token consumed)
+    const doneLogs = consoleMessages.filter(m => m.includes('import-done'));
+    expect(doneLogs.length).toBeGreaterThan(0);
+
+    // Import button should be restored (not stuck in importing state)
+    const importBtn = page.locator('label.import-btn');
+    await expect(importBtn).toBeVisible({ timeout: 5000 });
+  });
+
   test('create-epub with embedded image', async ({ page }) => {
     // Test that our EPUB creator can include images and they render
     const epubBuffer = createEpub({
