@@ -998,10 +998,11 @@ test.describe('EPUB Reader E2E', () => {
     await expect(viewToggle).toBeVisible();
     await expect(viewToggle).toContainText('Archived');
 
-    // Verify sort buttons visible
-    const sortBtns = page.locator('.sort-btn');
-    await expect(sortBtns.first()).toBeVisible();
-    expect(await sortBtns.count()).toBe(2);
+    // Verify sort buttons visible (one has sort-btn, other has sort-active)
+    const sortBtnInactive = page.locator('.sort-btn');
+    const sortBtnActive = page.locator('.sort-active');
+    await expect(sortBtnInactive).toBeVisible();
+    await expect(sortBtnActive).toBeVisible();
 
     // Verify archive button visible on the book card
     const archiveBtn = page.locator('.archive-btn');
@@ -1098,6 +1099,10 @@ test.describe('EPUB Reader E2E', () => {
     await fileInput.setInputFiles(path1);
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
+    // Wait for first import to fully complete before starting second
+    await page.waitForSelector('label.import-btn', { timeout: 15000 });
+    await page.waitForTimeout(500);
+
     // Import second book
     const fileInput2 = page.locator('input[type="file"]');
     const path2 = join(SCREENSHOT_DIR, 'sort-test2.epub');
@@ -1112,9 +1117,9 @@ test.describe('EPUB Reader E2E', () => {
     await screenshot(page, 'sort-01-two-books');
 
     // Sort by title (ascending) — "Alpha Dawn" should come first
-    const sortBtns = page.locator('.sort-btn');
-    const sortTitle = sortBtns.first();
-    await expect(sortTitle).toContainText('By title');
+    // Use text-based locators since active button has class sort-active, not sort-btn
+    const sortTitle = page.locator('.lib-toolbar button', { hasText: 'By title' });
+    await expect(sortTitle).toBeVisible();
     await sortTitle.click();
     await page.waitForTimeout(500);
     await screenshot(page, 'sort-02-by-title');
@@ -1127,8 +1132,8 @@ test.describe('EPUB Reader E2E', () => {
     expect(secondTitle).toContain('Zephyr Winds');
 
     // Sort by author (ascending) — "Alice Author" should come first
-    const sortAuthor = sortBtns.nth(1);
-    await expect(sortAuthor).toContainText('By author');
+    const sortAuthor = page.locator('.lib-toolbar button', { hasText: 'By author' });
+    await expect(sortAuthor).toBeVisible();
     await sortAuthor.click();
     await page.waitForTimeout(500);
     await screenshot(page, 'sort-03-by-author');
