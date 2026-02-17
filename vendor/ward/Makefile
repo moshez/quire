@@ -78,8 +78,11 @@ build/wasm_exerciser_dats.o: build/wasm_exerciser_dats.c lib/runtime.h | build
 build/runtime.o: lib/runtime.c lib/runtime.h | build
 	$(CLANG) $(WASM_CFLAGS) -c -o $@ $<
 
+WASM_TEST_EXPORTS := --export=ward_test_raw --export=ward_test_borrow \
+  --export=ward_test_typed --export=ward_test_safe_text --export=ward_test_large_alloc
+
 build/ward.wasm: build/memory_dats.o build/dom_dats.o build/promise_dats.o build/wasm_exerciser_dats.o build/runtime.o
-	$(WASM_LD) $(WASM_LDFLAGS) -o $@ $^
+	$(WASM_LD) $(WASM_LDFLAGS) $(WASM_TEST_EXPORTS) -o $@ $^
 
 wasm: build/ward.wasm
 	@echo "==> build/ward.wasm built"

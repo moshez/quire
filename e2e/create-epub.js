@@ -5,7 +5,7 @@
  * using Node.js zlib for deflate compression. No external dependencies.
  */
 
-import { deflateRawSync } from 'node:zlib';
+import { deflateRawSync, inflateRawSync } from 'node:zlib';
 
 // CRC-32 lookup table
 const crcTable = (() => {
@@ -118,6 +118,72 @@ function createZip(entries) {
 }
 
 /**
+ * Re-package an existing EPUB (ZIP) file using our createZip.
+ * Reads all entries from the source ZIP, decompresses any deflated entries,
+ * and re-creates the ZIP with our implementation.
+ * The mimetype entry is stored uncompressed; all others are deflated.
+ *
+ * @param {Buffer} zipData - Raw ZIP file bytes
+ * @returns {Buffer} Re-packaged ZIP file
+ */
+export function repackageEpub(zipData) {
+  // Parse central directory from the end of the ZIP
+  // Find EOCD signature (0x06054b50) scanning backwards
+  let eocdOff = -1;
+  for (let i = zipData.length - 22; i >= 0; i--) {
+    if (zipData.readUInt32LE(i) === 0x06054B50) {
+      eocdOff = i;
+      break;
+    }
+  }
+  if (eocdOff < 0) throw new Error('No EOCD found');
+
+  const entryCount = zipData.readUInt16LE(eocdOff + 10);
+  const cdSize = zipData.readUInt32LE(eocdOff + 12);
+  const cdOffset = zipData.readUInt32LE(eocdOff + 16);
+
+  const entries = [];
+  let pos = cdOffset;
+  for (let i = 0; i < entryCount; i++) {
+    if (zipData.readUInt32LE(pos) !== 0x02014B50) throw new Error('Bad CD entry');
+    const method = zipData.readUInt16LE(pos + 10);
+    const crc = zipData.readUInt32LE(pos + 16);
+    const csize = zipData.readUInt32LE(pos + 20);
+    const usize = zipData.readUInt32LE(pos + 24);
+    const nameLen = zipData.readUInt16LE(pos + 28);
+    const extraLen = zipData.readUInt16LE(pos + 30);
+    const commentLen = zipData.readUInt16LE(pos + 32);
+    const localOff = zipData.readUInt32LE(pos + 42);
+    const name = zipData.subarray(pos + 46, pos + 46 + nameLen).toString('utf-8');
+
+    // Read data from local file header
+    const localNameLen = zipData.readUInt16LE(localOff + 26);
+    const localExtraLen = zipData.readUInt16LE(localOff + 28);
+    const dataOff = localOff + 30 + localNameLen + localExtraLen;
+    const compressedData = zipData.subarray(dataOff, dataOff + csize);
+
+    let data;
+    if (method === 0) {
+      data = Buffer.from(compressedData); // stored — copy as-is
+    } else if (method === 8) {
+      data = inflateRawSync(compressedData); // deflated — decompress
+    } else {
+      throw new Error(`Unsupported compression method ${method}`);
+    }
+
+    // mimetype must be stored uncompressed per EPUB spec.
+    // Images should be stored (uncompressed) to match original behavior —
+    // Quire's try_set_image only handles stored images (compression=0).
+    const isImage = /\.(jpg|jpeg|png|gif|svg)$/i.test(name);
+    const shouldStore = name === 'mimetype' || (method === 0 && isImage);
+    entries.push({ name, data, store: shouldStore });
+    pos += 46 + nameLen + extraLen + commentLen;
+  }
+
+  return createZip(entries);
+}
+
+/**
  * Generate a paragraph of filler text for multi-page content.
  */
 function loremParagraph(seed) {
@@ -144,11 +210,20 @@ function loremParagraph(seed) {
  * @param {number} opts.paragraphsPerChapter - Paragraphs per chapter (default 12)
  * @returns {Buffer} EPUB file contents
  */
+// Minimal 1x1 red PNG (68 bytes) for testing image rendering
+export const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8D4HwAFBQIAX8jx0gAAAABJRU5ErkJggg==',
+  'base64'
+);
+
 export function createEpub(opts = {}) {
   const title = opts.title || 'Test Book';
   const author = opts.author || 'Test Author';
   const numChapters = opts.chapters || 3;
   const parasPerChapter = opts.paragraphsPerChapter || 12;
+  const coverImage = opts.coverImage || false;
+  const svgCover = opts.svgCover || false;
+  const rawChapters = opts.rawChapters || null; // array of {body, images?}
 
   // mimetype must be first entry, stored uncompressed
   const mimetype = 'application/epub+zip';
@@ -166,17 +241,41 @@ export function createEpub(opts = {}) {
   let spineItems = '';
   const chapters = [];
 
-  for (let i = 1; i <= numChapters; i++) {
+  // SVG cover wrap page (like real-world EPUBs that use <svg><image> for covers)
+  if (svgCover) {
+    manifestItems += `    <item id="coverpage-wrapper" href="wrap0000.xhtml" media-type="application/xhtml+xml" properties="svg"/>\n`;
+    manifestItems += `    <item id="cover-img" href="images/cover.png" media-type="image/png" properties="cover-image"/>\n`;
+    spineItems += `    <itemref idref="coverpage-wrapper"/>\n`;
+  }
+
+  const effectiveChapters = rawChapters ? rawChapters.length : numChapters;
+  for (let i = 1; i <= effectiveChapters; i++) {
     manifestItems += `    <item id="ch${i}" href="chapter${i}.xhtml" media-type="application/xhtml+xml"/>\n`;
     spineItems += `    <itemref idref="ch${i}"/>\n`;
 
-    // Generate chapter XHTML with enough text to fill multiple pages
-    let body = `<h1>Chapter ${i}</h1>\n`;
-    for (let p = 0; p < parasPerChapter; p++) {
-      body += `      <p>${loremParagraph(i * 100 + p)}</p>\n`;
-    }
-
-    const xhtml = `<?xml version="1.0" encoding="UTF-8"?>
+    let xhtml;
+    if (rawChapters && rawChapters[i - 1]) {
+      // Use raw body content provided by the caller
+      const rawBody = rawChapters[i - 1].body;
+      xhtml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Chapter ${i}</title></head>
+<body>
+${rawBody}
+</body>
+</html>`;
+    } else {
+      // Generate chapter XHTML with enough text to fill multiple pages
+      let body = '';
+      if (coverImage && i === 1) {
+        body += `<img src="images/cover.png" alt="Cover" />\n`;
+      }
+      body += `<h1>Chapter ${i}</h1>\n`;
+      for (let p = 0; p < parasPerChapter; p++) {
+        body += `      <p>${loremParagraph(i * 100 + p)}</p>\n`;
+      }
+      xhtml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head><title>Chapter ${i}</title></head>
@@ -184,7 +283,13 @@ export function createEpub(opts = {}) {
       ${body}
 </body>
 </html>`;
+    }
     chapters.push({ name: `OEBPS/chapter${i}.xhtml`, data: xhtml });
+  }
+
+  // Add cover image if requested
+  if (coverImage) {
+    manifestItems += `    <item id="cover-img" href="images/cover.png" media-type="image/png"/>\n`;
   }
 
   // Build TOC nav document
@@ -230,8 +335,43 @@ ${spineItems}  </spine>
     { name: 'META-INF/container.xml', data: containerXml, store: true },
     { name: 'OEBPS/content.opf', data: contentOpf, store: true },
     { name: 'OEBPS/nav.xhtml', data: navXhtml },
-    ...chapters,
   ];
+
+  // SVG cover wrap page (emulates real-world pattern: <svg><image xlink:href="...">)
+  if (svgCover) {
+    const wrapXhtml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Cover</title></head>
+<body>
+  <div>
+    <svg xmlns="http://www.w3.org/2000/svg" height="100%" preserveAspectRatio="xMidYMid meet" version="1.1" viewBox="0 0 1 1" width="100%" xmlns:xlink="http://www.w3.org/1999/xlink">
+      <image width="1" height="1" xlink:href="images/cover.png"/>
+    </svg>
+  </div>
+</body>
+</html>`;
+    zipEntries.push({ name: 'OEBPS/wrap0000.xhtml', data: wrapXhtml });
+    zipEntries.push({ name: 'OEBPS/images/cover.png', data: TINY_PNG, store: true });
+  }
+
+  // storeChapters: true → store chapters uncompressed (diagnostic: test sync path)
+  if (opts.storeChapters) {
+    chapters.forEach(ch => { ch.store = true; });
+  }
+  zipEntries.push(...chapters);
+
+  // Add cover image as stored (uncompressed) entry for synchronous reading
+  if (coverImage) {
+    zipEntries.push({ name: 'OEBPS/images/cover.png', data: TINY_PNG, store: true });
+  }
+
+  // Add extra images (for rawChapters that reference images)
+  if (opts.extraImages) {
+    for (const img of opts.extraImages) {
+      zipEntries.push({ name: `OEBPS/${img.name}`, data: img.data, store: true });
+    }
+  }
 
   return createZip(zipEntries);
 }

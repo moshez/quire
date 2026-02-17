@@ -12,7 +12,8 @@ local
   assume ward_arr_borrow(a, l, n) = ptr l
   assume ward_safe_text(n) = ptr
   assume ward_text_builder(n, i) = ptr
-
+  assume ward_arena(l, max, k) = ptr l
+  assume ward_arena_token(la, l, n) = ptr l
 in
 
 (*
@@ -197,4 +198,90 @@ ward_arr_write_u16le{l}{n}{i}{v}(arr, i, v) = let
   val () = $extfcall(void, "ward_set_byte", arr, i + 1, v0 / 256)
 in () end
 
-end (* local *)
+(* Arena — $UNSAFE justification:
+ *
+ * [A1] castvwtp1{ptr}(arena) in ward_arena_alloc:
+ *   Extracts raw pointer from borrowed !ward_arena for C call.
+ *   Alternative: $UNSAFE.cast would consume the linear arena.
+ *   castvwtp1 borrows without consuming — standard pattern for !T params.
+ *   API safety: arena is !T (borrowed), users cannot double-free.
+ *   Borrow count k is proof-only; >>-transition enforced by .sats signature.
+ *   Token linking (la, l, n) prevents returning wrong arrays to wrong arenas.
+ *)
+
+extern fun _ward_arena_create
+  (max: int): [l:agz] ptr l = "mac#ward_arena_create"
+
+extern fun _ward_arena_alloc_bytes
+  (arena: ptr, size: int): [l:agz] ptr l = "mac#ward_arena_alloc"
+
+extern fun _ward_arena_destroy
+  (arena: ptr): void = "mac#ward_arena_destroy"
+
+implement
+ward_arena_create{max}(max_size) = _ward_arena_create(max_size)
+
+implement{a}
+ward_arena_alloc{la}{max}{k}{n}(arena, n) = let
+  val nbytes = n * sz2i(sizeof<a>)
+  val p = _ward_arena_alloc_bytes(
+    $UNSAFE.castvwtp1{ptr}(arena), nbytes) (* [A1] *)
+in @(p, p) end
+
+implement{a}
+ward_arena_return{la}{max}{k}{l}{n}(arena, token, arr) = ()
+
+implement
+ward_arena_destroy{l}{max}(arena) = _ward_arena_destroy(arena)
+
+end (* local -- ward_arr, safe_text *)
+
+(* Content text — separate local block so ward_arr stays abstract.
+   The content text types are assumed as ward_arr(byte), delegating all
+   memory operations to the already-audited ward_arr functions.
+   No $UNSAFE in this block. *)
+
+local
+
+  assume ward_safe_content_text(l, n) = ward_arr(byte, l, n)
+  assume ward_content_text_builder(l, n, i) = ward_arr(byte, l, n)
+
+in
+
+implement
+ward_content_text_build{n}(n) = ward_arr_alloc<byte>(n)
+
+implement
+ward_content_text_putc{c}{l}{n}{i}(b, i, c) = let
+  val () = ward_arr_set<byte>(b, i, ward_int2byte(c))
+in b end
+
+implement
+ward_content_text_done{l}{n}(b) = b
+
+implement
+ward_safe_content_text_get{l}{n,i}(t, i) =
+  ward_arr_get<byte>(t, i)
+
+implement
+ward_safe_content_text_free{l}{n}(t) =
+  ward_arr_free<byte>(t)
+
+implement
+ward_text_to_content{n}(t, len) = let
+  val arr = ward_arr_alloc<byte>(len)
+  val () = ward_arr_write_safe_text(arr, 0, t, len)
+in arr end
+
+implement
+ward_arr_write_content_text{ld}{ls}{m}{n}{off}(dst, off_val, src, len) = let
+  fun loop{i:nat | i <= n}
+    (dst: !ward_arr(byte, ld, m), src: !ward_safe_content_text(ls, n),
+     off_val: int off, i: int i, len: int n): void =
+    if i < len then let
+      val b = ward_safe_content_text_get(src, i)
+      val () = ward_arr_set<byte>(dst, off_val + i, b)
+    in loop(dst, src, off_val, i + 1, len) end
+in loop(dst, src, off_val, 0, len) end
+
+end (* local -- content text *)

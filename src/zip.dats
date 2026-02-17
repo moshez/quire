@@ -187,7 +187,7 @@ in
   if gt_int_int(1, search_size) then _checked_bounded(0)
   else let
     val search_start = file_size - search_size
-    val sz = _checked_pos(search_size)
+    val sz = _checked_arr_size(search_size)
     val buf = ward_arr_alloc<byte>(sz)
     val _read_len = ward_file_read(file_handle, search_start, buf, sz)
     val eocd_file_offset = find_eocd(buf, sz, search_start)

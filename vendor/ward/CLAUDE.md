@@ -52,16 +52,20 @@ All functions prefixed `ward_` for easy auditing. No raw pointer extraction -- s
 | `ward_arr_borrow(a, l, n)` | Read-only borrow of typed array |
 | `ward_safe_text(n)` | Non-linear read-only text, `n` bytes, compile-time character verified |
 | `ward_text_builder(n, filled)` | Linear builder for safe text construction |
+| `ward_safe_content_text(l, n)` | Linear read-only text, `n` bytes at `l`, printable ASCII minus XML-special |
+| `ward_content_text_builder(l, n, filled)` | Linear builder for content text construction |
 | `ward_promise(a, s)` | Linear promise indexed by `PromiseState` (Pending or Resolved) |
 | `ward_promise_resolver(a)` | Linear write-end, consumed by `resolve` |
 | `ward_dom_state(l)` | Linear DOM diff buffer at address `l` (256KB) |
 | `ward_dom_stream(l)` | Linear stream that accumulates ops, auto-flushes |
+| `ward_arena(l, max, k)` | Linear arena for bulk allocation, `k` outstanding tokens |
+| `ward_arena_token(la, l, n)` | Linear witness linking arena allocation to its arena |
 
 ### Memory Functions
 
 | Function | Signature |
 |----------|-----------|
-| `ward_arr_alloc<a>(n)` | `{n:pos} -> [l:agz] ward_arr(a, l, n)` |
+| `ward_arr_alloc<a>(n)` | `{n:pos \| n <= 1048576} -> [l:agz] ward_arr(a, l, n)` |
 | `ward_arr_free<a>(arr)` | `ward_arr(a, l, n) -> void` |
 | `ward_arr_get<a>(arr, i)` | Read element `i`, `{i < n}` |
 | `ward_arr_set<a>(arr, i, v)` | Write element `i`, `{i < n}` |
@@ -79,6 +83,21 @@ All functions prefixed `ward_` for easy auditing. No raw pointer extraction -- s
 | `ward_text_done(b)` | `ward_text_builder(n, n) -> ward_safe_text(n)` |
 | `ward_safe_text_get(t, i)` | Read byte `i` from safe text |
 | `ward_bridge_recv(stash_id, len)` | `{n:pos} -> [l:agz] ward_arr(byte, l, n)` (pull data from JS stash) |
+| `ward_content_text_build(n)` | `{n:pos} -> [l:agz] ward_content_text_builder(l, n, 0)` |
+| `ward_content_text_putc(b, i, c)` | `{SAFE_CONTENT_CHAR(c)} -> ward_content_text_builder(l, n, i+1)` |
+| `ward_content_text_done(b)` | `ward_content_text_builder(l, n, n) -> ward_safe_content_text(l, n)` |
+| `ward_safe_content_text_get(t, i)` | Read byte `i` from content text (borrowed) |
+| `ward_safe_content_text_free(t)` | Consume content text |
+| `ward_text_to_content(t, len)` | `ward_safe_text(n) -> [l:agz] ward_safe_content_text(l, n)` (copies) |
+
+### Arena Functions
+
+| Function | Signature |
+|----------|-----------|
+| `ward_arena_create(max_size)` | `{max:pos \| max <= 268435456} -> [l:agz] ward_arena(l, max, 0)` |
+| `ward_arena_alloc<a>(arena, n)` | `(!ward_arena >> ward_arena(k+1), n) -> @(ward_arena_token, ward_arr(a, l, n))` |
+| `ward_arena_return<a>(arena, token, arr)` | `(!ward_arena >> ward_arena(k-1), token, arr) -> void` |
+| `ward_arena_destroy(arena)` | `ward_arena(l, max, 0) -> void` |
 
 ### Promise Functions
 
@@ -106,6 +125,7 @@ All functions prefixed `ward_` for easy auditing. No raw pointer extraction -- s
 | `ward_dom_stream_remove_children(s, node_id)` | Remove all children |
 | `ward_dom_stream_set_safe_text(s, node_id, text, text_len)` | Set text from safe text |
 | `ward_dom_stream_set_attr_safe(s, node_id, attr_name, name_len, value, value_len)` | Set attr from safe text |
+| `ward_dom_stream_set_image_src(s, node_id, data, data_len, mime, mime_len)` | Set image src via blob URL (direct bridge call) |
 
 ### SAFE_CHAR predicate
 
@@ -119,13 +139,26 @@ stadef SAFE_CHAR(c:int) =
 
 Characters are verified by passing `char2int1('c')` which preserves the static index for the constraint solver.
 
+### SAFE_CONTENT_CHAR predicate
+
+```ats
+stadef SAFE_CONTENT_CHAR(c:int) =
+  (c >= 32 && c <= 126)           (* printable ASCII *)
+  && c != 34                      (* " *)
+  && c != 38                      (* & *)
+  && c != 60                      (* < *)
+  && c != 62                      (* > *)
+```
+
+Used for attribute values and MIME types. `SAFE_CHAR` is a subset of `SAFE_CONTENT_CHAR`.
+
 ## Files
 
 ### Library (`lib/`)
-- `memory.sats` -- type declarations (the specification): 6 types, 24 functions
+- `memory.sats` -- type declarations (the specification): 10 types, 35 functions
 - `memory.dats` -- implementations (the "unsafe core" behind the safe interface)
-- `dom.sats` -- DOM streaming specification: 2 types (state, stream), 11 functions
-- `dom.dats` -- DOM streaming implementation (datavtype stream, auto-flush)
+- `dom.sats` -- DOM streaming specification: 2 types (state, stream), 12 functions
+- `dom.dats` -- DOM streaming implementation (datavtype stream, auto-flush, image bridge)
 - `promise.sats` -- linear promise specification: datasort, 2 types, 7 functions
 - `promise.dats` -- promise implementation (datavtype with @/fold@ field access)
 - `event.sats` -- promise-based timer and exit specification
@@ -144,7 +177,7 @@ Characters are verified by passing `char2int1('c')` which preserves the static i
 - `dom_read.sats` / `dom_read.dats` -- DOM measurement and query
 - `ward_bridge.mjs` -- JS bridge: binary diff protocol, event listeners, data stash, HTML parsing
 - `runtime.h` -- freestanding WASM runtime: ATS2 macro infrastructure + ward type definitions
-- `runtime.c` -- free-list allocator (size classes: 32/128/512/4096 + oversized) for WASM
+- `runtime.c` -- free-list allocator (size classes: 32/128/512/4096/8192/16384/65536/262144/1048576 + oversized), arena allocator for WASM
 - `ward_prelude.h` -- native build: ward type macros for gcc
 
 ### Exerciser (`exerciser/`)
@@ -153,11 +186,12 @@ Characters are verified by passing `char2int1('c')` which preserves the static i
 - `dom_exerciser.dats` -- WASM DOM exerciser (pure safe ATS2, no $UNSAFE)
 - `node_exerciser.mjs` -- Node.js wrapper: loads jsdom, runs ward via bridge
 - `wasm_stubs/` -- empty stubs for libats CATS files (not needed in freestanding mode)
-- `anti/` -- anti-exerciser: code that MUST fail to compile (13 files):
+- `anti/` -- anti-exerciser: code that MUST fail to compile (17 files):
   buffer_overflow, double_free, leak, out_of_bounds, thaw_with_borrows,
-  use_after_free, write_while_frozen, unsafe_char,
-  double_resolve, extract_pending, forget_resolver, use_after_then,
-  use_stream_after_end
+  use_after_free, write_while_frozen, unsafe_char, unsafe_content_char,
+  double_resolve, extract_pending, extract_chained, forget_resolver,
+  use_after_then, use_stream_after_end, arr_too_large,
+  arena_destroy_with_borrows
 
 ### Tests (`tests/`)
 - `helpers.mjs` -- shared test utilities (creates ward instance with jsdom)
@@ -209,7 +243,7 @@ val tail = $UNSAFE.cast{ptr(l+m)}(ptr_add<a>(arr, m))
 
 The following patterns are **never acceptable** as `$UNSAFE` justifications. If you find yourself reaching for one, it means the design needs to change -- use a proper ATS2 data structure instead.
 
-**Justification requirements:** Every expanded `$UNSAFE` justification in `.dats` files must document what alternatives were researched and why they don't work. "I looked and there's no other way" is not sufficient -- name the specific alternatives considered (e.g. `castfn`, view-based approach, prelude function, `datavtype` field) and explain why each was rejected.
+**Justification requirements:** Every expanded `$UNSAFE` justification in `.dats` files must document what alternatives were researched and why they don't work. "I looked and there's no other way" is not sufficient -- name the specific alternatives considered (e.g. `castfn`, view-based approach, prelude function, `datavtype` field) and explain why each was rejected. Additionally, every justification must explain what mitigations prevent **users** from causing bad behavior through the public API. Since users only interact with the `.sats` interface (abstract linear types), the justification must show that no sequence of public API calls can trigger unsoundness -- e.g. use-after-free, double-free, or memory corruption -- regardless of how the `$UNSAFE` is used internally.
 
 1. **"We need a C global to share state"** -- ATS2 has `datavtype`, linear closures, and explicit state threading. A C global is a hole in the type system that bypasses linearity. Store state in ATS2 data structures and thread it through function parameters. For async boundaries, use `ward_promise_then` with linear closures (`cloptr1`) to capture and thread linear state through promise callbacks.
 

@@ -79,6 +79,7 @@ datavtype app_state_impl =
       rdr_file_handle = int,
       rdr_page_info_id = int,
       rdr_nav_id = int,
+      rdr_resume_page = int,
       rdr_btn_ids = ptr,
       epub_spine_count = int,
       epub_title = ptr,
@@ -147,7 +148,7 @@ in end
 
 (* Helper: allocate ward_arr<byte> and cast to ptr for datavtype storage *)
 fn _alloc_buf (sz: int): ptr = let
-  val arr = ward_arr_alloc<byte>(_checked_pos(sz))
+  val arr = ward_arr_alloc<byte>(_checked_arr_size(sz))
   val p = $UN.castvwtp0{ptr}(arr)
 in p end
 
@@ -213,6 +214,7 @@ implement app_state_init() =
     rdr_file_handle = 0,
     rdr_page_info_id = 0,
     rdr_nav_id = 0,
+    rdr_resume_page = 0,
     rdr_btn_ids = _alloc_buf(RDR_BTNS_SIZE),
     epub_spine_count = 0,
     epub_title = _alloc_buf(EPUB_TITLE_SIZE),
@@ -739,6 +741,12 @@ implement app_get_rdr_nav_id(st) = let
   prval () = fold@(st) in v end
 implement app_set_rdr_nav_id(st, v) = let
   val @APP_STATE(r) = st val () = r.rdr_nav_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_resume_page(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_resume_page
+  prval () = fold@(st) in v end
+implement app_set_rdr_resume_page(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_resume_page := v
   prval () = fold@(st) in end
 
 implement app_get_rdr_btn_id(st, idx) = let

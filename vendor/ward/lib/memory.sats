@@ -15,7 +15,7 @@ absvtype ward_arr_borrow(a:t@ype, l:addr, n:int)
 
 fun{a:t@ype}
 ward_arr_alloc
-  {n:pos}
+  {n:pos | n <= 1048576}
   (n: int n)
   : [l:agz] ward_arr(a, l, n)
 
@@ -200,3 +200,87 @@ fun ward_arr_write_safe_text
 fun ward_bridge_recv
   {n:pos}
   (stash_id: int, len: int n): [l:agz] ward_arr(byte, l, n)
+
+(* ============================================================
+   Content text — wider character set for attribute values
+   ============================================================ *)
+
+(* Printable ASCII minus XML-special chars: exclude " & < > *)
+stadef SAFE_CONTENT_CHAR(c:int) =
+  (c >= 32 && c <= 126)
+  && c != 34                      (* " *)
+  && c != 38                      (* & *)
+  && c != 60                      (* < *)
+  && c != 62                      (* > *)
+
+absvtype ward_safe_content_text(l:addr, n:int)
+absvtype ward_content_text_builder(l:addr, n:int, filled:int)
+
+fun ward_content_text_build
+  {n:pos | n <= 1048576}
+  (n: int n)
+  : [l:agz] ward_content_text_builder(l, n, 0)
+
+fun ward_content_text_putc
+  {c:int | SAFE_CONTENT_CHAR(c)} {l:agz} {n:pos} {i:nat | i < n}
+  (b: ward_content_text_builder(l, n, i), i: int i, c: int c)
+  : ward_content_text_builder(l, n, i+1)
+
+fun ward_content_text_done
+  {l:agz} {n:pos}
+  (b: ward_content_text_builder(l, n, n))
+  : ward_safe_content_text(l, n)
+
+fun ward_safe_content_text_get
+  {l:agz} {n,i:nat | i < n}
+  (t: !ward_safe_content_text(l, n), i: int i)
+  : byte
+
+fun ward_safe_content_text_free
+  {l:agz} {n:nat}
+  (t: ward_safe_content_text(l, n))
+  : void
+
+(* Copy safe_text into content_text (SAFE_CHAR is subset of SAFE_CONTENT_CHAR) *)
+fun ward_text_to_content
+  {n:pos | n <= 1048576}
+  (t: ward_safe_text(n), len: int n)
+  : [l:agz] ward_safe_content_text(l, n)
+
+(* Write content text into byte array buffer *)
+fun ward_arr_write_content_text
+  {ld:agz}{ls:agz}{m:nat}{n:nat}{off:nat | off + n <= m}
+  (dst: !ward_arr(byte, ld, m), off: int off,
+   src: !ward_safe_content_text(ls, n), len: int n): void
+
+(* ============================================================
+   Arena — bulk allocation with token-tracked lifecycle
+   ============================================================ *)
+
+absvtype ward_arena(l:addr, max:int, k:int)
+absvtype ward_arena_token(la:addr, l:addr, n:int)
+
+fun ward_arena_create
+  {max:pos | max <= 268435456}
+  (max_size: int max)
+  : [l:agz] ward_arena(l, max, 0)
+
+fun{a:t@ype}
+ward_arena_alloc
+  {la:agz}{max:pos}{k:nat}{n:pos}
+  (arena: !ward_arena(la, max, k) >> ward_arena(la, max, k+1),
+   n: int n)
+  : [l:agz] @(ward_arena_token(la, l, n), ward_arr(a, l, n))
+
+fun{a:t@ype}
+ward_arena_return
+  {la:agz}{max:pos}{k:pos}{l:agz}{n:pos}
+  (arena: !ward_arena(la, max, k) >> ward_arena(la, max, k-1),
+   token: ward_arena_token(la, l, n),
+   arr: ward_arr(a, l, n))
+  : void
+
+fun ward_arena_destroy
+  {l:agz}{max:nat}
+  (arena: ward_arena(l, max, 0))
+  : void

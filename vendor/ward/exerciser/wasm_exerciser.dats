@@ -63,3 +63,22 @@ implement ward_test_safe_text () = let
 in
   v0 + v2 (* 97 + 99 = 196 *)
 end
+
+(* === Export: exercise large allocation via arena (triggers memory.grow) === *)
+extern fun ward_test_large_alloc (): int = "mac#"
+implement ward_test_large_alloc () = let
+  val arena = ward_arena_create(25165824) (* 24MB arena *)
+  val @(tok1, arr1) = ward_arena_alloc<byte>(arena, 12582912)
+  val () = ward_arr_set<byte>(arr1, 0, $UNSAFE.cast{byte}(0xAA))
+  val () = ward_arr_set<byte>(arr1, 12582911, $UNSAFE.cast{byte}(0xBB))
+  val @(tok2, arr2) = ward_arena_alloc<byte>(arena, 12582912)
+  val () = ward_arr_set<byte>(arr2, 0, $UNSAFE.cast{byte}(0xCC))
+  val () = ward_arr_set<byte>(arr2, 12582911, $UNSAFE.cast{byte}(0xDD))
+  val v0 = $UNSAFE.cast{int}(ward_arr_get<byte>(arr1, 0))
+  val v1 = $UNSAFE.cast{int}(ward_arr_get<byte>(arr2, 12582911))
+  val () = ward_arena_return<byte>(arena, tok1, arr1)
+  val () = ward_arena_return<byte>(arena, tok2, arr2)
+  val () = ward_arena_destroy(arena)
+in
+  v0 + v1 (* 0xAA + 0xDD = 391, unchanged *)
+end

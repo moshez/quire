@@ -112,6 +112,28 @@ val p = ward_promise_then<int><int>(timer,
   in ward_promise_return<int>(0) end)
 ```
 
+## Arena allocation
+
+For large allocations (images, media, decompressed data), arenas provide bulk allocation with explicit lifetime management. Create an arena, bump-allocate within it, free everything at once when done.
+
+Arena arrays are standard `ward_arr` values -- all existing operations (get, set, freeze, thaw, split, join, borrow, read) work unchanged. A linear `ward_arena_token` links each allocation to its arena for lifecycle tracking.
+
+```ats
+val arena = ward_arena_create(65536)              (* 64KB arena *)
+val @(tok, arr) = ward_arena_alloc<int>(arena, 100)
+val () = ward_arr_set<int>(arr, 0, 42)            (* standard ward_arr ops *)
+val v = ward_arr_get<int>(arr, 0)
+val () = ward_arena_return<int>(arena, tok, arr)   (* return array to arena *)
+val () = ward_arena_destroy(arena)                 (* free everything *)
+```
+
+The token system enforces these invariants at compile time:
+- **Can't free arena arrays with `ward_arr_free`** -- the token would be unconsumed (linearity violation)
+- **Can't return wrong arrays** -- token and arr share existential address types
+- **Can't destroy early** -- `ward_arena_destroy` requires zero outstanding tokens
+
+Regular `ward_arr_alloc` is capped at 1MB. Arenas can hold up to 256MB total.
+
 ## The trusted surface
 
 Safety by construction means the `.sats` files are the specification. User code cannot introduce `$UNSAFE` operations. The trusted surface is limited to:
@@ -121,7 +143,7 @@ Safety by construction means the `.sats` files are the specification. User code 
 - **`runtime.h`** / **`runtime.c`** -- the C runtime (free-list allocator, stash/resolver tables).
 - **`ward_bridge.mjs`** -- the JS bridge that implements WASM imports, including the JS-side data stash that holds data for WASM to pull via `ward_bridge_recv`.
 
-The anti-exerciser (`exerciser/anti/`) contains 13 files that must fail to compile, verifying that the type system rejects:
+The anti-exerciser (`exerciser/anti/`) contains 17 files that must fail to compile, verifying that the type system rejects:
 
 | File | What it tests |
 |------|--------------|
@@ -138,3 +160,5 @@ The anti-exerciser (`exerciser/anti/`) contains 13 files that must fail to compi
 | `forget_resolver.dats` | Forgetting to use a resolver |
 | `use_after_then.dats` | Using a promise after chaining |
 | `use_stream_after_end.dats` | Using a stream after stream_end |
+| `arr_too_large.dats` | Array exceeding 1MB size limit |
+| `arena_destroy_with_borrows.dats` | Destroying arena with outstanding tokens |

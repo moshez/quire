@@ -15,6 +15,10 @@
 #define ward_safe_text(...) atstype_ptrk
 #define ward_text_builder(...) atstype_ptrk
 #define ward_text_result(...) atstype_ptrk
+#define ward_safe_content_text(...) atstype_ptrk
+#define ward_content_text_builder(...) atstype_ptrk
+#define ward_arena(...) atstype_ptrk
+#define ward_arena_token(...) atstype_ptrk
 
 /* Promise types */
 #define ward_promise(...) atstype_ptrk
@@ -22,6 +26,30 @@
 
 /* Promise chain resolution (implemented in promise.dats) */
 void _ward_resolve_chain(void *p, void *v);
+
+/* Promise field access — direct struct access for _ward_resolve_chain.
+   Layout matches postiats_tysum for promise_mk(state, value, cb, chain).
+   These helpers let _ward_resolve_chain avoid ATS2 datavtype casting
+   for the "user holds reference" case, eliminating [U4] forget. */
+static inline int _ward_promise_get_state_tag(void *p) {
+    return (int)(long)(((void**)p)[0]);
+}
+static inline void *_ward_promise_get_value(void *p) {
+    return ((void**)p)[1];
+}
+static inline void *_ward_promise_get_cb(void *p) {
+    return ((void**)p)[2];
+}
+static inline void *_ward_promise_get_chain(void *p) {
+    return ((void**)p)[3];
+}
+static inline void _ward_promise_set_resolved(void *p, void *value) {
+    ((void**)p)[0] = (void*)2;  /* PState_resolved tag */
+    ((void**)p)[1] = value;
+}
+static inline void _ward_promise_set_chain(void *p, void *chain) {
+    ((void**)p)[3] = chain;
+}
 
 /* Invoke a cloref1 closure: first word is function pointer */
 static inline void *ward_cloref1_invoke(void *clo, void *arg) {
@@ -69,6 +97,9 @@ static inline void ward_copy_at(void *dst, int off, const void *src, int n) {
 static inline void ward_dom_flush(void *buf, int len) {
   /* stub — in WASM, this calls the JS bridge */
 }
+static inline void ward_js_set_image_src(int n, void *d, int dl, void *m, int ml) {
+  /* stub — in WASM, this calls the JS bridge */
+}
 
 /* Bridge int stash stubs (native build parity with runtime.c) */
 static int _ward_bridge_stash_int[4] = {0};
@@ -77,6 +108,25 @@ static inline int ward_bridge_stash_get_int(int slot) { return _ward_bridge_stas
 
 /* JS data stash stub (native build — no-op) */
 static inline void ward_js_stash_read(int stash_id, void *dest, int len) { /* stub */ }
+
+/* Arena stubs (native build parity with runtime.c) */
+static inline void *ward_arena_create(int max_size) {
+    void *p = malloc(max_size + 8);
+    if (!p) return (void*)0;
+    *(int *)p = max_size;
+    *((int *)p + 1) = 0;
+    memset((char *)p + 8, 0, max_size);
+    return p;
+}
+static inline void *ward_arena_alloc(void *arena, int size) {
+    int max_size = *(int *)arena;
+    int used = *((int *)arena + 1);
+    used = (used + 7) & ~7;
+    if (used + size > max_size) return (void*)0;
+    *((int *)arena + 1) = used + size;
+    return (char *)arena + 8 + used;
+}
+static inline void ward_arena_destroy(void *arena) { free(arena); }
 
 /* Measure stash stubs */
 static int _ward_measure[6] = {0};
@@ -101,7 +151,7 @@ static inline int ward_resolver_stash(void *resolver) {
     for (int i = 0; i < WARD_MAX_RESOLVERS; i++) {
         if (!_ward_resolver_table[i]) { _ward_resolver_table[i] = resolver; return i; }
     }
-    __builtin_trap(); /* resolver table full — 64 concurrent async ops exceeded */
+    return -1; /* resolver table full — 64 concurrent async ops exceeded */
 }
 static inline void *ward_resolver_unstash(int id) {
     if (id < 0 || id >= WARD_MAX_RESOLVERS) return (void*)0;

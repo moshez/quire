@@ -15,15 +15,18 @@ static unsigned char *heap_ptr = &__heap_base;
  * Free blocks: first word of user area is the next-free pointer.
  * No separate metadata -- the chain lives inside freed blocks.
  *
- * Size classes: 32, 128, 512, 4096.  Anything larger goes to a single
- * oversized free list with first-fit (block_size >= n && <= 2*n).
+ * Size classes: 32, 128, 512, 4096, 8192, 16384, 65536, 262144, 1048576.
+ * Anything larger goes to a single oversized free list with first-fit
+ * (block_size >= n && <= 2*n).
  */
 
 #define WARD_HEADER 8
-#define WARD_NBUCKET 4
+#define WARD_NBUCKET 9
 
-static const unsigned int ward_bsz[WARD_NBUCKET] = { 32, 128, 512, 4096 };
-static void *ward_fl[WARD_NBUCKET] = { 0, 0, 0, 0 };
+static const unsigned int ward_bsz[WARD_NBUCKET] = {
+    32, 128, 512, 4096, 8192, 16384, 65536, 262144, 1048576
+};
+static void *ward_fl[WARD_NBUCKET] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 static void *ward_fl_over = 0;
 
 static inline unsigned int ward_hdr_read(void *p) {
@@ -35,19 +38,31 @@ static inline void ward_hdr_write(void *p, unsigned int sz) {
 }
 
 static inline int ward_bucket(unsigned int n) {
-    if (n <= 32)   return 0;
-    if (n <= 128)  return 1;
-    if (n <= 512)  return 2;
-    if (n <= 4096) return 3;
+    if (n <= 32)      return 0;
+    if (n <= 128)     return 1;
+    if (n <= 512)     return 2;
+    if (n <= 4096)    return 3;
+    if (n <= 8192)    return 4;
+    if (n <= 16384)   return 5;
+    if (n <= 65536)   return 6;
+    if (n <= 262144)  return 7;
+    if (n <= 1048576) return 8;
     return -1;
 }
 
 static void *ward_bump(unsigned int usable) {
     unsigned long a = (unsigned long)heap_ptr;
     a = (a + 7u) & ~7u;                       /* align block start */
+    unsigned long end = a + WARD_HEADER + usable;
+    unsigned long limit = (unsigned long)__builtin_wasm_memory_size(0) * 65536UL;
+    if (end > limit) {
+        unsigned long pages = (end - limit + 65535UL) / 65536UL;
+        if (__builtin_wasm_memory_grow(0, pages) == (unsigned long)(-1))
+            return (void*)0; /* memory.grow failed — let caller handle OOM */
+    }
     *(unsigned int *)a = usable;               /* write size header */
     void *p = (void *)(a + WARD_HEADER);       /* user pointer      */
-    heap_ptr = (unsigned char *)(a + WARD_HEADER + usable);
+    heap_ptr = (unsigned char *)end;
     return p;
 }
 
@@ -149,7 +164,7 @@ int ward_resolver_stash(void *resolver) {
             return i;
         }
     }
-    __builtin_trap(); /* resolver table full — 64 concurrent async ops exceeded */
+    return -1; /* resolver table full — 64 concurrent async ops exceeded */
 }
 
 void *ward_resolver_unstash(int id) {
@@ -164,4 +179,28 @@ void *ward_resolver_unstash(int id) {
 void ward_resolver_fire(int id, int value) {
     void *r = ward_resolver_unstash(id);
     if (r) _ward_resolve_chain(r, (void*)(long)value);
+}
+
+/* Arena block layout: [max:4][used:4][data: max_size bytes] */
+
+void *ward_arena_create(int max_size) {
+    void *p = malloc(max_size + 8);
+    if (!p) return (void*)0;
+    *(int *)p = max_size;
+    *((int *)p + 1) = 0;
+    memset((char *)p + 8, 0, max_size);
+    return p;
+}
+
+void *ward_arena_alloc(void *arena, int size) {
+    int max_size = *(int *)arena;
+    int used = *((int *)arena + 1);
+    used = (used + 7) & ~7;  /* align to 8 */
+    if (used + size > max_size) return (void*)0;
+    *((int *)arena + 1) = used + size;
+    return (char *)arena + 8 + used;
+}
+
+void ward_arena_destroy(void *arena) {
+    free(arena);
 }

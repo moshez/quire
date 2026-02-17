@@ -179,6 +179,39 @@ fun chain_example (): void = let
 in end
 ```
 
+## Arena allocation
+
+Arenas provide bulk allocation for large data (images, media). Arena arrays are standard `ward_arr` values -- all existing operations work unchanged.
+
+```ats
+fun arena_example (): void = let
+  val arena = ward_arena_create(65536)  (* 64KB arena *)
+
+  (* Allocate arrays from the arena *)
+  val @(tok1, arr1) = ward_arena_alloc<byte>(arena, 1024)
+  val () = ward_arr_set<byte>(arr1, 0, int2byte0(42))
+  val v = byte2int0(ward_arr_get<byte>(arr1, 0))   (* v = 42 *)
+
+  val @(tok2, arr2) = ward_arena_alloc<int>(arena, 256)
+  val () = ward_arr_set<int>(arr2, 0, 12345)
+
+  (* Freeze/thaw works on arena arrays *)
+  val @(frozen, borrow) = ward_arr_freeze<byte>(arr1)
+  val v2 = byte2int0(ward_arr_read<byte>(borrow, 0))  (* v2 = 42 *)
+  val () = ward_arr_drop<byte>(frozen, borrow)
+  val arr1 = ward_arr_thaw<byte>(frozen)
+
+  (* Return arrays to arena, then destroy *)
+  val () = ward_arena_return<byte>(arena, tok1, arr1)
+  val () = ward_arena_return<int>(arena, tok2, arr2)
+  val () = ward_arena_destroy(arena)  (* frees all arena memory at once *)
+in end
+
+(* This would NOT compile -- outstanding token prevents early destroy:
+   val () = ward_arena_destroy(arena)  // COMPILE ERROR: k > 0
+*)
+```
+
 ## IDB round-trip
 
 Put a value, get it back, delete it. All operations return promises.

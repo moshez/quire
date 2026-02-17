@@ -381,7 +381,7 @@ implement library_save() = let
   val slen = library_serialize()
 in
   if gt_int_int(slen, 0) then let
-    val slen1 = _checked_pos(slen)
+    val slen1 = _checked_arr_size(slen)
     val arr = ward_arr_alloc<byte>(slen1)
     (* Copy fetch buffer to ward_arr — arr passed as ! to avoid linear capture *)
     fun copy {l:agz}{n:pos}

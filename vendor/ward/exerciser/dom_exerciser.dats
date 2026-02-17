@@ -215,6 +215,42 @@ implement ward_node_init (root_id) = let
       val ibuf2 = ward_arr_thaw<byte>(ifr)
       val () = ward_arr_free<byte>(ibuf2)
 
+      (* Exercise ward_dom_stream_set_image_src *)
+      val b = ward_text_build(3)
+      val b = ward_text_putc(b, 0, char2int1('i'))
+      val b = ward_text_putc(b, 1, char2int1('m'))
+      val b = ward_text_putc(b, 2, char2int1('g'))
+      val tag_img = ward_text_done(b)
+      val s = ward_dom_stream_create_element(s, 4, root_id, tag_img, 3)
+
+      (* Build fake 4-byte image data *)
+      val img_data = ward_arr_alloc<byte>(4)
+      val () = ward_arr_set<byte>(img_data, 0, ward_int2byte(137))  (* PNG magic *)
+      val () = ward_arr_set<byte>(img_data, 1, ward_int2byte(80))   (* P *)
+      val () = ward_arr_set<byte>(img_data, 2, ward_int2byte(78))   (* N *)
+      val () = ward_arr_set<byte>(img_data, 3, ward_int2byte(71))   (* G *)
+      val @(img_frozen, img_borrow) = ward_arr_freeze<byte>(img_data)
+
+      (* Build MIME type "image/png" as content text *)
+      val mb = ward_content_text_build(9)
+      val mb = ward_content_text_putc(mb, 0, char2int1('i'))
+      val mb = ward_content_text_putc(mb, 1, char2int1('m'))
+      val mb = ward_content_text_putc(mb, 2, char2int1('a'))
+      val mb = ward_content_text_putc(mb, 3, char2int1('g'))
+      val mb = ward_content_text_putc(mb, 4, char2int1('e'))
+      val mb = ward_content_text_putc(mb, 5, 47)  (* '/' *)
+      val mb = ward_content_text_putc(mb, 6, char2int1('p'))
+      val mb = ward_content_text_putc(mb, 7, char2int1('n'))
+      val mb = ward_content_text_putc(mb, 8, char2int1('g'))
+      val mime = ward_content_text_done(mb)
+
+      val s = ward_dom_stream_set_image_src(s, 4, img_borrow, 4, mime, 9)
+
+      val () = ward_safe_content_text_free(mime)
+      val () = ward_arr_drop<byte>(img_frozen, img_borrow)
+      val img_data2 = ward_arr_thaw<byte>(img_frozen)
+      val () = ward_arr_free<byte>(img_data2)
+
       val dom = ward_dom_stream_end(s)
 
       (* Build value array [72,101,108,108,111] = "Hello" *)
