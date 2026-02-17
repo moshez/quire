@@ -891,6 +891,20 @@ dataprop CHAPTER_OUTCOME(ok: int) =
   | CHAPTER_ASYNC(2)
   | CHAPTER_ERROR_SHOWN(0)
 
+(* CHAPTER_DISPLAY_READY: proves that after chapter content is rendered,
+ * both pagination measurement AND CSS transform application occurred.
+ *
+ * BUG PREVENTED: stale CSS transform from previous chapter leaving
+ * first page of new chapter invisible. When navigating from Ch 2/3
+ * page 11/11 (translateX=-10240px) to Ch 3/3 page 1/8, the old
+ * transform persisted because apply_page_transform was only called
+ * via apply_resume_page (which skips when resume_pg == 0).
+ *
+ * finish_chapter_load is the ONLY way to obtain this proof, and it
+ * always calls apply_page_transform before apply_resume_page. *)
+dataprop CHAPTER_DISPLAY_READY() =
+  | MEASURED_AND_TRANSFORMED()
+
 (* ========== App CSS injection ========== *)
 
 (* ---- Linear completion tokens ---- *)
@@ -2188,6 +2202,7 @@ in
   else ()
 end
 
+
 (* ========== EPUB import: read and parse ZIP entries (async) ========== *)
 
 (* Read container.xml from ZIP, handling both stored and deflated entries.
@@ -2475,6 +2490,28 @@ in
   else () (* no pages — nothing to validate *)
 end
 
+(* finish_chapter_load: Complete chapter display after rendering.
+ * Bundles ALL steps required to make chapter content visible:
+ *   1. measure_and_set_pages — compute pagination from scrollWidth
+ *   2. validate_render_window — sanity check rendered element count
+ *   3. apply_page_transform — reset CSS transform to current page
+ *   4. update_page_info — update "Ch X/Y N/M" UI
+ *   5. apply_resume_page — override if resuming saved position
+ *
+ * Produces CHAPTER_DISPLAY_READY proof, which is the ONLY way to
+ * obtain this dataprop. Consolidating all steps here makes it
+ * impossible to skip apply_page_transform (the root cause of
+ * blank first-page-after-chapter-transition). *)
+fn finish_chapter_load(container_id: int)
+  : (CHAPTER_DISPLAY_READY() | void) = let
+  val () = measure_and_set_pages(container_id)
+  val () = validate_render_window(dom_get_render_ecnt(), container_id)
+  val () = apply_page_transform(container_id)
+  val () = update_page_info()
+  val () = apply_resume_page(container_id)
+  prval pf = MEASURED_AND_TRANSFORMED()
+in (pf | ()) end
+
 (* load_chapter: Every code path either renders content, starts async
  * decompression (whose callback renders or shows error), or shows an error.
  * CHAPTER_OUTCOME documents this invariant — see dataprop above.
@@ -2577,10 +2614,8 @@ in
                     val () = ward_dom_fini(dom)
                     val () = ward_arr_free<byte>(sax_buf)
                     val () = ward_arr_free<byte>(dir_arr)
-                    val () = measure_and_set_pages(saved_cid)
-                    val () = validate_render_window(dom_get_render_ecnt(), saved_cid)
-                    val () = update_page_info()
-                    val () = apply_resume_page(saved_cid)
+                    val (pf_disp | ()) = finish_chapter_load(saved_cid)
+                    prval MEASURED_AND_TRANSFORMED() = pf_disp
                   in ward_promise_return<int>(1) end
                   else let
                     val () = ward_arr_free<byte>(dir_arr)
@@ -2623,10 +2658,8 @@ in
                     val dom = ward_dom_stream_end(s)
                     val () = ward_dom_fini(dom)
                     val () = ward_arr_free<byte>(sax_buf)
-                    val () = measure_and_set_pages(saved_cid)
-                    val () = validate_render_window(dom_get_render_ecnt(), saved_cid)
-                    val () = update_page_info()
-                    val () = apply_resume_page(saved_cid)
+                    val (pf_disp | ()) = finish_chapter_load(saved_cid)
+                    prval MEASURED_AND_TRANSFORMED() = pf_disp
                   in ward_promise_return<int>(1) end
                   else let
                     val () = ward_log(3, mk_ch_err(char2int1('s'), char2int1('a'), char2int1('x')), 10)
@@ -2675,20 +2708,16 @@ in
               val () = ward_dom_fini(dom)
               val () = ward_arr_free<byte>(sax_buf)
               val () = ward_arr_free<byte>(dir_arr)
-              val () = measure_and_set_pages(container_id)
-              val () = validate_render_window(dom_get_render_ecnt(), container_id)
-              val () = update_page_info()
-              val () = apply_resume_page(container_id)
+              val (pf_disp | ()) = finish_chapter_load(container_id)
+              prval MEASURED_AND_TRANSFORMED() = pf_disp
             in end
             else let
               val s = render_tree(s, container_id, sax_buf, sl)
               val dom = ward_dom_stream_end(s)
               val () = ward_dom_fini(dom)
               val () = ward_arr_free<byte>(sax_buf)
-              val () = measure_and_set_pages(container_id)
-              val () = validate_render_window(dom_get_render_ecnt(), container_id)
-              val () = update_page_info()
-              val () = apply_resume_page(container_id)
+              val (pf_disp | ()) = finish_chapter_load(container_id)
+              prval MEASURED_AND_TRANSFORMED() = pf_disp
             in end
           end
           else let

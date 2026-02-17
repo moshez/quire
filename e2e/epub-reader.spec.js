@@ -17,8 +17,14 @@ const SCREENSHOT_DIR = join(process.cwd(), 'e2e', 'screenshots');
 
 mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
-/** Viewport-aware screenshot: includes project name in filename */
+/** Viewport-aware screenshot: includes project name in filename.
+ * Forces a paint cycle before capture — CSS transform changes (e.g.,
+ * translateX for column pagination) may not be painted yet in headless
+ * Chromium when the screenshot is taken synchronously. */
 async function screenshot(page, name) {
+  // Wait for two animation frames to ensure CSS transforms are painted
+  await page.evaluate(() => new Promise(r =>
+    requestAnimationFrame(() => requestAnimationFrame(r))));
   const vp = page.viewportSize();
   const tag = `${vp.width}x${vp.height}`;
   await page.screenshot({ path: join(SCREENSHOT_DIR, `${name}-${tag}.png`) });
@@ -472,7 +478,10 @@ test.describe('EPUB Reader E2E', () => {
           break;
         }
 
-        expect(childCount).toBeGreaterThan(0);
+        expect(diag.childCount).toBeGreaterThan(0);
+        // Content must be visually rendered in the viewport — not just
+        // present in the DOM but translated off-screen by a stale transform
+        expect(diag.scrollWidth).toBeGreaterThan(0);
         prevPageText = curPageText;
       } catch (e) {
         // Give crash event a chance to fire (it's async)
