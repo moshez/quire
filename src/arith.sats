@@ -37,6 +37,22 @@ overload + with add_int_int of 10
 overload - with sub_int_int of 10
 overload * with mul_int_int of 10
 
+(* ========== Dependent arithmetic ========== *)
+(* Same C macros as g0int versions, but ATS2 tracks the static index. *)
+fun add_g1 {a,b:int}(a: int(a), b: int(b)): int(a+b) = "mac#atspre_g0int_add_int"
+fun sub_g1 {a,b:int}(a: int(a), b: int(b)): int(a-b) = "mac#atspre_g0int_sub_int"
+fun mul_g1 {a,b:int}(a: int(a), b: int(b)): int(a*b) = "mac#atspre_g0int_mul_int"
+
+(* Dependent comparisons — solver tracks constraints through branches *)
+fun lt_g1 {a,b:int}(a: int(a), b: int(b)): bool(a < b) = "mac#atspre_g0int_lt_int"
+fun gt_g1 {a,b:int}(a: int(a), b: int(b)): bool(a > b) = "mac#atspre_g0int_gt_int"
+fun eq_g1 {a,b:int}(a: int(a), b: int(b)): bool(a == b) = "mac#atspre_g0int_eq_int"
+fun lte_g1 {a,b:int}(a: int(a), b: int(b)): bool(a <= b) = "mac#atspre_g0int_lte_int"
+fun gte_g1 {a,b:int}(a: int(a), b: int(b)): bool(a >= b) = "mac#atspre_g0int_gte_int"
+
+(* Dependent bitwise AND — proves result <= mask *)
+fun band_g1 {a,b:nat}(a: int(a), b: int(b)): [r:nat | r <= b] int(r) = "mac#atspre_g0int_land_int"
+
 (* ========== Runtime-checked castfns ========== *)
 castfn _checked_pos(x: int): [n:pos] int n
 castfn _checked_nat(x: int): [n:nat] int n

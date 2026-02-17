@@ -39,6 +39,8 @@ datavtype app_state_impl =
       lib_meta_save_pending = int,
       lib_meta_load_pending = int,
       lib_meta_load_index = int,
+      lib_view_mode = int,
+      lib_sort_mode = int,
       library_books = ptr,
       string_buffer = ptr,
       fetch_buffer = ptr,
@@ -174,6 +176,8 @@ implement app_state_init() =
     lib_meta_save_pending = 0,
     lib_meta_load_pending = 0,
     lib_meta_load_index = 0 - 1,
+    lib_view_mode = 0,
+    lib_sort_mode = 0,
     library_books = _alloc_buf(LIB_BOOKS_SIZE),
     string_buffer = _alloc_buf(STRING_BUFFER_SIZE),
     fetch_buffer = _alloc_buf(FETCH_BUFFER_SIZE),
@@ -456,6 +460,20 @@ implement app_set_lib_meta_load_index(st, v) = let
   val @APP_STATE(r) = st val () = r.lib_meta_load_index := v
   prval () = fold@(st) in end
 
+implement app_get_lib_view_mode(st) = let
+  val @APP_STATE(r) = st val v = r.lib_view_mode
+  prval () = fold@(st) in v end
+implement app_set_lib_view_mode(st, v) = let
+  val @APP_STATE(r) = st val () = r.lib_view_mode := v
+  prval () = fold@(st) in end
+
+implement app_get_lib_sort_mode(st) = let
+  val @APP_STATE(r) = st val v = r.lib_sort_mode
+  prval () = fold@(st) in v end
+implement app_set_lib_sort_mode(st, v) = let
+  val @APP_STATE(r) = st val () = r.lib_sort_mode := v
+  prval () = fold@(st) in end
+
 (* ========== C-callable wrappers for library module ========== *)
 
 implement _app_lib_count() = let val st = app_state_load()
@@ -482,6 +500,14 @@ implement _app_lib_meta_load_idx() = let val st = app_state_load()
   val v = app_get_lib_meta_load_index(st) val () = app_state_store(st) in v end
 implement _app_set_lib_meta_load_idx(v) = let val st = app_state_load()
   val () = app_set_lib_meta_load_index(st, v) val () = app_state_store(st) in end
+implement _app_lib_view_mode() = let val st = app_state_load()
+  val v = app_get_lib_view_mode(st) val () = app_state_store(st) in v end
+implement _app_set_lib_view_mode(v) = let val st = app_state_load()
+  val () = app_set_lib_view_mode(st, v) val () = app_state_store(st) in end
+implement _app_lib_sort_mode() = let val st = app_state_load()
+  val v = app_get_lib_sort_mode(st) val () = app_state_store(st) in v end
+implement _app_set_lib_sort_mode(v) = let val st = app_state_load()
+  val () = app_set_lib_sort_mode(st, v) val () = app_state_store(st) in end
 
 (* ========== Library books buffer accessors ========== *)
 
@@ -752,7 +778,7 @@ implement app_set_rdr_resume_page(st, v) = let
 implement app_get_rdr_btn_id(st, idx) = let
   val @APP_STATE(r) = st
   val v = if gte_int_int(idx, 0) then
-            if lt_int_int(idx, 32) then _arr_get_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE)
+            if lt_int_int(idx, 64) then _arr_get_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE)
             else 0 - 1
           else 0 - 1
   prval () = fold@(st)
@@ -760,7 +786,7 @@ in v end
 implement app_set_rdr_btn_id(st, idx, v) = let
   val @APP_STATE(r) = st
   val () = if gte_int_int(idx, 0) then
-             if lt_int_int(idx, 32) then _arr_set_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE, v)
+             if lt_int_int(idx, 64) then _arr_set_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE, v)
   prval () = fold@(st)
 in end
 
