@@ -21,7 +21,7 @@ mkdirSync(SCREENSHOT_DIR, { recursive: true });
 async function screenshot(page, name) {
   const vp = page.viewportSize();
   const tag = `${vp.width}x${vp.height}`;
-  await page.screenshot({ path: join(SCREENSHOT_DIR, `${name}-${tag}.png`), fullPage: true });
+  await page.screenshot({ path: join(SCREENSHOT_DIR, `${name}-${tag}.png`) });
 }
 
 test.describe('EPUB Reader E2E', () => {
@@ -427,13 +427,43 @@ test.describe('EPUB Reader E2E', () => {
           await page.waitForTimeout(100);
         }
 
-        // Assert non-empty content
-        const childCount = await walkContainer.evaluate(el => el.childElementCount);
-        const hasContent = await walkContainer.evaluate(el =>
-          el.textContent.length > 0 || !!el.querySelector('svg'));
+        // Capture column layout diagnostics + visible content check
+        const diag = await walkContainer.evaluate(el => {
+          const cs = getComputedStyle(el);
+          const parent = el.parentElement;
+          const parentCS = parent ? getComputedStyle(parent) : {};
+          // Check if any child element's bounding rect intersects the viewport
+          const vpWidth = window.innerWidth;
+          const vpHeight = window.innerHeight;
+          let visibleChildCount = 0;
+          for (const child of el.children) {
+            const r = child.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0 &&
+                r.right > 0 && r.left < vpWidth &&
+                r.bottom > 0 && r.top < vpHeight) {
+              visibleChildCount++;
+            }
+          }
+          return {
+            childCount: el.childElementCount,
+            textLen: el.textContent.length,
+            hasSvg: !!el.querySelector('svg'),
+            scrollWidth: el.scrollWidth,
+            clientWidth: el.clientWidth,
+            containerHeight: el.getBoundingClientRect().height,
+            transform: el.style.transform || 'none',
+            computedTransform: cs.transform,
+            columnWidth: cs.columnWidth,
+            overflow: parentCS.overflow || 'unknown',
+            parentHeight: parent ? parent.getBoundingClientRect().height : 0,
+            vpWidth,
+            vpHeight,
+            visibleChildCount,
+          };
+        });
 
-        const ok = childCount > 0 && hasContent;
-        walkLog.push({ step, page: curPageText, childCount, ok });
+        const ok = diag.childCount > 0 && (diag.textLen > 0 || diag.hasSvg);
+        walkLog.push({ step, page: curPageText, ...diag, ok });
 
         await screenshot(page, `conan-walk-${String(step).padStart(2, '0')}`);
 
