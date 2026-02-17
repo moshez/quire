@@ -20,14 +20,22 @@ mkdirSync(SCREENSHOT_DIR, { recursive: true });
 /** Viewport-aware screenshot: includes project name in filename.
  * Forces a paint cycle before capture — CSS transform changes (e.g.,
  * translateX for column pagination) may not be painted yet in headless
- * Chromium when the screenshot is taken synchronously. */
+ * Chromium when the screenshot is taken synchronously.
+ *
+ * Uses fullPage: true to capture CSS column content that extends beyond
+ * the viewport via translateX. Without this, Playwright's default viewport
+ * screenshot clips to the visible area before the CSS transform is applied,
+ * producing blank captures for pages 2+ in column-paginated content. */
 async function screenshot(page, name) {
   // Wait for two animation frames to ensure CSS transforms are painted
   await page.evaluate(() => new Promise(r =>
     requestAnimationFrame(() => requestAnimationFrame(r))));
   const vp = page.viewportSize();
   const tag = `${vp.width}x${vp.height}`;
-  await page.screenshot({ path: join(SCREENSHOT_DIR, `${name}-${tag}.png`) });
+  await page.screenshot({
+    path: join(SCREENSHOT_DIR, `${name}-${tag}.png`),
+    fullPage: true,
+  });
 }
 
 test.describe('EPUB Reader E2E', () => {
@@ -480,8 +488,12 @@ test.describe('EPUB Reader E2E', () => {
 
         expect(diag.childCount).toBeGreaterThan(0);
         // Content must be visually rendered in the viewport — not just
-        // present in the DOM but translated off-screen by a stale transform
+        // present in the DOM but translated off-screen by a stale transform.
+        // visibleChildCount checks bounding rects against viewport bounds,
+        // catching the stale-transform bug (ward#18 regression) where
+        // apply_page_transform was skipped on chapter transitions.
         expect(diag.scrollWidth).toBeGreaterThan(0);
+        expect(diag.visibleChildCount).toBeGreaterThan(0);
         prevPageText = curPageText;
       } catch (e) {
         // Give crash event a chance to fire (it's async)

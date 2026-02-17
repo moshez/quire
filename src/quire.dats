@@ -905,6 +905,19 @@ dataprop CHAPTER_OUTCOME(ok: int) =
 dataprop CHAPTER_DISPLAY_READY() =
   | MEASURED_AND_TRANSFORMED()
 
+(* PAGE_DISPLAY_UPDATED: proves that after changing the page counter,
+ * both the CSS transform AND the page indicator were updated.
+ *
+ * BUG CLASS PREVENTED: same as CHAPTER_DISPLAY_READY but for within-chapter
+ * page turns. If someone adds a new page-changing path and calls
+ * reader_next_page/reader_prev_page without applying the transform,
+ * content becomes invisible. This proof forces the transform + page info
+ * update to be bundled with every page counter change.
+ *
+ * page_turn_forward/page_turn_backward are the ONLY ways to obtain this proof. *)
+dataprop PAGE_DISPLAY_UPDATED() =
+  | PAGE_TURNED_AND_SHOWN()
+
 (* ========== App CSS injection ========== *)
 
 (* ---- Linear completion tokens ---- *)
@@ -2173,6 +2186,34 @@ in
   else ()
 end
 
+(* page_turn_forward: advance page within chapter and update display.
+ * Bundles reader_next_page + apply_page_transform + update_page_info.
+ * Returns PAGE_DISPLAY_UPDATED proof — the ONLY way to obtain it for
+ * forward page turns. Caller must destructure the proof.
+ *
+ * Precondition: caller has already verified pg < total - 1. *)
+fn page_turn_forward(container_id: int)
+  : (PAGE_DISPLAY_UPDATED() | void) = let
+  val () = reader_next_page()
+  val () = apply_page_transform(container_id)
+  val () = update_page_info()
+  prval pf = PAGE_TURNED_AND_SHOWN()
+in (pf | ()) end
+
+(* page_turn_backward: go to previous page within chapter and update display.
+ * Bundles reader_prev_page + apply_page_transform + update_page_info.
+ * Returns PAGE_DISPLAY_UPDATED proof — the ONLY way to obtain it for
+ * backward page turns. Caller must destructure the proof.
+ *
+ * Precondition: caller has already verified pg > 0. *)
+fn page_turn_backward(container_id: int)
+  : (PAGE_DISPLAY_UPDATED() | void) = let
+  val () = reader_prev_page()
+  val () = apply_page_transform(container_id)
+  val () = update_page_info()
+  prval pf = PAGE_TURNED_AND_SHOWN()
+in (pf | ()) end
+
 (* Save reading position and exit reader.
  * Constructs POSITION_SAVED proof required by reader_exit.
  * This is THE only permitted way to exit the reader from ATS code.
@@ -2756,9 +2797,8 @@ fn navigate_next(container_id: int): void = let
 in
   if lt_int_int(pg, total - 1) then let
     (* Within chapter — advance page *)
-    val () = reader_next_page()
-    val () = apply_page_transform(container_id)
-    val () = update_page_info()
+    val (pf_pg | ()) = page_turn_forward(container_id)
+    prval PAGE_TURNED_AND_SHOWN() = pf_pg
   in end
   else let
     (* At last page — try advancing chapter *)
@@ -2799,9 +2839,8 @@ fn navigate_prev(container_id: int): void = let
 in
   if gt_int_int(pg, 0) then let
     (* Within chapter — go back a page *)
-    val () = reader_prev_page()
-    val () = apply_page_transform(container_id)
-    val () = update_page_info()
+    val (pf_pg | ()) = page_turn_backward(container_id)
+    prval PAGE_TURNED_AND_SHOWN() = pf_pg
   in end
   else let
     (* At first page — try going to previous chapter *)
