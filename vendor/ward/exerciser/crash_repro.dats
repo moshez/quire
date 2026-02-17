@@ -103,88 +103,22 @@ fn mk_span (): ward_safe_text(4) = let
   val b = ward_text_putc(b, 3, char2int1('n'))
 in ward_text_done(b) end
 
-(* --- Bounds-checked byte write ---
- * pos is g0int (plain), uses g1ofg0 + dependent lt1 for ward_arr_set *)
+(* --- Real conan chapter HTML (21138 bytes) embedded as C static array ---
+ * Uses the exact HTML from OEBPS/2919505986938560309_42664-h-0.htm.xhtml
+ * in conan-stories.epub. This matches the crash path exactly. *)
 
-fn wb {l:agz}{n:pos}{b:nat | b < 256}
-  (buf: !ward_arr(byte, l, n), pos: int, b: int b, sz: int n): void = let
-  val p = g1ofg0(pos)
-in
-  if gte1_int_int(p, 0) then
-    if lt1_int_int(p, sz) then
-      ward_arr_set<byte>(buf, p, ward_int2byte(b))
-    else ()
-  else ()
-end
+%{
+#include "../exerciser/conan_chapter.h"
+%}
 
-(* --- Fill buffer range with 'A' (65) --- *)
+extern fun copy_conan_html {l:agz}
+  (dst: !ward_arr(byte, l, 21138)): void = "mac#"
 
-fun fill_text {l:agz}{n:pos}
-  (buf: !ward_arr(byte, l, n), pos: int, count: int, sz: int n): void =
-  if lte_int_int(count, 0) then ()
-  else let
-    val () = wb(buf, pos, 65, sz)
-  in fill_text(buf, add_int_int(pos, 1), sub_int_int(count, 1), sz) end
-
-(* --- Write HTML paragraphs into buffer ---
- * Each paragraph: <p>TEXT</p>\n = 3 + 190 + 5 = 198 bytes
- * 108 paragraphs = 21384 bytes + header/footer *)
-
-fun write_paras {l:agz}{n:pos}
-  (buf: !ward_arr(byte, l, n), pos: int, count: int, sz: int n): int =
-  if lte_int_int(count, 0) then pos
-  else let
-    val () = wb(buf, pos, 60, sz)                    (* < *)
-    val () = wb(buf, add_int_int(pos, 1), 112, sz)   (* p *)
-    val () = wb(buf, add_int_int(pos, 2), 62, sz)    (* > *)
-    val () = fill_text(buf, add_int_int(pos, 3), 190, sz)
-    val ep = add_int_int(pos, 193)
-    val () = wb(buf, ep, 60, sz)                     (* < *)
-    val () = wb(buf, add_int_int(ep, 1), 47, sz)     (* / *)
-    val () = wb(buf, add_int_int(ep, 2), 112, sz)    (* p *)
-    val () = wb(buf, add_int_int(ep, 3), 62, sz)     (* > *)
-    val () = wb(buf, add_int_int(ep, 4), 10, sz)     (* \n *)
-  in write_paras(buf, add_int_int(ep, 5), sub_int_int(count, 1), sz) end
-
-(* --- Build ~21KB HTML string in a ward_arr ---
- * Structure: <html><body>\n + 108 paragraphs + </body></html>
- * Returns frozen array + borrow for passing to ward_xml_parse_html *)
-
-#define HTML_SIZE 22000
+#define HTML_SIZE 21138
 
 fn build_html (): [l:agz] ward_arr(byte, l, HTML_SIZE) = let
   val buf = ward_arr_alloc<byte>(HTML_SIZE)
-  (* <html><body>\n = 13 bytes *)
-  val () = wb(buf, 0, 60, HTML_SIZE)    (* < *)
-  val () = wb(buf, 1, 104, HTML_SIZE)   (* h *)
-  val () = wb(buf, 2, 116, HTML_SIZE)   (* t *)
-  val () = wb(buf, 3, 109, HTML_SIZE)   (* m *)
-  val () = wb(buf, 4, 108, HTML_SIZE)   (* l *)
-  val () = wb(buf, 5, 62, HTML_SIZE)    (* > *)
-  val () = wb(buf, 6, 60, HTML_SIZE)    (* < *)
-  val () = wb(buf, 7, 98, HTML_SIZE)    (* b *)
-  val () = wb(buf, 8, 111, HTML_SIZE)   (* o *)
-  val () = wb(buf, 9, 100, HTML_SIZE)   (* d *)
-  val () = wb(buf, 10, 121, HTML_SIZE)  (* y *)
-  val () = wb(buf, 11, 62, HTML_SIZE)   (* > *)
-  val () = wb(buf, 12, 10, HTML_SIZE)   (* \n *)
-  (* 108 paragraphs *)
-  val end_pos = write_paras(buf, 13, 108, HTML_SIZE)
-  (* </body></html> = 14 bytes *)
-  val () = wb(buf, end_pos, 60, HTML_SIZE)                     (* < *)
-  val () = wb(buf, add_int_int(end_pos, 1), 47, HTML_SIZE)    (* / *)
-  val () = wb(buf, add_int_int(end_pos, 2), 98, HTML_SIZE)    (* b *)
-  val () = wb(buf, add_int_int(end_pos, 3), 111, HTML_SIZE)   (* o *)
-  val () = wb(buf, add_int_int(end_pos, 4), 100, HTML_SIZE)   (* d *)
-  val () = wb(buf, add_int_int(end_pos, 5), 121, HTML_SIZE)   (* y *)
-  val () = wb(buf, add_int_int(end_pos, 6), 62, HTML_SIZE)    (* > *)
-  val () = wb(buf, add_int_int(end_pos, 7), 60, HTML_SIZE)    (* < *)
-  val () = wb(buf, add_int_int(end_pos, 8), 47, HTML_SIZE)    (* / *)
-  val () = wb(buf, add_int_int(end_pos, 9), 104, HTML_SIZE)   (* h *)
-  val () = wb(buf, add_int_int(end_pos, 10), 116, HTML_SIZE)  (* t *)
-  val () = wb(buf, add_int_int(end_pos, 11), 109, HTML_SIZE)  (* m *)
-  val () = wb(buf, add_int_int(end_pos, 12), 108, HTML_SIZE)  (* l *)
-  val () = wb(buf, add_int_int(end_pos, 13), 62, HTML_SIZE)   (* > *)
+  val () = copy_conan_html(buf)
 in buf end
 
 (* --- Copy bytes from SAX borrow to a new mutable ward_arr ---

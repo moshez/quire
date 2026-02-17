@@ -4,9 +4,10 @@
 
 import { test, expect } from '@playwright/test';
 
-test('crash_repro completes without renderer crash', async ({ page }, testInfo) => {
+test('crash_repro completes without renderer crash', async ({ page }) => {
   // Only run once (desktop viewport) — crash is viewport-independent
-  test.skip(testInfo.project.name !== 'desktop', 'skip non-desktop viewports');
+  const info = test.info();
+  test.skip(info.project.name !== 'desktop', 'skip non-desktop viewports');
 
   let crashed = false;
   page.on('crash', () => { crashed = true; });
