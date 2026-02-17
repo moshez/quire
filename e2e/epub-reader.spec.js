@@ -532,11 +532,16 @@ test.describe('EPUB Reader E2E', () => {
     // The walk should have progressed past the cover page at minimum
     expect(walkLog.length).toBeGreaterThan(1);
 
-    // If not crashed, navigate back to library
-    if (!crashed) {
+    // Navigate back to library if page is still alive.
+    // Wrap in try-catch: the crash event fires asynchronously, so `crashed`
+    // may still be false even though the page is dead.
+    try {
+      await page.evaluate(() => true);  // probe page liveness
       const backBtn = page.locator('.back-btn');
       await backBtn.click();
       await page.waitForSelector('.book-card', { timeout: 10000 });
+    } catch {
+      // Page is dead — nothing to clean up
     }
   });
 
