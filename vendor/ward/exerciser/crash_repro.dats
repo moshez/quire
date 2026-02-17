@@ -1,14 +1,14 @@
 (* crash_repro.dats — Reproduce Chromium renderer crash (ward#18).
  *
  * The crash occurs when quire loads a 21KB deflate-compressed HTML chapter
- * from the conan EPUB. The previous exerciser (500 flat elements) did NOT
- * crash because it skipped the critical operation: wardJsParseHtml.
+ * from the conan EPUB. Previous versions of this exerciser did NOT crash
+ * because they skipped text content in DOM diffs (flush was too small).
  *
  * This exerciser replicates the exact crash path:
  *   1. Build ~21KB HTML string in WASM memory (matching conan chapter size)
  *   2. Call ward_xml_parse_html (DOMParser in JS → binary SAX)
- *   3. Walk SAX and render DOM via ward_dom_stream
- *   4. ward_dom_stream_end flushes ~21KB of DOM diffs → CRASH
+ *   3. Walk SAX and render DOM via ward_dom_stream including set_text
+ *   4. ward_dom_stream_end flushes DOM diffs with real text → CRASH
  *
  * Build: make crash-repro   (in vendor/ward/)
  * Run:   open exerciser/crash_repro.html in Chromium *)
@@ -103,20 +103,6 @@ fn mk_span (): ward_safe_text(4) = let
   val b = ward_text_putc(b, 3, char2int1('n'))
 in ward_text_done(b) end
 
-fn mk_dummy_text (): ward_safe_text(10) = let
-  val b = ward_text_build(10)
-  val b = ward_text_putc(b, 0, char2int1('a'))
-  val b = ward_text_putc(b, 1, char2int1('b'))
-  val b = ward_text_putc(b, 2, char2int1('c'))
-  val b = ward_text_putc(b, 3, char2int1('d'))
-  val b = ward_text_putc(b, 4, char2int1('e'))
-  val b = ward_text_putc(b, 5, char2int1('f'))
-  val b = ward_text_putc(b, 6, char2int1('g'))
-  val b = ward_text_putc(b, 7, char2int1('h'))
-  val b = ward_text_putc(b, 8, char2int1('i'))
-  val b = ward_text_putc(b, 9, char2int1('j'))
-in ward_text_done(b) end
-
 (* --- Bounds-checked byte write ---
  * pos is g0int (plain), uses g1ofg0 + dependent lt1 for ward_arr_set *)
 
@@ -164,7 +150,7 @@ fun write_paras {l:agz}{n:pos}
  * Structure: <html><body>\n + 108 paragraphs + </body></html>
  * Returns frozen array + borrow for passing to ward_xml_parse_html *)
 
-#define HTML_SIZE 110000
+#define HTML_SIZE 22000
 
 fn build_html (): [l:agz] ward_arr(byte, l, HTML_SIZE) = let
   val buf = ward_arr_alloc<byte>(HTML_SIZE)
@@ -182,8 +168,8 @@ fn build_html (): [l:agz] ward_arr(byte, l, HTML_SIZE) = let
   val () = wb(buf, 10, 121, HTML_SIZE)  (* y *)
   val () = wb(buf, 11, 62, HTML_SIZE)   (* > *)
   val () = wb(buf, 12, 10, HTML_SIZE)   (* \n *)
-  (* 550 paragraphs — produces ~100KB HTML, enough DOM ops for ~21KB diff *)
-  val end_pos = write_paras(buf, 13, 550, HTML_SIZE)
+  (* 108 paragraphs *)
+  val end_pos = write_paras(buf, 13, 108, HTML_SIZE)
   (* </body></html> = 14 bytes *)
   val () = wb(buf, end_pos, 60, HTML_SIZE)                     (* < *)
   val () = wb(buf, add_int_int(end_pos, 1), 47, HTML_SIZE)    (* / *)
@@ -201,15 +187,42 @@ fn build_html (): [l:agz] ward_arr(byte, l, HTML_SIZE) = let
   val () = wb(buf, add_int_int(end_pos, 13), 62, HTML_SIZE)   (* > *)
 in buf end
 
+(* --- Copy bytes from SAX borrow to a new mutable ward_arr ---
+ * Since ward_arr_borrow and ward_arr are different types, we read byte-by-byte
+ * from the borrow using ward_arr_read and write to the new array. *)
+
+fun copy_borrow_bytes {lb:agz}{nb:pos}{la:agz}{na:pos}
+  (dst: !ward_arr(byte, la, na), dlen: int na,
+   src: !ward_arr_borrow(byte, lb, nb), slen: int nb,
+   src_off: int, i: int, count: int): void =
+  if gte_int_int(i, count) then ()
+  else let
+    val off_g1 = g1ofg0(add_int_int(src_off, i))
+    val i_g1 = g1ofg0(i)
+  in
+    if gte1_int_int(off_g1, 0) then
+      if lt1_int_int(off_g1, slen) then
+        if gte1_int_int(i_g1, 0) then
+          if lt1_int_int(i_g1, dlen) then let
+            val b = ward_arr_read<byte>(src, off_g1)
+            val () = ward_arr_set<byte>(dst, i_g1, b)
+          in copy_borrow_bytes(dst, dlen, src, slen, src_off, add_int_int(i, 1), count) end
+          else ()
+        else ()
+      else ()
+    else ()
+  end
+
 (* --- Walk SAX binary and render DOM via ward_dom_stream ---
- * Simplified render_tree: all elements become <p>, text creates <span>.
- * Skips attributes (not needed to trigger flush-size crash). *)
+ * Matches quire's render_tree: creates elements, copies text from SAX
+ * binary into new arrays, and calls ward_dom_stream_set_text.
+ * This produces the full ~21KB DOM flush that triggers the crash. *)
 
 fun render_sax {l:agz}{lb:agz}{n:pos}
   (s: ward_dom_stream(l),
    sax: !ward_arr_borrow(byte, lb, n), sax_len: int n,
    parent: int, pos: int, next_id: int,
-   dtxt: ward_safe_text(10)): @(ward_dom_stream(l), int, int) =
+   has_child: int): @(ward_dom_stream(l), int, int) =
   if lt_int_int(pos, 0) then @(s, pos, next_id)
   else let
     val p = g1ofg0(pos)
@@ -239,11 +252,11 @@ fun render_sax {l:agz}{lb:agz}{n:pos}
         val child_pos = skip_attrs(sax, sax_len, after_tag, attr_count)
         val nid = next_id
         val s = ward_dom_stream_create_element(s, nid, parent, mk_p(), 1)
-        (* Recurse into children *)
+        (* Recurse into children with has_child=0 for the new scope *)
         val @(s, after_children, nid2) =
-          render_sax(s, sax, sax_len, nid, child_pos, add_int_int(next_id, 1), dtxt)
-        (* Continue with siblings *)
-      in render_sax(s, sax, sax_len, parent, after_children, nid2, dtxt) end
+          render_sax(s, sax, sax_len, nid, child_pos, add_int_int(next_id, 1), 0)
+        (* Continue with siblings — has_child=1 since we just created an element *)
+      in render_sax(s, sax, sax_len, parent, after_children, nid2, 1) end
 
       else if eq_int_int(opc, WARD_XML_ELEMENT_CLOSE) then
         (* Return to parent — pos+1 is the next sibling position *)
@@ -252,14 +265,36 @@ fun render_sax {l:agz}{lb:agz}{n:pos}
       else if eq_int_int(opc, WARD_XML_TEXT) then let
         val @(text_off, text_len, next_pos) =
           ward_xml_read_text(sax, p, sax_len)
+        val tl = g1ofg0(text_len)
       in
-        if gt_int_int(text_len, 0) then let
-          (* Create a span for the text, then set text content *)
-          val nid = next_id
-          val s = ward_dom_stream_create_element(s, nid, parent, mk_span(), 4)
-          val s = ward_dom_stream_set_safe_text(s, nid, dtxt, 10)
-        in render_sax(s, sax, sax_len, parent, next_pos, add_int_int(next_id, 1), dtxt) end
-        else render_sax(s, sax, sax_len, parent, next_pos, next_id, dtxt)
+        if lt1_int_int(0, tl) then
+          if lt1_int_int(tl, 65536) then
+            if gt_int_int(has_child, 0) then let
+              (* TEXT_RENDER_SAFE: parent has children — wrap in <span> *)
+              val nid = next_id
+              val s = ward_dom_stream_create_element(s, nid, parent, mk_span(), 4)
+              (* Copy text from SAX borrow to new array, set on span *)
+              val text_arr = ward_arr_alloc<byte>(tl)
+              val () = copy_borrow_bytes(text_arr, tl, sax, sax_len, text_off, 0, text_len)
+              val @(frozen, borrow) = ward_arr_freeze<byte>(text_arr)
+              val s = ward_dom_stream_set_text(s, nid, borrow, tl)
+              val () = ward_arr_drop<byte>(frozen, borrow)
+              val text_arr2 = ward_arr_thaw<byte>(frozen)
+              val () = ward_arr_free<byte>(text_arr2)
+            in render_sax(s, sax, sax_len, parent, next_pos, add_int_int(next_id, 1), 1) end
+            else let
+              (* TEXT_RENDER_SAFE: no children — set_text directly on parent *)
+              val text_arr = ward_arr_alloc<byte>(tl)
+              val () = copy_borrow_bytes(text_arr, tl, sax, sax_len, text_off, 0, text_len)
+              val @(frozen, borrow) = ward_arr_freeze<byte>(text_arr)
+              val s = ward_dom_stream_set_text(s, parent, borrow, tl)
+              val () = ward_arr_drop<byte>(frozen, borrow)
+              val text_arr2 = ward_arr_thaw<byte>(frozen)
+              val () = ward_arr_free<byte>(text_arr2)
+            in render_sax(s, sax, sax_len, parent, next_pos, next_id, 1) end
+          else (* text too large — skip *)
+            render_sax(s, sax, sax_len, parent, next_pos, next_id, has_child)
+        else render_sax(s, sax, sax_len, parent, next_pos, next_id, has_child)
       end
 
       else (* unknown opcode — skip *)
@@ -300,7 +335,7 @@ implement ward_node_init (root_id) = let
   (* ============================================================
    * Phase 3: Navigate next — REMOVE_CHILDREN + HTML parse + render
    * This is the crash path: build HTML, parse via DOMParser,
-   * walk SAX, render DOM elements producing ~21KB flush.
+   * walk SAX, render DOM elements + text producing ~21KB flush.
    * ============================================================ *)
 
   (* Build ~21KB HTML in WASM memory *)
@@ -323,14 +358,21 @@ in
       val sax = ward_xml_get_result(sax_g1)
       val @(sax_frozen, sax_borrow) = ward_arr_freeze<byte>(sax)
 
-      (* REMOVE_CHILDREN + render from SAX *)
+      (* REMOVE_CHILDREN + render from SAX with text content *)
       val dom3 = ward_dom_init()
       val s3 = ward_dom_stream_begin(dom3)
       val s3 = ward_dom_stream_remove_children(s3, 1)
-      val dtxt = mk_dummy_text()
-      val @(s3, _, _) = render_sax(s3, sax_borrow, sax_g1, 1, 0, 100, dtxt)
+      val @(s3, _, _) = render_sax(s3, sax_borrow, sax_g1, 1, 0, 100, 0)
       val dom3 = ward_dom_stream_end(s3)
       val () = ward_dom_fini(dom3)
+
+      (* ============================================================
+       * Phase 4: Measure container (forces synchronous layout reflow)
+       * Matches quire's measure_and_set_pages after render_tree.
+       * This is a known crash trigger — Chromium must lay out all
+       * newly created elements before returning the measurement.
+       * ============================================================ *)
+      val _found = ward_measure_node(1)
 
       val () = ward_arr_drop<byte>(sax_frozen, sax_borrow)
       val sax2 = ward_arr_thaw<byte>(sax_frozen)
