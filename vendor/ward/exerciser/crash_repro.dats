@@ -118,6 +118,17 @@ fn mk_img (): ward_safe_text(3) = let
   val b = ward_text_putc(b, 2, char2int1('g'))
 in ward_text_done(b) end
 
+fn mk_h2 (): ward_safe_text(2) = let
+  val b = ward_text_build(2)
+  val b = ward_text_putc(b, 0, char2int1('h'))
+  val b = ward_text_putc(b, 1, char2int1('2'))
+in ward_text_done(b) end
+
+fn mk_i (): ward_safe_text(1) = let
+  val b = ward_text_build(1)
+  val b = ward_text_putc(b, 0, char2int1('i'))
+in ward_text_done(b) end
+
 (* Attribute name safe_text — "class" is the most common attribute
  * in the conan EPUB HTML. Emitting class attributes triggers CSS
  * style resolution in Chromium, increasing layout work. *)
@@ -270,7 +281,59 @@ fun render_sax {l:agz}{lb:agz}{n:pos}
             else @(s2, sub_int_int(0, 1))
           end
         val nid = next_id
-        val s = ward_dom_stream_create_element(s, nid, parent, mk_p(), 1)
+        (* Dispatch tag: read first byte to determine element type.
+         * Use correct HTML tags to preserve nesting structure.
+         * <p> inside <p> causes browser auto-close → wrong DOM tree.
+         * <div> for block, <span> for inline, <p>/<h2>/<i> when known. *)
+        val t0g1 = g1ofg0(tag_off)
+        val is_inline = (
+          if gte1_int_int(t0g1, 0) then
+            if lt1_int_int(t0g1, sax_len) then
+              if eq_int_int(tag_len, 1) then let
+                val ch = ward_arr_read<byte>(sax, t0g1)
+                val chi = byte2int0(ch)
+              in (* i=105, b=98, a=97, u=117, s=115, q=113 — inline tags *)
+                if eq_int_int(chi, 105) then true  (* i *)
+                else if eq_int_int(chi, 98) then true  (* b *)
+                else if eq_int_int(chi, 97) then true  (* a *)
+                else if eq_int_int(chi, 117) then true  (* u *)
+                else if eq_int_int(chi, 115) then true  (* s *)
+                else false
+              end
+              else false
+            else false
+          else false
+        ): bool
+        val is_p = (
+          if eq_int_int(tag_len, 1) then
+            if gte1_int_int(t0g1, 0) then
+              if lt1_int_int(t0g1, sax_len) then let
+                val ch = ward_arr_read<byte>(sax, t0g1)
+              in eq_int_int(byte2int0(ch), 112) end  (* p=112 *)
+              else false
+            else false
+          else false
+        ): bool
+        val is_h2 = (
+          if eq_int_int(tag_len, 2) then
+            if gte1_int_int(t0g1, 0) then
+              if lt1_int_int(t0g1, sax_len) then let
+                val ch = ward_arr_read<byte>(sax, t0g1)
+              in eq_int_int(byte2int0(ch), 104) end  (* h=104 *)
+              else false
+            else false
+          else false
+        ): bool
+        val s = (
+          if is_inline then
+            ward_dom_stream_create_element(s, nid, parent, mk_span(), 4)
+          else if is_p then
+            ward_dom_stream_create_element(s, nid, parent, mk_p(), 1)
+          else if is_h2 then
+            ward_dom_stream_create_element(s, nid, parent, mk_h2(), 2)
+          else
+            ward_dom_stream_create_element(s, nid, parent, mk_div(), 3)
+        ): ward_dom_stream(l)
         val @(s, child_pos) = emit_attrs(s, nid, sax, sax_len, after_tag, attr_count)
         (* Recurse into children with has_child=0 for the new scope *)
         val @(s, after_children, nid2) =
