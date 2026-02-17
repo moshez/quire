@@ -3598,10 +3598,11 @@ implement render_library(root_id) = let
                           val () = register_card_btns(0, btn_count, ssr, 0)
                         in import_finish(h, sslbl, ssspn, sssts) end
                         else if eq_int_int(book_idx, 0 - 2) then let
-                          val () = update_status_text(sssts, TEXT_ERR_DUP_ID, 17)
-                        in import_finish(
-                          import_mark_failed(log_err_dup_id(), 10),
-                          sslbl, ssspn, sssts) end
+                          val () = import_finish(
+                            import_mark_failed(log_err_dup_id(), 10),
+                            sslbl, ssspn, sssts)
+                          (* Set error text AFTER import_finish, which clears status_id *)
+                        in update_status_text(sssts, TEXT_ERR_DUP_ID, 17) end
                         else import_finish(
                           import_mark_failed(log_err_lib_full(), 12),
                           sslbl, ssspn, sssts)
