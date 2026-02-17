@@ -18,24 +18,47 @@ const SCREENSHOT_DIR = join(process.cwd(), 'e2e', 'screenshots');
 mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
 /** Viewport-aware screenshot: includes project name in filename.
- * Forces a paint cycle before capture — CSS transform changes (e.g.,
- * translateX for column pagination) may not be painted yet in headless
- * Chromium when the screenshot is taken synchronously.
+ * Forces a paint cycle before capture.
  *
- * Uses fullPage: true to capture CSS column content that extends beyond
- * the viewport via translateX. Without this, Playwright's default viewport
- * screenshot clips to the visible area before the CSS transform is applied,
- * producing blank captures for pages 2+ in column-paginated content. */
+ * CSS column pagination uses translateX on .chapter-container inside
+ * .reader-viewport (overflow:hidden). Headless Chromium doesn't composite
+ * off-screen column content, so page-level screenshots show blank for
+ * pages 2+. Workaround: temporarily remove overflow:hidden so all columns
+ * render, take the screenshot with clip to capture only the viewport area,
+ * then restore overflow. */
 async function screenshot(page, name) {
   // Wait for two animation frames to ensure CSS transforms are painted
   await page.evaluate(() => new Promise(r =>
     requestAnimationFrame(() => requestAnimationFrame(r))));
   const vp = page.viewportSize();
   const tag = `${vp.width}x${vp.height}`;
+
+  // Temporarily remove overflow:hidden so CSS columns render all content.
+  // Without this, headless Chromium skips compositing off-screen columns.
+  const viewport = page.locator('.reader-viewport');
+  const hasViewport = await viewport.count() > 0;
+  if (hasViewport) {
+    await viewport.evaluate(el => {
+      el.dataset.origOverflow = el.style.overflow;
+      el.style.overflow = 'visible';
+    });
+    // Need another frame for the overflow change to trigger recomposite
+    await page.evaluate(() => new Promise(r =>
+      requestAnimationFrame(() => requestAnimationFrame(r))));
+  }
+
   await page.screenshot({
     path: join(SCREENSHOT_DIR, `${name}-${tag}.png`),
-    fullPage: true,
+    clip: { x: 0, y: 0, width: vp.width, height: vp.height },
   });
+
+  // Restore overflow:hidden
+  if (hasViewport) {
+    await viewport.evaluate(el => {
+      el.style.overflow = el.dataset.origOverflow || '';
+      delete el.dataset.origOverflow;
+    });
+  }
 }
 
 test.describe('EPUB Reader E2E', () => {
