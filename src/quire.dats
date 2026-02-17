@@ -1964,7 +1964,8 @@ fn fill_css_mgmt {l:agz}{n:int | n >= MGMT_CSS_LEN}
   val () = _w4(arr, alen, 248, 1868774195)
   val () = _w4(arr, alen, 252, 980578156)
   val () = _w4(arr, alen, 256, 1717986851)
-  val () = _w4(arr, alen, 260, 125)
+  val () = _w4(arr, alen, 260, 538976381)
+  (* 538976381 = '}' + ' '<<8 + ' '<<16 + ' '<<24 → pad to 264 bytes *)
 in end
 
 fn inject_mgmt_css {l:agz}

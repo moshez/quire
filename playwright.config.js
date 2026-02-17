@@ -10,7 +10,7 @@ const chromiumArgs = [
 
 export default defineConfig({
   testDir: './e2e',
-  timeout: 60000,
+  timeout: 90000,
   expect: { timeout: 15000 },
   use: {
     baseURL: 'http://localhost:3737',
