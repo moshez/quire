@@ -475,11 +475,13 @@ test.describe('EPUB Reader E2E', () => {
       try {
         await nextBtn.click();
 
-        // Wait for page info to change (page flip or chapter transition)
+        // Wait for page info to change — short timeout since page flips
+        // are near-instant. Chapter transitions trigger async decompression
+        // which may crash the renderer (ward#18).
         await page.waitForFunction((prev) => {
           const info = document.querySelector('.page-info');
           return info && info.textContent !== prev;
-        }, prevPageText, { timeout: 15000 });
+        }, prevPageText, { timeout: 5000 });
 
         const curPageText = await pageInfoEl.textContent();
         const curCh = curPageText.match(/^Ch (\d+)\//)?.[1];
@@ -489,11 +491,10 @@ test.describe('EPUB Reader E2E', () => {
           await page.waitForFunction(() => {
             const el = document.querySelector('.chapter-container');
             return el && el.childElementCount > 0;
-          }, { timeout: 15000 });
-          // Let CSS column layout settle after chapter load
-          await page.waitForTimeout(500);
+          }, { timeout: 10000 });
+          await page.waitForTimeout(300);
         } else {
-          await page.waitForTimeout(200);
+          await page.waitForTimeout(100);
         }
 
         // Assert non-empty content
@@ -507,7 +508,6 @@ test.describe('EPUB Reader E2E', () => {
         await screenshot(page, `conan-walk-${String(step).padStart(2, '0')}`);
 
         if (curPageText === prevPageText) {
-          // Page didn't change — we're at the end
           walkLog.push({ step, page: curPageText, note: 'end-of-book' });
           break;
         }
@@ -515,11 +515,13 @@ test.describe('EPUB Reader E2E', () => {
         expect(childCount).toBeGreaterThan(0);
         prevPageText = curPageText;
       } catch (e) {
-        if (crashed) {
-          walkLog.push({ step, note: 'CRASHED', prevPage: prevPageText });
-          break;
-        }
-        walkLog.push({ step, note: 'error: ' + e.message, prevPage: prevPageText });
+        // Give crash event a chance to fire (it's async)
+        await new Promise(r => setTimeout(r, 200));
+        walkLog.push({
+          step,
+          note: crashed ? 'CRASHED' : 'error: ' + e.message,
+          prevPage: prevPageText,
+        });
         break;
       }
     }
@@ -531,18 +533,6 @@ test.describe('EPUB Reader E2E', () => {
 
     // The walk should have progressed past the cover page at minimum
     expect(walkLog.length).toBeGreaterThan(1);
-
-    // Navigate back to library if page is still alive.
-    // Wrap in try-catch: the crash event fires asynchronously, so `crashed`
-    // may still be false even though the page is dead.
-    try {
-      await page.evaluate(() => true);  // probe page liveness
-      const backBtn = page.locator('.back-btn');
-      await backBtn.click();
-      await page.waitForSelector('.book-card', { timeout: 10000 });
-    } catch {
-      // Page is dead — nothing to clean up
-    }
   });
 
   test('chapter navigation: Next crosses to next chapter', async ({ page }) => {
