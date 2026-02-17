@@ -967,6 +967,263 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 10000 });
   });
 
+  test('archive and restore a book', async ({ page }) => {
+    // Import a book, archive it, verify it disappears from active view,
+    // switch to archived view, verify it appears, restore it, verify it
+    // returns to active view.
+    const epubBuffer = createEpub({
+      title: 'Archive Test Book',
+      author: 'Archive Bot',
+      chapters: 2,
+      paragraphsPerChapter: 3,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'archive-test.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await screenshot(page, 'archive-01-imported');
+
+    // Verify toolbar is visible
+    const toolbar = page.locator('.lib-toolbar');
+    await expect(toolbar).toBeVisible();
+
+    // Verify view toggle button shows "Archived" (meaning we're in active view)
+    const viewToggle = page.locator('.view-toggle');
+    await expect(viewToggle).toBeVisible();
+    await expect(viewToggle).toContainText('Archived');
+
+    // Verify sort buttons visible (one has sort-btn, other has sort-active)
+    const sortBtnInactive = page.locator('.sort-btn');
+    const sortBtnActive = page.locator('.sort-active');
+    await expect(sortBtnInactive).toBeVisible();
+    await expect(sortBtnActive).toBeVisible();
+
+    // Verify archive button visible on the book card
+    const archiveBtn = page.locator('.archive-btn');
+    await expect(archiveBtn).toBeVisible();
+    await expect(archiveBtn).toContainText('Archive');
+
+    // Archive the book
+    await archiveBtn.click();
+
+    // Book should disappear from active view — library should show empty
+    await page.waitForSelector('.empty-lib', { timeout: 10000 });
+    await screenshot(page, 'archive-02-empty-after-archive');
+
+    // Verify empty message says "No books yet" (active view)
+    const emptyMsg = page.locator('.empty-lib');
+    await expect(emptyMsg).toContainText('No books yet');
+
+    // Switch to archived view
+    const viewToggle2 = page.locator('.view-toggle');
+    await viewToggle2.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+    await screenshot(page, 'archive-03-archived-view');
+
+    // View toggle should now show "Library" (meaning we're in archived view)
+    const viewToggle3 = page.locator('.view-toggle');
+    await expect(viewToggle3).toContainText('Library');
+
+    // Verify the archived book is shown with correct title
+    const bookTitle = page.locator('.book-title');
+    await expect(bookTitle).toContainText('Archive Test Book');
+
+    // Verify restore button visible (not "Archive")
+    const restoreBtn = page.locator('.archive-btn');
+    await expect(restoreBtn).toBeVisible();
+    await expect(restoreBtn).toContainText('Restore');
+
+    // Verify no "Read" button in archived view
+    const readBtns = page.locator('.read-btn');
+    expect(await readBtns.count()).toBe(0);
+
+    // Import button should be hidden in archived view
+    const importBtns = page.locator('label.import-btn');
+    expect(await importBtns.count()).toBe(0);
+
+    // Restore the book
+    await restoreBtn.click();
+
+    // Archived view should now be empty
+    await page.waitForSelector('.empty-lib', { timeout: 10000 });
+    const archivedEmpty = page.locator('.empty-lib');
+    await expect(archivedEmpty).toContainText('No archived books');
+    await screenshot(page, 'archive-04-archived-empty');
+
+    // Switch back to active view
+    const viewToggle4 = page.locator('.view-toggle');
+    await viewToggle4.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+    await screenshot(page, 'archive-05-restored');
+
+    // Book should be back in active view with correct title
+    const restoredTitle = page.locator('.book-title');
+    await expect(restoredTitle).toContainText('Archive Test Book');
+
+    // Archive and Read buttons should be visible again
+    const readBtn = page.locator('.read-btn');
+    await expect(readBtn).toBeVisible();
+    const archBtn = page.locator('.archive-btn');
+    await expect(archBtn).toContainText('Archive');
+  });
+
+  test('sort books by title and author', async ({ page }) => {
+    // Import two books with different title/author ordering,
+    // verify sort by title and sort by author reorder them.
+    const epub1 = createEpub({
+      title: 'Zephyr Winds',
+      author: 'Alice Author',
+      chapters: 1,
+      paragraphsPerChapter: 2,
+    });
+    const epub2 = createEpub({
+      title: 'Alpha Dawn',
+      author: 'Zelda Writer',
+      chapters: 1,
+      paragraphsPerChapter: 2,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import first book
+    const fileInput = page.locator('input[type="file"]');
+    const path1 = join(SCREENSHOT_DIR, 'sort-test1.epub');
+    writeFileSync(path1, epub1);
+    await fileInput.setInputFiles(path1);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Wait for IndexedDB save, then reload to get a fresh state
+    await page.waitForTimeout(2000);
+    await page.reload();
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    await page.waitForSelector('.book-card', { timeout: 15000 });
+
+    // Import second book on the fresh page
+    const fileInput2 = page.locator('input[type="file"]');
+    const path2 = join(SCREENSHOT_DIR, 'sort-test2.epub');
+    writeFileSync(path2, epub2);
+    await fileInput2.setInputFiles(path2);
+
+    // Wait for second book card to appear
+    await page.waitForFunction(() => {
+      const cards = document.querySelectorAll('.book-card');
+      return cards.length >= 2;
+    }, { timeout: 30000 });
+    await screenshot(page, 'sort-01-two-books');
+
+    // Sort by title (ascending) — "Alpha Dawn" should come first
+    // Use text-based locators since active button has class sort-active, not sort-btn
+    const sortTitle = page.locator('.lib-toolbar button', { hasText: 'By title' });
+    await expect(sortTitle).toBeVisible();
+    await sortTitle.click();
+    await page.waitForTimeout(500);
+    await screenshot(page, 'sort-02-by-title');
+
+    // First book card title should be "Alpha Dawn"
+    const titles = page.locator('.book-title');
+    const firstTitle = await titles.nth(0).textContent();
+    const secondTitle = await titles.nth(1).textContent();
+    expect(firstTitle).toContain('Alpha Dawn');
+    expect(secondTitle).toContain('Zephyr Winds');
+
+    // Sort by author (ascending) — "Alice Author" should come first
+    const sortAuthor = page.locator('.lib-toolbar button', { hasText: 'By author' });
+    await expect(sortAuthor).toBeVisible();
+    await sortAuthor.click();
+    await page.waitForTimeout(500);
+    await screenshot(page, 'sort-03-by-author');
+
+    // After sort by author: Alice Author's book ("Zephyr Winds") should be first
+    const authTitles = page.locator('.book-title');
+    const firstByAuthor = await authTitles.nth(0).textContent();
+    const secondByAuthor = await authTitles.nth(1).textContent();
+    expect(firstByAuthor).toContain('Zephyr Winds');
+    expect(secondByAuthor).toContain('Alpha Dawn');
+
+    // Verify sort button active state — author button should have sort-active class
+    const authorBtnClass = await sortAuthor.getAttribute('class');
+    expect(authorBtnClass).toContain('sort-active');
+  });
+
+  test('reject EPUB with duplicate book ID but different title', async ({ page }) => {
+    // Two EPUBs with the same UUID but different titles should trigger
+    // a "Duplicate book ID" error on the second import.
+    const sharedId = '00000000-0000-0000-0000-000000000001';
+    const epub1 = createEpub({
+      title: 'First Book Title',
+      author: 'Author One',
+      chapters: 1,
+      paragraphsPerChapter: 2,
+      bookId: sharedId,
+    });
+    const epub2 = createEpub({
+      title: 'Different Book Title',
+      author: 'Author Two',
+      chapters: 1,
+      paragraphsPerChapter: 2,
+      bookId: sharedId,
+    });
+
+    const consoleMessages = [];
+    page.on('console', msg => consoleMessages.push(`[${msg.type()}] ${msg.text()}`));
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import first EPUB — should succeed
+    const fileInput = page.locator('input[type="file"]');
+    const path1 = join(SCREENSHOT_DIR, 'dup-id-book1.epub');
+    writeFileSync(path1, epub1);
+    await fileInput.setInputFiles(path1);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await screenshot(page, 'dup-id-01-first-imported');
+
+    // Verify first book is in the library
+    const bookTitle = page.locator('.book-title');
+    await expect(bookTitle).toContainText('First Book Title');
+
+    // Wait for IndexedDB save, then reload to get fresh state
+    await page.waitForTimeout(2000);
+    await page.reload();
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    await page.waitForSelector('.book-card', { timeout: 15000 });
+
+    // Import second EPUB with same UUID but different title — should fail
+    const fileInput2 = page.locator('input[type="file"]');
+    const path2 = join(SCREENSHOT_DIR, 'dup-id-book2.epub');
+    writeFileSync(path2, epub2);
+    await fileInput2.setInputFiles(path2);
+
+    // Wait for import to complete (error or success)
+    // The import status should show "Duplicate book ID"
+    const statusDiv = page.locator('.import-status');
+    await expect(statusDiv).toContainText('Duplicate book ID', { timeout: 30000 });
+    await screenshot(page, 'dup-id-02-error-shown');
+
+    // Verify only 1 book card is shown (second import was rejected)
+    const bookCards = page.locator('.book-card');
+    expect(await bookCards.count()).toBe(1);
+
+    // Verify the error was logged
+    const errLogs = consoleMessages.filter(m => m.includes('err-dup-id'));
+    expect(errLogs.length).toBeGreaterThan(0);
+
+    // Verify import-done was logged (linear token consumed)
+    const doneLogs = consoleMessages.filter(m => m.includes('import-done'));
+    expect(doneLogs.length).toBeGreaterThan(0);
+
+    // Import button should be restored (not stuck in importing state)
+    const importBtn = page.locator('label.import-btn');
+    await expect(importBtn).toBeVisible({ timeout: 5000 });
+  });
+
   test('create-epub with embedded image', async ({ page }) => {
     // Test that our EPUB creator can include images and they render
     const epubBuffer = createEpub({
