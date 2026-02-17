@@ -1,6 +1,24 @@
 <!DOCTYPE html>
 <html>
-<head><title>crash_repro ward#18</title></head>
+<head>
+<title>crash_repro ward#18</title>
+<style>
+/* Match quire's CSS column layout — critical for triggering Chromium crash.
+   Without this, elements are just stacked vertically (trivial layout).
+   With columns, Chromium must do complex multi-column pagination. */
+#ward-root > div {
+  overflow: hidden;
+  column-width: 100vw;
+  column-gap: 0;
+  column-fill: auto;
+  height: 100vh;
+  box-sizing: border-box;
+}
+#ward-root > div > * {
+  break-inside: avoid;
+}
+</style>
+</head>
 <body>
 <div id="ward-root"></div>
 <pre id="log"></pre>
