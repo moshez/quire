@@ -118,6 +118,18 @@ fn mk_img (): ward_safe_text(3) = let
   val b = ward_text_putc(b, 2, char2int1('g'))
 in ward_text_done(b) end
 
+(* Attribute name safe_text — "class" is the most common attribute
+ * in the conan EPUB HTML. Emitting class attributes triggers CSS
+ * style resolution in Chromium, increasing layout work. *)
+fn mk_class (): ward_safe_text(5) = let
+  val b = ward_text_build(5)
+  val b = ward_text_putc(b, 0, char2int1('c'))
+  val b = ward_text_putc(b, 1, char2int1('l'))
+  val b = ward_text_putc(b, 2, char2int1('a'))
+  val b = ward_text_putc(b, 3, char2int1('s'))
+  val b = ward_text_putc(b, 4, char2int1('s'))
+in ward_text_done(b) end
+
 (* "image/jpeg" — 10 chars, for ward_dom_stream_set_image_src MIME type *)
 fn mk_mime_jpeg (): [l:agz] ward_safe_content_text(l, 10) = let
   val b = ward_content_text_build(10)
@@ -224,24 +236,42 @@ fun render_sax {l:agz}{lb:agz}{n:pos}
       if eq_int_int(opc, WARD_XML_ELEMENT_OPEN) then let
         val @(tag_off, tag_len, attr_count, after_tag) =
           ward_xml_element_open(sax, p, sax_len)
-        (* Skip attributes *)
-        fun skip_attrs {lb2:agz}{n2:pos}
-          (sax2: !ward_arr_borrow(byte, lb2, n2),
-           sl: int n2, ap: int, ac: int): int =
-          if lte_int_int(ac, 0) then ap
-          else if lt_int_int(ap, 0) then ap
+        (* Emit attributes as class="value" — matches quire's emit_attrs
+         * which calls ward_dom_stream_set_attr for each attribute.
+         * This increases diff buffer size and triggers CSS style resolution. *)
+        fun emit_attrs {l2:agz}{lb2:agz}{n2:pos}
+          (s2: ward_dom_stream(l2), nid2: int,
+           sax2: !ward_arr_borrow(byte, lb2, n2),
+           sl: int n2, ap: int, ac: int): @(ward_dom_stream(l2), int) =
+          if lte_int_int(ac, 0) then @(s2, ap)
+          else if lt_int_int(ap, 0) then @(s2, ap)
           else let
             val ap1 = g1ofg0(ap)
           in
-            if lt1_int_int(ap1, 0) then sub_int_int(0, 1)
+            if lt1_int_int(ap1, 0) then @(s2, sub_int_int(0, 1))
             else if lt1_int_int(ap1, sl) then let
-              val @(_, _, _, _, next) = ward_xml_read_attr(sax2, ap1, sl)
-            in skip_attrs(sax2, sl, next, sub_int_int(ac, 1)) end
-            else sub_int_int(0, 1)
+              val @(_, _, val_off, val_len, next) =
+                ward_xml_read_attr(sax2, ap1, sl)
+              val vl = g1ofg0(val_len)
+            in
+              if lt1_int_int(0, vl) then
+                if lt1_int_int(vl, 65536) then let
+                  val val_arr = ward_arr_alloc<byte>(vl)
+                  val () = copy_borrow_bytes(val_arr, vl, sax2, sl, val_off, 0, val_len)
+                  val @(frozen, borrow) = ward_arr_freeze<byte>(val_arr)
+                  val s2 = ward_dom_stream_set_attr(s2, nid2, mk_class(), 5, borrow, vl)
+                  val () = ward_arr_drop<byte>(frozen, borrow)
+                  val val_arr2 = ward_arr_thaw<byte>(frozen)
+                  val () = ward_arr_free<byte>(val_arr2)
+                in emit_attrs(s2, nid2, sax2, sl, next, sub_int_int(ac, 1)) end
+                else emit_attrs(s2, nid2, sax2, sl, next, sub_int_int(ac, 1))
+              else emit_attrs(s2, nid2, sax2, sl, next, sub_int_int(ac, 1))
+            end
+            else @(s2, sub_int_int(0, 1))
           end
-        val child_pos = skip_attrs(sax, sax_len, after_tag, attr_count)
         val nid = next_id
         val s = ward_dom_stream_create_element(s, nid, parent, mk_p(), 1)
+        val @(s, child_pos) = emit_attrs(s, nid, sax, sax_len, after_tag, attr_count)
         (* Recurse into children with has_child=0 for the new scope *)
         val @(s, after_children, nid2) =
           render_sax(s, sax, sax_len, nid, child_pos, add_int_int(next_id, 1), 0)
