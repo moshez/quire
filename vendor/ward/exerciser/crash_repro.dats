@@ -1,22 +1,20 @@
 (* crash_repro.dats — Reproduce Chromium renderer crash (ward#18).
  *
  * Uses the EXACT 21138-byte HTML from conan-stories.epub chapter 0,
- * compressed as 9213 bytes of deflate-raw data. Matches the exact
- * quire crash path:
+ * compressed as 9213 bytes of deflate-raw data. Runs 3 chapter
+ * transition cycles to match real user navigation:
  *
- *   1. ward_node_init: create viewport + container + 15 cover elements
- *   2. REMOVE_CHILDREN: clear container (sync, separate DOM stream)
- *   3. ward_decompress: async DecompressionStream (deflate-raw)
- *      --- event loop turn: browser processes REMOVE_CHILDREN ---
- *   4. Callback: ward_blob_read → ward_xml_parse_html → SAX render
- *   5. ward_dom_stream_end flushes DOM diffs with text → CRASH?
- *   6. ward_measure_node on container + viewport (synchronous reflow)
- *   7. ward_dom_stream_set_style: transform:translateX(0px)
+ *   Phase 1: Create viewport + container + 15 cover elements
+ *   Cycle 1-3 (each):
+ *     a. REMOVE_CHILDREN (DOM flush — clears container)
+ *     b. ward_decompress (async — event loop turn)
+ *     c. Callback: blob_read → parse HTML → SAX render → DOM flush
+ *     d. Deferred image: <img> + blob URL (18KB)
+ *     e. Measure: scrollWidth + width (synchronous reflow x2)
+ *     f. CSS transform: translateX(0px)
  *
- * The key insight: REMOVE_CHILDREN and the render happen across
- * an event loop turn, matching quire's navigate_next → load_chapter
- * async decompression pattern. Previous versions ran everything
- * synchronously and did NOT crash.
+ * ~70KB static padding brings WASM binary to ~90KB, matching
+ * quire.wasm. V8 uses different JIT strategies by module size.
  *
  * Build: make crash-repro   (in vendor/ward/)
  * Run:   open exerciser/crash_repro.html in Chromium *)
@@ -260,13 +258,16 @@ static void fill_dummy_jpeg(void *dst) {
 
 /* Padding to match quire.wasm binary size (~91KB).
  * V8 may use different WASM compilation strategies (Liftoff vs TurboFan)
- * based on module size. This ensures similar JIT behavior.
- * Referenced via wasm_padding_touch() to prevent dead-code elimination. */
-#define WASM_PAD_SIZE 71680  /* ~70KB to bring total from ~20KB to ~90KB */
-static unsigned char _wasm_padding[WASM_PAD_SIZE];
-static int wasm_padding_touch(void) {
-  /* Volatile read prevents DCE without actually doing anything useful */
-  return (int)((volatile unsigned char *)_wasm_padding)[0];
+ * based on module size. __attribute__((used)) prevents DCE even at -O2.
+ * GCC/Clang range initializer fills entire array with 0xAA (non-zero
+ * forces inclusion in WASM data section, not BSS). */
+#define WASM_PAD_SIZE 71680
+__attribute__((used))
+static const unsigned char _wasm_padding[WASM_PAD_SIZE] = {
+  [0 ... 71679] = 0xAA
+};
+static int wasm_padding_touch(int x) {
+  return x + (int)((volatile const unsigned char *)_wasm_padding)[0];
 }
 %}
 
@@ -278,6 +279,8 @@ extern fun copy_transform_zero {l:agz}
 
 extern fun fill_dummy_jpeg {l:agz}
   (dst: !ward_arr(byte, l, 18538)): void = "mac#"
+
+extern fun wasm_padding_touch(x: int): int = "mac#"
 
 #define COMP_SIZE 9213
 #define TRANSFORM_SIZE 25
@@ -401,16 +404,23 @@ fun render_sax {l:agz}{lb:agz}{n:pos}
               else if eq_int_int(ch0, 104) then true  (* hr *)
               else false
             else false
+          else if eq_int_int(tag_len, 3) then
+            (* img: 105,109,103 *)
+            if eq_int_int(ch0, 105) then
+              if eq_int_int(ch1, 109) then true  (* img *)
+              else false
+            else false
           else false
         ): bool
       in
         if is_void then let
           (* Void elements: create the element but skip children.
-           * hr gets CSS styling from the sheet; br creates a line break.
-           * Both are self-closing — just skip to ELEMENT_CLOSE. *)
+           * hr gets CSS styling; br creates line break; img is replaced. *)
           val s = (
             if eq_int_int(ch0, 104) then
               ward_dom_stream_create_element(s, nid, parent, mk_hr(), 2)
+            else if eq_int_int(tag_len, 3) then
+              ward_dom_stream_create_element(s, nid, parent, mk_img(), 3)
             else
               ward_dom_stream_create_element(s, nid, parent, mk_div(), 3)
           ): ward_dom_stream(l)
@@ -562,15 +572,107 @@ fun render_sax {l:agz}{lb:agz}{n:pos}
     else @(s, pos, next_id)
   end
 
+(* --- Helper: render chapter from decompressed blob ---
+ * Does the full render cycle: blob_read → parse → render → image → measure → transform.
+ * Called from each chapter transition callback. *)
+fn render_chapter_from_blob(blob_handle: int): void = let
+  val decomp_len = ward_decompress_get_len()
+  val dl = g1ofg0(decomp_len)
+in
+  if lt1_int_int(0, dl) then let
+    val html_buf = ward_arr_alloc<byte>(dl)
+    val _bytes = ward_blob_read(blob_handle, 0, html_buf, dl)
+    val () = ward_blob_free(blob_handle)
+    val @(h_frozen, h_borrow) = ward_arr_freeze<byte>(html_buf)
+    val sax_len = ward_xml_parse_html(h_borrow, dl)
+    val () = ward_arr_drop<byte>(h_frozen, h_borrow)
+    val html_buf2 = ward_arr_thaw<byte>(h_frozen)
+    val () = ward_arr_free<byte>(html_buf2)
+  in
+    if gt_int_int(sax_len, 0) then let
+      val sax_g1 = g1ofg0(sax_len)
+    in
+      if lt1_int_int(0, sax_g1) then let
+        val sax = ward_xml_get_result(sax_g1)
+        val @(sax_frozen, sax_borrow) = ward_arr_freeze<byte>(sax)
+        (* Render from SAX into container (node 2) *)
+        val dom4 = ward_dom_init()
+        val s4 = ward_dom_stream_begin(dom4)
+        val @(s4, _, _) = render_sax(s4, sax_borrow, sax_g1, 2, 0, 100, 0)
+        val dom4 = ward_dom_stream_end(s4)
+        (* Deferred image — matches quire's load_deferred_images *)
+        val s4b = ward_dom_stream_begin(dom4)
+        val s4b = ward_dom_stream_create_element(s4b, 50, 2, mk_img(), 3)
+        val img_arr = ward_arr_alloc<byte>(IMG_SIZE)
+        val () = fill_dummy_jpeg(img_arr)
+        val @(img_frozen, img_borrow) = ward_arr_freeze<byte>(img_arr)
+        val mime = mk_mime_jpeg()
+        val s4b = ward_dom_stream_set_image_src(s4b, 50, img_borrow, IMG_SIZE, mime, 10)
+        val () = ward_safe_content_text_free(mime)
+        val () = ward_arr_drop<byte>(img_frozen, img_borrow)
+        val img_arr2 = ward_arr_thaw<byte>(img_frozen)
+        val () = ward_arr_free<byte>(img_arr2)
+        val dom4 = ward_dom_stream_end(s4b)
+        val () = ward_dom_fini(dom4)
+        (* Measure — forces synchronous layout reflow *)
+        val _found1 = ward_measure_node(2)
+        val _found2 = ward_measure_node(1)
+        (* Apply CSS transform — triggers another layout *)
+        val style_arr = ward_arr_alloc<byte>(TRANSFORM_SIZE)
+        val () = copy_transform_zero(style_arr)
+        val @(sf, sb) = ward_arr_freeze<byte>(style_arr)
+        val dom5 = ward_dom_init()
+        val s5 = ward_dom_stream_begin(dom5)
+        val s5 = ward_dom_stream_set_style(s5, 2, sb, TRANSFORM_SIZE)
+        val dom5 = ward_dom_stream_end(s5)
+        val () = ward_dom_fini(dom5)
+        val () = ward_arr_drop<byte>(sf, sb)
+        val style_arr2 = ward_arr_thaw<byte>(sf)
+        val () = ward_arr_free<byte>(style_arr2)
+        val () = ward_arr_drop<byte>(sax_frozen, sax_borrow)
+        val sax2 = ward_arr_thaw<byte>(sax_frozen)
+        val () = ward_arr_free<byte>(sax2)
+      in () end
+      else ()
+    end
+    else ()
+  end
+  else let
+    val () = ward_blob_free(blob_handle)
+  in () end
+end
+
+(* --- Helper: start a chapter transition ---
+ * REMOVE_CHILDREN + decompress. Returns the decompress promise.
+ * Each call simulates navigate_next crossing a chapter boundary. *)
+fn start_chapter_transition(): ward_promise_pending(int) = let
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+  val s = ward_dom_stream_remove_children(s, 2)
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
+  val comp_buf = ward_arr_alloc<byte>(COMP_SIZE)
+  val () = copy_conan_compressed(comp_buf)
+  val @(c_frozen, c_borrow) = ward_arr_freeze<byte>(comp_buf)
+  val decomp_p = ward_decompress(c_borrow, COMP_SIZE, 2)
+  val () = ward_arr_drop<byte>(c_frozen, c_borrow)
+  val comp_buf2 = ward_arr_thaw<byte>(c_frozen)
+  val () = ward_arr_free<byte>(comp_buf2)
+in decomp_p end
+
 (* WASM export: entry point *)
 extern fun ward_node_init (root_id: int): void = "ext#ward_node_init"
 
 implement ward_node_init (root_id) = let
+  (* Reference padding array to prevent dead-code elimination.
+   * This brings WASM binary from ~20KB to ~90KB, matching quire.wasm.
+   * V8 may use different compilation strategies based on module size. *)
+  val _pad = wasm_padding_touch(0)
+
   (* ============================================================
    * Phase 1: Create viewport (node 1) + container (node 2).
    * Matches quire's reader structure:
    *   root → .reader-viewport → .chapter-container
-   * CSS in crash_repro.html uses structural selectors to match.
    * ============================================================ *)
   val dom = ward_dom_init()
   val s = ward_dom_stream_begin(dom)
@@ -596,132 +698,40 @@ implement ward_node_init (root_id) = let
   val () = ward_dom_fini(dom2)
 
   (* ============================================================
-   * Phase 3: REMOVE_CHILDREN — separate DOM stream.
-   * Matches quire's navigate_next which clears the container
-   * in its own stream BEFORE calling load_chapter.
-   * This gives the browser an event loop turn between the
-   * removal and the heavy render (via async decompress).
+   * 3 chapter transition cycles — simulates a user navigating
+   * through chapters. Each cycle:
+   *   1. REMOVE_CHILDREN (DOM flush — clears container)
+   *   2. ward_decompress (async — event loop turn)
+   *   3. Callback: blob_read → parse HTML → render SAX → DOM flush
+   *   4. Deferred image: create <img> + set blob URL
+   *   5. Measure: scrollWidth + width (synchronous reflow x2)
+   *   6. CSS transform: translateX(0px) (another layout)
+   *
+   * The crash happens in Chromium's renderer during step 3 or 5.
+   * Multiple rapid transitions increase the likelihood of hitting
+   * the race condition between WASM→JS calls and renderer layout.
    * ============================================================ *)
-  val dom3 = ward_dom_init()
-  val s3 = ward_dom_stream_begin(dom3)
-  val s3 = ward_dom_stream_remove_children(s3, 2)
-  val dom3 = ward_dom_stream_end(s3)
-  val () = ward_dom_fini(dom3)
 
-  (* ============================================================
-   * Phase 4: Decompress chapter via DecompressionStream.
-   * This is the EXACT path quire takes: compressed ZIP entry →
-   * ward_decompress(deflate-raw) → async callback → blob_read →
-   * parse HTML → render DOM.
-   * The async callback runs after the browser processes
-   * REMOVE_CHILDREN from Phase 3.
-   * ============================================================ *)
-  val comp_buf = ward_arr_alloc<byte>(COMP_SIZE)
-  val () = copy_conan_compressed(comp_buf)
-  val @(c_frozen, c_borrow) = ward_arr_freeze<byte>(comp_buf)
-  val decomp_p = ward_decompress(c_borrow, COMP_SIZE, 2)
-  (* JS pipes data synchronously into DecompressionStream — safe to free *)
-  val () = ward_arr_drop<byte>(c_frozen, c_borrow)
-  val comp_buf2 = ward_arr_thaw<byte>(c_frozen)
-  val () = ward_arr_free<byte>(comp_buf2)
+  (* Cycle 1: cover → chapter *)
+  val decomp1 = start_chapter_transition()
+  val cycle1 = ward_promise_then<int><int>(decomp1,
+    llam (blob1: int) => let
+      val () = render_chapter_from_blob(blob1)
+    in ward_promise_vow(start_chapter_transition()) end)
 
-  (* ============================================================
-   * Phase 5: Decompress callback — read blob, parse HTML, render.
-   * Runs asynchronously after DecompressionStream completes.
-   * Browser has already processed REMOVE_CHILDREN from Phase 3.
-   * ============================================================ *)
-  val render_p = ward_promise_then<int><int>(decomp_p,
-    llam (blob_handle: int) => let
-      val decomp_len = ward_decompress_get_len()
-      val dl = g1ofg0(decomp_len)
-    in
-      if lt1_int_int(0, dl) then let
-        (* Read decompressed HTML from blob into ward_arr *)
-        val html_buf = ward_arr_alloc<byte>(dl)
-        val _bytes = ward_blob_read(blob_handle, 0, html_buf, dl)
-        val () = ward_blob_free(blob_handle)
+  (* Cycle 2: chapter → chapter *)
+  val cycle2 = ward_promise_then<int><int>(cycle1,
+    llam (blob2: int) => let
+      val () = render_chapter_from_blob(blob2)
+    in ward_promise_vow(start_chapter_transition()) end)
 
-        (* Parse HTML via ward_xml_parse_html (calls JS DOMParser) *)
-        val @(h_frozen, h_borrow) = ward_arr_freeze<byte>(html_buf)
-        val sax_len = ward_xml_parse_html(h_borrow, dl)
-        val () = ward_arr_drop<byte>(h_frozen, h_borrow)
-        val html_buf2 = ward_arr_thaw<byte>(h_frozen)
-        val () = ward_arr_free<byte>(html_buf2)
-      in
-        if gt_int_int(sax_len, 0) then let
-          val sax_g1 = g1ofg0(sax_len)
-        in
-          if lt1_int_int(0, sax_g1) then let
-            (* Retrieve SAX binary result *)
-            val sax = ward_xml_get_result(sax_g1)
-            val @(sax_frozen, sax_borrow) = ward_arr_freeze<byte>(sax)
+  (* Cycle 3: chapter → chapter *)
+  val cycle3 = ward_promise_then<int><int>(cycle2,
+    llam (blob3: int) => let
+      val () = render_chapter_from_blob(blob3)
+    in ward_promise_return<int>(0) end)
 
-            (* Render from SAX with text content into container (node 2).
-             * REMOVE_CHILDREN already flushed in Phase 3 — the container
-             * is empty. This matches quire's load_chapter which only renders
-             * (no remove) inside the decompression callback. *)
-            val dom4 = ward_dom_init()
-            val s4 = ward_dom_stream_begin(dom4)
-            val @(s4, _, _) = render_sax(s4, sax_borrow, sax_g1, 2, 0, 100, 0)
-            val dom4 = ward_dom_stream_end(s4)
-
-            (* --------------------------------------------------------
-             * Load deferred image — matches quire's load_deferred_images.
-             * Creates a new DOM stream, adds an <img> element, calls
-             * ward_dom_stream_set_image_src with 18538 bytes of image data
-             * (matches the conan illustration size). This creates a Blob
-             * URL and sets el.src, triggering Chromium's image decoder
-             * between the large DOM flush and the synchronous reflow.
-             * -------------------------------------------------------- *)
-            val s4b = ward_dom_stream_begin(dom4)
-            val s4b = ward_dom_stream_create_element(s4b, 50, 2, mk_img(), 3)
-            val img_arr = ward_arr_alloc<byte>(IMG_SIZE)
-            val () = fill_dummy_jpeg(img_arr)
-            val @(img_frozen, img_borrow) = ward_arr_freeze<byte>(img_arr)
-            val mime = mk_mime_jpeg()
-            val s4b = ward_dom_stream_set_image_src(s4b, 50, img_borrow, IMG_SIZE, mime, 10)
-            val () = ward_safe_content_text_free(mime)
-            val () = ward_arr_drop<byte>(img_frozen, img_borrow)
-            val img_arr2 = ward_arr_thaw<byte>(img_frozen)
-            val () = ward_arr_free<byte>(img_arr2)
-            val dom4 = ward_dom_stream_end(s4b)
-            val () = ward_dom_fini(dom4)
-
-            (* Measure container (scrollWidth) + viewport (width).
-             * Matches quire's measure_and_set_pages which measures
-             * both nodes to compute page count.
-             * Forces synchronous layout reflow TWICE. *)
-            val _found1 = ward_measure_node(2)
-            val _found2 = ward_measure_node(1)
-
-            (* Apply CSS transform on container — matches quire's
-             * apply_page_transform which sets transform:translateX
-             * after measurement, triggering another layout. *)
-            val style_arr = ward_arr_alloc<byte>(TRANSFORM_SIZE)
-            val () = copy_transform_zero(style_arr)
-            val @(sf, sb) = ward_arr_freeze<byte>(style_arr)
-            val dom5 = ward_dom_init()
-            val s5 = ward_dom_stream_begin(dom5)
-            val s5 = ward_dom_stream_set_style(s5, 2, sb, TRANSFORM_SIZE)
-            val dom5 = ward_dom_stream_end(s5)
-            val () = ward_dom_fini(dom5)
-            val () = ward_arr_drop<byte>(sf, sb)
-            val style_arr2 = ward_arr_thaw<byte>(sf)
-            val () = ward_arr_free<byte>(style_arr2)
-
-            val () = ward_arr_drop<byte>(sax_frozen, sax_borrow)
-            val sax2 = ward_arr_thaw<byte>(sax_frozen)
-            val () = ward_arr_free<byte>(sax2)
-          in ward_promise_return<int>(0) end
-          else ward_promise_return<int>(0)
-        end
-        else ward_promise_return<int>(0)
-      end
-      else let
-        val () = ward_blob_free(blob_handle)
-      in ward_promise_return<int>(0) end
-    end)
-  val exit_p = ward_promise_then<int><int>(render_p,
+  val exit_p = ward_promise_then<int><int>(cycle3,
     llam (_x: int) => let
       val () = ward_exit()
     in ward_promise_return<int>(0) end)
