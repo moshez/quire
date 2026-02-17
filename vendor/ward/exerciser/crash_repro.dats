@@ -2,19 +2,25 @@
  *
  * Uses the EXACT 21138-byte HTML from conan-stories.epub chapter 0,
  * compressed as 9213 bytes of deflate-raw data. Runs 3 chapter
- * transition cycles to match real user navigation:
+ * transition cycles to match real user navigation.
+ *
+ * KEY: Each transition includes the premature measure+transform that
+ * was present in quire's navigate_next before the async race fix.
+ * This forces Chromium to reflow CSS columns on the EMPTY container,
+ * then immediately reflow again when 21KB of content arrives.
  *
  *   Phase 1: Create viewport + container + 15 cover elements
  *   Cycle 1-3 (each):
  *     a. REMOVE_CHILDREN (DOM flush — clears container)
- *     b. ward_decompress (async — event loop turn)
- *     c. Callback: blob_read → parse HTML → SAX render → DOM flush
- *     d. Deferred image: <img> + blob URL (18KB)
- *     e. Measure: scrollWidth + width (synchronous reflow x2)
- *     f. CSS transform: translateX(0px)
+ *     b. measure_node(container) + measure_node(viewport) — THE BUG
+ *     c. set_style(transform:translateX(0px)) on empty container — THE BUG
+ *     d. ward_decompress (async — event loop turn)
+ *     e. Callback: blob_read → parse HTML → SAX render → DOM flush
+ *     f. Deferred image: <img> + blob URL (18KB)
+ *     g. Measure: scrollWidth + width (synchronous reflow x2)
+ *     h. CSS transform: translateX(0px) on populated container
  *
- * ~70KB static padding brings WASM binary to ~90KB, matching
- * quire.wasm. V8 uses different JIT strategies by module size.
+ * ~70KB padding brings WASM binary to ~95KB, matching quire.wasm.
  *
  * Build: make crash-repro   (in vendor/ward/)
  * Run:   open exerciser/crash_repro.html in Chromium *)
@@ -318,6 +324,55 @@ fun copy_borrow_bytes {lb:agz}{nb:pos}{la:agz}{na:pos}
     else ()
   end
 
+(* --- Skip past SAX attributes without emitting DOM ops ---
+ * Returns position after all attributes, or -1 on error. *)
+
+fun skip_attrs_pos {lb:agz}{n:pos}
+  (sax: !ward_arr_borrow(byte, lb, n), sax_len: int n,
+   pos: int, attr_count: int): int =
+  if lte_int_int(attr_count, 0) then pos
+  else if lt_int_int(pos, 0) then pos
+  else let
+    val p1 = g1ofg0(pos)
+  in
+    if lt1_int_int(p1, 0) then sub_int_int(0, 1)
+    else if lt1_int_int(p1, sax_len) then let
+      val @(_, _, _, _, next) = ward_xml_read_attr(sax, p1, sax_len)
+    in skip_attrs_pos(sax, sax_len, next, sub_int_int(attr_count, 1)) end
+    else sub_int_int(0, 1)
+  end
+
+(* --- Skip all children in a SAX scope until ELEMENT_CLOSE ---
+ * Returns position after the closing 0x02 byte, or -1 on error.
+ * Handles nested elements recursively. *)
+
+fun skip_sax_children {lb:agz}{n:pos}
+  (sax: !ward_arr_borrow(byte, lb, n), sax_len: int n,
+   pos: int): int =
+  if lt_int_int(pos, 0) then pos
+  else let
+    val p1 = g1ofg0(pos)
+  in
+    if lt1_int_int(p1, 0) then sub_int_int(0, 1)
+    else if lt1_int_int(p1, sax_len) then let
+      val opc = ward_xml_opcode(sax, p1)
+    in
+      if eq_int_int(opc, WARD_XML_ELEMENT_CLOSE) then
+        add_int_int(pos, 1)
+      else if eq_int_int(opc, WARD_XML_ELEMENT_OPEN) then let
+        val @(_, _, attr_count, after_tag) =
+          ward_xml_element_open(sax, p1, sax_len)
+        val after_attrs = skip_attrs_pos(sax, sax_len, after_tag, attr_count)
+        val after_children = skip_sax_children(sax, sax_len, after_attrs)
+      in skip_sax_children(sax, sax_len, after_children) end
+      else if eq_int_int(opc, WARD_XML_TEXT) then let
+        val @(_, _, next) = ward_xml_read_text(sax, p1, sax_len)
+      in skip_sax_children(sax, sax_len, next) end
+      else skip_sax_children(sax, sax_len, add_int_int(pos, 1))
+    end
+    else sub_int_int(0, 1)
+  end
+
 (* --- Walk SAX binary and render DOM via ward_dom_stream ---
  * Matches quire's render_tree: creates elements, copies text from SAX
  * binary into new arrays, and calls ward_dom_stream_set_text.
@@ -394,7 +449,9 @@ fun render_sax {l:agz}{lb:agz}{n:pos}
           else 0
         ): int
         (* Tag classification:
-         * void(skip): br(98,114), hr(104,114)
+         * skip:       img(105,109,3) — quire skips <img> during render_tree,
+         *             handles images via load_deferred_images
+         * void:       br(98,114,2), hr(104,114,2)
          * inline:     i(105), b(98), a(97), u(117), s(115), q(113) [1-byte]
          *             em(101,109) [2-byte]
          *             span(115,112,4), code(99,111,4) [4-byte]
@@ -402,33 +459,38 @@ fun render_sax {l:agz}{lb:agz}{n:pos}
          * heading:    h1(104,49), h2(104,50), h3(104,51) [2-byte]
          * paragraph:  p(112) [1-byte]
          * block:      everything else → div *)
+        val is_img = (
+          if eq_int_int(tag_len, 3) then
+            if eq_int_int(ch0, 105) then
+              if eq_int_int(ch1, 109) then true else false  (* img *)
+            else false
+          else false
+        ): bool
         val is_void = (
           if eq_int_int(tag_len, 2) then
-            (* br: 98,114  hr: 104,114 *)
             if eq_int_int(ch1, 114) then
               if eq_int_int(ch0, 98) then true   (* br *)
               else if eq_int_int(ch0, 104) then true  (* hr *)
               else false
             else false
-          else if eq_int_int(tag_len, 3) then
-            (* img: 105,109,103 *)
-            if eq_int_int(ch0, 105) then
-              if eq_int_int(ch1, 109) then true  (* img *)
-              else false
-            else false
           else false
         ): bool
       in
-        if is_void then let
+        if is_img then let
+          (* Skip <img> entirely — matches quire's render_tree which skips
+           * TAG_IDX_IMG and records images for load_deferred_images.
+           * Don't create any DOM element; just advance past attrs + children. *)
+          val after_attrs = skip_attrs_pos(sax, sax_len, after_tag, attr_count)
+          val after_close = skip_sax_children(sax, sax_len, after_attrs)
+        in render_sax(s, sax, sax_len, parent, after_close, next_id, has_child) end
+        else if is_void then let
           (* Void elements: create the element but skip children.
-           * hr gets CSS styling; br creates line break; img is replaced. *)
+           * hr gets CSS styling from crash_repro.html; br creates line break. *)
           val s = (
             if eq_int_int(ch0, 104) then
               ward_dom_stream_create_element(s, nid, parent, mk_hr(), 2)
-            else if eq_int_int(tag_len, 3) then
-              ward_dom_stream_create_element(s, nid, parent, mk_img(), 3)
             else
-              ward_dom_stream_create_element(s, nid, parent, mk_div(), 3)
+              ward_dom_stream_create_element(s, nid, parent, mk_br(), 2)
           ): ward_dom_stream(l)
           val @(s, child_pos) = emit_attrs(s, nid, sax, sax_len, after_tag, attr_count)
           (* Skip children (void elements shouldn't have any) *)
@@ -694,6 +756,19 @@ fn start_chapter_transition(): ward_promise_pending(int) = let
   val style_arr2 = ward_arr_thaw<byte>(sf)
   val () = ward_arr_free<byte>(style_arr2)
 
+  (* Step 3b: Premature update_page_info — writes stale "Ch X/Y N/M"
+   * text to page indicator node (3). Another DOM mutation on stale state. *)
+  val info_arr = ward_arr_alloc<byte>(10)
+  val @(inf, inb) = ward_arr_freeze<byte>(info_arr)
+  val dom2b = ward_dom_init()
+  val s2b = ward_dom_stream_begin(dom2b)
+  val s2b = ward_dom_stream_set_text(s2b, 3, inb, 10)
+  val dom2b = ward_dom_stream_end(s2b)
+  val () = ward_dom_fini(dom2b)
+  val () = ward_arr_drop<byte>(inf, inb)
+  val info_arr2 = ward_arr_thaw<byte>(inf)
+  val () = ward_arr_free<byte>(info_arr2)
+
   (* Step 4: Start async decompress — the event loop turn between
    * the empty layout and the heavy render is where the crash occurs. *)
   val comp_buf = ward_arr_alloc<byte>(COMP_SIZE)
@@ -723,6 +798,10 @@ implement ward_node_init (root_id) = let
   val s = ward_dom_stream_begin(dom)
   val s = ward_dom_stream_create_element(s, 1, root_id, mk_div(), 3)
   val s = ward_dom_stream_create_element(s, 2, 1, mk_div(), 3)
+  (* Page indicator node — simulates quire's page info display.
+   * update_page_info() writes to this node during navigate_next,
+   * between REMOVE_CHILDREN and load_chapter. *)
+  val s = ward_dom_stream_create_element(s, 3, 1, mk_div(), 3)
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
 
