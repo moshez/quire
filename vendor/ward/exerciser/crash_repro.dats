@@ -161,6 +161,12 @@ fn mk_b (): ward_safe_text(1) = let
   val b = ward_text_putc(b, 0, char2int1('b'))
 in ward_text_done(b) end
 
+fn mk_br (): ward_safe_text(2) = let
+  val b = ward_text_build(2)
+  val b = ward_text_putc(b, 0, char2int1('b'))
+  val b = ward_text_putc(b, 1, char2int1('r'))
+in ward_text_done(b) end
+
 (* "blockquote" - 10 chars *)
 fn mk_blockquote (): ward_safe_text(10) = let
   val b = ward_text_build(10)
@@ -643,14 +649,53 @@ in
 end
 
 (* --- Helper: start a chapter transition ---
- * REMOVE_CHILDREN + decompress. Returns the decompress promise.
- * Each call simulates navigate_next crossing a chapter boundary. *)
+ * REMOVE_CHILDREN + stale ops + decompress. Returns decompress promise.
+ * Each call simulates navigate_next crossing a chapter boundary.
+ *
+ * CRITICAL: Includes the premature apply_page_transform + measure that
+ * was present in quire's navigate_next BEFORE the async race fix
+ * (commit 5059454). These calls ran on the EMPTY container right after
+ * REMOVE_CHILDREN and before load_chapter started the async decompress.
+ * This is the exact pattern that caused the Chromium renderer crash:
+ *   1. REMOVE_CHILDREN → flush → browser removes all DOM children
+ *   2. measure_node(container) → forces reflow on EMPTY container
+ *   3. set_style(transform:translateX) → apply CSS transform on empty container
+ *   4. decompress (async) → event loop turn → browser processes empty layout
+ *   5. Callback: render 21KB DOM → measure → transform on POPULATED container
+ * The rapid empty→populated transition with intermediate forced reflows
+ * triggers the Chromium renderer crash. *)
 fn start_chapter_transition(): ward_promise_pending(int) = let
+  (* Step 1: REMOVE_CHILDREN — clears container *)
   val dom = ward_dom_init()
   val s = ward_dom_stream_begin(dom)
   val s = ward_dom_stream_remove_children(s, 2)
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
+
+  (* Step 2: Premature measure on empty container — the bug.
+   * navigate_next called apply_page_transform which measured viewport
+   * width and set CSS transform, all on the empty container. This forced
+   * Chromium's renderer to reflow the emptied CSS columns layout. *)
+  val _found1 = ward_measure_node(2)
+  val _found2 = ward_measure_node(1)
+
+  (* Step 3: Premature CSS transform on empty container — the bug.
+   * apply_page_transform set transform:translateX(0px) on the empty
+   * container, causing another forced layout on the emptied columns. *)
+  val style_arr = ward_arr_alloc<byte>(TRANSFORM_SIZE)
+  val () = copy_transform_zero(style_arr)
+  val @(sf, sb) = ward_arr_freeze<byte>(style_arr)
+  val dom2 = ward_dom_init()
+  val s2 = ward_dom_stream_begin(dom2)
+  val s2 = ward_dom_stream_set_style(s2, 2, sb, TRANSFORM_SIZE)
+  val dom2 = ward_dom_stream_end(s2)
+  val () = ward_dom_fini(dom2)
+  val () = ward_arr_drop<byte>(sf, sb)
+  val style_arr2 = ward_arr_thaw<byte>(sf)
+  val () = ward_arr_free<byte>(style_arr2)
+
+  (* Step 4: Start async decompress — the event loop turn between
+   * the empty layout and the heavy render is where the crash occurs. *)
   val comp_buf = ward_arr_alloc<byte>(COMP_SIZE)
   val () = copy_conan_compressed(comp_buf)
   val @(c_frozen, c_borrow) = ward_arr_freeze<byte>(comp_buf)
