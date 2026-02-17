@@ -118,15 +118,87 @@ fn mk_img (): ward_safe_text(3) = let
   val b = ward_text_putc(b, 2, char2int1('g'))
 in ward_text_done(b) end
 
+fn mk_h1 (): ward_safe_text(2) = let
+  val b = ward_text_build(2)
+  val b = ward_text_putc(b, 0, char2int1('h'))
+  val b = ward_text_putc(b, 1, char2int1('1'))
+in ward_text_done(b) end
+
 fn mk_h2 (): ward_safe_text(2) = let
   val b = ward_text_build(2)
   val b = ward_text_putc(b, 0, char2int1('h'))
   val b = ward_text_putc(b, 1, char2int1('2'))
 in ward_text_done(b) end
 
+fn mk_h3 (): ward_safe_text(2) = let
+  val b = ward_text_build(2)
+  val b = ward_text_putc(b, 0, char2int1('h'))
+  val b = ward_text_putc(b, 1, char2int1('3'))
+in ward_text_done(b) end
+
+fn mk_hr (): ward_safe_text(2) = let
+  val b = ward_text_build(2)
+  val b = ward_text_putc(b, 0, char2int1('h'))
+  val b = ward_text_putc(b, 1, char2int1('r'))
+in ward_text_done(b) end
+
 fn mk_i (): ward_safe_text(1) = let
   val b = ward_text_build(1)
   val b = ward_text_putc(b, 0, char2int1('i'))
+in ward_text_done(b) end
+
+fn mk_a (): ward_safe_text(1) = let
+  val b = ward_text_build(1)
+  val b = ward_text_putc(b, 0, char2int1('a'))
+in ward_text_done(b) end
+
+fn mk_em (): ward_safe_text(2) = let
+  val b = ward_text_build(2)
+  val b = ward_text_putc(b, 0, char2int1('e'))
+  val b = ward_text_putc(b, 1, char2int1('m'))
+in ward_text_done(b) end
+
+fn mk_b (): ward_safe_text(1) = let
+  val b = ward_text_build(1)
+  val b = ward_text_putc(b, 0, char2int1('b'))
+in ward_text_done(b) end
+
+(* "blockquote" - 10 chars *)
+fn mk_blockquote (): ward_safe_text(10) = let
+  val b = ward_text_build(10)
+  val b = ward_text_putc(b, 0, char2int1('b'))
+  val b = ward_text_putc(b, 1, char2int1('l'))
+  val b = ward_text_putc(b, 2, char2int1('o'))
+  val b = ward_text_putc(b, 3, char2int1('c'))
+  val b = ward_text_putc(b, 4, char2int1('k'))
+  val b = ward_text_putc(b, 5, char2int1('q'))
+  val b = ward_text_putc(b, 6, char2int1('u'))
+  val b = ward_text_putc(b, 7, char2int1('o'))
+  val b = ward_text_putc(b, 8, char2int1('t'))
+  val b = ward_text_putc(b, 9, char2int1('e'))
+in ward_text_done(b) end
+
+(* "strong" - 6 chars *)
+fn mk_strong (): ward_safe_text(6) = let
+  val b = ward_text_build(6)
+  val b = ward_text_putc(b, 0, char2int1('s'))
+  val b = ward_text_putc(b, 1, char2int1('t'))
+  val b = ward_text_putc(b, 2, char2int1('r'))
+  val b = ward_text_putc(b, 3, char2int1('o'))
+  val b = ward_text_putc(b, 4, char2int1('n'))
+  val b = ward_text_putc(b, 5, char2int1('g'))
+in ward_text_done(b) end
+
+(* "section" - 7 chars *)
+fn mk_section (): ward_safe_text(7) = let
+  val b = ward_text_build(7)
+  val b = ward_text_putc(b, 0, char2int1('s'))
+  val b = ward_text_putc(b, 1, char2int1('e'))
+  val b = ward_text_putc(b, 2, char2int1('c'))
+  val b = ward_text_putc(b, 3, char2int1('t'))
+  val b = ward_text_putc(b, 4, char2int1('i'))
+  val b = ward_text_putc(b, 5, char2int1('o'))
+  val b = ward_text_putc(b, 6, char2int1('n'))
 in ward_text_done(b) end
 
 (* Attribute name safe_text — "class" is the most common attribute
@@ -184,6 +256,17 @@ static void fill_dummy_jpeg(void *dst) {
   d[0] = 0xFF; d[1] = 0xD8;
   int i;
   for (i = 2; i < DUMMY_IMG_SIZE; i++) d[i] = 0;
+}
+
+/* Padding to match quire.wasm binary size (~91KB).
+ * V8 may use different WASM compilation strategies (Liftoff vs TurboFan)
+ * based on module size. This ensures similar JIT behavior.
+ * Referenced via wasm_padding_touch() to prevent dead-code elimination. */
+#define WASM_PAD_SIZE 71680  /* ~70KB to bring total from ~20KB to ~90KB */
+static unsigned char _wasm_padding[WASM_PAD_SIZE];
+static int wasm_padding_touch(void) {
+  /* Volatile read prevents DCE without actually doing anything useful */
+  return (int)((volatile unsigned char *)_wasm_padding)[0];
 }
 %}
 
@@ -281,56 +364,148 @@ fun render_sax {l:agz}{lb:agz}{n:pos}
             else @(s2, sub_int_int(0, 1))
           end
         val nid = next_id
-        (* Dispatch tag: read first byte to determine element type.
-         * Use correct HTML tags to preserve nesting structure.
-         * <p> inside <p> causes browser auto-close → wrong DOM tree.
-         * <div> for block, <span> for inline, <p>/<h2>/<i> when known. *)
+        (* Read up to 2 tag bytes for dispatch. Must match the real
+         * HTML element types to preserve DOM nesting: <strong> inside
+         * <p> must be inline (span), not block (div), or the browser
+         * auto-closes the <p> and changes the entire tree structure. *)
         val t0g1 = g1ofg0(tag_off)
-        val is_inline = (
+        val t1g1 = g1ofg0(add_int_int(tag_off, 1))
+        val ch0 = (
           if gte1_int_int(t0g1, 0) then
             if lt1_int_int(t0g1, sax_len) then
-              if eq_int_int(tag_len, 1) then let
-                val ch = ward_arr_read<byte>(sax, t0g1)
-                val chi = byte2int0(ch)
-              in (* i=105, b=98, a=97, u=117, s=115, q=113 — inline tags *)
-                if eq_int_int(chi, 105) then true  (* i *)
-                else if eq_int_int(chi, 98) then true  (* b *)
-                else if eq_int_int(chi, 97) then true  (* a *)
-                else if eq_int_int(chi, 117) then true  (* u *)
-                else if eq_int_int(chi, 115) then true  (* s *)
-                else false
-              end
+              byte2int0(ward_arr_read<byte>(sax, t0g1))
+            else 0
+          else 0
+        ): int
+        val ch1 = (
+          if gte1_int_int(t1g1, 0) then
+            if lt1_int_int(t1g1, sax_len) then
+              byte2int0(ward_arr_read<byte>(sax, t1g1))
+            else 0
+          else 0
+        ): int
+        (* Tag classification:
+         * void(skip): br(98,114), hr(104,114)
+         * inline:     i(105), b(98), a(97), u(117), s(115), q(113) [1-byte]
+         *             em(101,109) [2-byte]
+         *             span(115,112,4), code(99,111,4) [4-byte]
+         *             strong(115,116,6) [6-byte]
+         * heading:    h1(104,49), h2(104,50), h3(104,51) [2-byte]
+         * paragraph:  p(112) [1-byte]
+         * block:      everything else → div *)
+        val is_void = (
+          if eq_int_int(tag_len, 2) then
+            (* br: 98,114  hr: 104,114 *)
+            if eq_int_int(ch1, 114) then
+              if eq_int_int(ch0, 98) then true   (* br *)
+              else if eq_int_int(ch0, 104) then true  (* hr *)
               else false
+            else false
+          else false
+        ): bool
+      in
+        if is_void then let
+          (* Void elements: create the element but skip children.
+           * hr gets CSS styling from the sheet; br creates a line break.
+           * Both are self-closing — just skip to ELEMENT_CLOSE. *)
+          val s = (
+            if eq_int_int(ch0, 104) then
+              ward_dom_stream_create_element(s, nid, parent, mk_hr(), 2)
+            else
+              ward_dom_stream_create_element(s, nid, parent, mk_div(), 3)
+          ): ward_dom_stream(l)
+          val @(s, child_pos) = emit_attrs(s, nid, sax, sax_len, after_tag, attr_count)
+          (* Skip children (void elements shouldn't have any) *)
+          val @(s, after_children, nid2) =
+            render_sax(s, sax, sax_len, nid, child_pos, add_int_int(next_id, 1), 0)
+        in render_sax(s, sax, sax_len, parent, after_children, nid2, 1) end
+        else let
+        val is_inline = (
+          if eq_int_int(tag_len, 1) then
+            (* 1-byte inline: i, b, a, u, s, q *)
+            if eq_int_int(ch0, 105) then true  (* i *)
+            else if eq_int_int(ch0, 98) then true  (* b *)
+            else if eq_int_int(ch0, 97) then true  (* a *)
+            else if eq_int_int(ch0, 117) then true  (* u *)
+            else if eq_int_int(ch0, 115) then true  (* s *)
+            else if eq_int_int(ch0, 113) then true  (* q *)
+            else false
+          else if eq_int_int(tag_len, 2) then
+            (* 2-byte inline: em *)
+            if eq_int_int(ch0, 101) then
+              if eq_int_int(ch1, 109) then true else false  (* em *)
+            else false
+          else if eq_int_int(tag_len, 4) then
+            (* 4-byte: span(s,p), code(c,o) *)
+            if eq_int_int(ch0, 115) then
+              if eq_int_int(ch1, 112) then true else false  (* span *)
+            else if eq_int_int(ch0, 99) then
+              if eq_int_int(ch1, 111) then true else false  (* code *)
+            else false
+          else if eq_int_int(tag_len, 6) then
+            (* 6-byte: strong(s,t) *)
+            if eq_int_int(ch0, 115) then
+              if eq_int_int(ch1, 116) then true else false  (* strong *)
             else false
           else false
         ): bool
         val is_p = (
           if eq_int_int(tag_len, 1) then
-            if gte1_int_int(t0g1, 0) then
-              if lt1_int_int(t0g1, sax_len) then let
-                val ch = ward_arr_read<byte>(sax, t0g1)
-              in eq_int_int(byte2int0(ch), 112) end  (* p=112 *)
-              else false
+            eq_int_int(ch0, 112)  (* p=112 *)
+          else false
+        ): bool
+        (* heading: tag_len=2, ch0='h'(104), ch1 in '1'-'6' (49-54) *)
+        val heading_level = (
+          if eq_int_int(tag_len, 2) then
+            if eq_int_int(ch0, 104) then
+              if gte_int_int(ch1, 49) then
+                if lte_int_int(ch1, 54) then ch1
+                else 0
+              else 0
+            else 0
+          else 0
+        ): int
+        val is_blockquote = (
+          if eq_int_int(tag_len, 10) then
+            if eq_int_int(ch0, 98) then
+              if eq_int_int(ch1, 108) then true else false  (* bl *)
             else false
           else false
         ): bool
-        val is_h2 = (
-          if eq_int_int(tag_len, 2) then
-            if gte1_int_int(t0g1, 0) then
-              if lt1_int_int(t0g1, sax_len) then let
-                val ch = ward_arr_read<byte>(sax, t0g1)
-              in eq_int_int(byte2int0(ch), 104) end  (* h=104 *)
-              else false
+        val is_section = (
+          if eq_int_int(tag_len, 7) then
+            if eq_int_int(ch0, 115) then
+              if eq_int_int(ch1, 101) then true else false  (* se *)
             else false
           else false
         ): bool
         val s = (
           if is_inline then
-            ward_dom_stream_create_element(s, nid, parent, mk_span(), 4)
+            if eq_int_int(tag_len, 6) then
+              ward_dom_stream_create_element(s, nid, parent, mk_strong(), 6)
+            else if eq_int_int(tag_len, 2) then
+              ward_dom_stream_create_element(s, nid, parent, mk_em(), 2)
+            else if eq_int_int(ch0, 97) then
+              ward_dom_stream_create_element(s, nid, parent, mk_a(), 1)
+            else if eq_int_int(ch0, 98) then
+              ward_dom_stream_create_element(s, nid, parent, mk_b(), 1)
+            else if eq_int_int(ch0, 105) then
+              ward_dom_stream_create_element(s, nid, parent, mk_i(), 1)
+            else
+              ward_dom_stream_create_element(s, nid, parent, mk_span(), 4)
           else if is_p then
             ward_dom_stream_create_element(s, nid, parent, mk_p(), 1)
-          else if is_h2 then
-            ward_dom_stream_create_element(s, nid, parent, mk_h2(), 2)
+          else if gt_int_int(heading_level, 0) then
+            if eq_int_int(heading_level, 49) then
+              ward_dom_stream_create_element(s, nid, parent, mk_h1(), 2)
+            else if eq_int_int(heading_level, 51) then
+              ward_dom_stream_create_element(s, nid, parent, mk_h3(), 2)
+            else
+              ward_dom_stream_create_element(s, nid, parent, mk_h2(), 2)
+          else if is_blockquote then
+            ward_dom_stream_create_element(s, nid, parent, mk_blockquote(), 10)
+          else if is_section then
+            ward_dom_stream_create_element(s, nid, parent, mk_section(), 7)
           else
             ward_dom_stream_create_element(s, nid, parent, mk_div(), 3)
         ): ward_dom_stream(l)
@@ -340,6 +515,7 @@ fun render_sax {l:agz}{lb:agz}{n:pos}
           render_sax(s, sax, sax_len, nid, child_pos, add_int_int(next_id, 1), 0)
         (* Continue with siblings — has_child=1 since we just created an element *)
       in render_sax(s, sax, sax_len, parent, after_children, nid2, 1) end
+      end
 
       else if eq_int_int(opc, WARD_XML_ELEMENT_CLOSE) then
         (* Return to parent — pos+1 is the next sibling position *)
