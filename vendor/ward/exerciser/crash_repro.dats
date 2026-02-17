@@ -4,11 +4,19 @@
  * compressed as 9213 bytes of deflate-raw data. Matches the exact
  * quire crash path:
  *
- *   1. ward_node_init: create container + 15 cover elements
- *   2. ward_decompress: async DecompressionStream (deflate-raw)
- *   3. Callback: ward_blob_read → ward_xml_parse_html → SAX render
- *   4. ward_dom_stream_end flushes diffs → CRASH?
- *   5. ward_measure_node forces synchronous layout reflow
+ *   1. ward_node_init: create viewport + container + 15 cover elements
+ *   2. REMOVE_CHILDREN: clear container (sync, separate DOM stream)
+ *   3. ward_decompress: async DecompressionStream (deflate-raw)
+ *      --- event loop turn: browser processes REMOVE_CHILDREN ---
+ *   4. Callback: ward_blob_read → ward_xml_parse_html → SAX render
+ *   5. ward_dom_stream_end flushes DOM diffs with text → CRASH?
+ *   6. ward_measure_node on container + viewport (synchronous reflow)
+ *   7. ward_dom_stream_set_style: transform:translateX(0px)
+ *
+ * The key insight: REMOVE_CHILDREN and the render happen across
+ * an event loop turn, matching quire's navigate_next → load_chapter
+ * async decompression pattern. Previous versions ran everything
+ * synchronously and did NOT crash.
  *
  * Build: make crash-repro   (in vendor/ward/)
  * Run:   open exerciser/crash_repro.html in Chromium *)
@@ -108,12 +116,29 @@ in ward_text_done(b) end
 
 %{
 #include "../exerciser/conan_compressed.h"
+
+/* "transform:translateX(0px)" — 25 bytes, applied after measurement
+ * to match quire's apply_page_transform (page 0). */
+static unsigned char transform_zero[25] = {
+  't','r','a','n','s','f','o','r','m',':',
+  't','r','a','n','s','l','a','t','e','X',
+  '(','0','p','x',')'
+};
+static void copy_transform_zero(void *dst) {
+  unsigned char *d = (unsigned char *)dst;
+  int i;
+  for (i = 0; i < 25; i++) d[i] = transform_zero[i];
+}
 %}
 
 extern fun copy_conan_compressed {l:agz}
   (dst: !ward_arr(byte, l, 9213)): void = "mac#"
 
+extern fun copy_transform_zero {l:agz}
+  (dst: !ward_arr(byte, l, 25)): void = "mac#"
+
 #define COMP_SIZE 9213
+#define TRANSFORM_SIZE 25
 
 (* --- Copy bytes from SAX borrow to a new mutable ward_arr ---
  * Since ward_arr_borrow and ward_arr are different types, we read byte-by-byte
@@ -236,11 +261,15 @@ extern fun ward_node_init (root_id: int): void = "ext#ward_node_init"
 
 implement ward_node_init (root_id) = let
   (* ============================================================
-   * Phase 1: Create container (matches quire reader setup)
+   * Phase 1: Create viewport (node 1) + container (node 2).
+   * Matches quire's reader structure:
+   *   root → .reader-viewport → .chapter-container
+   * CSS in crash_repro.html uses structural selectors to match.
    * ============================================================ *)
   val dom = ward_dom_init()
   val s = ward_dom_stream_begin(dom)
   val s = ward_dom_stream_create_element(s, 1, root_id, mk_div(), 3)
+  val s = ward_dom_stream_create_element(s, 2, 1, mk_div(), 3)
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
 
@@ -254,17 +283,32 @@ implement ward_node_init (root_id) = let
     if gte_int_int(i, 15) then s
     else let
       val nid = add_int_int(10, i)
-      val s = ward_dom_stream_create_element(s, nid, 1, mk_p(), 1)
+      val s = ward_dom_stream_create_element(s, nid, 2, mk_p(), 1)
     in create_cover(s, add_int_int(i, 1)) end
   val s2 = create_cover(s2, 0)
   val dom2 = ward_dom_stream_end(s2)
   val () = ward_dom_fini(dom2)
 
   (* ============================================================
-   * Phase 3: Decompress chapter via DecompressionStream.
+   * Phase 3: REMOVE_CHILDREN — separate DOM stream.
+   * Matches quire's navigate_next which clears the container
+   * in its own stream BEFORE calling load_chapter.
+   * This gives the browser an event loop turn between the
+   * removal and the heavy render (via async decompress).
+   * ============================================================ *)
+  val dom3 = ward_dom_init()
+  val s3 = ward_dom_stream_begin(dom3)
+  val s3 = ward_dom_stream_remove_children(s3, 2)
+  val dom3 = ward_dom_stream_end(s3)
+  val () = ward_dom_fini(dom3)
+
+  (* ============================================================
+   * Phase 4: Decompress chapter via DecompressionStream.
    * This is the EXACT path quire takes: compressed ZIP entry →
    * ward_decompress(deflate-raw) → async callback → blob_read →
    * parse HTML → render DOM.
+   * The async callback runs after the browser processes
+   * REMOVE_CHILDREN from Phase 3.
    * ============================================================ *)
   val comp_buf = ward_arr_alloc<byte>(COMP_SIZE)
   val () = copy_conan_compressed(comp_buf)
@@ -276,7 +320,9 @@ implement ward_node_init (root_id) = let
   val () = ward_arr_free<byte>(comp_buf2)
 
   (* ============================================================
-   * Phase 4: Decompress callback — read blob, parse HTML, render
+   * Phase 5: Decompress callback — read blob, parse HTML, render.
+   * Runs asynchronously after DecompressionStream completes.
+   * Browser has already processed REMOVE_CHILDREN from Phase 3.
    * ============================================================ *)
   val render_p = ward_promise_then<int><int>(decomp_p,
     llam (blob_handle: int) => let
@@ -304,16 +350,37 @@ implement ward_node_init (root_id) = let
             val sax = ward_xml_get_result(sax_g1)
             val @(sax_frozen, sax_borrow) = ward_arr_freeze<byte>(sax)
 
-            (* REMOVE_CHILDREN + render from SAX with text content *)
-            val dom3 = ward_dom_init()
-            val s3 = ward_dom_stream_begin(dom3)
-            val s3 = ward_dom_stream_remove_children(s3, 1)
-            val @(s3, _, _) = render_sax(s3, sax_borrow, sax_g1, 1, 0, 100, 0)
-            val dom3 = ward_dom_stream_end(s3)
-            val () = ward_dom_fini(dom3)
+            (* Render from SAX with text content into container (node 2).
+             * REMOVE_CHILDREN already flushed in Phase 3 — the container
+             * is empty. This matches quire's load_chapter which only renders
+             * (no remove) inside the decompression callback. *)
+            val dom4 = ward_dom_init()
+            val s4 = ward_dom_stream_begin(dom4)
+            val @(s4, _, _) = render_sax(s4, sax_borrow, sax_g1, 2, 0, 100, 0)
+            val dom4 = ward_dom_stream_end(s4)
+            val () = ward_dom_fini(dom4)
 
-            (* Measure container — forces synchronous layout reflow *)
-            val _found = ward_measure_node(1)
+            (* Measure container (scrollWidth) + viewport (width).
+             * Matches quire's measure_and_set_pages which measures
+             * both nodes to compute page count.
+             * Forces synchronous layout reflow TWICE. *)
+            val _found1 = ward_measure_node(2)
+            val _found2 = ward_measure_node(1)
+
+            (* Apply CSS transform on container — matches quire's
+             * apply_page_transform which sets transform:translateX
+             * after measurement, triggering another layout. *)
+            val style_arr = ward_arr_alloc<byte>(TRANSFORM_SIZE)
+            val () = copy_transform_zero(style_arr)
+            val @(sf, sb) = ward_arr_freeze<byte>(style_arr)
+            val dom5 = ward_dom_init()
+            val s5 = ward_dom_stream_begin(dom5)
+            val s5 = ward_dom_stream_set_style(s5, 2, sb, TRANSFORM_SIZE)
+            val dom5 = ward_dom_stream_end(s5)
+            val () = ward_dom_fini(dom5)
+            val () = ward_arr_drop<byte>(sf, sb)
+            val style_arr2 = ward_arr_thaw<byte>(sf)
+            val () = ward_arr_free<byte>(style_arr2)
 
             val () = ward_arr_drop<byte>(sax_frozen, sax_borrow)
             val sax2 = ward_arr_thaw<byte>(sax_frozen)
