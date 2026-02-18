@@ -1289,7 +1289,12 @@ test.describe('EPUB Reader E2E', () => {
       const el = document.querySelector('.chapter-container');
       return el && el.childElementCount > 0;
     }, { timeout: 15000 });
-    await page.waitForTimeout(1000);
+
+    // Wait for async IDB image loading to set blob: src
+    await page.waitForFunction(() => {
+      const img = document.querySelector('.chapter-container img');
+      return img && img.src && img.src.startsWith('blob:');
+    }, { timeout: 15000 });
 
     // Verify image element exists with blob: src
     const imgInfo = await page.evaluate(() => {
