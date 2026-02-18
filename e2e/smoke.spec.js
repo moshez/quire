@@ -17,9 +17,16 @@ mkdirSync(SCREENSHOT_DIR, { recursive: true });
 test.describe('Smoke', () => {
   test('WASM loads and EPUB import works', async ({ page }) => {
     const errors = [];
-    page.on('pageerror', err => errors.push(err.message));
+    const consoleMsgs = [];
+    page.on('pageerror', err => {
+      errors.push(err.message);
+      console.error('PAGE ERROR:', err.message);
+    });
     page.on('crash', () => {
       console.error('PAGE CRASHED during smoke test. Errors:', errors);
+    });
+    page.on('console', msg => {
+      consoleMsgs.push(`[${msg.type()}] ${msg.text()}`);
     });
 
     // Generate a minimal EPUB
@@ -49,6 +56,22 @@ test.describe('Smoke', () => {
     const readBtn = page.locator('.read-btn');
     await readBtn.click();
     await page.waitForSelector('.chapter-container', { timeout: 15000 });
+
+    // Diagnostic: check container state before waiting for children
+    await page.waitForTimeout(5000);
+    const diag = await page.evaluate(() => {
+      const c = document.querySelector('.chapter-container');
+      return {
+        exists: !!c,
+        childCount: c ? c.childElementCount : -1,
+        innerHTML: c ? c.innerHTML.substring(0, 500) : 'N/A',
+        textLen: c ? c.textContent.length : -1,
+      };
+    });
+    console.log('DIAGNOSTIC chapter-container:', JSON.stringify(diag));
+    console.log('DIAGNOSTIC page errors:', JSON.stringify(errors));
+    console.log('DIAGNOSTIC console msgs:', JSON.stringify(consoleMsgs.slice(-20)));
+
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
       return el && el.childElementCount > 0;
