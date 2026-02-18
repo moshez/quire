@@ -232,14 +232,61 @@ everything else depends on.
   apply immediately with live preview. Settings debounce-persisted to IDB.
   Dismiss via ✕, tap outside, or swipe down.
 
-- [ ] **6.3 Auto theme.** Add "Auto" theme option that follows system
+- [ ] **6.3 Provably correct theme data structures.** Each theme is a
+  compile-time data structure with specific color values for every surface
+  (background, text, accent, highlight, chrome, etc.). Color correctness is
+  proven via dataprops encoding color theory invariants. No theme can be
+  constructed without satisfying all proofs. Implementation:
+
+  **Luminance model.** Relative luminance per WCAG/sRGB: linearize each
+  channel (`C_lin = C_srgb / 12.92` for low values, gamma 2.4 curve
+  otherwise), then `L = 2126 * R_lin + 7152 * G_lin + 722 * B_lin` (scaled
+  to 0–10000 integers, coefficients sum to 10000). Precompute luminance for
+  every color constant at definition site as a `stadef`.
+
+  **Contrast ratio proof.** `CONTRAST_AA(L_hi, L_lo)` dataprop proving
+  `(L_hi + 50) * 10 >= 45 * (L_lo + 50)` (WCAG AA ≥ 4.5:1 for body text).
+  Every foreground/background pair in a theme must carry this proof. Dark
+  themes additionally carry `CONTRAST_COMFORT(L_hi, L_lo)` proving
+  `(L_hi + 50) * 10 <= 150 * (L_lo + 50)` (≤ 15:1 to prevent halation).
+
+  **Polarity proof.** `LIGHT_POLARITY(bg, fg)` proves `bg >= 500; fg <= 180`
+  (background perceptually light, text perceptually dark).
+  `DARK_POLARITY(bg, fg)` proves `bg <= 50; fg >= 400`. Polarity must be
+  consistent across ALL surface pairs within a theme — no inverted regions.
+
+  **Sepia warmth proof.** `SEPIA_WARMTH(r, b)` proves the sRGB red channel
+  exceeds blue by 15–50 units (`r - b >= 15; r - b <= 50`), encoding the
+  warm tint without oversaturation.
+
+  **Highlight sandwich proof.** `HIGHLIGHT_VALID(bg, fg, hl)` proves the
+  highlight luminance sits between bg and fg with ≥ 3:1 contrast to each:
+  `(L_bg + 50) * 10 >= 30 * (L_hl + 50)` AND
+  `(L_hl + 50) * 10 >= 30 * (L_fg + 50)`. Guarantees highlighted text
+  remains readable while the highlight is visible against the page.
+
+  **Accent readable proof.** `ACCENT_READABLE(L_accent, L_bg)` proves
+  accent/link colors meet AA contrast against their background surface.
+
+  **Theme record.** Each theme is a flat record of `stadef` color constants
+  with all proofs constructed at the definition site. If any color is changed,
+  the proofs fail at compile time. Structure:
+  ```
+  bg, fg, accent, highlight, chrome_bg, chrome_fg, chrome_accent,
+  link, selection, divider
+  ```
+  Each pair (e.g., `chrome_fg` on `chrome_bg`) carries its own
+  `CONTRAST_AA` proof.
+
+- [ ] **6.4 Auto theme.** Add "Auto" theme option that follows system
   `prefers-color-scheme`. Auto is the default on first launch. If user
   explicitly selects Light/Sepia/Dark, that overrides Auto. Requires bridge
-  `matchMedia` listener for system theme changes. Add dataprop
-  `THEME_VALID(t)` with constructor for Auto (3) alongside existing
-  Light (0) / Dark (1) / Sepia (2).
+  `matchMedia` listener for system theme changes. Auto resolves to one of
+  the proven-correct theme records (Light or Dark) at runtime — the proof
+  obligations are satisfied by the underlying concrete theme, not by Auto
+  itself.
 
-- [ ] **6.4 Three CSS modes.** Implement per-book CSS mode:
+- [ ] **6.5 Three CSS modes.** Implement per-book CSS mode:
   (a) Publisher default — book's CSS applied as-is, embedded fonts loaded via
   blob URLs, user can still adjust font size.
   (b) Reader default — Quire's typography (Literata/Inter, configured spacing)
@@ -250,17 +297,17 @@ everything else depends on.
   Inter → Reader default mode; selecting Publisher → Publisher mode. Store
   mode per book in library record.
 
-- [ ] **6.5 Embedded font loading via blob URLs.** When rendering a chapter in
+- [ ] **6.6 Embedded font loading via blob URLs.** When rendering a chapter in
   Publisher CSS mode, extract font resources from IndexedDB, create blob URLs,
   inject `@font-face` rules pointing to blob URLs. Revoke URLs when chapter
   is unloaded.
 
-- [ ] **6.6 Dark mode color inversion.** Publisher-specified colors (e.g.,
+- [ ] **6.7 Dark mode color inversion.** Publisher-specified colors (e.g.,
   colored text for dialogue attribution) are inverted in dark mode to maintain
   readability. Text and background colors are overridden; images are left
   untouched.
 
-- [ ] **6.7 E2e: typography settings.** Open typography panel (Aa), verify
+- [ ] **6.8 E2e: typography settings.** Open typography panel (Aa), verify
   font/size/spacing/margin controls, change font, verify live update, change
   theme to Auto/Light/Sepia/Dark, verify colors update.
 
@@ -407,6 +454,37 @@ everything else depends on.
 
 ---
 
+## Phase 12 — Mobile: Capacitor Android Build
+
+- [ ] **12.1 Add Capacitor.** `npm install @capacitor/core @capacitor/android`,
+  `npx cap init` with app name "Quire" and bundle ID. Add `capacitor.config.ts`
+  pointing `webDir` at the PWA root (`.`). Run `npx cap add android` to
+  scaffold the `android/` directory.
+
+- [ ] **12.2 Android project configuration.** Set `minSdkVersion 24` (Android
+  7.0+, WebView with WASM support). Configure `AndroidManifest.xml`:
+  `INTERNET` permission, `android:usesCleartextTraffic="false"`, portrait +
+  landscape orientation. Set app icon and splash screen assets.
+
+- [ ] **12.3 Capacitor plugins.** Add `@capacitor/status-bar` (immersive
+  reading mode), `@capacitor/keyboard` (search input focus management),
+  `@capacitor/app` (hardware back button → Escape key hierarchy from 4.7).
+  Wire hardware back button to the same escape dispatch already implemented
+  in WASM.
+
+- [ ] **12.4 CI: build Android APK.** Add `.github/workflows/android.yml`:
+  checkout, setup-node 20, setup-java temurin 17, cache Gradle, `npm ci`,
+  build WASM + assets, `npx cap sync android`, `./gradlew assembleDebug`.
+  Upload debug APK as artifact. Optionally build signed release APK when
+  keystore secrets are configured (base64-decode keystore, pass signing
+  properties to `assembleRelease`, upload release APK).
+
+- [ ] **12.5 E2e: verify Android build artifact.** CI step after APK build:
+  assert the debug APK exists and is > 0 bytes. (Full device testing is
+  manual for v1.)
+
+---
+
 ## Ordering Notes
 
 Phases are roughly dependency-ordered:
@@ -422,3 +500,5 @@ Phases are roughly dependency-ordered:
 - **Phase 9** is mostly independent (only needs position stack from 4.6)
 - **Phase 10** should be done after the UI it annotates exists
 - **Phase 11** is independent CSS work, can be done anytime
+- **Phase 12** depends on Phase 4.7 (escape/back button hierarchy) but the
+  build scaffolding can start anytime
