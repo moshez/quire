@@ -106,7 +106,8 @@ datavtype app_state_impl =
       epub_spine_entry_idx = ptr,
       deferred_img_nid = ptr,
       deferred_img_eid = ptr,
-      deferred_img_count = int
+      deferred_img_count = int,
+      epub_file_size = int
     }
 
 assume app_state = app_state_impl
@@ -251,7 +252,8 @@ implement app_state_init() =
     epub_spine_entry_idx = _alloc_buf(EPUB_SPINE_ENTRY_IDX_SIZE),
     deferred_img_nid = _alloc_buf(DEFERRED_IMG_NID_SIZE),
     deferred_img_eid = _alloc_buf(DEFERRED_IMG_EID_SIZE),
-    deferred_img_count = 0
+    deferred_img_count = 0,
+    epub_file_size = 0
   }
 
 implement app_state_fini(st) = let
@@ -1539,6 +1541,13 @@ implement _app_deferred_img_count() = let val st = app_state_load()
   prval () = fold@(st) val () = app_state_store(st) in v end
 implement _app_set_deferred_img_count(v) = let val st = app_state_load()
   val @APP_STATE(r) = st val () = r.deferred_img_count := v
+  prval () = fold@(st) val () = app_state_store(st) in end
+
+implement _app_epub_file_size() = let val st = app_state_load()
+  val @APP_STATE(r) = st val v = r.epub_file_size
+  prval () = fold@(st) val () = app_state_store(st) in v end
+implement _app_set_epub_file_size(v) = let val st = app_state_load()
+  val @APP_STATE(r) = st val () = r.epub_file_size := v
   prval () = fold@(st) val () = app_state_store(st) in end
 
 (* Copy book_id bytes from library_books at book_base to epub_book_id *)

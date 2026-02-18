@@ -26,6 +26,9 @@
       extraImports: {
         quireSetTitle(mode) {
           document.title = mode ? 'Quire (importing)' : 'Quire';
+        },
+        quire_time_now() {
+          return Math.floor(Date.now() / 1000);
         }
       }
     });

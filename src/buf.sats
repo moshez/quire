@@ -21,8 +21,8 @@ stadef EPUB_SPINE_OFF_CAP = 128   (* 32 entries x 4 bytes *)
 stadef EPUB_SPINE_LEN_CAP = 128   (* 32 entries x 4 bytes *)
 
 (* Library storage *)
-stadef LIB_BOOKS_CAP = 19456      (* 32 books x 152 ints x 4 bytes *)
-stadef LIB_BOOKS_CAP_S = 19456    (* type-level alias for sort proofs *)
+stadef LIB_BOOKS_CAP = 19840      (* 32 books x 155 ints x 4 bytes *)
+stadef LIB_BOOKS_CAP_S = 19840    (* type-level alias for sort proofs *)
 
 (* ZIP storage *)
 stadef ZIP_ENTRIES_CAP = 7168     (* 256 entries x 7 ints x 4 bytes *)
@@ -52,7 +52,7 @@ stadef DEFERRED_IMG_EID_CAP = 256        (* 64 entries x 4 bytes *)
 #define EPUB_SPINE_BUF_SIZE 4096
 #define EPUB_SPINE_OFF_SIZE 128
 #define EPUB_SPINE_LEN_SIZE 128
-#define LIB_BOOKS_SIZE 19456
+#define LIB_BOOKS_SIZE 19840
 #define ZIP_ENTRIES_SIZE 7168
 #define ZIP_NAMEBUF_SIZE 8192
 #define RDR_BTNS_SIZE 256

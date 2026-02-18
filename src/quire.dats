@@ -41,9 +41,10 @@ staload "./arith.sats"
 staload "./sha256.sats"
 staload "./quire_ext.sats"
 
-(* Forward declaration for JS import — suppresses C99 warning *)
+(* Forward declarations for JS imports — suppresses C99 warnings *)
 %{
 extern void quireSetTitle(int mode);
+extern int quire_time_now(void);
 %}
 
 (* ========== Text constant IDs ========== *)
@@ -3813,6 +3814,7 @@ implement render_library(root_id) = let
           (* Phase 1 — file open complete, consumes pf0 *)
           prval pf1 = PHASE_ZIP(pf0)
           val file_size = ward_file_get_size()
+          val () = _app_set_epub_file_size(file_size)
           val () = reader_set_file_handle(handle)
 
           (* Compute SHA-256 content hash as book identity.
@@ -4098,6 +4100,10 @@ implement enter_reader(root_id, book_index) = let
         val () = show_chapter_error(saved_cid, TEXT_ERR_NOT_FOUND, 17)
       in ward_promise_return<int>(0) end
       else let
+        val now = quire_time_now()
+        val now_g1 = _checked_nat(now)
+        val () = library_set_last_opened(VALID_TIMESTAMP() | saved_bi, now_g1)
+        val () = library_save()
         val spine = epub_get_chapter_count()
         val spine_g1 = g1ofg0(spine)
         val saved_ch = library_get_chapter(saved_bi)

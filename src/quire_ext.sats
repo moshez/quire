@@ -10,3 +10,6 @@ fun read_payload_click_x {l:agz}{n:nat | n >= 8}
 
 (* Set document.title: 0="Quire", 1="Quire (importing)" *)
 fun quire_set_title(mode: int): void = "mac#quireSetTitle"
+
+(* Get current Unix timestamp in seconds *)
+fun quire_time_now(): int = "mac#quire_time_now"

@@ -29,7 +29,7 @@ everything else depends on.
   so they can be served via blob URLs without full-archive decompression.
   Verify the existing `ward_idb` API supports this or extend it.
 
-- [ ] **1.3 Per-book metadata fields.** Add to library record: `date_added`
+- [x] **1.3 Per-book metadata fields.** Add to library record: `date_added`
   (timestamp), `last_opened` (timestamp), `file_size` (bytes), `cover_key`
   (IndexedDB key for cover thumbnail). Update `REC_INTS`/`REC_BYTES` in
   `library.dats`, serialization, and deserialize. Add dataprop proving

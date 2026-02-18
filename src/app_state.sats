@@ -335,6 +335,10 @@ fun _app_epub_manifest_lens_set_i32(idx: int, v: int): void
 fun _app_epub_spine_entry_idx_get(i: int): int
 fun _app_epub_spine_entry_idx_set(i: int, v: int): void
 
+(* EPUB file size stash — captured at file-open time before stash slot 0 is overwritten *)
+fun _app_epub_file_size(): int
+fun _app_set_epub_file_size(v: int): void
+
 (* Deferred image resolution queue *)
 fun _app_deferred_img_node_id_get(i: int): int
 fun _app_deferred_img_node_id_set(i: int, v: int): void

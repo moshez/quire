@@ -9,7 +9,9 @@
  * - LIBRARY_INDEX_VALID: Book count within bounds, all entries have valid data
  * - BOOK_POSITION_VALID: Reading position within book bounds
  * - BOOK_IN_LIBRARY: Proves a book index is valid for the current library
- * - SERIALIZE_ROUNDTRIP: Serialize then deserialize preserves library data
+ * - SER_FORMAT: Version↔fixed-bytes agreement (prevents metadata size drift)
+ * - SER_VAR_FIELD: Field index↔record offset agreement (prevents field order/offset drift)
+ * - TIMESTAMP_VALID: Timestamp is non-negative
  * - ARCHIVE_STATE_VALID: Archived flag is 0 or 1
  * - SORT_MODE_VALID: Sort mode is 0 (title) or 1 (author)
  * - LIBRARY_SORTED: Library is sorted by the given mode
@@ -24,8 +26,8 @@ staload "./buf.sats"
 (* ========== Record layout stadefs (type-level) ========== *)
 
 stadef MAX_BOOKS_S = 32
-stadef REC_INTS_S = 152
-stadef REC_BYTES_S = 608           (* REC_INTS_S * 4 *)
+stadef REC_INTS_S = 155
+stadef REC_BYTES_S = 620           (* REC_INTS_S * 4 *)
 
 (* Byte offsets within a book record *)
 stadef TITLE_BYTE_OFF_S = 0
@@ -48,8 +50,26 @@ dataprop BOOK_POSITION_VALID(chapter: int, page: int, total: int) =
 dataprop BOOK_IN_LIBRARY(index: int, count: int) =
   | {i,c:nat | i < c} VALID_BOOK_INDEX(i, c)
 
-(* Serialization roundtrip correctness proof. *)
-absprop SERIALIZE_ROUNDTRIP(len: int)
+(* Serialization format proof: version↔fixed-bytes agreement.
+ * Single source of truth — both serialize and deserialize call
+ * ser_fixed_bytes() which constructs the appropriate proof.
+ * v1: 3×u16 = 6 bytes, v2: 4×u16 = 8 bytes, v3: 4×u16 + 3×u32 = 20 bytes *)
+dataprop SER_FORMAT(version: int, fixed_bytes: int) =
+  | SER_FMT_V1(1, 6)
+  | SER_FMT_V2(2, 8)
+  | SER_FMT_V3(3, 20)
+
+(* Serialization variable field proof: index↔record offset agreement.
+ * Ties field index to byte offset, max length, and length slot.
+ * Both serialize and deserialize call ser_var_field_spec() for each field. *)
+dataprop SER_VAR_FIELD(idx: int, byte_off: int, max_len: int, len_slot: int) =
+  | SFIELD_BID(0, 520, 64, 146)
+  | SFIELD_TITLE(1, 0, 256, 64)
+  | SFIELD_AUTHOR(2, 260, 256, 129)
+
+(* Timestamp validity proof. *)
+dataprop TIMESTAMP_VALID(t: int) =
+  | {t:nat} VALID_TIMESTAMP(t)
 
 (* Single-pending-flag invariant proof. *)
 dataprop SINGLE_PENDING(handler_id: int) =
@@ -130,9 +150,10 @@ dataprop LIBRARY_SORTED(mode: int, count: int) =
 (* Serialization version marker *)
 stadef SER_VERSION_MARKER = 65535
 stadef SER_VERSION_2 = 2
+stadef SER_VERSION_3 = 3
 
 dataprop SER_VERSION_DETECTED(marker: int, version: int) =
-  | {m:int | m == 65535} IS_V2(m, 2)
+  | {m:int | m == 65535} IS_V2_OR_V3(m, 2)
   | {m:nat | m <= 32} IS_V1(m, 1)
 
 (* ========== Import outcome proof ========== *)
@@ -175,6 +196,20 @@ fun should_render_book {vm:nat | vm <= 1}{a:nat | a <= 1}
   (pf_vm: VIEW_MODE_VALID(vm), pf_a: ARCHIVE_STATE_VALID(a) |
    vm: int(vm), a: int(a))
   : [r:int] (VIEW_FILTER_CORRECT(vm, a, r) | int(r))
+
+(* Per-book metadata *)
+fun library_get_date_added(index: int): int
+fun library_get_last_opened(index: int): int
+fun library_get_file_size(index: int): int
+fun library_set_last_opened {t:nat}
+  (pf: TIMESTAMP_VALID(t) | index: int, ts: int(t)): void
+
+(* Serialization format helpers — single source of truth *)
+fun ser_fixed_bytes {v:int | v >= 1; v <= 3}
+  (version: int(v)): [fb:pos] (SER_FORMAT(v, fb) | int(fb))
+fun ser_var_field_spec {f:nat | f <= 2}
+  (field: int(f)): [bo,ml,ls:nat]
+  (SER_VAR_FIELD(f, bo, ml, ls) | int(bo), int(ml), int(ls))
 
 (* Serialization *)
 fun library_serialize(): [len:nat] int(len)
