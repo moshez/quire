@@ -1152,42 +1152,30 @@ test.describe('EPUB Reader E2E', () => {
     expect(authorBtnClass).toContain('sort-active');
   });
 
-  test('reject EPUB with duplicate book ID but different title', async ({ page }) => {
-    // Two EPUBs with the same UUID but different titles should trigger
-    // a "Duplicate book ID" error on the second import.
-    const sharedId = '00000000-0000-0000-0000-000000000001';
-    const epub1 = createEpub({
-      title: 'First Book Title',
-      author: 'Author One',
+  test('re-import same EPUB is silently deduplicated', async ({ page }) => {
+    // Importing the exact same EPUB file twice should result in only
+    // 1 book card — content hash dedup means same bytes = same book.
+    const epub = createEpub({
+      title: 'Dedup Test Book',
+      author: 'Dedup Author',
       chapters: 1,
       paragraphsPerChapter: 2,
-      bookId: sharedId,
     });
-    const epub2 = createEpub({
-      title: 'Different Book Title',
-      author: 'Author Two',
-      chapters: 1,
-      paragraphsPerChapter: 2,
-      bookId: sharedId,
-    });
-
-    const consoleMessages = [];
-    page.on('console', msg => consoleMessages.push(`[${msg.type()}] ${msg.text()}`));
 
     await page.goto('/');
     await page.waitForSelector('.library-list', { timeout: 15000 });
 
-    // Import first EPUB — should succeed
+    // Import first time — should succeed
     const fileInput = page.locator('input[type="file"]');
-    const path1 = join(SCREENSHOT_DIR, 'dup-id-book1.epub');
-    writeFileSync(path1, epub1);
-    await fileInput.setInputFiles(path1);
+    const epubPath = join(SCREENSHOT_DIR, 'dedup-test.epub');
+    writeFileSync(epubPath, epub);
+    await fileInput.setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
-    await screenshot(page, 'dup-id-01-first-imported');
+    await screenshot(page, 'dedup-01-first-import');
 
     // Verify first book is in the library
     const bookTitle = page.locator('.book-title');
-    await expect(bookTitle).toContainText('First Book Title');
+    await expect(bookTitle).toContainText('Dedup Test Book');
 
     // Wait for IndexedDB save, then reload to get fresh state
     await page.waitForTimeout(2000);
@@ -1195,33 +1183,72 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.library-list', { timeout: 15000 });
     await page.waitForSelector('.book-card', { timeout: 15000 });
 
-    // Import second EPUB with same UUID but different title — should fail
+    // Import same EPUB again — should deduplicate silently
     const fileInput2 = page.locator('input[type="file"]');
-    const path2 = join(SCREENSHOT_DIR, 'dup-id-book2.epub');
-    writeFileSync(path2, epub2);
-    await fileInput2.setInputFiles(path2);
+    await fileInput2.setInputFiles(epubPath);
 
-    // Wait for import to complete (error or success)
-    // The import status should show "Duplicate book ID"
-    const statusDiv = page.locator('.import-status');
-    await expect(statusDiv).toContainText('Duplicate book ID', { timeout: 30000 });
-    await screenshot(page, 'dup-id-02-error-shown');
+    // Wait for import to complete (the re-import is treated as success)
+    await page.waitForSelector('label.import-btn', { timeout: 30000 });
+    await page.waitForTimeout(1000);
+    await screenshot(page, 'dedup-02-after-reimport');
 
-    // Verify only 1 book card is shown (second import was rejected)
+    // Still only 1 book card — same content hash, same book
     const bookCards = page.locator('.book-card');
     expect(await bookCards.count()).toBe(1);
 
-    // Verify the error was logged
-    const errLogs = consoleMessages.filter(m => m.includes('err-dup-id'));
-    expect(errLogs.length).toBeGreaterThan(0);
+    // Title should still be correct
+    const titleAfter = page.locator('.book-title');
+    await expect(titleAfter).toContainText('Dedup Test Book');
+  });
 
-    // Verify import-done was logged (linear token consumed)
-    const doneLogs = consoleMessages.filter(m => m.includes('import-done'));
-    expect(doneLogs.length).toBeGreaterThan(0);
+  test('different EPUBs get different IDs', async ({ page }) => {
+    // Two EPUBs with different content should get different content hashes
+    // and both appear in the library as separate books.
+    const epub1 = createEpub({
+      title: 'Unique Book Alpha',
+      author: 'Author One',
+      chapters: 1,
+      paragraphsPerChapter: 2,
+    });
+    const epub2 = createEpub({
+      title: 'Unique Book Beta',
+      author: 'Author Two',
+      chapters: 2,
+      paragraphsPerChapter: 3,
+    });
 
-    // Import button should be restored (not stuck in importing state)
-    const importBtn = page.locator('label.import-btn');
-    await expect(importBtn).toBeVisible({ timeout: 5000 });
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import first EPUB
+    const fileInput = page.locator('input[type="file"]');
+    const path1 = join(SCREENSHOT_DIR, 'unique-book1.epub');
+    writeFileSync(path1, epub1);
+    await fileInput.setInputFiles(path1);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Wait for IndexedDB save, then reload to get fresh state
+    await page.waitForTimeout(2000);
+    await page.reload();
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    await page.waitForSelector('.book-card', { timeout: 15000 });
+
+    // Import second EPUB
+    const fileInput2 = page.locator('input[type="file"]');
+    const path2 = join(SCREENSHOT_DIR, 'unique-book2.epub');
+    writeFileSync(path2, epub2);
+    await fileInput2.setInputFiles(path2);
+
+    // Wait for second book card to appear
+    await page.waitForFunction(() => {
+      const cards = document.querySelectorAll('.book-card');
+      return cards.length >= 2;
+    }, { timeout: 30000 });
+    await screenshot(page, 'unique-books-both-imported');
+
+    // Should have 2 book cards
+    const bookCards = page.locator('.book-card');
+    expect(await bookCards.count()).toBe(2);
   });
 
   test('create-epub with embedded image', async ({ page }) => {

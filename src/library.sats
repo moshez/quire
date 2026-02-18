@@ -143,7 +143,6 @@ dataprop SER_VERSION_DETECTED(marker: int, version: int) =
 dataprop ADD_BOOK_RESULT(idx: int) =
   | {i:nat | i < 32} BOOK_ADDED(i)      (* success: book at index i *)
   | LIB_FULL(~1)                          (* library at 32-book capacity *)
-  | DUP_BAD_EPUB(~2)                      (* same book_id, different title *)
 
 (* ========== Module Functions ========== *)
 
@@ -161,7 +160,7 @@ fun library_get_archived(index: int): [a:nat | a <= 1] int(a)
 fun library_set_archived {a:int}
   (pf: ARCHIVE_STATE_VALID(a) | index: int, v: int(a)): void
 
-fun library_add_book(): [i:int | i >= ~2; i < 32] (ADD_BOOK_RESULT(i) | int(i))
+fun library_add_book(): [i:int | i >= ~1; i < 32] (ADD_BOOK_RESULT(i) | int(i))
 fun library_remove_book(index: int): void
 fun library_update_position(index: int, chapter: int, page: int): void
 fun library_find_book_by_id(): [i:int | i >= ~1] int(i)

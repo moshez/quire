@@ -137,7 +137,7 @@ fun epub_get_title(buf_offset: int): int
 (* Get book author into string buffer (after import completes)
  * Returns author length *)
 fun epub_get_author(buf_offset: int): int
-(* Get book ID (hash of title+author or generated)
+(* Get book ID (SHA-256 content hash, set by sha256_file_hash)
  * Returns ID into string buffer *)
 fun epub_get_book_id(buf_offset: int): int
 (* Get total number of chapters in spine

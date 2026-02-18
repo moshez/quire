@@ -72,7 +72,6 @@ extern castfn _clamp32(x: int): [n:nat | n <= 32] int n
 extern castfn _mk_added(x: int)
   : [i:nat | i < 32] (ADD_BOOK_RESULT(i) | int(i))
 extern castfn _mk_lib_full(x: int): (ADD_BOOK_RESULT(~1) | int(~1))
-extern castfn _mk_dup_bad(x: int): (ADD_BOOK_RESULT(~2) | int(~2))
 extern castfn _find_idx(x: int): [i:int | i >= ~1] int i
 extern castfn _clamp_archived(x: int): [a:nat | a <= 1] int a
 
@@ -128,53 +127,28 @@ in
   else _clamp32(c)
 end
 
-(* Compare incoming epub title with stored title for book at index i.
- * Returns 1 if titles match, 0 if they differ.
- * Uses _app_epub_title_get_u8 and _app_lib_books_get_u8 — no new app_state fns. *)
-fn titles_match(book_idx: int, new_title_len: int): int = let
-  val stored_len = _app_lib_books_get_i32(book_idx * REC_INTS + TITLE_LEN_SLOT)
-in
-  if neq_int_int(stored_len, new_title_len) then 0
-  else let
-    val base = book_idx * REC_BYTES + TITLE_OFF
-    fun loop(i: int, n: int, b: int): int =
-      if gte_int_int(i, n) then 1
-      else let
-        val a_byte = _app_epub_title_get_u8(i)
-        val b_byte = _app_lib_books_get_u8(b + i)
-      in
-        if neq_int_int(a_byte, b_byte) then 0
-        else loop(i + 1, n, b)
-      end
-  in loop(0, new_title_len, base) end
-end
-
 implement library_add_book() = let
   val count = _app_lib_count()
 in
   if gte_int_int(count, 32) then _mk_lib_full(0 - 1)
   else let
     val bid_len = _app_epub_book_id_len()
-    val tlen_for_dup = _app_epub_title_len()
-    (* Deduplicate by book_id.
-     * Returns: -1 = no match, >= 0 = same book re-import, -2 = bad epub *)
-    fun find_dup(i: int, cnt: int, blen: int, tlen: int): int =
+    (* Deduplicate by content hash (book_id = SHA-256).
+     * Same hash = same book by definition. No title check needed.
+     * Returns: -1 = no match, >= 0 = existing book index *)
+    fun find_dup(i: int, cnt: int, blen: int): int =
       if gte_int_int(i, cnt) then 0 - 1
       else let
         val stored_len = _app_lib_books_get_i32(i * REC_INTS + BOOKID_LEN_SLOT)
       in
-        if neq_int_int(stored_len, blen) then find_dup(i + 1, cnt, blen, tlen)
+        if neq_int_int(stored_len, blen) then find_dup(i + 1, cnt, blen)
         else if gt_int_int(_app_lib_books_match_bid(i * REC_BYTES + BOOKID_OFF, blen), 0)
-        then
-          if gt_int_int(titles_match(i, tlen), 0)
-          then i          (* same book, re-import *)
-          else 0 - 2      (* same book_id, different title — bad epub *)
-        else find_dup(i + 1, cnt, blen, tlen)
+        then i
+        else find_dup(i + 1, cnt, blen)
       end
-    val dup = find_dup(0, count, bid_len, tlen_for_dup)
+    val dup = find_dup(0, count, bid_len)
   in
     if gte_int_int(dup, 0) then _mk_added(dup)
-    else if eq_int_int(dup, 0 - 2) then _mk_dup_bad(0 - 2)
     else let
       val tlen = _app_epub_title_len()
       val alen = _app_epub_author_len()

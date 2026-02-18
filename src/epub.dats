@@ -212,26 +212,6 @@ fn _n_dc_creator_close(): [l:agz] ward_arr(byte, l, 13) = let
 in a end
 
 (* "<dc:identifier" — 14 bytes *)
-fn _n_dc_identifier_open(): [l:agz] ward_arr(byte, l, 14) = let
-  val a = ward_arr_alloc<byte>(14)
-  val () = _wb(a,0,60,14)  val () = _wb(a,1,100,14) val () = _wb(a,2,99,14)
-  val () = _wb(a,3,58,14)  val () = _wb(a,4,105,14) val () = _wb(a,5,100,14)
-  val () = _wb(a,6,101,14) val () = _wb(a,7,110,14) val () = _wb(a,8,116,14)
-  val () = _wb(a,9,105,14) val () = _wb(a,10,102,14) val () = _wb(a,11,105,14)
-  val () = _wb(a,12,101,14) val () = _wb(a,13,114,14)
-in a end
-
-(* "</dc:identifier>" — 16 bytes *)
-fn _n_dc_identifier_close(): [l:agz] ward_arr(byte, l, 16) = let
-  val a = ward_arr_alloc<byte>(16)
-  val () = _wb(a,0,60,16)  val () = _wb(a,1,47,16)  val () = _wb(a,2,100,16)
-  val () = _wb(a,3,99,16)  val () = _wb(a,4,58,16)  val () = _wb(a,5,105,16)
-  val () = _wb(a,6,100,16) val () = _wb(a,7,101,16) val () = _wb(a,8,110,16)
-  val () = _wb(a,9,116,16) val () = _wb(a,10,105,16) val () = _wb(a,11,102,16)
-  val () = _wb(a,12,105,16) val () = _wb(a,13,101,16) val () = _wb(a,14,114,16)
-  val () = _wb(a,15,62,16)
-in a end
-
 (* "<itemref " — 9 bytes *)
 fn _n_itemref(): [l:agz] ward_arr(byte, l, 9) = let
   val a = ward_arr_alloc<byte>(9)
@@ -458,35 +438,6 @@ in
   end
 end
 
-extern fun _opf_extract_identifier {l:agz}{n:pos}
-  (buf: !ward_arr(byte, l, n), len: int n): void = "ext#"
-implement _opf_extract_identifier(buf, len) = let
-  val ndl_io = _n_dc_identifier_open()
-  val ndl_ic = _n_dc_identifier_close()
-  val pos_i = _find_bytes(buf, len, len, ndl_io, 14, 14, 0)
-  val () = ward_arr_free<byte>(ndl_io)
-in
-  if lt_int_int(pos_i, 0) then ward_arr_free<byte>(ndl_ic)
-  else let
-    val (pf_gt | gt_pos) = _find_gt(buf, len, len, pos_i + 14)
-    prval _ = pf_gt
-  in
-    if gte_int_int(gt_pos, len) then ward_arr_free<byte>(ndl_ic)
-    else let
-      val id_start = gt_pos + 1
-      val id_end = _find_bytes(buf, len, len, ndl_ic, 16, 16, id_start)
-      val () = ward_arr_free<byte>(ndl_ic)
-    in
-      if lt_int_int(id_end, 0) then ()
-      else let
-        val id_len0 = id_end - id_start
-        val id_len = if gt_int_int(id_len0, 63) then 63 else id_len0
-        val () = _copy_arr_to_bookid(buf, id_start, id_len, len)
-      in _app_set_epub_book_id_len(id_len) end
-    end
-  end
-end
-
 extern fun _opf_count_spine {l:agz}{n:pos}
   (buf: !ward_arr(byte, l, n), len: int n): int = "ext#"
 implement _opf_count_spine(buf, len) = let
@@ -636,7 +587,8 @@ in end
 implement epub_parse_opf_bytes(arr, len) = let
   val () = _opf_extract_title(arr, len)
   val () = _opf_extract_author(arr, len)
-  val () = _opf_extract_identifier(arr, len)
+  (* book_id is now set by sha256_file_hash in quire.dats import path,
+   * not extracted from dc:identifier. See BOOK_IDENTITY_IS_CONTENT_HASH. *)
   val spine_count = _opf_count_spine(arr, len)
   val () = _app_set_epub_spine_count(spine_count)
   val () = _opf_resolve_spine(arr, len, spine_count)

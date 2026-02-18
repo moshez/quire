@@ -38,6 +38,7 @@ staload _ = "./../vendor/ward/lib/dom_read.dats"
 staload _ = "./../vendor/ward/lib/idb.dats"
 
 staload "./arith.sats"
+staload "./sha256.sats"
 staload "./quire_ext.sats"
 
 (* Forward declaration for JS import — suppresses C99 warning *)
@@ -70,7 +71,6 @@ extern void quireSetTitle(int mode);
 #define TEXT_ARCHIVE 20
 #define TEXT_UNARCHIVE 21
 #define TEXT_NO_ARCHIVED 22
-#define TEXT_ERR_DUP_ID 23
 
 (* ========== Listener ID constants ========== *)
 
@@ -444,25 +444,7 @@ fn fill_text {l:agz}{n:pos}
     val () = ward_arr_set_byte(arr, 15, alen, 107) (* k *)
     val () = ward_arr_set_byte(arr, 16, alen, 115) (* s *)
   in end
-  else let (* text_id = 23: "Duplicate book ID" *)
-    val () = ward_arr_set_byte(arr, 0, alen, 68)   (* D *)
-    val () = ward_arr_set_byte(arr, 1, alen, 117)  (* u *)
-    val () = ward_arr_set_byte(arr, 2, alen, 112)  (* p *)
-    val () = ward_arr_set_byte(arr, 3, alen, 108)  (* l *)
-    val () = ward_arr_set_byte(arr, 4, alen, 105)  (* i *)
-    val () = ward_arr_set_byte(arr, 5, alen, 99)   (* c *)
-    val () = ward_arr_set_byte(arr, 6, alen, 97)   (* a *)
-    val () = ward_arr_set_byte(arr, 7, alen, 116)  (* t *)
-    val () = ward_arr_set_byte(arr, 8, alen, 101)  (* e *)
-    val () = ward_arr_set_byte(arr, 9, alen, 32)   (*   *)
-    val () = ward_arr_set_byte(arr, 10, alen, 98)  (* b *)
-    val () = ward_arr_set_byte(arr, 11, alen, 111) (* o *)
-    val () = ward_arr_set_byte(arr, 12, alen, 111) (* o *)
-    val () = ward_arr_set_byte(arr, 13, alen, 107) (* k *)
-    val () = ward_arr_set_byte(arr, 14, alen, 32)  (*   *)
-    val () = ward_arr_set_byte(arr, 15, alen, 73)  (* I *)
-    val () = ward_arr_set_byte(arr, 16, alen, 68)  (* D *)
-  in end
+  else () (* unused text_id *)
 
 (* Copy len bytes from string_buffer to ward_arr *)
 fn copy_from_sbuf {l:agz}{n:pos}
@@ -1025,20 +1007,6 @@ fn log_err_lib_full(): ward_safe_text(12) = let
   val b = ward_text_putc(b, 11, char2int1('l'))
 in ward_text_done(b) end
 
-(* "err-dup-id" = 10 chars — duplicate book ID with different title *)
-fn log_err_dup_id(): ward_safe_text(10) = let
-  val b = ward_text_build(10)
-  val b = ward_text_putc(b, 0, char2int1('e'))
-  val b = ward_text_putc(b, 1, char2int1('r'))
-  val b = ward_text_putc(b, 2, char2int1('r'))
-  val b = ward_text_putc(b, 3, 45) (* '-' *)
-  val b = ward_text_putc(b, 4, char2int1('d'))
-  val b = ward_text_putc(b, 5, char2int1('u'))
-  val b = ward_text_putc(b, 6, char2int1('p'))
-  val b = ward_text_putc(b, 7, 45) (* '-' *)
-  val b = ward_text_putc(b, 8, char2int1('i'))
-  val b = ward_text_putc(b, 9, char2int1('d'))
-in ward_text_done(b) end
 
 (* ========== Linear import outcome proof ========== *)
 (* import_handled is LINEAR — must be consumed exactly once.
@@ -3545,6 +3513,22 @@ implement render_library(root_id) = let
           val file_size = ward_file_get_size()
           val () = reader_set_file_handle(handle)
 
+          (* Compute SHA-256 content hash as book identity.
+           * BOOK_IDENTITY_IS_CONTENT_HASH: this is the only code
+           * that sets epub_book_id. Same hash = same book. *)
+          val hash_buf = ward_arr_alloc<byte>(64)
+          val () = sha256_file_hash(handle, file_size, hash_buf)
+          fun _copy_hash {lh:agz}
+            (hb: !ward_arr(byte, lh, 64), i: int): void =
+            if gte_int_int(i, 64) then ()
+            else let
+              val b = byte2int0(ward_arr_get<byte>(hb, _ward_idx(i, 64)))
+              val () = _app_epub_book_id_set_u8(i, b)
+            in _copy_hash(hb, i + 1) end
+          val () = _copy_hash(hash_buf, 0)
+          val () = _app_set_epub_book_id_len(64)
+          val () = ward_arr_free<byte>(hash_buf)
+
           (* Phase 1: Parse ZIP — yield first for "Opening file" to paint *)
           val p1 = ward_timer_set(0)
           val sh = handle val sfs = file_size
@@ -3597,12 +3581,6 @@ implement render_library(root_id) = let
                           val btn_count = library_get_count()
                           val () = register_card_btns(0, btn_count, ssr, 0)
                         in import_finish(h, sslbl, ssspn, sssts) end
-                        else if eq_int_int(book_idx, 0 - 2) then let
-                          val () = import_finish(
-                            import_mark_failed(log_err_dup_id(), 10),
-                            sslbl, ssspn, sssts)
-                          (* Set error text AFTER import_finish, which clears status_id *)
-                        in update_status_text(sssts, TEXT_ERR_DUP_ID, 17) end
                         else import_finish(
                           import_mark_failed(log_err_lib_full(), 12),
                           sslbl, ssspn, sssts)
