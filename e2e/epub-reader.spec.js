@@ -1310,7 +1310,7 @@ test.describe('EPUB Reader E2E', () => {
       };
     });
     console.log('IMG DIAG:', JSON.stringify(imgDiag));
-    console.log('IMG CONSOLE:', JSON.stringify(consoleMsgs.filter(m => m.includes('err-ch') || m.includes('qc') || m.includes('pc') || m.includes('il'))));
+    console.log('IMG CONSOLE:', JSON.stringify(consoleMsgs.filter(m => m.includes('err-ch'))));
 
     // Verify image element exists with blob: src
     const imgInfo = await page.evaluate(() => {

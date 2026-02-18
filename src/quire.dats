@@ -3303,7 +3303,11 @@ fun prescan_deferred_for_idb {lb:agz}{n:pos}{ld:agz}{nd:pos}{k:nat} .<k>.
     val src_off = deferred_image_get_src_off(i)
     val src_len = deferred_image_get_src_len(i)
     val path_len = resolve_img_src(tree, tlen, src_off, src_len, cdir, cdlen)
+    val mc = _app_epub_manifest_count()
+    val () = ward_log(1, mk_ch_err(char2int1('m'), char2int1('c'), _checked_safe_digit(mc)), 10)
+    val () = ward_log(1, mk_ch_err(char2int1('p'), char2int1('l'), _checked_safe_digit(path_len)), 10)
     val entry_idx = epub_find_resource(path_len)
+    val () = ward_log(1, mk_ch_err(char2int1('e'), char2int1('i'), _checked_safe_digit(entry_idx)), 10)
   in
     if gte_int_int(entry_idx, 0) then let
       val () = _app_deferred_img_node_id_set(out, nid)
