@@ -1165,9 +1165,10 @@ test.describe('EPUB Reader E2E', () => {
     await page.goto('/');
     await page.waitForSelector('.library-list', { timeout: 15000 });
 
-    // Import first time — should succeed
+    // Use viewport-unique path to avoid concurrent test file collisions
+    const vp = page.viewportSize();
     const fileInput = page.locator('input[type="file"]');
-    const epubPath = join(SCREENSHOT_DIR, 'dedup-test.epub');
+    const epubPath = join(SCREENSHOT_DIR, `dedup-test-${vp.width}x${vp.height}.epub`);
     writeFileSync(epubPath, epub);
     await fileInput.setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
@@ -1187,7 +1188,12 @@ test.describe('EPUB Reader E2E', () => {
     const fileInput2 = page.locator('input[type="file"]');
     await fileInput2.setInputFiles(epubPath);
 
-    // Wait for import to complete (the re-import is treated as success)
+    // Wait for import to start (label → "importing"), then finish (→ "import-btn").
+    // Race against a short delay in case import is near-instant for dedup.
+    await Promise.race([
+      page.waitForSelector('label.importing', { timeout: 5000 }),
+      page.waitForTimeout(1000),
+    ]);
     await page.waitForSelector('label.import-btn', { timeout: 30000 });
     await page.waitForTimeout(1000);
     await screenshot(page, 'dedup-02-after-reimport');
