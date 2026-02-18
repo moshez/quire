@@ -1036,6 +1036,11 @@ in end
 end
 
 (* ========== Chapter load error messages ========== *)
+
+(* Convert int 0-9 to ASCII digit (48-57) with SAFE_CHAR proof.
+ * Clamps to '0' for out-of-range values. Temporary diagnostic helper. *)
+extern castfn _checked_safe_digit(x: int): [c:int | SAFE_CHAR(c)] int(c)
+
 (* mk_ch_err builds "err-ch-XYZ" safe text where XYZ are the 3 suffix chars.
  * Used by load_chapter to log a specific error at each failure point. *)
 fn mk_ch_err
@@ -3326,7 +3331,9 @@ fun load_idb_images_chain {k:nat} .<k>.
     val saved_next = idx + 1
     val saved_total = total
     val p2 = ward_promise_then<int><int>(p,
-      llam (data_len: int): ward_promise_chained(int) =>
+      llam (data_len: int): ward_promise_chained(int) => let
+        val () = ward_log(1, mk_ch_err(char2int1('i'), char2int1('l'), _checked_safe_digit(data_len)), 10)
+      in
         if lte_int_int(data_len, 0) then let
           val () = load_idb_images_chain(saved_rem, saved_next, saved_total)
         in ward_promise_return<int>(0) end
@@ -3335,7 +3342,8 @@ fun load_idb_images_chain {k:nat} .<k>.
           val arr = ward_idb_get_result(dl)
           val () = set_image_src_idb(saved_nid, arr, dl)
           val () = load_idb_images_chain(saved_rem, saved_next, saved_total)
-        in ward_promise_return<int>(1) end)
+        in ward_promise_return<int>(1) end
+      end)
     val () = ward_promise_discard<int>(p2)
   in end
 
@@ -3385,10 +3393,12 @@ in
             val () = ward_dom_fini(dom)
             (* Pre-scan: resolve deferred image paths → entry indices *)
             val img_q_count = deferred_image_get_count()
+            val () = ward_log(1, mk_ch_err(char2int1('q'), char2int1('x'), _checked_safe_digit(img_q_count)), 10)
             val img_count = prescan_deferred_for_idb(
               _checked_nat(img_q_count), sax_buf, sl,
               dir_arr, dl_pos, 0, img_q_count, 0)
             val () = _app_set_deferred_img_count(img_count)
+            val () = ward_log(1, mk_ch_err(char2int1('p'), char2int1('x'), _checked_safe_digit(img_count)), 10)
             val () = ward_arr_free<byte>(sax_buf)
             val () = ward_arr_free<byte>(dir_arr)
             val (pf_disp | ()) = finish_chapter_load(saved_cid)

@@ -1263,6 +1263,10 @@ test.describe('EPUB Reader E2E', () => {
   });
 
   test('create-epub with embedded image', async ({ page }) => {
+    // Diagnostic: capture console messages to trace async image loading
+    const consoleMsgs = [];
+    page.on('console', msg => consoleMsgs.push(`[${msg.type()}] ${msg.text()}`));
+
     // Test that our EPUB creator can include images and they render
     const epubBuffer = createEpub({
       title: 'Image Test Book',
@@ -1290,11 +1294,23 @@ test.describe('EPUB Reader E2E', () => {
       return el && el.childElementCount > 0;
     }, { timeout: 15000 });
 
-    // Wait for async IDB image loading to set blob: src
-    await page.waitForFunction(() => {
+    // Wait for chapter to settle
+    await page.waitForTimeout(3000);
+
+    // Diagnostic: check image state and console
+    const imgDiag = await page.evaluate(() => {
       const img = document.querySelector('.chapter-container img');
-      return img && img.src && img.src.startsWith('blob:');
-    }, { timeout: 15000 });
+      const container = document.querySelector('.chapter-container');
+      return {
+        hasImg: !!img,
+        imgSrc: img ? img.src : 'N/A',
+        imgAlt: img ? img.alt : 'N/A',
+        containerChildCount: container ? container.childElementCount : -1,
+        containerHTML: container ? container.innerHTML.substring(0, 500) : 'N/A',
+      };
+    });
+    console.log('IMG DIAG:', JSON.stringify(imgDiag));
+    console.log('IMG CONSOLE:', JSON.stringify(consoleMsgs.filter(m => m.includes('err-ch') || m.includes('qc') || m.includes('pc') || m.includes('il'))));
 
     // Verify image element exists with blob: src
     const imgInfo = await page.evaluate(() => {
