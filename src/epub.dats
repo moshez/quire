@@ -888,25 +888,21 @@ in
     val off1 = write_entries(_checked_nat(ec), 0, ec, 4, arr, tsz)
 
     (* Write spine→entry index mapping *)
-    (* Spine paths are relative to OPF dir — prepend dir prefix for zip lookup *)
-    val opf_dir_len = _app_epub_opf_dir_len()
+    (* Spine paths in spine_buf are already fully qualified (include OPF dir) *)
     fun write_spine {k:nat}{la:agz}{na:pos} .<k>.
       (rem: int(k), si: int, scount: int, off: int,
-       arr: !ward_arr(byte, la, na), asz: int na, dlen: int): void =
+       arr: !ward_arr(byte, la, na), asz: int na): void =
       if lte_g1(rem, 0) then ()
       else if gte_int_int(si, scount) then ()
       else let
         val sp_off = _app_epub_spine_offsets_get_i32(si)
         val sp_len = _app_epub_spine_lens_get_i32(si)
-        (* Prepend OPF dir to sbuf: "OEBPS/" + "chapter1.xhtml" *)
-        val () = _app_copy_epub_opf_path_to_sbuf(0, dlen)
-        val () = _app_copy_epub_spine_buf_to_sbuf(sp_off, dlen, sp_len)
-        val full_len = add_int_int(dlen, sp_len)
-        val zip_idx = zip_find_entry(full_len)
+        val () = _app_copy_epub_spine_buf_to_sbuf(sp_off, 0, sp_len)
+        val zip_idx = zip_find_entry(sp_len)
         val idx_val: int = if lt_int_int(zip_idx, 0) then 65535 else zip_idx
         val () = ward_arr_write_u16le(arr, _u16_off(off, asz), _u16(idx_val))
-      in write_spine(sub_g1(rem, 1), si + 1, scount, off + 2, arr, asz, dlen) end
-    val () = write_spine(_checked_nat(sc), 0, sc, off1, arr, tsz, opf_dir_len)
+      in write_spine(sub_g1(rem, 1), si + 1, scount, off + 2, arr, asz) end
+    val () = write_spine(_checked_nat(sc), 0, sc, off1, arr, tsz)
 
     (* Store to IDB *)
     val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
