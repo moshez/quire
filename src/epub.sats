@@ -12,6 +12,7 @@
  *)
 
 staload "./../vendor/ward/lib/memory.sats"
+staload "./../vendor/ward/lib/promise.sats"
 
 (* EPUB import state *)
 #define EPUB_STATE_IDLE           0
@@ -137,7 +138,7 @@ fun epub_get_title(buf_offset: int): int
 (* Get book author into string buffer (after import completes)
  * Returns author length *)
 fun epub_get_author(buf_offset: int): int
-(* Get book ID (hash of title+author or generated)
+(* Get book ID (SHA-256 content hash, set by sha256_file_hash)
  * Returns ID into string buffer *)
 fun epub_get_book_id(buf_offset: int): int
 (* Get total number of chapters in spine
@@ -252,6 +253,40 @@ fun epub_restore_metadata(len: int): [r:int | r == 0 || r == 1] int(r)
  * epub_init(), ready for a new import or metadata restore.
  * Internally produces EPUB_RESET_TO_IDLE proof. *)
 fun epub_reset(): void
+
+(* ========== Exploded Resource Storage (M1.2) ========== *)
+
+(* Proves manifest loaded into memory before resource lookups *)
+absprop MANIFEST_LOADED
+
+(* Proves all resources stored to IDB before import completes *)
+absprop RESOURCES_STORED
+
+(* Build 20-char IDB key for zip entry: {16 hex book_id}-{3 hex entry_idx} *)
+fun epub_build_resource_key(entry_idx: int): ward_safe_text(20)
+
+(* Build 20-char IDB manifest key: {16 hex book_id}-man *)
+fun epub_build_manifest_key(): ward_safe_text(20)
+
+(* Store all ZIP entries to IDB as decompressed blobs.
+ * Sequential async promise chain. Returns promise resolving to 1 on success. *)
+fun epub_store_all_resources(file_handle: int): ward_promise_chained(int)
+
+(* Store manifest (name→index + spine mapping) to IDB.
+ * Returns promise resolving to 1 on success. *)
+fun epub_store_manifest(): ward_promise_chained(int)
+
+(* Load manifest from IDB. Populates in-memory lookup tables.
+ * Also sets epub_spine_count from manifest data.
+ * Returns promise resolving to 1 on success. *)
+fun epub_load_manifest(): ward_promise_chained(int)
+
+(* Find resource entry index by path in sbuf[0..path_len-1].
+ * Requires manifest to be loaded. Returns index or -1. *)
+fun epub_find_resource(path_len: int): int
+
+(* Copy book_id from library slot to epub module state *)
+fun epub_set_book_id_from_library(book_index: int): void
 
 (* ========== Parsing and accessor functions ========== *)
 

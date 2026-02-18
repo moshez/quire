@@ -26,6 +26,13 @@ When completing a milestone from quire-design.md §8:
 3. Mark the milestone checkbox as done: `- [ ]` → `- [x]`
 4. Commit and push
 
+## "next" Command
+
+If the user says just "next" and there is no task currently in progress, find
+the first unchecked (`- [ ]`) item in `plan.md`, implement it fully (code,
+build, tests, dataprop analysis per platform-usage rules), mark it done
+(`- [x]`), and commit.
+
 ## Rules
 
 1. **No app code in index.html** — only loading div + `initBridge('quire.wasm')`

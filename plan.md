@@ -15,7 +15,7 @@ with" OS registration, data backup export/import.
 These changes restructure how books are identified and stored, which almost
 everything else depends on.
 
-- [ ] **1.1 Content-hash book identity.** Replace `dc:identifier` with a hash
+- [x] **1.1 Content-hash book identity.** Replace `dc:identifier` with a hash
   of the EPUB file bytes as the canonical book ID. Update `epub.sats/dats` to
   compute the hash during import (streaming hash during ZIP parse). Update
   `library.dats` `find_dup` to match on content hash. Update serialization
@@ -23,7 +23,7 @@ everything else depends on.
   is derived from content. Remove `ADD_BOOK_RESULT`/`DUP_BAD_EPUB` (no longer
   applicable — same hash = same book by definition).
 
-- [ ] **1.2 Exploded resource storage.** Currently chapter content is stored
+- [x] **1.2 Exploded resource storage.** Currently chapter content is stored
   as compressed blobs keyed by `book_id/path`. Ensure ALL resources (XHTML,
   images, CSS, fonts) are individually exploded into IndexedDB during import
   so they can be served via blob URLs without full-archive decompression.

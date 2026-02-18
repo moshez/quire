@@ -70,6 +70,7 @@ QUIRE_DATS := \
   src/zip.dats \
   src/xml.dats \
   src/epub.dats \
+  src/sha256.dats \
   src/settings.dats \
   src/library.dats \
   src/reader.dats \

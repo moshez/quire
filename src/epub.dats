@@ -13,6 +13,13 @@ staload "./epub.sats"
 staload "./app_state.sats"
 
 staload "./arith.sats"
+staload "./buf.sats"
+staload "./zip.sats"
+staload "./../vendor/ward/lib/promise.sats"
+staload _ = "./../vendor/ward/lib/promise.dats"
+staload "./../vendor/ward/lib/idb.sats"
+staload "./../vendor/ward/lib/file.sats"
+staload "./../vendor/ward/lib/decompress.sats"
 
 (* ========== Ward arr byte helpers ========== *)
 
@@ -212,26 +219,6 @@ fn _n_dc_creator_close(): [l:agz] ward_arr(byte, l, 13) = let
 in a end
 
 (* "<dc:identifier" — 14 bytes *)
-fn _n_dc_identifier_open(): [l:agz] ward_arr(byte, l, 14) = let
-  val a = ward_arr_alloc<byte>(14)
-  val () = _wb(a,0,60,14)  val () = _wb(a,1,100,14) val () = _wb(a,2,99,14)
-  val () = _wb(a,3,58,14)  val () = _wb(a,4,105,14) val () = _wb(a,5,100,14)
-  val () = _wb(a,6,101,14) val () = _wb(a,7,110,14) val () = _wb(a,8,116,14)
-  val () = _wb(a,9,105,14) val () = _wb(a,10,102,14) val () = _wb(a,11,105,14)
-  val () = _wb(a,12,101,14) val () = _wb(a,13,114,14)
-in a end
-
-(* "</dc:identifier>" — 16 bytes *)
-fn _n_dc_identifier_close(): [l:agz] ward_arr(byte, l, 16) = let
-  val a = ward_arr_alloc<byte>(16)
-  val () = _wb(a,0,60,16)  val () = _wb(a,1,47,16)  val () = _wb(a,2,100,16)
-  val () = _wb(a,3,99,16)  val () = _wb(a,4,58,16)  val () = _wb(a,5,105,16)
-  val () = _wb(a,6,100,16) val () = _wb(a,7,101,16) val () = _wb(a,8,110,16)
-  val () = _wb(a,9,116,16) val () = _wb(a,10,105,16) val () = _wb(a,11,102,16)
-  val () = _wb(a,12,105,16) val () = _wb(a,13,101,16) val () = _wb(a,14,114,16)
-  val () = _wb(a,15,62,16)
-in a end
-
 (* "<itemref " — 9 bytes *)
 fn _n_itemref(): [l:agz] ward_arr(byte, l, 9) = let
   val a = ward_arr_alloc<byte>(9)
@@ -375,11 +362,14 @@ in
         val () = _copy_arr_to_opf(arr, pos, path_len, len)
         val () = _app_set_epub_opf_path_len(path_len)
         (* Extract directory prefix up to and including last '/' *)
-        fun find_last_slash(i: int, last: int, plen: int): int =
-          if gte_int_int(i, plen) then last
-          else if eq_int_int(_app_epub_opf_path_get_u8(i), 47) then find_last_slash(i + 1, i, plen)
-          else find_last_slash(i + 1, last, plen)
-        val last_slash = find_last_slash(0, 0 - 1, path_len)
+        val pl = _checked_nat(path_len)
+        fun find_last_slash {k:nat}{pl:nat | k <= pl} .<pl-k>.
+          (i: int(k), last: int, plen: int(pl)): int =
+          if gte_g1(i, plen) then last
+          else if eq_int_int(_app_epub_opf_path_get_u8(_g0(i)), 47)
+            then find_last_slash(add_g1(i, 1), _g0(i), plen)
+          else find_last_slash(add_g1(i, 1), last, plen)
+        val last_slash = find_last_slash(0, 0 - 1, pl)
       in
         if gte_int_int(last_slash, 0) then
           _app_set_epub_opf_dir_len(last_slash + 1)
@@ -454,35 +444,6 @@ in
         val alen = if gt_int_int(alen0, 255) then 255 else alen0
         val () = _copy_arr_to_author(buf, astart, alen, len)
       in _app_set_epub_author_len(alen) end
-    end
-  end
-end
-
-extern fun _opf_extract_identifier {l:agz}{n:pos}
-  (buf: !ward_arr(byte, l, n), len: int n): void = "ext#"
-implement _opf_extract_identifier(buf, len) = let
-  val ndl_io = _n_dc_identifier_open()
-  val ndl_ic = _n_dc_identifier_close()
-  val pos_i = _find_bytes(buf, len, len, ndl_io, 14, 14, 0)
-  val () = ward_arr_free<byte>(ndl_io)
-in
-  if lt_int_int(pos_i, 0) then ward_arr_free<byte>(ndl_ic)
-  else let
-    val (pf_gt | gt_pos) = _find_gt(buf, len, len, pos_i + 14)
-    prval _ = pf_gt
-  in
-    if gte_int_int(gt_pos, len) then ward_arr_free<byte>(ndl_ic)
-    else let
-      val id_start = gt_pos + 1
-      val id_end = _find_bytes(buf, len, len, ndl_ic, 16, 16, id_start)
-      val () = ward_arr_free<byte>(ndl_ic)
-    in
-      if lt_int_int(id_end, 0) then ()
-      else let
-        val id_len0 = id_end - id_start
-        val id_len = if gt_int_int(id_len0, 63) then 63 else id_len0
-        val () = _copy_arr_to_bookid(buf, id_start, id_len, len)
-      in _app_set_epub_book_id_len(id_len) end
     end
   end
 end
@@ -636,7 +597,8 @@ in end
 implement epub_parse_opf_bytes(arr, len) = let
   val () = _opf_extract_title(arr, len)
   val () = _opf_extract_author(arr, len)
-  val () = _opf_extract_identifier(arr, len)
+  (* book_id is now set by sha256_file_hash in quire.dats import path,
+   * not extracted from dc:identifier. See BOOK_IDENTITY_IS_CONTENT_HASH. *)
   val spine_count = _opf_count_spine(arr, len)
   val () = _app_set_epub_spine_count(spine_count)
   val () = _opf_resolve_spine(arr, len, spine_count)
@@ -688,3 +650,366 @@ implement epub_copy_spine_path(pf | index, _count, buf_offset) = let
   val slen = _app_epub_spine_lens_get_i32(index)
   val () = _app_copy_epub_spine_buf_to_sbuf(off, buf_offset, slen)
 in _checked_pos(slen) end
+
+(* ========== M1.2 Exploded Resource Storage ========== *)
+
+(* Hex nibble: 0-15 → ASCII code of '0'-'9','a'-'f' *)
+fn _hex_nibble(n: int): int =
+  if lt_int_int(n, 10) then n + 48 (* '0' = 48 *)
+  else n + 87 (* 'a' - 10 = 87, so 10→97='a' *)
+
+(* Bridge runtime hex digit to SAFE_CHAR.
+ * Hex digits 0-9 map to 48-57, a-f map to 97-102 — all within SAFE_CHAR range.
+ * The castfn trusts that _hex_nibble produces only these values. *)
+extern castfn _safe_hex_char(c: int): [c2:int | SAFE_CHAR(c2)] int(c2)
+
+(* Build 20-char IDB resource key: {16 hex book_id}-{3 hex entry_idx}
+ * Hex chars: 0-9 (48-57), a-f (97-102) — all SAFE_CHAR.
+ * Hyphen (45) — SAFE_CHAR. *)
+implement epub_build_resource_key(entry_idx) = let
+  val b0 = _app_epub_book_id_get_u8(0)
+  val b1 = _app_epub_book_id_get_u8(1)
+  val b2 = _app_epub_book_id_get_u8(2)
+  val b3 = _app_epub_book_id_get_u8(3)
+  val b4 = _app_epub_book_id_get_u8(4)
+  val b5 = _app_epub_book_id_get_u8(5)
+  val b6 = _app_epub_book_id_get_u8(6)
+  val b7 = _app_epub_book_id_get_u8(7)
+  (* Each byte → 2 hex chars: high nibble then low nibble *)
+  val bld = ward_text_build(20)
+  val bld = ward_text_putc(bld, 0, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b0, 255), 16))))
+  val bld = ward_text_putc(bld, 1, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b0, 255), 16))))
+  val bld = ward_text_putc(bld, 2, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b1, 255), 16))))
+  val bld = ward_text_putc(bld, 3, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b1, 255), 16))))
+  val bld = ward_text_putc(bld, 4, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b2, 255), 16))))
+  val bld = ward_text_putc(bld, 5, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b2, 255), 16))))
+  val bld = ward_text_putc(bld, 6, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b3, 255), 16))))
+  val bld = ward_text_putc(bld, 7, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b3, 255), 16))))
+  val bld = ward_text_putc(bld, 8, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b4, 255), 16))))
+  val bld = ward_text_putc(bld, 9, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b4, 255), 16))))
+  val bld = ward_text_putc(bld, 10, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b5, 255), 16))))
+  val bld = ward_text_putc(bld, 11, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b5, 255), 16))))
+  val bld = ward_text_putc(bld, 12, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b6, 255), 16))))
+  val bld = ward_text_putc(bld, 13, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b6, 255), 16))))
+  val bld = ward_text_putc(bld, 14, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b7, 255), 16))))
+  val bld = ward_text_putc(bld, 15, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b7, 255), 16))))
+  (* Hyphen separator: '-' = 45, which is SAFE_CHAR *)
+  val bld = ward_text_putc(bld, 16, 45)
+  (* 3-digit hex entry index (0-4095 range, 12 bits) *)
+  val ei = band_int_int(entry_idx, 4095)
+  val bld = ward_text_putc(bld, 17, _safe_hex_char(_hex_nibble(div_int_int(ei, 256))))
+  val bld = ward_text_putc(bld, 18, _safe_hex_char(_hex_nibble(mod_int_int(div_int_int(ei, 16), 16))))
+  val bld = ward_text_putc(bld, 19, _safe_hex_char(_hex_nibble(mod_int_int(ei, 16))))
+in ward_text_done(bld) end
+
+(* Build 20-char IDB manifest key: {16 hex book_id}-man *)
+implement epub_build_manifest_key() = let
+  val b0 = _app_epub_book_id_get_u8(0)
+  val b1 = _app_epub_book_id_get_u8(1)
+  val b2 = _app_epub_book_id_get_u8(2)
+  val b3 = _app_epub_book_id_get_u8(3)
+  val b4 = _app_epub_book_id_get_u8(4)
+  val b5 = _app_epub_book_id_get_u8(5)
+  val b6 = _app_epub_book_id_get_u8(6)
+  val b7 = _app_epub_book_id_get_u8(7)
+  val bld = ward_text_build(20)
+  val bld = ward_text_putc(bld, 0, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b0, 255), 16))))
+  val bld = ward_text_putc(bld, 1, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b0, 255), 16))))
+  val bld = ward_text_putc(bld, 2, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b1, 255), 16))))
+  val bld = ward_text_putc(bld, 3, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b1, 255), 16))))
+  val bld = ward_text_putc(bld, 4, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b2, 255), 16))))
+  val bld = ward_text_putc(bld, 5, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b2, 255), 16))))
+  val bld = ward_text_putc(bld, 6, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b3, 255), 16))))
+  val bld = ward_text_putc(bld, 7, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b3, 255), 16))))
+  val bld = ward_text_putc(bld, 8, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b4, 255), 16))))
+  val bld = ward_text_putc(bld, 9, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b4, 255), 16))))
+  val bld = ward_text_putc(bld, 10, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b5, 255), 16))))
+  val bld = ward_text_putc(bld, 11, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b5, 255), 16))))
+  val bld = ward_text_putc(bld, 12, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b6, 255), 16))))
+  val bld = ward_text_putc(bld, 13, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b6, 255), 16))))
+  val bld = ward_text_putc(bld, 14, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b7, 255), 16))))
+  val bld = ward_text_putc(bld, 15, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b7, 255), 16))))
+  (* "-man" suffix: '-'=45, 'm'=109, 'a'=97, 'n'=110 — all SAFE_CHAR *)
+  val bld = ward_text_putc(bld, 16, 45)
+  val bld = ward_text_putc(bld, 17, 109)
+  val bld = ward_text_putc(bld, 18, 97)
+  val bld = ward_text_putc(bld, 19, 110)
+in ward_text_done(bld) end
+
+(* ========== epub_store_all_resources ========== *)
+
+(* Store a single ZIP entry to IDB. Handles stored (compression=0) and
+ * deflated (compression=8) entries. Returns a chained promise. *)
+fn _store_single_entry(file_handle: int, entry_idx: int): ward_promise_chained(int) = let
+  var entry: zip_entry
+  val found = zip_get_entry(entry_idx, entry)
+in
+  if lte_int_int(found, 0) then ward_promise_return<int>(1)
+  else let
+    val compression = entry.compression
+    val compressed_size = entry.compressed_size
+    val uncompressed_size = entry.uncompressed_size
+    val data_off = zip_get_data_offset(entry_idx)
+  in
+    if lte_int_int(data_off, 0) then ward_promise_return<int>(1)
+    else if lte_int_int(uncompressed_size, 0) then ward_promise_return<int>(1)
+    else if eq_int_int(compression, 0) then let
+      (* Stored — read directly and put to IDB *)
+      val sz1 = (if gt_int_int(uncompressed_size, 0) then uncompressed_size else 1): int
+      val sz = _checked_arr_size(sz1)
+      val arr = ward_arr_alloc<byte>(sz)
+      val _rd = ward_file_read(file_handle, data_off, arr, sz)
+      val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+      val key = epub_build_resource_key(entry_idx)
+      val p = ward_idb_put(key, 20, borrow, sz)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val arr = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(arr)
+    in ward_promise_vow(p) end
+    else if eq_int_int(compression, 8) then let
+      (* Deflated — decompress then store *)
+      val cs1 = (if gt_int_int(compressed_size, 0) then compressed_size else 1): int
+      val cs = _checked_arr_size(cs1)
+      val arr = ward_arr_alloc<byte>(cs)
+      val _rd = ward_file_read(file_handle, data_off, arr, cs)
+      val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+      val p = ward_decompress(borrow, cs, 2) (* deflate-raw *)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val arr = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(arr)
+      val saved_idx = entry_idx
+    in
+      ward_promise_then<int><int>(p,
+        llam (blob_handle: int): ward_promise_chained(int) => let
+          val dlen = ward_decompress_get_len()
+        in
+          if lte_int_int(dlen, 0) then let
+            val () = ward_blob_free(blob_handle)
+          in ward_promise_return<int>(1) end
+          else let
+            val dl = _checked_arr_size(dlen)
+            val arr2 = ward_arr_alloc<byte>(dl)
+            val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
+            val () = ward_blob_free(blob_handle)
+            val @(frozen2, borrow2) = ward_arr_freeze<byte>(arr2)
+            val key = epub_build_resource_key(saved_idx)
+            val p2 = ward_idb_put(key, 20, borrow2, dl)
+            val () = ward_arr_drop<byte>(frozen2, borrow2)
+            val arr2 = ward_arr_thaw<byte>(frozen2)
+            val () = ward_arr_free<byte>(arr2)
+          in ward_promise_vow(p2) end
+        end)
+    end
+    else ward_promise_return<int>(1) (* unknown compression, skip *)
+  end
+end
+
+implement epub_store_all_resources(file_handle) = let
+  val entry_count = zip_get_entry_count()
+  val ec = _g0(entry_count): int
+  fun loop {k:nat} .<k>.
+    (rem: int(k), idx: int, count: int, fh: int): ward_promise_chained(int) =
+    if lte_g1(rem, 0) then ward_promise_return<int>(1)
+    else if gte_int_int(idx, count) then ward_promise_return<int>(1)
+    else let
+      val saved_idx = idx + 1
+      val saved_count = count
+      val saved_fh = fh
+      val saved_rem = sub_g1(rem, 1)
+      val p = _store_single_entry(fh, idx)
+    in
+      ward_promise_then<int><int>(p,
+        llam (_status: int): ward_promise_chained(int) =>
+          loop(saved_rem, saved_idx, saved_count, saved_fh))
+    end
+in loop(_checked_nat(ec), 0, ec, file_handle) end
+
+(* ========== epub_store_manifest ========== *)
+
+(* Manifest binary format:
+ * [u16: entry_count] [u16: spine_count]
+ * For each zip entry:  [u16: name_len] [name bytes...]
+ * For each spine entry: [u16: zip_entry_index_for_this_spine_slot]
+ *)
+implement epub_store_manifest() = let
+  val entry_count = zip_get_entry_count()
+  val spine_count = _app_epub_spine_count()
+  val ec = _g0(entry_count): int
+  val sc: int = if gt_int_int(spine_count, 32) then 32 else spine_count
+
+  (* Calculate total manifest size *)
+  (* Header: 4 bytes (2 u16s) *)
+  (* Per entry: 2 + name_len bytes *)
+  (* Per spine: 2 bytes *)
+  fun calc_entries_size {k:nat} .<k>.
+    (rem: int(k), idx: int, count: int, acc: int): int =
+    if lte_g1(rem, 0) then acc
+    else if gte_int_int(idx, count) then acc
+    else let
+      val nlen = zip_get_entry_name(idx, 0) (* writes name to sbuf *)
+    in calc_entries_size(sub_g1(rem, 1), idx + 1, count, acc + 2 + nlen) end
+  val entries_size = calc_entries_size(_checked_nat(ec), 0, ec, 0)
+  val total_size = add_int_int(add_int_int(4, entries_size), mul_int_int(sc, 2))
+
+in
+  if lt_int_int(total_size, 4) then ward_promise_return<int>(0)
+  else if gt_int_int(total_size, 65536) then ward_promise_return<int>(0)
+  else let
+    extern castfn _manifest_size(x: int): [n:int | n >= 4; n <= 1048576] int n
+    val tsz = _manifest_size(total_size)
+    val arr = ward_arr_alloc<byte>(tsz)
+    (* Write header — tsz >= 4 guaranteed by check above *)
+    extern castfn _u16(x: int): [v:nat | v < 65536] int v
+    extern castfn _u16_off {n:int}(x: int, sz: int n): [i:nat | i + 2 <= n] int i
+    val () = ward_arr_write_u16le(arr, 0, _u16(ec))
+    val () = ward_arr_write_u16le(arr, 2, _u16(sc))
+
+    (* Write entry names — read directly from ZIP name buffer, not sbuf *)
+    fun write_entries {k:nat}{la:agz}{na:pos} .<k>.
+      (rem: int(k), idx: int, count: int, off: int,
+       arr: !ward_arr(byte, la, na), asz: int na): int =
+      if lte_g1(rem, 0) then off
+      else if gte_int_int(idx, count) then off
+      else let
+        val nlen = zip_get_entry_name(idx, 0)
+        val name_off = _zip_entry_name_offset(idx)
+        val () = ward_arr_write_u16le(arr, _u16_off(off, asz), _u16(nlen))
+        (* Copy name bytes from ZIP name buffer to arr *)
+        fun copy_name {k2:nat}{la2:agz}{na2:pos} .<k2>.
+          (rem2: int(k2), i: int, name_len: int, base: int, noff: int,
+           arr: !ward_arr(byte, la2, na2), asz: int na2): void =
+          if lte_g1(rem2, 0) then ()
+          else if gte_int_int(i, name_len) then ()
+          else let
+            val b = _zip_name_char(noff + i)
+            val () = ward_arr_write_byte(arr, _ward_idx(base + i, asz), _checked_byte(band_int_int(b, 255)))
+          in copy_name(sub_g1(rem2, 1), i + 1, name_len, base, noff, arr, asz) end
+        val () = copy_name(_checked_nat(nlen), 0, nlen, off + 2, name_off, arr, asz)
+      in write_entries(sub_g1(rem, 1), idx + 1, count, off + 2 + nlen, arr, asz) end
+    val off1 = write_entries(_checked_nat(ec), 0, ec, 4, arr, tsz)
+
+    (* Write spine→entry index mapping *)
+    (* Spine paths in spine_buf are already fully qualified (include OPF dir) *)
+    fun write_spine {k:nat}{la:agz}{na:pos} .<k>.
+      (rem: int(k), si: int, scount: int, off: int,
+       arr: !ward_arr(byte, la, na), asz: int na): void =
+      if lte_g1(rem, 0) then ()
+      else if gte_int_int(si, scount) then ()
+      else let
+        val sp_off = _app_epub_spine_offsets_get_i32(si)
+        val sp_len = _app_epub_spine_lens_get_i32(si)
+        val () = _app_copy_epub_spine_buf_to_sbuf(sp_off, 0, sp_len)
+        val zip_idx = zip_find_entry(sp_len)
+        val idx_val: int = if lt_int_int(zip_idx, 0) then 65535 else zip_idx
+        val () = ward_arr_write_u16le(arr, _u16_off(off, asz), _u16(idx_val))
+      in write_spine(sub_g1(rem, 1), si + 1, scount, off + 2, arr, asz) end
+    val () = write_spine(_checked_nat(sc), 0, sc, off1, arr, tsz)
+
+    (* Store to IDB *)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+    val key = epub_build_manifest_key()
+    val p = ward_idb_put(key, 20, borrow, tsz)
+    val () = ward_arr_drop<byte>(frozen, borrow)
+    val arr = ward_arr_thaw<byte>(frozen)
+    val () = ward_arr_free<byte>(arr)
+  in ward_promise_vow(p) end
+end
+
+(* ========== epub_load_manifest ========== *)
+
+(* Helper to read u16 LE from ward_arr *)
+fn _arr_read_u16 {l:agz}{n:pos}
+  (a: !ward_arr(byte, l, n), off: int, cap: int n): int = let
+  val lo = _ab(a, off, cap)
+  val hi = _ab(a, off + 1, cap)
+in add_int_int(lo, mul_int_int(hi, 256)) end
+
+implement epub_load_manifest() = let
+  val key = epub_build_manifest_key()
+  val p = ward_idb_get(key, 20)
+in
+  ward_promise_then<int><int>(p,
+    llam (data_len: int): ward_promise_chained(int) =>
+      if lte_int_int(data_len, 4) then ward_promise_return<int>(0)
+      else let
+        val dl = _checked_pos(data_len)
+        val arr = ward_idb_get_result(dl)
+        val ec = _arr_read_u16(arr, 0, dl)
+        val sc = _arr_read_u16(arr, 2, dl)
+        val () = _app_set_epub_manifest_count(ec)
+        val () = _app_set_epub_spine_count(sc)
+        (* Parse entry names into manifest tables *)
+        fun parse_entries {k:nat}{la:agz}{na:pos} .<k>.
+          (rem: int(k), idx: int, count: int, off: int, name_pos: int,
+           arr: !ward_arr(byte, la, na), asz: int na): int =
+          if lte_g1(rem, 0) then off
+          else if gte_int_int(idx, count) then off
+          else if gt_int_int(off + 2, _g0(asz)) then off
+          else let
+            val nlen = _arr_read_u16(arr, off, asz)
+            val () = _app_epub_manifest_offsets_set_i32(idx, name_pos)
+            val () = _app_epub_manifest_lens_set_i32(idx, nlen)
+            (* Copy name bytes from arr to manifest_names buffer *)
+            fun copy_name {k2:nat}{la2:agz}{na2:pos} .<k2>.
+              (rem2: int(k2), i: int, name_len: int, src_off: int, dst_off: int,
+               arr: !ward_arr(byte, la2, na2), asz: int na2): void =
+              if lte_g1(rem2, 0) then ()
+              else if gte_int_int(i, name_len) then ()
+              else if gte_int_int(src_off + i, _g0(asz)) then ()
+              else let
+                val b = _ab(arr, src_off + i, asz)
+                val () = _app_epub_manifest_names_set_u8(dst_off + i, b)
+              in copy_name(sub_g1(rem2, 1), i + 1, name_len, src_off, dst_off, arr, asz) end
+            val () = copy_name(_checked_nat(nlen), 0, nlen, off + 2, name_pos, arr, asz)
+          in parse_entries(sub_g1(rem, 1), idx + 1, count, off + 2 + nlen, name_pos + nlen, arr, asz) end
+        val off1 = parse_entries(_checked_nat(ec), 0, ec, 4, 0, arr, dl)
+        (* Parse spine→entry index mapping *)
+        fun parse_spine {k:nat}{la:agz}{na:pos} .<k>.
+          (rem: int(k), si: int, scount: int, off: int,
+           arr: !ward_arr(byte, la, na), asz: int na): void =
+          if lte_g1(rem, 0) then ()
+          else if gte_int_int(si, scount) then ()
+          else if gt_int_int(off + 2, _g0(asz)) then ()
+          else let
+            val zip_idx = _arr_read_u16(arr, off, asz)
+            val () = _app_epub_spine_entry_idx_set(si, zip_idx)
+          in parse_spine(sub_g1(rem, 1), si + 1, scount, off + 2, arr, asz) end
+        val () = parse_spine(_checked_nat(sc), 0, sc, off1, arr, dl)
+        val () = ward_arr_free<byte>(arr)
+      in ward_promise_return<int>(1) end)
+end
+
+(* ========== epub_find_resource ========== *)
+
+(* Linear scan of manifest names, comparing against sbuf[0..path_len-1] *)
+implement epub_find_resource(path_len) = let
+  val count = _app_epub_manifest_count()
+  fun scan {k:nat} .<k>.
+    (rem: int(k), idx: int, cnt: int, plen: int): int =
+    if lte_g1(rem, 0) then 0 - 1
+    else if gte_int_int(idx, cnt) then 0 - 1
+    else let
+      val noff = _app_epub_manifest_offsets_get_i32(idx)
+      val nlen = _app_epub_manifest_lens_get_i32(idx)
+    in
+      if neq_int_int(nlen, plen) then scan(sub_g1(rem, 1), idx + 1, cnt, plen)
+      else if gt_int_int(_app_manifest_name_match_sbuf(noff, nlen, plen), 0) then idx
+      else scan(sub_g1(rem, 1), idx + 1, cnt, plen)
+    end
+in scan(_checked_nat(count), 0, count, path_len) end
+
+(* ========== epub_set_book_id_from_library ========== *)
+
+#define LIB_REC_BYTES 608
+#define LIB_BOOKID_OFF 520
+#define LIB_BOOKID_MAX 64
+#define LIB_BOOKID_LEN_SLOT 146
+
+implement epub_set_book_id_from_library(book_index) = let
+  val base_bytes = book_index * LIB_REC_BYTES
+  val base_ints = book_index * 152
+  val bid_len0 = _app_lib_books_get_i32(base_ints + LIB_BOOKID_LEN_SLOT)
+  val bid_len = if gt_int_int(bid_len0, LIB_BOOKID_MAX) then LIB_BOOKID_MAX else bid_len0
+  val () = _app_copy_lib_book_id_to_epub(base_bytes + LIB_BOOKID_OFF, bid_len)
+  val () = _app_set_epub_book_id_len(bid_len)
+in end

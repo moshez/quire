@@ -105,14 +105,15 @@ in bor_int_int(bor_int_int(b0, bsl_int_int(b1, 8)), bor_int_int(bsl_int_int(b2, 
 (* Find EOCD by searching backwards. Returns file offset or -1. *)
 fn find_eocd {l:agz}{n:pos}
   (arr: !ward_arr(byte, l, n), read_len: int n, search_start: int): int = let
-  fun loop {l:agz}{n:pos}
-    (arr: !ward_arr(byte, l, n), i: int, len: int n, ss: int): int =
-    if gt_int_int(0, i) then 0 - 1
+  fun loop {l:agz}{n:pos}{k:nat} .<k>.
+    (arr: !ward_arr(byte, l, n), i: int, len: int n, ss: int, rem: int(k)): int =
+    if lte_g1(rem, 0) then 0 - 1
+    else if gt_int_int(0, i) then 0 - 1
     else if eq_int_int(arr_u32(arr, i, len), EOCD_SIG) then ss + i
-    else loop(arr, i - 1, len, ss)
+    else loop(arr, i - 1, len, ss, sub_g1(rem, 1))
 in
   if gt_int_int(22, read_len) then 0 - 1
-  else loop(arr, read_len - 22, read_len, search_start)
+  else loop(arr, read_len - 22, read_len, search_start, _checked_nat(read_len))
 end
 
 (* Parse EOCD. Returns (cd_offset, entry_count) or (-1, 0). *)
@@ -148,15 +149,16 @@ fn parse_cd_entry {l:agz}{n:pos}
       46 + name_len + extra_len + comment_len
     else let
       (* Copy name bytes from arr to name buffer *)
-      fun copy_name {l:agz}{n:pos}
-        (arr: !ward_arr(byte, l, n), j: int, nlen: int,
+      fun copy_name {l:agz}{n:pos}{k:nat}{nl:nat | k <= nl} .<nl-k>.
+        (arr: !ward_arr(byte, l, n), j: int(k), nlen: int(nl),
          dest_off: int, alen: int n): void =
-        if gte_int_int(j, nlen) then ()
+        if gte_g1(j, nlen) then ()
         else let
-          val b = ward_arr_byte(arr, 46 + j, alen)
-          val _ = _zip_name_buf_put(dest_off + j, b)
-        in copy_name(arr, j + 1, nlen, dest_off, alen) end
-      val () = copy_name(arr, 0, name_len, name_buf_off, read_len)
+          val j0 = _g0(j)
+          val b = ward_arr_byte(arr, 46 + j0, alen)
+          val _ = _zip_name_buf_put(dest_off + j0, b)
+        in copy_name(arr, add_g1(j, 1), nlen, dest_off, alen) end
+      val () = copy_name(arr, 0, _checked_nat(name_len), name_buf_off, read_len)
       val _ = _zip_store_entry_at(entry_count, file_handle, name_buf_off,
                 name_len, compression, compressed_size, uncompressed_size,
                 local_offset)
@@ -202,8 +204,9 @@ in
     in
       if gt_int_int(0, cd_offset) then _checked_bounded(0)
       else let
-        fun loop(handle: int, offset: int, remaining: int): void =
-          if gt_int_int(1, remaining) then ()
+        fun loop {k:nat} .<k>.
+          (handle: int, offset: int, remaining: int(k)): void =
+          if lte_g1(remaining, 0) then ()
           else if gte_int_int(_get_zip_count(), 256) then ()
           else let
             val arr3 = ward_arr_alloc<byte>(512)
@@ -212,9 +215,9 @@ in
             val () = ward_arr_free<byte>(arr3)
           in
             if gt_int_int(1, entry_size) then ()
-            else loop(handle, offset + entry_size, remaining - 1)
+            else loop(handle, offset + entry_size, sub_g1(remaining, 1))
           end
-        val () = loop(file_handle, cd_offset, expected_count)
+        val () = loop(file_handle, cd_offset, _checked_nat(expected_count))
       in _checked_bounded(_get_zip_count()) end
     end
   end
@@ -266,20 +269,23 @@ in
       val name_off = _zip_entry_name_offset(index)
       val start = name_len - suffix_len
 
-      fun cmp(i: int): int =
-        if gte_int_int(i, suffix_len) then 1
+      val sl = _checked_nat(suffix_len)
+      fun cmp {k:nat}{sl:nat | k <= sl} .<sl-k>.
+        (i: int(k), sl: int(sl)): int =
+        if gte_g1(i, sl) then 1
         else let
-          val c1 = _zip_name_char(name_off + start + i)
-          val c2 = _app_sbuf_get_u8(i)
+          val i0 = _g0(i)
+          val c1 = _zip_name_char(name_off + start + i0)
+          val c2 = _app_sbuf_get_u8(i0)
           (* Case-insensitive *)
           val c1 = (if gte_int_int(c1, 65) then
             (if gt_int_int(91, c1) then c1 + 32 else c1) else c1): int
           val c2 = (if gte_int_int(c2, 65) then
             (if gt_int_int(91, c2) then c2 + 32 else c2) else c2): int
         in
-          if eq_int_int(c1, c2) then cmp(i + 1) else 0
+          if eq_int_int(c1, c2) then cmp(add_g1(i, 1), sl) else 0
         end
-    in cmp(0) end
+    in cmp(0, sl) end
   end
 end
 
@@ -294,25 +300,30 @@ in
     if neq_int_int(entry_name_len, name_len) then 0
     else let
       val name_off = _zip_entry_name_offset(index)
-      fun cmp(i: int): int =
-        if gte_int_int(i, name_len) then 1
+      val nl = _checked_nat(name_len)
+      fun cmp {k:nat}{nl:nat | k <= nl} .<nl-k>.
+        (i: int(k), nl: int(nl)): int =
+        if gte_g1(i, nl) then 1
         else let
-          val c1 = _zip_name_char(name_off + i)
-          val c2 = _app_sbuf_get_u8(i)
+          val i0 = _g0(i)
+          val c1 = _zip_name_char(name_off + i0)
+          val c2 = _app_sbuf_get_u8(i0)
         in
-          if eq_int_int(c1, c2) then cmp(i + 1) else 0
+          if eq_int_int(c1, c2) then cmp(add_g1(i, 1), nl) else 0
         end
-    in cmp(0) end
+    in cmp(0, nl) end
   end
 end
 
 implement zip_find_entry(name_len) = let
   val count = _get_zip_count()
-  fun search(i: int): int =
-    if gte_int_int(i, count) then 0 - 1
-    else if gt_int_int(zip_entry_name_equals(i, name_len), 0) then i
-    else search(i + 1)
-in search(0) end
+  val cnt = _checked_nat(count)
+  fun search {k:nat}{c:nat | k <= c} .<c-k>.
+    (i: int(k), cnt: int(c)): int =
+    if gte_g1(i, cnt) then 0 - 1
+    else if gt_int_int(zip_entry_name_equals(_g0(i), name_len), 0) then _g0(i)
+    else search(add_g1(i, 1), cnt)
+in search(0, cnt) end
 
 implement zip_get_data_offset(index) = let
   val count = _get_zip_count()

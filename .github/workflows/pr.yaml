@@ -94,8 +94,11 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Run Playwright tests
-        run: npx playwright test
+      - name: Smoke test (fast fail)
+        run: npx playwright test e2e/smoke.spec.js --project=desktop
+
+      - name: Full E2E suite
+        run: npx playwright test e2e/epub-reader.spec.js
 
       - name: Upload E2E artifacts
         if: always()
