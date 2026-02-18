@@ -86,9 +86,14 @@ test.describe('EPUB Reader E2E', () => {
 
     if (sawProgress) {
       await screenshot(page, '02a-import-progress');
-      // If we caught the importing state, verify status div has content
-      const importStatus = page.locator('.import-status');
-      await expect(importStatus).not.toBeEmpty({ timeout: 10000 });
+      // If we caught the importing state, verify status div has content —
+      // but only if import is still in progress (it may have completed
+      // between the race resolution and this assertion).
+      const stillImporting = await page.locator('label.importing').isVisible();
+      if (stillImporting) {
+        const importStatus = page.locator('.import-status');
+        await expect(importStatus).not.toBeEmpty({ timeout: 10000 });
+      }
     }
 
     // Wait for import to finish and library to rebuild with a book card

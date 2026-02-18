@@ -3147,6 +3147,198 @@ in
   in show_chapter_error(container_id, TEXT_ERR_NOT_FOUND, 17) end
 end
 
+(* ========== IDB-based image loading from IDB ========== *)
+
+(* Detect MIME type from image data magic bytes.
+ * Returns: 1=jpeg, 2=png, 3=gif, 4=svg+xml, 0=unknown *)
+fn detect_mime_from_magic {lb:agz}{n:pos}
+  (arr: !ward_arr(byte, lb, n), len: int n): int =
+  if gte_int_int(len, 4) then let
+    val b0 = byte2int0(ward_arr_get<byte>(arr, _ward_idx(0, len)))
+    val b1 = byte2int0(ward_arr_get<byte>(arr, _ward_idx(1, len)))
+    val b2 = byte2int0(ward_arr_get<byte>(arr, _ward_idx(2, len)))
+    val b3 = byte2int0(ward_arr_get<byte>(arr, _ward_idx(3, len)))
+  in
+    if eq_int_int(b0, 255) then (* 0xFF *)
+      if eq_int_int(b1, 216) then 1 (* 0xD8 → JPEG *)
+      else 0
+    else if eq_int_int(b0, 137) then (* 0x89 *)
+      if eq_int_int(b1, 80) then (* 0x50 = 'P' *)
+        if eq_int_int(b2, 78) then (* 0x4E = 'N' *)
+          if eq_int_int(b3, 71) then 2 (* 0x47 = 'G' → PNG *)
+          else 0
+        else 0
+      else 0
+    else if eq_int_int(b0, 71) then (* 0x47 = 'G' *)
+      if eq_int_int(b1, 73) then (* 0x49 = 'I' *)
+        if eq_int_int(b2, 70) then 3 (* 0x46 = 'F' → GIF *)
+        else 0
+      else 0
+    else if eq_int_int(b0, 60) then 4 (* 0x3C = '<' → SVG/XML *)
+    else 0
+  end
+  else 0
+
+(* Set image src on a DOM node from IDB-retrieved data.
+ * Detects MIME from magic bytes, creates its own DOM stream.
+ * Consumes the data array. *)
+fn set_image_src_idb {lb:agz}{n:pos}
+  (node_id: int, data: ward_arr(byte, lb, n), data_len: int n): void = let
+  val mime_type = detect_mime_from_magic(data, data_len)
+in
+  if eq_int_int(mime_type, 0) then
+    ward_arr_free<byte>(data) (* unknown MIME — skip, free data *)
+  else let
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(data)
+  in
+    if eq_int_int(mime_type, 1) then let (* JPEG *)
+      val b = ward_content_text_build(10)
+      val b = ward_content_text_putc(b, 0, char2int1('i'))
+      val b = ward_content_text_putc(b, 1, char2int1('m'))
+      val b = ward_content_text_putc(b, 2, char2int1('a'))
+      val b = ward_content_text_putc(b, 3, char2int1('g'))
+      val b = ward_content_text_putc(b, 4, char2int1('e'))
+      val b = ward_content_text_putc(b, 5, 47) (* '/' *)
+      val b = ward_content_text_putc(b, 6, char2int1('j'))
+      val b = ward_content_text_putc(b, 7, char2int1('p'))
+      val b = ward_content_text_putc(b, 8, char2int1('e'))
+      val b = ward_content_text_putc(b, 9, char2int1('g'))
+      val mime = ward_content_text_done(b)
+      val s = ward_dom_stream_set_image_src(s, node_id, borrow, data_len, mime, 10)
+      val () = ward_safe_content_text_free(mime)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val data = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(data)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+    in end
+    else if eq_int_int(mime_type, 2) then let (* PNG *)
+      val b = ward_content_text_build(9)
+      val b = ward_content_text_putc(b, 0, char2int1('i'))
+      val b = ward_content_text_putc(b, 1, char2int1('m'))
+      val b = ward_content_text_putc(b, 2, char2int1('a'))
+      val b = ward_content_text_putc(b, 3, char2int1('g'))
+      val b = ward_content_text_putc(b, 4, char2int1('e'))
+      val b = ward_content_text_putc(b, 5, 47) (* '/' *)
+      val b = ward_content_text_putc(b, 6, char2int1('p'))
+      val b = ward_content_text_putc(b, 7, char2int1('n'))
+      val b = ward_content_text_putc(b, 8, char2int1('g'))
+      val mime = ward_content_text_done(b)
+      val s = ward_dom_stream_set_image_src(s, node_id, borrow, data_len, mime, 9)
+      val () = ward_safe_content_text_free(mime)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val data = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(data)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+    in end
+    else if eq_int_int(mime_type, 3) then let (* GIF *)
+      val b = ward_content_text_build(9)
+      val b = ward_content_text_putc(b, 0, char2int1('i'))
+      val b = ward_content_text_putc(b, 1, char2int1('m'))
+      val b = ward_content_text_putc(b, 2, char2int1('a'))
+      val b = ward_content_text_putc(b, 3, char2int1('g'))
+      val b = ward_content_text_putc(b, 4, char2int1('e'))
+      val b = ward_content_text_putc(b, 5, 47) (* '/' *)
+      val b = ward_content_text_putc(b, 6, char2int1('g'))
+      val b = ward_content_text_putc(b, 7, char2int1('i'))
+      val b = ward_content_text_putc(b, 8, char2int1('f'))
+      val mime = ward_content_text_done(b)
+      val s = ward_dom_stream_set_image_src(s, node_id, borrow, data_len, mime, 9)
+      val () = ward_safe_content_text_free(mime)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val data = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(data)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+    in end
+    else let (* SVG *)
+      val b = ward_content_text_build(13)
+      val b = ward_content_text_putc(b, 0, char2int1('i'))
+      val b = ward_content_text_putc(b, 1, char2int1('m'))
+      val b = ward_content_text_putc(b, 2, char2int1('a'))
+      val b = ward_content_text_putc(b, 3, char2int1('g'))
+      val b = ward_content_text_putc(b, 4, char2int1('e'))
+      val b = ward_content_text_putc(b, 5, 47) (* '/' *)
+      val b = ward_content_text_putc(b, 6, char2int1('s'))
+      val b = ward_content_text_putc(b, 7, char2int1('v'))
+      val b = ward_content_text_putc(b, 8, char2int1('g'))
+      val b = ward_content_text_putc(b, 9, 43) (* '+' *)
+      val b = ward_content_text_putc(b, 10, char2int1('x'))
+      val b = ward_content_text_putc(b, 11, char2int1('m'))
+      val b = ward_content_text_putc(b, 12, char2int1('l'))
+      val mime = ward_content_text_done(b)
+      val s = ward_dom_stream_set_image_src(s, node_id, borrow, data_len, mime, 13)
+      val () = ward_safe_content_text_free(mime)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val data = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(data)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+    in end
+  end
+end
+
+(* Pre-scan: resolve deferred image paths and find entry indices.
+ * For each deferred image in the queue, resolves path via resolve_img_src
+ * and looks up the manifest entry via epub_find_resource.
+ * Stores (node_id, entry_idx) pairs in app_state deferred image buffers.
+ * Returns the count of successfully resolved images. *)
+fun prescan_deferred_for_idb {lb:agz}{n:pos}{ld:agz}{nd:pos}{k:nat} .<k>.
+  (rem: int(k),
+   tree: !ward_arr(byte, lb, n), tlen: int n,
+   cdir: !ward_arr(byte, ld, nd), cdlen: int nd,
+   i: int, total: int, out: int): int =
+  if lte_g1(rem, 0) then out
+  else if gte_int_int(i, total) then out
+  else let
+    val nid = deferred_image_get_node_id(i)
+    val src_off = deferred_image_get_src_off(i)
+    val src_len = deferred_image_get_src_len(i)
+    val path_len = resolve_img_src(tree, tlen, src_off, src_len, cdir, cdlen)
+    val entry_idx = epub_find_resource(path_len)
+  in
+    if gte_int_int(entry_idx, 0) then let
+      val () = _app_deferred_img_node_id_set(out, nid)
+      val () = _app_deferred_img_entry_idx_set(out, entry_idx)
+    in prescan_deferred_for_idb(sub_g1(rem, 1), tree, tlen, cdir, cdlen,
+      i + 1, total, out + 1) end
+    else prescan_deferred_for_idb(sub_g1(rem, 1), tree, tlen, cdir, cdlen,
+      i + 1, total, out)
+  end
+
+(* Async chain: load each deferred image from IDB and set its src.
+ * For each (node_id, entry_idx) pair, builds IDB key, fetches data,
+ * detects MIME from magic bytes, and sets image src. *)
+fun load_idb_images_chain {k:nat} .<k>.
+  (rem: int(k), idx: int, total: int): void =
+  if lte_g1(rem, 0) then ()
+  else if gte_int_int(idx, total) then ()
+  else let
+    val nid = _app_deferred_img_node_id_get(idx)
+    val entry_idx = _app_deferred_img_entry_idx_get(idx)
+    val key = epub_build_resource_key(entry_idx)
+    val p = ward_idb_get(key, 20)
+    val saved_nid = nid
+    val saved_rem = sub_g1(rem, 1)
+    val saved_next = idx + 1
+    val saved_total = total
+    val p2 = ward_promise_then<int><int>(p,
+      llam (data_len: int): ward_promise_chained(int) =>
+        if lte_int_int(data_len, 0) then let
+          val () = load_idb_images_chain(saved_rem, saved_next, saved_total)
+        in ward_promise_return<int>(0) end
+        else let
+          val dl = _checked_pos(data_len)
+          val arr = ward_idb_get_result(dl)
+          val () = set_image_src_idb(saved_nid, arr, dl)
+          val () = load_idb_images_chain(saved_rem, saved_next, saved_total)
+        in ward_promise_return<int>(1) end)
+    val () = ward_promise_discard<int>(p2)
+  in end
+
 (* ========== IDB-based chapter loading ========== *)
 
 (* Load chapter from IDB — no file handle needed.
@@ -3190,15 +3382,20 @@ in
             val s = render_tree_with_images(s, saved_cid, sax_buf, sl,
               0, dir_arr, dl_pos)
             val dom = ward_dom_stream_end(s)
-            val s = ward_dom_stream_begin(dom)
-            val s = load_deferred_images(s, sax_buf, sl,
-              0, dir_arr, dl_pos)
-            val dom = ward_dom_stream_end(s)
             val () = ward_dom_fini(dom)
+            (* Pre-scan: resolve deferred image paths → entry indices *)
+            val img_q_count = deferred_image_get_count()
+            val img_count = prescan_deferred_for_idb(
+              _checked_nat(img_q_count), sax_buf, sl,
+              dir_arr, dl_pos, 0, img_q_count, 0)
+            val () = _app_set_deferred_img_count(img_count)
             val () = ward_arr_free<byte>(sax_buf)
             val () = ward_arr_free<byte>(dir_arr)
             val (pf_disp | ()) = finish_chapter_load(saved_cid)
             prval MEASURED_AND_TRANSFORMED() = pf_disp
+            (* Async: load images from IDB *)
+            val () = load_idb_images_chain(
+              _checked_nat(img_count), 0, img_count)
           in ward_promise_return<int>(1) end
           else let
             val () = ward_arr_free<byte>(dir_arr)
@@ -3911,7 +4108,6 @@ implement enter_reader(root_id, book_index) = let
           prval pf = SPINE_ENTRY()
           val () = reader_go_to_chapter(start_ch_nat, spine_g1)
           val () = reader_set_resume_page(saved_pg)
-          val () = ward_log(1, mk_ch_err(char2int1('i'), char2int1('d'), char2int1('b')), 10)
           val () = load_chapter_from_idb(pf | start_ch_nat, spine_g1, saved_cid)
         in ward_promise_return<int>(1) end
         else let

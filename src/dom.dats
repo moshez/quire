@@ -65,6 +65,10 @@ extern fun _deferred_image_get_src_off_impl(idx: int): int = "mac#_deferred_imag
 extern fun _deferred_image_get_src_len_impl(idx: int): int = "mac#_deferred_image_get_src_len"
 
 implement deferred_image_queue_reset() = _deferred_image_reset_impl()
+implement deferred_image_get_count() = _deferred_image_get_count_impl()
+implement deferred_image_get_node_id(idx) = _deferred_image_get_node_id_impl(idx)
+implement deferred_image_get_src_off(idx) = _deferred_image_get_src_off_impl(idx)
+implement deferred_image_get_src_len(idx) = _deferred_image_get_src_len_impl(idx)
 
 (* ========== Node ID allocator ========== *)
 
@@ -1306,10 +1310,8 @@ in @(ward_content_text_done(b), 13) end
  * Writes resolved path to the string buffer (via _app_sbuf_set_u8).
  * Handles "../" by stripping one directory level from chapter_dir.
  * Returns the resolved path length in the sbuf. *)
-fn resolve_img_src {lb:agz}{n:pos}{ld:agz}{nd:pos}
-  (tree: !ward_arr(byte, lb, n), tlen: int n,
-   src_off: int, src_len: int,
-   chapter_dir: !ward_arr(byte, ld, nd), dir_len: int nd): int = let
+implement resolve_img_src {lb}{n}{ld}{nd}
+  (tree, tlen, src_off, src_len, chapter_dir, dir_len) = let
   (* Check for "../" prefix *)
   val has_dotdot =
     if gte_int_int(src_len, 3) then

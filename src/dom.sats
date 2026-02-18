@@ -311,6 +311,18 @@ fun render_tree_with_images
 (* Reset the deferred image queue (called before each render pass). *)
 fun deferred_image_queue_reset(): void
 
+(* Get the number of deferred images in the queue. *)
+fun deferred_image_get_count(): int
+
+(* Get node_id for a deferred image by index. *)
+fun deferred_image_get_node_id(idx: int): int
+
+(* Get src offset (into SAX tree) for a deferred image by index. *)
+fun deferred_image_get_src_off(idx: int): int
+
+(* Get src length for a deferred image by index. *)
+fun deferred_image_get_src_len(idx: int): int
+
 (* Load all deferred images from the queue using an arena allocator.
  * For each recorded image: resolves src path relative to chapter_dir,
  * finds ZIP entry, reads stored data, detects MIME type, and calls
@@ -335,6 +347,16 @@ fun load_deferred_images
    file_handle: int,
    chapter_dir: !ward_arr(byte, ld, nd), chapter_dir_len: int nd)
   : ward_dom_stream(l)
+
+(* Resolve image src path relative to chapter directory.
+ * Writes resolved path to the string buffer (via _app_sbuf_set_u8).
+ * Handles "../" by stripping one directory level from chapter_dir.
+ * Returns the resolved path length in the sbuf. *)
+fun resolve_img_src
+  {lb:agz}{n:pos}{ld:agz}{nd:pos}
+  (tree: !ward_arr(byte, lb, n), tlen: int n,
+   src_off: int, src_len: int,
+   chapter_dir: !ward_arr(byte, ld, nd), dir_len: int nd): int
 
 (* Get element count from the last render_tree / render_tree_with_images call.
  * Stored in a C static variable — avoids struct return across compilation

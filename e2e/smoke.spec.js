@@ -17,16 +17,12 @@ mkdirSync(SCREENSHOT_DIR, { recursive: true });
 test.describe('Smoke', () => {
   test('WASM loads and EPUB import works', async ({ page }) => {
     const errors = [];
-    const consoleMsgs = [];
     page.on('pageerror', err => {
       errors.push(err.message);
       console.error('PAGE ERROR:', err.message);
     });
     page.on('crash', () => {
       console.error('PAGE CRASHED during smoke test. Errors:', errors);
-    });
-    page.on('console', msg => {
-      consoleMsgs.push(`[${msg.type()}] ${msg.text()}`);
     });
 
     // Generate a minimal EPUB
@@ -61,25 +57,6 @@ test.describe('Smoke', () => {
       const el = document.querySelector('.chapter-container');
       return el && el.childElementCount > 0;
     }, { timeout: 15000 });
-
-    // Diagnostic: check state after content loads
-    await page.waitForTimeout(3000);
-    const diag = await page.evaluate(() => {
-      const c = document.querySelector('.chapter-container');
-      const pi = document.querySelector('.page-info');
-      const vp = document.querySelector('.reader-viewport');
-      return {
-        containerChildCount: c ? c.childElementCount : -1,
-        containerInnerHTML: c ? c.innerHTML.substring(0, 300) : 'N/A',
-        pageInfoText: pi ? pi.textContent : 'N/A',
-        pageInfoVisible: pi ? window.getComputedStyle(pi).display : 'N/A',
-        viewportWidth: vp ? vp.offsetWidth : -1,
-        containerScrollWidth: c ? c.scrollWidth : -1,
-      };
-    });
-    console.log('DIAGNOSTIC state:', JSON.stringify(diag));
-    console.log('DIAGNOSTIC page errors:', JSON.stringify(errors));
-    console.log('DIAGNOSTIC console msgs:', JSON.stringify(consoleMsgs.slice(-30)));
 
     // Page info visible
     const pageInfo = page.locator('.page-info');
