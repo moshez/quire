@@ -23,7 +23,7 @@ everything else depends on.
   is derived from content. Remove `ADD_BOOK_RESULT`/`DUP_BAD_EPUB` (no longer
   applicable — same hash = same book by definition).
 
-- [ ] **1.2 Exploded resource storage.** Currently chapter content is stored
+- [x] **1.2 Exploded resource storage.** Currently chapter content is stored
   as compressed blobs keyed by `book_id/path`. Ensure ALL resources (XHTML,
   images, CSS, fonts) are individually exploded into IndexedDB during import
   so they can be served via blob URLs without full-archive decompression.

@@ -1037,9 +1037,6 @@ end
 
 (* ========== Chapter load error messages ========== *)
 
-(* Convert int 0-9 to ASCII digit (48-57) with SAFE_CHAR proof.
- * Clamps to '0' for out-of-range values. Temporary diagnostic helper. *)
-
 (* mk_ch_err builds "err-ch-XYZ" safe text where XYZ are the 3 suffix chars.
  * Used by load_chapter to log a specific error at each failure point. *)
 fn mk_ch_err
