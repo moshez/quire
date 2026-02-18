@@ -3517,7 +3517,7 @@ implement render_library(root_id) = let
            * BOOK_IDENTITY_IS_CONTENT_HASH: this is the only code
            * that sets epub_book_id. Same hash = same book. *)
           val hash_buf = ward_arr_alloc<byte>(64)
-          val () = sha256_file_hash(handle, file_size, hash_buf)
+          val () = sha256_file_hash(handle, _checked_nat(file_size), hash_buf)
           fun _copy_hash {lh:agz}
             (hb: !ward_arr(byte, lh, 64), i: int): void =
             if gte_int_int(i, 64) then ()

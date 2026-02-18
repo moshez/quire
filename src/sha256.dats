@@ -245,7 +245,7 @@ in loop(out, pos, word, 0) end
 
 (* ========== Main hash function ========== *)
 
-implement sha256_file_hash {l} (handle, file_size, out) = let
+implement sha256_file_hash {l}{sz} (handle, file_size, out) = let
   (* Initialize hash state H0..H7 *)
   val h = ward_arr_alloc<int>(8)
   val () = _wi(h, 0, 1779033703, 8)
@@ -264,31 +264,62 @@ implement sha256_file_hash {l} (handle, file_size, out) = let
   val rbuf = ward_arr_alloc<byte>(4096)
 
   (* Process all complete 64-byte blocks from the file.
-   * We read 4096 bytes at a time, then process 64-byte blocks within. *)
-  fun process_file {lr:agz}{lw:agz}{lh:agz}
+   * We read 4096 bytes at a time, then process 64-byte blocks within.
+   *
+   * Termination proof: process_file uses remaining:int(rem) with
+   * termination metric .<rem>. proc_blocks returns HASH_PROGRESS:
+   * - HASH_ADVANCED(c): consumed c > 0 bytes → rem decreases
+   * - HASH_DONE(0): no blocks fit → return immediately
+   * The ATS2 type checker verifies rem' < rem on every recursive call. *)
+
+  (* proc_blocks: process complete 64-byte blocks in a chunk.
+   * Returns (HASH_PROGRESS(c) | int(c)) where c is bytes consumed.
+   * If no complete block fits (chunk < 64), returns (HASH_DONE | 0).
+   * If >= 1 block processed, returns (HASH_ADVANCED | c) with c > 0. *)
+  fun proc_blocks {lr:agz}{lw:agz}{lh:agz}
+    (rbuf: !ward_arr(byte, lr, 4096),
+     w: !ward_arr(int, lw, 64), h: !ward_arr(int, lh, 8),
+     boff: int, chunk_sz: int): [c:nat] (HASH_PROGRESS(c) | int(c)) =
+    if gt_int_int(boff + 64, chunk_sz) then let
+      val boff_n = _checked_nat(boff)
+    in
+      if gt_g1(boff_n, 0) then (HASH_ADVANCED() | boff_n)
+      else (HASH_DONE() | 0)
+    end
+    else let
+      val () = sha256_compress(rbuf, 4096, boff, w, h)
+    in proc_blocks(rbuf, w, h, boff + 64, chunk_sz) end
+
+  fun process_file {lr:agz}{lw:agz}{lh:agz}{rem:nat} .<rem>.
     (handle: int, rbuf: !ward_arr(byte, lr, 4096),
      w: !ward_arr(int, lw, 64), h: !ward_arr(int, lh, 8),
-     file_off: int, file_size: int, total_processed: int): int = let
-    val remaining = file_size - file_off
-  in
-    if lte_int_int(remaining, 0) then total_processed
+     file_off: int, file_size: int, remaining: int(rem),
+     total_processed: int): int =
+    if lte_g1(remaining, 0) then total_processed
     else let
       val chunk = if gt_int_int(remaining, 4096) then 4096 else remaining
       val _rd = ward_file_read(handle, file_off, rbuf, 4096)
-      (* Process complete 64-byte blocks in this chunk *)
-      fun proc_blocks {lr:agz}{lw:agz}{lh:agz}
-        (rbuf: !ward_arr(byte, lr, 4096),
-         w: !ward_arr(int, lw, 64), h: !ward_arr(int, lh, 8),
-         boff: int, chunk_sz: int): int =
-        if gt_int_int(boff + 64, chunk_sz) then boff
-        else let
-          val () = sha256_compress(rbuf, 4096, boff, w, h)
-        in proc_blocks(rbuf, w, h, boff + 64, chunk_sz) end
-      val consumed = proc_blocks(rbuf, w, h, 0, chunk)
-    in process_file(handle, rbuf, w, h, file_off + consumed, file_size, total_processed + consumed) end
-  end
+      val (pf_progress | consumed) = proc_blocks(rbuf, w, h, 0, chunk)
+    in
+      if eq_g1(consumed, 0) then let
+        (* No complete blocks fit → terminate. *)
+        prval HASH_DONE() = pf_progress
+      in total_processed end
+      else let
+        (* consumed > 0 proven by HASH_ADVANCED → rem - c < rem (termination metric).
+         * consumed <= remaining because consumed <= chunk <= remaining.
+         * lte_g1 provides the c <= rem constraint to the solver. *)
+        prval HASH_ADVANCED() = pf_progress
+      in
+        if lte_g1(consumed, remaining) then
+          process_file(handle, rbuf, w, h, file_off + consumed, file_size,
+                       sub_g1(remaining, consumed), total_processed + consumed)
+        else total_processed (* unreachable: consumed <= chunk <= remaining *)
+      end
+    end
 
-  val total_blocks_bytes = process_file(handle, rbuf, w, h, 0, file_size, 0)
+  val file_sz = _checked_nat(file_size)
+  val total_blocks_bytes = process_file(handle, rbuf, w, h, 0, file_size, file_sz, 0)
 
   (* Now handle the final partial block + padding.
    * We need to read whatever remains after the last complete block. *)
