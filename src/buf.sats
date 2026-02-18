@@ -31,6 +31,16 @@ stadef ZIP_NAMEBUF_CAP = 8192
 (* Reader button IDs — 64 slots: [0..31] read btns, [32..63] archive btns *)
 stadef RDR_BTNS_CAP = 256        (* 64 ints x 4 bytes *)
 
+(* EPUB manifest in-memory tables (loaded from IDB) *)
+stadef EPUB_MANIFEST_NAMES_CAP = 16384   (* concatenated entry names *)
+stadef EPUB_MANIFEST_OFF_CAP = 1024      (* 256 entries x 4 bytes *)
+stadef EPUB_MANIFEST_LEN_CAP = 1024      (* 256 entries x 4 bytes *)
+stadef EPUB_SPINE_ENTRY_IDX_CAP = 128    (* 32 entries x 4 bytes *)
+
+(* Deferred image resolution queue *)
+stadef DEFERRED_IMG_NID_CAP = 256        (* 64 entries x 4 bytes *)
+stadef DEFERRED_IMG_EID_CAP = 256        (* 64 entries x 4 bytes *)
+
 (* ========== Buffer Size Constants (dynamic-level) ========== *)
 #define STRING_BUFFER_SIZE 4096
 #define FETCH_BUFFER_SIZE  16384
@@ -46,3 +56,9 @@ stadef RDR_BTNS_CAP = 256        (* 64 ints x 4 bytes *)
 #define ZIP_ENTRIES_SIZE 7168
 #define ZIP_NAMEBUF_SIZE 8192
 #define RDR_BTNS_SIZE 256
+#define EPUB_MANIFEST_NAMES_SIZE 16384
+#define EPUB_MANIFEST_OFF_SIZE 1024
+#define EPUB_MANIFEST_LEN_SIZE 1024
+#define EPUB_SPINE_ENTRY_IDX_SIZE 128
+#define DEFERRED_IMG_NID_SIZE 256
+#define DEFERRED_IMG_EID_SIZE 256

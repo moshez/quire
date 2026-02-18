@@ -98,7 +98,15 @@ datavtype app_state_impl =
       epub_spine_path_offsets = ptr,
       epub_spine_path_lens = ptr,
       epub_spine_path_count = int,
-      epub_spine_path_pos = int
+      epub_spine_path_pos = int,
+      epub_manifest_names = ptr,
+      epub_manifest_offsets = ptr,
+      epub_manifest_lens = ptr,
+      epub_manifest_count = int,
+      epub_spine_entry_idx = ptr,
+      deferred_img_nid = ptr,
+      deferred_img_eid = ptr,
+      deferred_img_count = int
     }
 
 assume app_state = app_state_impl
@@ -235,7 +243,15 @@ implement app_state_init() =
     epub_spine_path_offsets = _alloc_buf(EPUB_SPINE_OFF_SIZE),
     epub_spine_path_lens = _alloc_buf(EPUB_SPINE_LEN_SIZE),
     epub_spine_path_count = 0,
-    epub_spine_path_pos = 0
+    epub_spine_path_pos = 0,
+    epub_manifest_names = _alloc_buf(EPUB_MANIFEST_NAMES_SIZE),
+    epub_manifest_offsets = _alloc_buf(EPUB_MANIFEST_OFF_SIZE),
+    epub_manifest_lens = _alloc_buf(EPUB_MANIFEST_LEN_SIZE),
+    epub_manifest_count = 0,
+    epub_spine_entry_idx = _alloc_buf(EPUB_SPINE_ENTRY_IDX_SIZE),
+    deferred_img_nid = _alloc_buf(DEFERRED_IMG_NID_SIZE),
+    deferred_img_eid = _alloc_buf(DEFERRED_IMG_EID_SIZE),
+    deferred_img_count = 0
   }
 
 implement app_state_fini(st) = let
@@ -254,6 +270,12 @@ implement app_state_fini(st) = let
   val () = _free_buf(r.epub_spine_path_buf, EPUB_SPINE_BUF_SIZE)
   val () = _free_buf(r.epub_spine_path_offsets, EPUB_SPINE_OFF_SIZE)
   val () = _free_buf(r.epub_spine_path_lens, EPUB_SPINE_LEN_SIZE)
+  val () = _free_buf(r.epub_manifest_names, EPUB_MANIFEST_NAMES_SIZE)
+  val () = _free_buf(r.epub_manifest_offsets, EPUB_MANIFEST_OFF_SIZE)
+  val () = _free_buf(r.epub_manifest_lens, EPUB_MANIFEST_LEN_SIZE)
+  val () = _free_buf(r.epub_spine_entry_idx, EPUB_SPINE_ENTRY_IDX_SIZE)
+  val () = _free_buf(r.deferred_img_nid, DEFERRED_IMG_NID_SIZE)
+  val () = _free_buf(r.deferred_img_eid, DEFERRED_IMG_EID_SIZE)
 in end
 
 (* ========== DOM state ========== *)
@@ -1402,6 +1424,161 @@ implement _app_lib_books_match_bid(book_base, bid_len) = let
   prval () = fold@(st)
   val () = app_state_store(st)
 in v end
+
+(* ========== EPUB manifest buffer accessors ========== *)
+
+implement _app_epub_manifest_count() = let val st = app_state_load()
+  val @APP_STATE(r) = st val v = r.epub_manifest_count
+  prval () = fold@(st) val () = app_state_store(st) in v end
+implement _app_set_epub_manifest_count(v) = let val st = app_state_load()
+  val @APP_STATE(r) = st val () = r.epub_manifest_count := v
+  prval () = fold@(st) val () = app_state_store(st) in end
+
+implement _app_epub_manifest_names_get_u8(off) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val v = _arr_get_u8(r.epub_manifest_names, off, EPUB_MANIFEST_NAMES_SIZE)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in v end
+
+implement _app_epub_manifest_names_set_u8(off, v) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val () = _arr_set_u8(r.epub_manifest_names, off, EPUB_MANIFEST_NAMES_SIZE, v)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in end
+
+implement _app_epub_manifest_offsets_get_i32(idx) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val v = _arr_get_i32(r.epub_manifest_offsets, idx, EPUB_MANIFEST_OFF_SIZE)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in v end
+
+implement _app_epub_manifest_offsets_set_i32(idx, v) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val () = _arr_set_i32(r.epub_manifest_offsets, idx, EPUB_MANIFEST_OFF_SIZE, v)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in end
+
+implement _app_epub_manifest_lens_get_i32(idx) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val v = _arr_get_i32(r.epub_manifest_lens, idx, EPUB_MANIFEST_LEN_SIZE)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in v end
+
+implement _app_epub_manifest_lens_set_i32(idx, v) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val () = _arr_set_i32(r.epub_manifest_lens, idx, EPUB_MANIFEST_LEN_SIZE, v)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in end
+
+(* ========== Spine→entry index mapping ========== *)
+
+implement _app_epub_spine_entry_idx_get(i) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val v = _arr_get_i32(r.epub_spine_entry_idx, i, EPUB_SPINE_ENTRY_IDX_SIZE)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in v end
+
+implement _app_epub_spine_entry_idx_set(i, v) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val () = _arr_set_i32(r.epub_spine_entry_idx, i, EPUB_SPINE_ENTRY_IDX_SIZE, v)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in end
+
+(* ========== Deferred image resolution queue ========== *)
+
+implement _app_deferred_img_node_id_get(i) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val v = _arr_get_i32(r.deferred_img_nid, i, DEFERRED_IMG_NID_SIZE)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in v end
+
+implement _app_deferred_img_node_id_set(i, v) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val () = _arr_set_i32(r.deferred_img_nid, i, DEFERRED_IMG_NID_SIZE, v)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in end
+
+implement _app_deferred_img_entry_idx_get(i) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val v = _arr_get_i32(r.deferred_img_eid, i, DEFERRED_IMG_EID_SIZE)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in v end
+
+implement _app_deferred_img_entry_idx_set(i, v) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val () = _arr_set_i32(r.deferred_img_eid, i, DEFERRED_IMG_EID_SIZE, v)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in end
+
+implement _app_deferred_img_count() = let val st = app_state_load()
+  val @APP_STATE(r) = st val v = r.deferred_img_count
+  prval () = fold@(st) val () = app_state_store(st) in v end
+implement _app_set_deferred_img_count(v) = let val st = app_state_load()
+  val @APP_STATE(r) = st val () = r.deferred_img_count := v
+  prval () = fold@(st) val () = app_state_store(st) in end
+
+(* Copy book_id bytes from library_books at book_base to epub_book_id *)
+implement _app_copy_lib_book_id_to_epub(book_base, bid_len) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, lp: ptr, bp: ptr): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, bid_len) then let
+      val v = _arr_get_u8(lp, book_base + i, LIB_BOOKS_SIZE)
+      val () = _arr_set_u8(bp, i, EPUB_BOOKID_SIZE, v)
+    in loop(sub_g1(rem, 1), i + 1, lp, bp) end
+  val () = loop(_checked_nat(bid_len), 0, r.library_books, r.epub_book_id)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in end
+
+(* Compare sbuf[0..sbuf_len-1] against manifest name at (name_off, name_len) *)
+implement _app_manifest_name_match_sbuf(name_off, name_len, sbuf_len) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val result =
+    if neq_int_int(name_len, sbuf_len) then 0
+    else let
+      fun loop {k:nat} .<k>.
+        (rem: int(k), i: int, mp: ptr, sp: ptr): int =
+        if lte_g1(rem, 0) then 1
+        else if lt_int_int(i, name_len) then let
+          val a = _arr_get_u8(mp, name_off + i, EPUB_MANIFEST_NAMES_SIZE)
+          val b = _arr_get_u8(sp, i, STRING_BUFFER_SIZE)
+        in
+          if eq_int_int(a, b) then loop(sub_g1(rem, 1), i + 1, mp, sp)
+          else 0
+        end
+        else 1
+    in loop(_checked_nat(name_len), 0, r.epub_manifest_names, r.string_buffer) end
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in result end
 
 (* ========== Listener table stash ========== *)
 

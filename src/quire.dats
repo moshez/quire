@@ -3147,6 +3147,101 @@ in
   in show_chapter_error(container_id, TEXT_ERR_NOT_FOUND, 17) end
 end
 
+(* ========== IDB-based chapter loading ========== *)
+
+(* Load chapter from IDB — no file handle needed.
+ * Looks up spine→entry index from manifest, builds IDB key,
+ * fetches decompressed XHTML from IDB, parses and renders. *)
+fn load_chapter_from_idb {c,t:nat | c < t}
+  (pf: SPINE_ORDERED(c, t) |
+   chapter_idx: int(c), spine_count: int(t), container_id: int): void = let
+  val entry_idx = _app_epub_spine_entry_idx_get(chapter_idx)
+  val key = epub_build_resource_key(entry_idx)
+  val p = ward_idb_get(key, 20)
+  val saved_cid = container_id
+  (* Copy spine path to sbuf[0..] and extract chapter dir *)
+  val path_len = epub_copy_spine_path(pf | chapter_idx, spine_count, 0)
+  val dir_len = find_chapter_dir_len(path_len)
+in
+  if gt_int_int(dir_len, 0) then let
+    val dl_pos = _checked_arr_size(dir_len)
+    val dir_arr = copy_sbuf_to_arr(dl_pos)
+    val p2 = ward_promise_then<int><int>(p,
+      llam (data_len: int): ward_promise_chained(int) =>
+        if lte_int_int(data_len, 0) then let
+          val () = ward_arr_free<byte>(dir_arr)
+          val () = show_chapter_error(saved_cid, TEXT_ERR_NOT_FOUND, 17)
+        in ward_promise_return<int>(0) end
+        else let
+          val dl = _checked_pos(data_len)
+          val arr = ward_idb_get_result(dl)
+          val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+          val sax_len = ward_xml_parse_html(borrow, dl)
+          val () = ward_arr_drop<byte>(frozen, borrow)
+          val arr = ward_arr_thaw<byte>(frozen)
+          val () = ward_arr_free<byte>(arr)
+        in
+          if gt_int_int(sax_len, 0) then let
+            val sl = _checked_pos(sax_len)
+            val sax_buf = ward_xml_get_result(sl)
+            val dom = ward_dom_init()
+            val s = ward_dom_stream_begin(dom)
+            val s = render_tree_with_images(s, saved_cid, sax_buf, sl,
+              0, dir_arr, dl_pos)
+            val dom = ward_dom_stream_end(s)
+            val s = ward_dom_stream_begin(dom)
+            val s = load_deferred_images(s, sax_buf, sl,
+              0, dir_arr, dl_pos)
+            val dom = ward_dom_stream_end(s)
+            val () = ward_dom_fini(dom)
+            val () = ward_arr_free<byte>(sax_buf)
+            val () = ward_arr_free<byte>(dir_arr)
+            val (pf_disp | ()) = finish_chapter_load(saved_cid)
+            prval MEASURED_AND_TRANSFORMED() = pf_disp
+          in ward_promise_return<int>(1) end
+          else let
+            val () = ward_arr_free<byte>(dir_arr)
+            val () = show_chapter_error(saved_cid, TEXT_ERR_EMPTY, 21)
+          in ward_promise_return<int>(0) end
+        end)
+    val () = ward_promise_discard<int>(p2)
+  in end
+  else let
+    (* No directory prefix *)
+    val p2 = ward_promise_then<int><int>(p,
+      llam (data_len: int): ward_promise_chained(int) =>
+        if lte_int_int(data_len, 0) then let
+          val () = show_chapter_error(saved_cid, TEXT_ERR_NOT_FOUND, 17)
+        in ward_promise_return<int>(0) end
+        else let
+          val dl = _checked_pos(data_len)
+          val arr = ward_idb_get_result(dl)
+          val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+          val sax_len = ward_xml_parse_html(borrow, dl)
+          val () = ward_arr_drop<byte>(frozen, borrow)
+          val arr = ward_arr_thaw<byte>(frozen)
+          val () = ward_arr_free<byte>(arr)
+        in
+          if gt_int_int(sax_len, 0) then let
+            val sl = _checked_pos(sax_len)
+            val sax_buf = ward_xml_get_result(sl)
+            val dom = ward_dom_init()
+            val s = ward_dom_stream_begin(dom)
+            val s = render_tree(s, saved_cid, sax_buf, sl)
+            val dom = ward_dom_stream_end(s)
+            val () = ward_dom_fini(dom)
+            val () = ward_arr_free<byte>(sax_buf)
+            val (pf_disp | ()) = finish_chapter_load(saved_cid)
+            prval MEASURED_AND_TRANSFORMED() = pf_disp
+          in ward_promise_return<int>(1) end
+          else let
+            val () = show_chapter_error(saved_cid, TEXT_ERR_EMPTY, 21)
+          in ward_promise_return<int>(0) end
+        end)
+    val () = ward_promise_discard<int>(p2)
+  in end
+end
+
 (* ========== Chapter navigation ========== *)
 
 (* Navigate forward: advance page within chapter, or load next chapter.
@@ -3181,11 +3276,7 @@ in
         val s = ward_dom_stream_remove_children(s, container_id)
         val dom = ward_dom_stream_end(s)
         val () = ward_dom_fini(dom)
-        val () = load_chapter(pf | reader_get_file_handle(), next_g1, spine_g1, container_id)
-        (* load_chapter handles measure_and_set_pages + update_page_info +
-         * apply_resume_page in all paths (sync stored and async deflated).
-         * Calling apply_page_transform/update_page_info here would race
-         * with async decompression — the DOM is empty at this point. *)
+        val () = load_chapter_from_idb(pf | next_g1, spine_g1, container_id)
       in end
       else ()
     end
@@ -3223,11 +3314,7 @@ in
         val s = ward_dom_stream_remove_children(s, container_id)
         val dom = ward_dom_stream_end(s)
         val () = ward_dom_fini(dom)
-        val () = load_chapter(pf | reader_get_file_handle(), prev_g1, spine_g1, container_id)
-        (* load_chapter handles measure_and_set_pages + update_page_info +
-         * apply_resume_page in all paths (sync stored and async deflated).
-         * Calling apply_page_transform/update_page_info here would race
-         * with async decompression — the DOM is empty at this point. *)
+        val () = load_chapter_from_idb(pf | prev_g1, spine_g1, container_id)
       in end
       else ()
     end
@@ -3575,36 +3662,47 @@ implement render_library(root_id) = let
                 if gt_int_int(ok1, 0) then let
                   val p_opf = epub_read_opf_async(ssh)
                 in ward_promise_then<int><int>(p_opf,
-                  llam (ok2: int): ward_promise_chained(int) => let
-                    val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
-                    val () =
-                      if gt_int_int(ok2, 0) then let
-                        val (pf_result | book_idx) = library_add_book()
-                        (* ADD_BOOK_RESULT proof consumed — construction-site
-                         * guarantee: each return in library_add_book has a
-                         * matching dataprop constructor. Adding a new error
-                         * code without a constructor fails at the cast site. *)
-                        prval _ = pf_result
-                      in
-                        if gte_int_int(book_idx, 0) then let
-                          val () = library_save()
-                          val h = import_mark_success()
-                          val dom = ward_dom_init()
-                          val s = ward_dom_stream_begin(dom)
-                          val s = render_library_with_books(s, ssli, 0)
-                          val dom = ward_dom_stream_end(s)
-                          val () = ward_dom_fini(dom)
-                          val btn_count = library_get_count()
-                          val () = register_card_btns(_checked_nat(btn_count), 0, btn_count, ssr, 0)
-                        in import_finish(h, sslbl, ssspn, sssts) end
-                        else import_finish(
-                          import_mark_failed(log_err_lib_full(), 12),
-                          sslbl, ssspn, sssts)
-                      end
-                      else import_finish(
+                  llam (ok2: int): ward_promise_chained(int) =>
+                    if lte_int_int(ok2, 0) then let
+                      val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
+                      val () = import_finish(
                         import_mark_failed(log_err_opf(), 7),
                         sslbl, ssspn, sssts)
-                  in ward_promise_return<int>(0) end)
+                    in ward_promise_return<int>(0) end
+                    else let
+                      (* OPF parse succeeded — store all resources to IDB *)
+                      val p_store = epub_store_all_resources(ssh)
+                    in ward_promise_then<int><int>(p_store,
+                      llam (_: int): ward_promise_chained(int) => let
+                        (* Store manifest to IDB *)
+                        val p_man = epub_store_manifest()
+                      in ward_promise_then<int><int>(p_man,
+                        llam (_: int): ward_promise_chained(int) => let
+                          val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
+                          val () =
+                            if gt_int_int(ok2, 0) then let
+                              val (pf_result | book_idx) = library_add_book()
+                              prval _ = pf_result
+                            in
+                              if gte_int_int(book_idx, 0) then let
+                                val () = library_save()
+                                val () = ward_file_close(ssh)
+                                val h = import_mark_success()
+                                val dom = ward_dom_init()
+                                val s = ward_dom_stream_begin(dom)
+                                val s = render_library_with_books(s, ssli, 0)
+                                val dom = ward_dom_stream_end(s)
+                                val () = ward_dom_fini(dom)
+                                val btn_count = library_get_count()
+                                val () = register_card_btns(_checked_nat(btn_count), 0, btn_count, ssr, 0)
+                              in import_finish(h, sslbl, ssspn, sssts) end
+                              else import_finish(
+                                import_mark_failed(log_err_lib_full(), 12),
+                                sslbl, ssspn, sssts)
+                            end
+                        in ward_promise_return<int>(0) end)
+                      end)
+                    end)
                 end
                 else let
                   val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
@@ -3626,7 +3724,7 @@ in end
 implement enter_reader(root_id, book_index) = let
   val () = reader_enter(root_id, 0)
   val () = reader_set_book_index(book_index)
-  val file_handle = reader_get_file_handle()
+  val () = epub_set_book_id_from_library(book_index)
 
   val dom = ward_dom_init()
   val s = ward_dom_stream_begin(dom)
@@ -3789,24 +3887,35 @@ implement enter_reader(root_id, book_index) = let
     end
   )
 
-  (* Restore saved chapter/page or start at chapter 0, page 0 *)
-  val spine = epub_get_chapter_count()
-  val spine_g1 = g1ofg0(spine)
-  val saved_ch = library_get_chapter(book_index)
-  val saved_pg = library_get_page(book_index)
-  (* Clamp saved chapter to valid range *)
-  val start_ch = (if lt_int_int(saved_ch, spine) then saved_ch else 0): int
-  val start_ch_nat = _checked_nat(start_ch)
-in
-  if lt1_int_int(start_ch_nat, spine_g1) then let
-    prval pf = SPINE_ENTRY()
-    val () = reader_go_to_chapter(start_ch_nat, spine_g1)
-    (* Set resume page — applied after chapter content loads and is measured *)
-    val () = reader_set_resume_page(saved_pg)
-    val () = load_chapter(pf | file_handle, start_ch_nat, spine_g1, container_id)
-  in end
-  else show_chapter_error(container_id, TEXT_ERR_NO_CHAPTERS, 19)
-end
+  (* Load manifest from IDB, then restore chapter/page position *)
+  val saved_bi = book_index
+  val saved_cid = container_id
+  val p_manifest = epub_load_manifest()
+  val p2 = ward_promise_then<int><int>(p_manifest,
+    llam (ok: int): ward_promise_chained(int) =>
+      if lte_int_int(ok, 0) then let
+        val () = show_chapter_error(saved_cid, TEXT_ERR_NOT_FOUND, 17)
+      in ward_promise_return<int>(0) end
+      else let
+        val spine = epub_get_chapter_count()
+        val spine_g1 = g1ofg0(spine)
+        val saved_ch = library_get_chapter(saved_bi)
+        val saved_pg = library_get_page(saved_bi)
+        val start_ch: int = if lt_int_int(saved_ch, spine) then saved_ch else 0
+        val start_ch_nat = _checked_nat(start_ch)
+      in
+        if lt1_int_int(start_ch_nat, spine_g1) then let
+          prval pf = SPINE_ENTRY()
+          val () = reader_go_to_chapter(start_ch_nat, spine_g1)
+          val () = reader_set_resume_page(saved_pg)
+          val () = load_chapter_from_idb(pf | start_ch_nat, spine_g1, saved_cid)
+        in ward_promise_return<int>(1) end
+        else let
+          val () = show_chapter_error(saved_cid, TEXT_ERR_NO_CHAPTERS, 19)
+        in ward_promise_return<int>(0) end
+      end)
+  val () = ward_promise_discard<int>(p2)
+in end
 
 (* ========== Entry point ========== *)
 

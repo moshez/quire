@@ -1301,4 +1301,72 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 10000 });
   });
 
+  test('book content persists across page reload', async ({ page }) => {
+    // Import a book, open it, verify chapter content renders,
+    // reload the page, re-open the same book (now loaded from IDB),
+    // and verify the same chapter content appears.
+    const epubBuffer = createEpub({
+      title: 'Content Persist Test',
+      author: 'IDB Author',
+      chapters: 2,
+      paragraphsPerChapter: 3,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'content-persist.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await screenshot(page, 'content-persist-01-imported');
+
+    // Open book and verify chapter renders
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    const container = page.locator('.chapter-container').first();
+    const textBefore = await container.evaluate(el => el.textContent);
+    expect(textBefore.length).toBeGreaterThan(0);
+    await screenshot(page, 'content-persist-02-reader');
+
+    // Navigate back to library
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+
+    // Wait for all IDB writes to settle
+    await page.waitForTimeout(2000);
+
+    // Reload the page
+    await page.reload();
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+    await screenshot(page, 'content-persist-03-after-reload');
+
+    // Re-open the same book — should load from IDB
+    const readBtn2 = page.locator('.read-btn');
+    await readBtn2.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    const container2 = page.locator('.chapter-container').first();
+    const textAfter = await container2.evaluate(el => el.textContent);
+    expect(textAfter.length).toBeGreaterThan(0);
+    expect(textAfter).toEqual(textBefore);
+    await screenshot(page, 'content-persist-04-after-reload-reader');
+  });
+
 });

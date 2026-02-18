@@ -321,6 +321,34 @@ fun _app_copy_sbuf_to_lib_books(dst_off: int, src_off: int, len: int): void
 fun _app_copy_lib_books_to_sbuf(src_off: int, dst_off: int, len: int): void
 fun _app_lib_books_match_bid(book_base: int, bid_len: int): int
 
+(* EPUB manifest in-memory tables (loaded from IDB) *)
+fun _app_epub_manifest_count(): int
+fun _app_set_epub_manifest_count(v: int): void
+fun _app_epub_manifest_names_get_u8(off: int): int
+fun _app_epub_manifest_names_set_u8(off: int, v: int): void
+fun _app_epub_manifest_offsets_get_i32(idx: int): int
+fun _app_epub_manifest_offsets_set_i32(idx: int, v: int): void
+fun _app_epub_manifest_lens_get_i32(idx: int): int
+fun _app_epub_manifest_lens_set_i32(idx: int, v: int): void
+
+(* Spine→entry index mapping *)
+fun _app_epub_spine_entry_idx_get(i: int): int
+fun _app_epub_spine_entry_idx_set(i: int, v: int): void
+
+(* Deferred image resolution queue *)
+fun _app_deferred_img_node_id_get(i: int): int
+fun _app_deferred_img_node_id_set(i: int, v: int): void
+fun _app_deferred_img_entry_idx_get(i: int): int
+fun _app_deferred_img_entry_idx_set(i: int, v: int): void
+fun _app_deferred_img_count(): int
+fun _app_set_deferred_img_count(v: int): void
+
+(* Copy book_id bytes from library books at book_base to epub_book_id *)
+fun _app_copy_lib_book_id_to_epub(book_base: int, bid_len: int): void
+
+(* Compare sbuf[0..len-1] against manifest name at (off, nlen) *)
+fun _app_manifest_name_match_sbuf(name_off: int, name_len: int, sbuf_len: int): int
+
 (* ZIP accessors *)
 fun _zip_entry_file_handle(i: int): int
 fun _zip_entry_name_offset(i: int): int
