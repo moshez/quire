@@ -159,42 +159,43 @@ fn sha256_compress {ld:agz}{nd:pos}{lw:agz}{lh:agz}
    w: !ward_arr(int, lw, 64), h: !ward_arr(int, lh, 8)): void = let
 
   (* Read 16 big-endian 32-bit words from the block *)
-  fun read_words {ld:agz}{nd:pos}{lw:agz}
+  fun read_words {ld:agz}{nd:pos}{lw:agz}{k:nat | k <= 16} .<16-k>.
     (data: !ward_arr(byte, ld, nd), w: !ward_arr(int, lw, 64),
-     i: int, boff: int, dcap: int nd): void =
-    if gte_int_int(i, 16) then ()
+     i: int(k), boff: int, dcap: int nd): void =
+    if gte_g1(i, 16) then ()
     else let
-      val off = boff + i * 4
+      val off = boff + _g0(i) * 4
       val b0 = byte2int0(ward_arr_get<byte>(data, _ward_idx(off, dcap)))
       val b1 = byte2int0(ward_arr_get<byte>(data, _ward_idx(off + 1, dcap)))
       val b2 = byte2int0(ward_arr_get<byte>(data, _ward_idx(off + 2, dcap)))
       val b3 = byte2int0(ward_arr_get<byte>(data, _ward_idx(off + 3, dcap)))
       val word = bor_int_int(bor_int_int(bsl_int_int(b0, 24), bsl_int_int(b1, 16)),
                              bor_int_int(bsl_int_int(b2, 8), b3))
-      val () = _wi(w, i, word, 64)
-    in read_words(data, w, i + 1, boff, dcap) end
+      val () = _wi(w, _g0(i), word, 64)
+    in read_words(data, w, add_g1(i, 1), boff, dcap) end
 
   val () = read_words(data, w, 0, block_off, data_cap)
 
   (* Expand to 64 message schedule words *)
-  fun expand {lw:agz}
-    (w: !ward_arr(int, lw, 64), i: int): void =
-    if gte_int_int(i, 64) then ()
+  fun expand {lw:agz}{k:int | k >= 16; k <= 64} .<64-k>.
+    (w: !ward_arr(int, lw, 64), i: int(k)): void =
+    if gte_g1(i, 64) then ()
     else let
-      val s0 = sha256_lsigma0(_ai(w, i - 15, 64))
-      val s1 = sha256_lsigma1(_ai(w, i - 2, 64))
-      val v = mask32(mask32(_ai(w, i - 16, 64) + s0) + mask32(_ai(w, i - 7, 64) + s1))
-      val () = _wi(w, i, v, 64)
-    in expand(w, i + 1) end
+      val i0 = _g0(i)
+      val s0 = sha256_lsigma0(_ai(w, i0 - 15, 64))
+      val s1 = sha256_lsigma1(_ai(w, i0 - 2, 64))
+      val v = mask32(mask32(_ai(w, i0 - 16, 64) + s0) + mask32(_ai(w, i0 - 7, 64) + s1))
+      val () = _wi(w, i0, v, 64)
+    in expand(w, add_g1(i, 1)) end
 
   val () = expand(w, 16)
 
   (* Run 64 compression rounds *)
-  fun rounds {lw:agz}{lh:agz}
+  fun rounds {lw:agz}{lh:agz}{k:nat | k <= 64} .<64-k>.
     (w: !ward_arr(int, lw, 64), h: !ward_arr(int, lh, 8),
-     i: int, a: int, b: int, c: int, d: int,
+     i: int(k), a: int, b: int, c: int, d: int,
      e: int, f: int, g: int, hh: int): void =
-    if gte_int_int(i, 64) then let
+    if gte_g1(i, 64) then let
       (* Add compressed values back to H *)
       val () = _wi(h, 0, mask32(_ai(h, 0, 8) + a), 8)
       val () = _wi(h, 1, mask32(_ai(h, 1, 8) + b), 8)
@@ -208,11 +209,12 @@ fn sha256_compress {ld:agz}{nd:pos}{lw:agz}{lh:agz}
     else let
       val s1 = sha256_sigma1(e)
       val ch = sha256_ch(e, f, g)
-      val temp1 = mask32(mask32(hh + s1) + mask32(ch + mask32(sha256_k(i) + _ai(w, i, 64))))
+      val i0 = _g0(i)
+      val temp1 = mask32(mask32(hh + s1) + mask32(ch + mask32(sha256_k(i0) + _ai(w, i0, 64))))
       val s0 = sha256_sigma0(a)
       val mj = sha256_maj(a, b, c)
       val temp2 = mask32(s0 + mj)
-    in rounds(w, h, i + 1,
+    in rounds(w, h, add_g1(i, 1),
         mask32(temp1 + temp2), a, b, c,
         mask32(d + temp1), e, f, g) end
 
@@ -232,15 +234,16 @@ fn hex_digit(v: int): int =
 (* Write 8 hex chars for one 32-bit word to output at position pos *)
 fn write_hex_word {lo:agz}
   (out: !ward_arr(byte, lo, 64), pos: int, word: int): void = let
-  fun loop {lo:agz}
-    (out: !ward_arr(byte, lo, 64), p: int, w: int, i: int): void =
-    if gte_int_int(i, 8) then ()
+  fun loop {lo:agz}{k:nat | k <= 8} .<8-k>.
+    (out: !ward_arr(byte, lo, 64), p: int, w: int, i: int(k)): void =
+    if gte_g1(i, 8) then ()
     else let
-      val shift = mul_int_int(sub_int_int(7, i), 4)
+      val i0 = _g0(i)
+      val shift = mul_int_int(sub_int_int(7, i0), 4)
       val nibble = band_int_int(ushr(w, shift), 15)
-      val () = ward_arr_set<byte>(out, _ward_idx(p + i, 64),
+      val () = ward_arr_set<byte>(out, _ward_idx(p + i0, 64),
         ward_int2byte(_checked_byte(hex_digit(nibble))))
-    in loop(out, p, w, i + 1) end
+    in loop(out, p, w, add_g1(i, 1)) end
 in loop(out, pos, word, 0) end
 
 (* ========== Main hash function ========== *)
@@ -276,19 +279,16 @@ implement sha256_file_hash {l}{sz} (handle, file_size, out) = let
    * Returns (HASH_PROGRESS(c) | int(c)) where c is bytes consumed.
    * If no complete block fits (chunk < 64), returns (HASH_DONE | 0).
    * If >= 1 block processed, returns (HASH_ADVANCED | c) with c > 0. *)
-  fun proc_blocks {lr:agz}{lw:agz}{lh:agz}
+  fun proc_blocks {lr:agz}{lw:agz}{lh:agz}{b:nat}{cs:nat | b <= cs} .<cs-b>.
     (rbuf: !ward_arr(byte, lr, 4096),
      w: !ward_arr(int, lw, 64), h: !ward_arr(int, lh, 8),
-     boff: int, chunk_sz: int): [c:nat] (HASH_PROGRESS(c) | int(c)) =
-    if gt_int_int(boff + 64, chunk_sz) then let
-      val boff_n = _checked_nat(boff)
-    in
-      if gt_g1(boff_n, 0) then (HASH_ADVANCED() | boff_n)
+     boff: int(b), chunk_sz: int(cs)): [c:nat] (HASH_PROGRESS(c) | int(c)) =
+    if gt_g1(add_g1(boff, 64), chunk_sz) then
+      if gt_g1(boff, 0) then (HASH_ADVANCED() | boff)
       else (HASH_DONE() | 0)
-    end
     else let
-      val () = sha256_compress(rbuf, 4096, boff, w, h)
-    in proc_blocks(rbuf, w, h, boff + 64, chunk_sz) end
+      val () = sha256_compress(rbuf, 4096, _g0(boff), w, h)
+    in proc_blocks(rbuf, w, h, add_g1(boff, 64), chunk_sz) end
 
   fun process_file {lr:agz}{lw:agz}{lh:agz}{rem:nat} .<rem>.
     (handle: int, rbuf: !ward_arr(byte, lr, 4096),
@@ -297,7 +297,8 @@ implement sha256_file_hash {l}{sz} (handle, file_size, out) = let
      total_processed: int): int =
     if lte_g1(remaining, 0) then total_processed
     else let
-      val chunk = if gt_int_int(remaining, 4096) then 4096 else remaining
+      val chunk = _checked_nat(
+        if gt_int_int(_g0(remaining), 4096) then 4096 else _g0(remaining))
       val _rd = ward_file_read(handle, file_off, rbuf, 4096)
       val (pf_progress | consumed) = proc_blocks(rbuf, w, h, 0, chunk)
     in
@@ -329,29 +330,30 @@ implement sha256_file_hash {l}{sz} (handle, file_size, out) = let
   val pbuf = ward_arr_alloc<byte>(128)
 
   (* Zero the padding buffer *)
-  fun zero_pbuf {lp:agz}
-    (pbuf: !ward_arr(byte, lp, 128), i: int): void =
-    if gte_int_int(i, 128) then ()
+  fun zero_pbuf {lp:agz}{k:nat | k <= 128} .<128-k>.
+    (pbuf: !ward_arr(byte, lp, 128), i: int(k)): void =
+    if gte_g1(i, 128) then ()
     else let
-      val () = ward_arr_set<byte>(pbuf, _ward_idx(i, 128),
+      val () = ward_arr_set<byte>(pbuf, _ward_idx(_g0(i), 128),
         ward_int2byte(_checked_byte(0)))
-    in zero_pbuf(pbuf, i + 1) end
+    in zero_pbuf(pbuf, add_g1(i, 1)) end
   val () = zero_pbuf(pbuf, 0)
 
   (* Copy tail bytes from file to pbuf, then append 0x80 *)
-  fun copy_tail {lr:agz}{lp:agz}
+  fun copy_tail {lr:agz}{lp:agz}{k:nat}{n:nat | k <= n} .<n-k>.
     (rbuf: !ward_arr(byte, lr, 4096), pbuf: !ward_arr(byte, lp, 128),
-     i: int, n: int): void =
-    if gte_int_int(i, n) then ()
+     i: int(k), n: int(n)): void =
+    if gte_g1(i, n) then ()
     else let
-      val b = byte2int0(ward_arr_get<byte>(rbuf, _ward_idx(i, 4096)))
-      val () = ward_arr_set<byte>(pbuf, _ward_idx(i, 128),
+      val i0 = _g0(i)
+      val b = byte2int0(ward_arr_get<byte>(rbuf, _ward_idx(i0, 4096)))
+      val () = ward_arr_set<byte>(pbuf, _ward_idx(i0, 128),
         ward_int2byte(_checked_byte(band_int_int(b, 255))))
-    in copy_tail(rbuf, pbuf, i + 1, n) end
+    in copy_tail(rbuf, pbuf, add_g1(i, 1), n) end
 
   (* Always read — harmless if tail_len is 0 since copy_tail stops at 0 *)
   val _rd = ward_file_read(handle, total_blocks_bytes, rbuf, 4096)
-  val tl: int = if gt_int_int(tail_len, 64) then 64 else tail_len
+  val tl = _checked_nat(if gt_int_int(tail_len, 64) then 64 else tail_len)
   val () = copy_tail(rbuf, pbuf, 0, tl)
 
   (* Append 0x80 byte *)
@@ -396,23 +398,24 @@ implement sha256_file_hash {l}{sz} (handle, file_size, out) = let
   val () = _wb_len(pbuf, bit_len_pos, high_bits, low_bits)
 
   (* Process padding blocks: 1 or 2 blocks depending on tail length *)
-  val nblocks: int = if need_two then 2 else 1
-  fun proc_pad {lp:agz}{lw:agz}{lh:agz}
+  val nblocks = _checked_nat(if need_two then 2 else 1)
+  fun proc_pad {lp:agz}{lw:agz}{lh:agz}{k:nat}{n:nat | k <= n} .<n-k>.
     (pb: !ward_arr(byte, lp, 128), ww: !ward_arr(int, lw, 64),
-     hh: !ward_arr(int, lh, 8), i: int, n: int): void =
-    if gte_int_int(i, n) then ()
+     hh: !ward_arr(int, lh, 8), i: int(k), n: int(n)): void =
+    if gte_g1(i, n) then ()
     else let
-      val () = sha256_compress(pb, 128, mul_int_int(i, 64), ww, hh)
-    in proc_pad(pb, ww, hh, add_int_int(i, 1), n) end
+      val () = sha256_compress(pb, 128, mul_int_int(_g0(i), 64), ww, hh)
+    in proc_pad(pb, ww, hh, add_g1(i, 1), n) end
   val () = proc_pad(pbuf, w, h, 0, nblocks)
 
   (* Write hex output: 8 words * 8 hex chars = 64 chars *)
-  fun write_hex {lo:agz}{lh:agz}
-    (out: !ward_arr(byte, lo, 64), h: !ward_arr(int, lh, 8), i: int): void =
-    if gte_int_int(i, 8) then ()
+  fun write_hex {lo:agz}{lh:agz}{k:nat | k <= 8} .<8-k>.
+    (out: !ward_arr(byte, lo, 64), h: !ward_arr(int, lh, 8), i: int(k)): void =
+    if gte_g1(i, 8) then ()
     else let
-      val () = write_hex_word(out, i * 8, _ai(h, i, 8))
-    in write_hex(out, h, i + 1) end
+      val i0 = _g0(i)
+      val () = write_hex_word(out, i0 * 8, _ai(h, i0, 8))
+    in write_hex(out, h, add_g1(i, 1)) end
 
   val () = write_hex(out, h, 0)
 

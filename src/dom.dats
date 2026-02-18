@@ -1029,18 +1029,21 @@ end
  * is wrapped in <span> rather than calling set_text on parent. *)
 fn is_whitespace_only {lb:agz}{n:pos}
   (tree: !ward_arr(byte, lb, n), start: int, text_len: int, tlen: int n): bool = let
-  fun check(tree: !ward_arr(byte, lb, n), pos: int, endp: int, tlen: int n): bool =
-    if pos >= endp then true
+  fun check {k:nat} .<k>.
+    (tree: !ward_arr(byte, lb, n), pos: int, endp: int, tlen: int n, rem: int(k)): bool =
+    if lte_g1(rem, 0) then true
+    else if pos >= endp then true
     else let
       val b = ward_arr_byte(tree, pos, tlen)
+      val r1 = sub_g1(rem, 1)
     in
-      if b = 32 then check(tree, pos + 1, endp, tlen)        (* space *)
-      else if b = 10 then check(tree, pos + 1, endp, tlen)   (* newline *)
-      else if b = 9 then check(tree, pos + 1, endp, tlen)    (* tab *)
-      else if b = 13 then check(tree, pos + 1, endp, tlen)   (* CR *)
+      if b = 32 then check(tree, pos + 1, endp, tlen, r1)        (* space *)
+      else if b = 10 then check(tree, pos + 1, endp, tlen, r1)   (* newline *)
+      else if b = 9 then check(tree, pos + 1, endp, tlen, r1)    (* tab *)
+      else if b = 13 then check(tree, pos + 1, endp, tlen, r1)   (* CR *)
       else false
     end
-in check(tree, start, start + text_len, tlen) end
+in check(tree, start, start + text_len, tlen, _checked_nat(text_len)) end
 
 implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
 
@@ -1760,16 +1763,18 @@ end
  * Iterates the deferred image queue, resolves each image path,
  * looks up the ZIP entry, and sums compressed_size for stored entries.
  * Adds 8 bytes per image for arena bump-allocator alignment. *)
-fun compute_arena_size {lb:agz}{n:pos}{ld:agz}{nd:pos}
+fun compute_arena_size {lb:agz}{n:pos}{ld:agz}{nd:pos}{k:nat} .<k>.
   (tree: !ward_arr(byte, lb, n), tlen: int n,
    cdir: !ward_arr(byte, ld, nd), cdlen: int nd,
-   i: int, total: int, acc: int): int =
-  if i >= total then acc
+   i: int, total: int, acc: int, rem: int(k)): int =
+  if lte_g1(rem, 0) then acc
+  else if i >= total then acc
   else let
     val src_off = _deferred_image_get_src_off_impl(i)
     val src_len = _deferred_image_get_src_len_impl(i)
     val path_len = resolve_img_src(tree, tlen, src_off, src_len, cdir, cdlen)
     val entry_idx = zip_find_entry(path_len)
+    val r1 = sub_g1(rem, 1)
   in
     if entry_idx >= 0 then let
       var entry: zip_entry
@@ -1781,14 +1786,14 @@ fun compute_arena_size {lb:agz}{n:pos}{ld:agz}{nd:pos}
         in
           if sz > 0 then
             compute_arena_size(tree, tlen, cdir, cdlen,
-              i + 1, total, acc + sz + 8)
+              i + 1, total, acc + sz + 8, r1)
           else
-            compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc)
+            compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc, r1)
         end
-        else compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc)
-      else compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc)
+        else compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc, r1)
+      else compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc, r1)
     end
-    else compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc)
+    else compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc, r1)
   end
 
 implement load_deferred_images
@@ -1798,7 +1803,7 @@ implement load_deferred_images
 
   (* Pass 1: compute total arena size *)
   val arena_size = compute_arena_size(tree, tree_len,
-    chapter_dir, chapter_dir_len, 0, count, 0)
+    chapter_dir, chapter_dir_len, 0, count, 0, _checked_nat(count))
   val arena_size_g1 = g1ofg0(arena_size)
 in
   if arena_size_g1 <= 0 then stream (* no stored images to load *)

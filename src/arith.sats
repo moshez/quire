@@ -53,6 +53,12 @@ fun gte_g1 {a,b:int}(a: int(a), b: int(b)): bool(a >= b) = "mac#atspre_g0int_gte
 (* Dependent bitwise AND — proves result <= mask *)
 fun band_g1 {a,b:nat}(a: int(a), b: int(b)): [r:nat | r <= b] int(r) = "mac#atspre_g0int_land_int"
 
+(* ========== Type coercion ========== *)
+(* Drop static index — g1int to g0int, zero-cost identity cast.
+ * Used when a loop variable is dependent (for termination metric)
+ * but body arithmetic uses g0int operators. *)
+castfn _g0 {n:int} (x: int(n)): int
+
 (* ========== Runtime-checked castfns ========== *)
 castfn _checked_pos(x: int): [n:pos] int n
 castfn _checked_nat(x: int): [n:nat] int n

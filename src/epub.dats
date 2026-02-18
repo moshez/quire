@@ -355,11 +355,14 @@ in
         val () = _copy_arr_to_opf(arr, pos, path_len, len)
         val () = _app_set_epub_opf_path_len(path_len)
         (* Extract directory prefix up to and including last '/' *)
-        fun find_last_slash(i: int, last: int, plen: int): int =
-          if gte_int_int(i, plen) then last
-          else if eq_int_int(_app_epub_opf_path_get_u8(i), 47) then find_last_slash(i + 1, i, plen)
-          else find_last_slash(i + 1, last, plen)
-        val last_slash = find_last_slash(0, 0 - 1, path_len)
+        val pl = _checked_nat(path_len)
+        fun find_last_slash {k:nat}{pl:nat | k <= pl} .<pl-k>.
+          (i: int(k), last: int, plen: int(pl)): int =
+          if gte_g1(i, plen) then last
+          else if eq_int_int(_app_epub_opf_path_get_u8(_g0(i)), 47)
+            then find_last_slash(add_g1(i, 1), _g0(i), plen)
+          else find_last_slash(add_g1(i, 1), last, plen)
+        val last_slash = find_last_slash(0, 0 - 1, pl)
       in
         if gte_int_int(last_slash, 0) then
           _app_set_epub_opf_dir_len(last_slash + 1)
