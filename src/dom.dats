@@ -941,8 +941,8 @@ implement lookup_tag{lb}{n}(tree, tlen, offset, name_len) = let
   fun cmp {k:nat} .<k>.
     (rem: int(k), tree: !ward_arr(byte, lb, n), tlen: int n,
      off: int, idx: int, nlen: int, j: int): bool =
-    if lte_g1(rem, 0) then false
-    else if j >= nlen then true
+    if j >= nlen then true
+    else if lte_g1(rem, 0) then false
     else if ward_arr_byte(tree, off + j, tlen) = _tag_table_byte(idx, j)
     then cmp(sub_g1(rem, 1), tree, tlen, off, idx, nlen, j + 1)
     else false
@@ -961,8 +961,8 @@ implement lookup_attr{lb}{n}(tree, tlen, offset, name_len) = let
   fun cmp {k:nat} .<k>.
     (rem: int(k), tree: !ward_arr(byte, lb, n), tlen: int n,
      off: int, idx: int, nlen: int, j: int): bool =
-    if lte_g1(rem, 0) then false
-    else if j >= nlen then true
+    if j >= nlen then true
+    else if lte_g1(rem, 0) then false
     else if ward_arr_byte(tree, off + j, tlen) = _attr_table_byte(idx, j)
     then cmp(sub_g1(rem, 1), tree, tlen, off, idx, nlen, j + 1)
     else false
