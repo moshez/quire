@@ -1190,12 +1190,14 @@ in end
 implement _app_copy_fbuf_to_epub_title(src_off, len) = let
   val st = app_state_load()
   val @APP_STATE(r) = st
-  fun loop(i: int, fp: ptr, tp: ptr): void =
-    if lt_int_int(i, len) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, fp: ptr, tp: ptr): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, len) then let
       val v = _arr_get_u8(fp, src_off + i, FETCH_BUFFER_SIZE)
       val () = _arr_set_u8(tp, i, EPUB_TITLE_SIZE, v)
-    in loop(i + 1, fp, tp) end
-  val () = loop(0, r.fetch_buffer, r.epub_title)
+    in loop(sub_g1(rem, 1), i + 1, fp, tp) end
+  val () = loop(_checked_nat(len), 0, r.fetch_buffer, r.epub_title)
   prval () = fold@(st)
   val () = app_state_store(st)
 in end
@@ -1203,12 +1205,14 @@ in end
 implement _app_copy_fbuf_to_epub_author(src_off, len) = let
   val st = app_state_load()
   val @APP_STATE(r) = st
-  fun loop(i: int, fp: ptr, ap: ptr): void =
-    if lt_int_int(i, len) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, fp: ptr, ap: ptr): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, len) then let
       val v = _arr_get_u8(fp, src_off + i, FETCH_BUFFER_SIZE)
       val () = _arr_set_u8(ap, i, EPUB_AUTHOR_SIZE, v)
-    in loop(i + 1, fp, ap) end
-  val () = loop(0, r.fetch_buffer, r.epub_author)
+    in loop(sub_g1(rem, 1), i + 1, fp, ap) end
+  val () = loop(_checked_nat(len), 0, r.fetch_buffer, r.epub_author)
   prval () = fold@(st)
   val () = app_state_store(st)
 in end
@@ -1216,12 +1220,14 @@ in end
 implement _app_copy_fbuf_to_epub_book_id(src_off, len) = let
   val st = app_state_load()
   val @APP_STATE(r) = st
-  fun loop(i: int, fp: ptr, bp: ptr): void =
-    if lt_int_int(i, len) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, fp: ptr, bp: ptr): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, len) then let
       val v = _arr_get_u8(fp, src_off + i, FETCH_BUFFER_SIZE)
       val () = _arr_set_u8(bp, i, EPUB_BOOKID_SIZE, v)
-    in loop(i + 1, fp, bp) end
-  val () = loop(0, r.fetch_buffer, r.epub_book_id)
+    in loop(sub_g1(rem, 1), i + 1, fp, bp) end
+  val () = loop(_checked_nat(len), 0, r.fetch_buffer, r.epub_book_id)
   prval () = fold@(st)
   val () = app_state_store(st)
 in end
@@ -1229,12 +1235,14 @@ in end
 implement _app_copy_fbuf_to_epub_opf_path(src_off, len) = let
   val st = app_state_load()
   val @APP_STATE(r) = st
-  fun loop(i: int, fp: ptr, ofp: ptr): void =
-    if lt_int_int(i, len) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, fp: ptr, ofp: ptr): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, len) then let
       val v = _arr_get_u8(fp, src_off + i, FETCH_BUFFER_SIZE)
       val () = _arr_set_u8(ofp, i, EPUB_OPF_SIZE, v)
-    in loop(i + 1, fp, ofp) end
-  val () = loop(0, r.fetch_buffer, r.epub_opf_path)
+    in loop(sub_g1(rem, 1), i + 1, fp, ofp) end
+  val () = loop(_checked_nat(len), 0, r.fetch_buffer, r.epub_opf_path)
   prval () = fold@(st)
   val () = app_state_store(st)
 in end
@@ -1242,12 +1250,14 @@ in end
 implement _app_copy_fbuf_to_epub_spine_buf(src_off, dst_off, len) = let
   val st = app_state_load()
   val @APP_STATE(r) = st
-  fun loop(i: int, fp: ptr, sp: ptr): void =
-    if lt_int_int(i, len) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, fp: ptr, sp: ptr): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, len) then let
       val v = _arr_get_u8(fp, src_off + i, FETCH_BUFFER_SIZE)
       val () = _arr_set_u8(sp, dst_off + i, EPUB_SPINE_BUF_SIZE, v)
-    in loop(i + 1, fp, sp) end
-  val () = loop(0, r.fetch_buffer, r.epub_spine_path_buf)
+    in loop(sub_g1(rem, 1), i + 1, fp, sp) end
+  val () = loop(_checked_nat(len), 0, r.fetch_buffer, r.epub_spine_path_buf)
   prval () = fold@(st)
   val () = app_state_store(st)
 in end
@@ -1255,12 +1265,14 @@ in end
 implement _app_copy_opf_path_to_epub_spine_buf(dst_off, len) = let
   val st = app_state_load()
   val @APP_STATE(r) = st
-  fun loop(i: int, opp: ptr, sp: ptr): void =
-    if lt_int_int(i, len) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, opp: ptr, sp: ptr): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, len) then let
       val v = _arr_get_u8(opp, i, EPUB_OPF_SIZE)
       val () = _arr_set_u8(sp, dst_off + i, EPUB_SPINE_BUF_SIZE, v)
-    in loop(i + 1, opp, sp) end
-  val () = loop(0, r.epub_opf_path, r.epub_spine_path_buf)
+    in loop(sub_g1(rem, 1), i + 1, opp, sp) end
+  val () = loop(_checked_nat(len), 0, r.epub_opf_path, r.epub_spine_path_buf)
   prval () = fold@(st)
   val () = app_state_store(st)
 in end
@@ -1268,12 +1280,14 @@ in end
 implement _app_copy_epub_title_to_sbuf(dst_off, len) = let
   val st = app_state_load()
   val @APP_STATE(r) = st
-  fun loop(i: int, tp: ptr, sp: ptr): void =
-    if lt_int_int(i, len) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, tp: ptr, sp: ptr): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, len) then let
       val v = _arr_get_u8(tp, i, EPUB_TITLE_SIZE)
       val () = _arr_set_u8(sp, dst_off + i, STRING_BUFFER_SIZE, v)
-    in loop(i + 1, tp, sp) end
-  val () = loop(0, r.epub_title, r.string_buffer)
+    in loop(sub_g1(rem, 1), i + 1, tp, sp) end
+  val () = loop(_checked_nat(len), 0, r.epub_title, r.string_buffer)
   prval () = fold@(st)
   val () = app_state_store(st)
 in end
@@ -1281,12 +1295,14 @@ in end
 implement _app_copy_epub_author_to_sbuf(dst_off, len) = let
   val st = app_state_load()
   val @APP_STATE(r) = st
-  fun loop(i: int, ap: ptr, sp: ptr): void =
-    if lt_int_int(i, len) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, ap: ptr, sp: ptr): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, len) then let
       val v = _arr_get_u8(ap, i, EPUB_AUTHOR_SIZE)
       val () = _arr_set_u8(sp, dst_off + i, STRING_BUFFER_SIZE, v)
-    in loop(i + 1, ap, sp) end
-  val () = loop(0, r.epub_author, r.string_buffer)
+    in loop(sub_g1(rem, 1), i + 1, ap, sp) end
+  val () = loop(_checked_nat(len), 0, r.epub_author, r.string_buffer)
   prval () = fold@(st)
   val () = app_state_store(st)
 in end
@@ -1294,12 +1310,14 @@ in end
 implement _app_copy_epub_book_id_to_sbuf(dst_off, len) = let
   val st = app_state_load()
   val @APP_STATE(r) = st
-  fun loop(i: int, bp: ptr, sp: ptr): void =
-    if lt_int_int(i, len) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, bp: ptr, sp: ptr): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, len) then let
       val v = _arr_get_u8(bp, i, EPUB_BOOKID_SIZE)
       val () = _arr_set_u8(sp, dst_off + i, STRING_BUFFER_SIZE, v)
-    in loop(i + 1, bp, sp) end
-  val () = loop(0, r.epub_book_id, r.string_buffer)
+    in loop(sub_g1(rem, 1), i + 1, bp, sp) end
+  val () = loop(_checked_nat(len), 0, r.epub_book_id, r.string_buffer)
   prval () = fold@(st)
   val () = app_state_store(st)
 in end
@@ -1307,12 +1325,14 @@ in end
 implement _app_copy_epub_opf_path_to_sbuf(dst_off, len) = let
   val st = app_state_load()
   val @APP_STATE(r) = st
-  fun loop(i: int, opp: ptr, sp: ptr): void =
-    if lt_int_int(i, len) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, opp: ptr, sp: ptr): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, len) then let
       val v = _arr_get_u8(opp, i, EPUB_OPF_SIZE)
       val () = _arr_set_u8(sp, dst_off + i, STRING_BUFFER_SIZE, v)
-    in loop(i + 1, opp, sp) end
-  val () = loop(0, r.epub_opf_path, r.string_buffer)
+    in loop(sub_g1(rem, 1), i + 1, opp, sp) end
+  val () = loop(_checked_nat(len), 0, r.epub_opf_path, r.string_buffer)
   prval () = fold@(st)
   val () = app_state_store(st)
 in end
@@ -1320,12 +1340,14 @@ in end
 implement _app_copy_epub_spine_buf_to_sbuf(src_off, dst_off, len) = let
   val st = app_state_load()
   val @APP_STATE(r) = st
-  fun loop(i: int, ep: ptr, sp: ptr): void =
-    if lt_int_int(i, len) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, ep: ptr, sp: ptr): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, len) then let
       val v = _arr_get_u8(ep, src_off + i, EPUB_SPINE_BUF_SIZE)
       val () = _arr_set_u8(sp, dst_off + i, STRING_BUFFER_SIZE, v)
-    in loop(i + 1, ep, sp) end
-  val () = loop(0, r.epub_spine_path_buf, r.string_buffer)
+    in loop(sub_g1(rem, 1), i + 1, ep, sp) end
+  val () = loop(_checked_nat(len), 0, r.epub_spine_path_buf, r.string_buffer)
   prval () = fold@(st)
   val () = app_state_store(st)
 in end
@@ -1333,12 +1355,14 @@ in end
 implement _app_copy_sbuf_to_lib_books(dst_off, src_off, len) = let
   val st = app_state_load()
   val @APP_STATE(r) = st
-  fun loop(i: int, sp: ptr, lp: ptr): void =
-    if lt_int_int(i, len) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, sp: ptr, lp: ptr): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, len) then let
       val v = _arr_get_u8(sp, src_off + i, STRING_BUFFER_SIZE)
       val () = _arr_set_u8(lp, dst_off + i, LIB_BOOKS_SIZE, v)
-    in loop(i + 1, sp, lp) end
-  val () = loop(0, r.string_buffer, r.library_books)
+    in loop(sub_g1(rem, 1), i + 1, sp, lp) end
+  val () = loop(_checked_nat(len), 0, r.string_buffer, r.library_books)
   prval () = fold@(st)
   val () = app_state_store(st)
 in end
@@ -1346,12 +1370,14 @@ in end
 implement _app_copy_lib_books_to_sbuf(src_off, dst_off, len) = let
   val st = app_state_load()
   val @APP_STATE(r) = st
-  fun loop(i: int, lp: ptr, sp: ptr): void =
-    if lt_int_int(i, len) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, lp: ptr, sp: ptr): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, len) then let
       val v = _arr_get_u8(lp, src_off + i, LIB_BOOKS_SIZE)
       val () = _arr_set_u8(sp, dst_off + i, STRING_BUFFER_SIZE, v)
-    in loop(i + 1, lp, sp) end
-  val () = loop(0, r.library_books, r.string_buffer)
+    in loop(sub_g1(rem, 1), i + 1, lp, sp) end
+  val () = loop(_checked_nat(len), 0, r.library_books, r.string_buffer)
   prval () = fold@(st)
   val () = app_state_store(st)
 in end
@@ -1361,16 +1387,18 @@ in end
 implement _app_lib_books_match_bid(book_base, bid_len) = let
   val st = app_state_load()
   val @APP_STATE(r) = st
-  fun loop(i: int, bp: ptr, lp: ptr): int =
-    if lt_int_int(i, bid_len) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, bp: ptr, lp: ptr): int =
+    if lte_g1(rem, 0) then 1
+    else if lt_int_int(i, bid_len) then let
       val b = _arr_get_u8(bp, i, EPUB_BOOKID_SIZE)
       val l = _arr_get_u8(lp, book_base + i, LIB_BOOKS_SIZE)
     in
-      if eq_int_int(b, l) then loop(i + 1, bp, lp)
+      if eq_int_int(b, l) then loop(sub_g1(rem, 1), i + 1, bp, lp)
       else 0
     end
     else 1
-  val v = loop(0, r.epub_book_id, r.library_books)
+  val v = loop(_checked_nat(bid_len), 0, r.epub_book_id, r.library_books)
   prval () = fold@(st)
   val () = app_state_store(st)
 in v end

@@ -449,13 +449,15 @@ fn fill_text {l:agz}{n:pos}
 (* Copy len bytes from string_buffer to ward_arr *)
 fn copy_from_sbuf {l:agz}{n:pos}
   (dst: !ward_arr(byte, l, n), len: int n): void = let
-  fun loop(dst: !ward_arr(byte, l, n), dlen: int n,
-           i: int, count: int): void =
-    if i < count then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), dst: !ward_arr(byte, l, n), dlen: int n,
+     i: int, count: int): void =
+    if lte_g1(rem, 0) then ()
+    else if i < count then let
       val b = _app_sbuf_get_u8(i)
       val () = ward_arr_set_byte(dst, i, dlen, b)
-    in loop(dst, dlen, i + 1, count) end
-in loop(dst, len, 0, len) end
+    in loop(sub_g1(rem, 1), dst, dlen, i + 1, count) end
+in loop(_checked_nat(_g0(len)), dst, len, 0, len) end
 
 (* ========== Measurement correctness ========== *)
 
@@ -2316,8 +2318,10 @@ in end
  * the invariant 0 <= (v%10) <= 9 holds by definition of modulo. *)
 fn itoa_to_arr {l:agz}
   (arr: !ward_arr(byte, l, 48), v: int, offset: int): int = let
-  fun count_digits(x: int, acc: int): int =
-    if gt_int_int(x, 0) then count_digits(div_int_int(x, 10), acc + 1)
+  fun count_digits {k:nat} .<k>.
+    (rem: int(k), x: int, acc: int): int =
+    if lte_g1(rem, 0) then acc
+    else if gt_int_int(x, 0) then count_digits(sub_g1(rem, 1), div_int_int(x, 10), acc + 1)
     else acc
 in
   if gt_int_int(1, v) then let
@@ -2325,16 +2329,17 @@ in
       _byte(char2int1('0')))
   in 1 end
   else let
-    val ndigits = count_digits(v, 0)
-    fun write_rev {l:agz}
-      (arr: !ward_arr(byte, l, 48), x: int, pos: int): void =
-      if gt_int_int(x, 0) then let
+    val ndigits = count_digits(_checked_nat(11), v, 0)
+    fun write_rev {l:agz}{k:nat} .<k>.
+      (rem: int(k), arr: !ward_arr(byte, l, 48), x: int, pos: int): void =
+      if lte_g1(rem, 0) then ()
+      else if gt_int_int(x, 0) then let
         val digit = mod_int_int(x, 10)
         (* digit is 0-9, so 48+digit is 48-57 — within byte range *)
         val () = ward_arr_set<byte>(arr, _idx48(pos), ward_int2byte(_checked_byte(48 + digit)))
-      in write_rev(arr, div_int_int(x, 10), pos - 1) end
+      in write_rev(sub_g1(rem, 1), arr, div_int_int(x, 10), pos - 1) end
       else ()
-    val () = write_rev(arr, v, offset + ndigits - 1)
+    val () = write_rev(_checked_nat(11), arr, v, offset + ndigits - 1)
   in ndigits end
 end
 
@@ -2775,8 +2780,10 @@ fn render_library_with_books {l:agz}
   val s = ward_dom_stream_remove_children(s, list_id)
   val count = library_get_count()
   val vm_raw = view_mode
-  fun loop {l:agz}(s: ward_dom_stream(l), i: int, n: int, vm: int): ward_dom_stream(l) =
-    if gte_int_int(i, n) then s
+  fun loop {l:agz}{k:nat} .<k>.
+    (rem: int(k), s: ward_dom_stream(l), i: int, n: int, vm: int): ward_dom_stream(l) =
+    if lte_g1(rem, 0) then s
+    else if gte_int_int(i, n) then s
     else let
       (* Proven filter: routes through should_render_book with VIEW_FILTER_CORRECT *)
       val do_render = filter_book_visible(vm, i)
@@ -2821,7 +2828,7 @@ fn render_library_with_books {l:agz}
           val s = ward_dom_stream_create_element(s, arch_btn_id, actions_id, tag_button(), 6)
           val s = ward_dom_stream_set_attr_safe(s, arch_btn_id, attr_class(), 5, cls_archive_btn(), 11)
           val s = set_text_cstr(s, arch_btn_id, TEXT_ARCHIVE, 7)
-        in loop(s, i + 1, n, vm) end
+        in loop(sub_g1(rem, 1), s, i + 1, n, vm) end
         else let
           (* Archived view: Restore button only *)
           val restore_btn_id = dom_next_id()
@@ -2829,11 +2836,11 @@ fn render_library_with_books {l:agz}
           val s = ward_dom_stream_create_element(s, restore_btn_id, actions_id, tag_button(), 6)
           val s = ward_dom_stream_set_attr_safe(s, restore_btn_id, attr_class(), 5, cls_archive_btn(), 11)
           val s = set_text_cstr(s, restore_btn_id, TEXT_UNARCHIVE, 7)
-        in loop(s, i + 1, n, vm) end
+        in loop(sub_g1(rem, 1), s, i + 1, n, vm) end
       end
-      else loop(s, i + 1, n, vm)
+      else loop(sub_g1(rem, 1), s, i + 1, n, vm)
     end
-in loop(s, 0, count, vm_raw) end
+in loop(_checked_nat(count), s, 0, count, vm_raw) end
 
 (* ========== Chapter loading ========== *)
 
@@ -2913,12 +2920,14 @@ in (pf | ()) end
  * Returns directory length (including trailing '/'), or 0 if no '/'.
  * E.g., "OEBPS/Text/ch1.xhtml" → dir_len=11 ("OEBPS/Text/") *)
 fn find_chapter_dir_len(path_len: int): [d:nat] int(d) = let
-  fun scan(pos: int): int =
-    if pos < 0 then 0
+  fun scan {k:nat} .<k>.
+    (rem: int(k), pos: int): int =
+    if lte_g1(rem, 0) then 0
+    else if pos < 0 then 0
     else if _app_sbuf_get_u8(pos) = 47 (* '/' *)
     then pos + 1
-    else scan(pos - 1)
-  val d = scan(path_len - 1)
+    else scan(sub_g1(rem, 1), pos - 1)
+  val d = scan(_checked_nat(path_len), path_len - 1)
 in
   if d >= 0 then _checked_nat(d)
   else _checked_nat(0)
@@ -2929,13 +2938,14 @@ end
 fn copy_sbuf_to_arr {dl:pos | dl <= 1048576}
   (dl: int dl): [l:agz] ward_arr(byte, l, dl) = let
   val arr = ward_arr_alloc<byte>(dl)
-  fun copy_loop {l:agz}{n:pos}
-    (a: !ward_arr(byte, l, n), alen: int n, i: int, count: int): void =
-    if i < count then let
+  fun copy_loop {l:agz}{n:pos}{k:nat} .<k>.
+    (rem: int(k), a: !ward_arr(byte, l, n), alen: int n, i: int, count: int): void =
+    if lte_g1(rem, 0) then ()
+    else if i < count then let
       val b = _app_sbuf_get_u8(i)
       val () = ward_arr_write_byte(a, _ward_idx(i, alen), _checked_byte(b))
-    in copy_loop(a, alen, i + 1, count) end
-  val () = copy_loop(arr, dl, 0, dl)
+    in copy_loop(sub_g1(rem, 1), a, alen, i + 1, count) end
+  val () = copy_loop(_checked_nat(_g0(dl)), arr, dl, 0, dl)
 in arr end
 
 fn load_chapter {c,t:nat | c < t}
@@ -3273,8 +3283,10 @@ end
 (* Register click listeners on read and archive/restore buttons.
  * Read buttons: btn_ids[0..31], Archive buttons: btn_ids[32..63].
  * Shared by initial render and post-import re-render. *)
-fun register_card_btns(i: int, n: int, root: int, vm: int): void =
-  if gte_int_int(i, n) then ()
+fun register_card_btns {k:nat} .<k>.
+  (rem: int(k), i: int, n: int, root: int, vm: int): void =
+  if lte_g1(rem, 0) then ()
+  else if gte_int_int(i, n) then ()
   else let
     val saved_r = root
     val book_idx = i
@@ -3317,7 +3329,7 @@ fun register_card_btns(i: int, n: int, root: int, vm: int): void =
         )
       end
       else ()
-  in register_card_btns(i + 1, n, root, vm) end
+  in register_card_btns(sub_g1(rem, 1), i + 1, n, root, vm) end
 
 (* Import phase ordering: proves each phase follows the previous.
  * BUG PREVENTED: Copy-paste reordering of import phases would break
@@ -3363,15 +3375,18 @@ fn add_import_section {l:agz}
   else s
 
 (* Count books matching the given view mode — uses proven filter *)
-fun count_visible_books(i: int, n: int, vm: int): int =
-  if gte_int_int(i, n) then 0
+fun count_visible_books {k:nat} .<k>.
+  (rem: int(k), i: int, n: int, vm: int): int =
+  if lte_g1(rem, 0) then 0
+  else if gte_int_int(i, n) then 0
   else let
     val do_render = filter_book_visible(vm, i)
+    val r1 = sub_g1(rem, 1)
   in
     if gt_int_int(do_render, 0) then
-      add_int_int(1, count_visible_books(add_int_int(i, 1), n, vm))
+      add_int_int(1, count_visible_books(r1, add_int_int(i, 1), n, vm))
     else
-      count_visible_books(add_int_int(i, 1), n, vm)
+      count_visible_books(r1, add_int_int(i, 1), n, vm)
   end
 
 fn set_empty_text {l:agz}
@@ -3434,7 +3449,7 @@ implement render_library(root_id) = let
   val s = ward_dom_stream_set_attr_safe(s, list_id, attr_class(), 5, cls_library_list(), 12)
 
   val count = library_get_count()
-  val visible = count_visible_books(0, count, view_mode)
+  val visible = count_visible_books(_checked_nat(count), 0, count, view_mode)
   val () =
     if gt_int_int(visible, 0) then let
       (* Render book cards filtered by view_mode *)
@@ -3453,7 +3468,7 @@ implement render_library(root_id) = let
     in end
 
   (* Register click listeners on read and archive/restore buttons *)
-  val () = register_card_btns(0, count, root_id, view_mode)
+  val () = register_card_btns(_checked_nat(count), 0, count, root_id, view_mode)
 
   (* Register toolbar button listeners *)
   val saved_root = root_id
@@ -3518,14 +3533,15 @@ implement render_library(root_id) = let
            * that sets epub_book_id. Same hash = same book. *)
           val hash_buf = ward_arr_alloc<byte>(64)
           val () = sha256_file_hash(handle, _checked_nat(file_size), hash_buf)
-          fun _copy_hash {lh:agz}
-            (hb: !ward_arr(byte, lh, 64), i: int): void =
-            if gte_int_int(i, 64) then ()
+          fun _copy_hash {lh:agz}{k:nat} .<k>.
+            (rem: int(k), hb: !ward_arr(byte, lh, 64), i: int): void =
+            if lte_g1(rem, 0) then ()
+            else if gte_int_int(i, 64) then ()
             else let
               val b = byte2int0(ward_arr_get<byte>(hb, _ward_idx(i, 64)))
               val () = _app_epub_book_id_set_u8(i, b)
-            in _copy_hash(hb, i + 1) end
-          val () = _copy_hash(hash_buf, 0)
+            in _copy_hash(sub_g1(rem, 1), hb, i + 1) end
+          val () = _copy_hash(_checked_nat(64), hash_buf, 0)
           val () = _app_set_epub_book_id_len(64)
           val () = ward_arr_free<byte>(hash_buf)
 
@@ -3579,7 +3595,7 @@ implement render_library(root_id) = let
                           val dom = ward_dom_stream_end(s)
                           val () = ward_dom_fini(dom)
                           val btn_count = library_get_count()
-                          val () = register_card_btns(0, btn_count, ssr, 0)
+                          val () = register_card_btns(_checked_nat(btn_count), 0, btn_count, ssr, 0)
                         in import_finish(h, sslbl, ssspn, sssts) end
                         else import_finish(
                           import_mark_failed(log_err_lib_full(), 12),

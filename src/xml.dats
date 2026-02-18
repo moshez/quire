@@ -63,74 +63,90 @@ fn is_name_char(c: int): int =
   else 0
 
 fn skip_ws(data: ptr, pos: int, len: int): int = let
-  fun loop(p: int): int =
-    if gte_int_int(p, len) then p
-    else if eq_int_int(is_ws(buf_get_u8(data, p)), 1) then loop(p + 1)
+  fun loop {k:nat} .<k>.
+    (rem: int(k), p: int): int =
+    if lte_g1(rem, 0) then p
+    else if gte_int_int(p, len) then p
+    else if eq_int_int(is_ws(buf_get_u8(data, p)), 1) then loop(sub_g1(rem, 1), p + 1)
     else p
-in loop(pos) end
+in loop(_checked_nat(len), pos) end
 
 fn skip_comment(data: ptr, pos: int, len: int): int = let
-  fun loop(p: int): int =
-    if gte_int_int(p + 2, len) then len
+  fun loop {k:nat} .<k>.
+    (rem: int(k), p: int): int =
+    if lte_g1(rem, 0) then len
+    else if gte_int_int(p + 2, len) then len
     else if eq_int_int(buf_get_u8(data, p), 45) then
       if eq_int_int(buf_get_u8(data, p + 1), 45) then
         if eq_int_int(buf_get_u8(data, p + 2), 62) then p + 3
-        else loop(p + 1)
-      else loop(p + 1)
-    else loop(p + 1)
-in loop(pos) end
+        else loop(sub_g1(rem, 1), p + 1)
+      else loop(sub_g1(rem, 1), p + 1)
+    else loop(sub_g1(rem, 1), p + 1)
+in loop(_checked_nat(len), pos) end
 
 fn skip_pi(data: ptr, pos: int, len: int): int = let
-  fun loop(p: int): int =
-    if gte_int_int(p + 1, len) then len
+  fun loop {k:nat} .<k>.
+    (rem: int(k), p: int): int =
+    if lte_g1(rem, 0) then len
+    else if gte_int_int(p + 1, len) then len
     else if eq_int_int(buf_get_u8(data, p), 63) then
       if eq_int_int(buf_get_u8(data, p + 1), 62) then p + 2
-      else loop(p + 1)
-    else loop(p + 1)
-in loop(pos) end
+      else loop(sub_g1(rem, 1), p + 1)
+    else loop(sub_g1(rem, 1), p + 1)
+in loop(_checked_nat(len), pos) end
 
 fn skip_doctype(data: ptr, pos: int, len: int): int = let
-  fun loop(p: int, depth: int): int =
-    if gte_int_int(p, len) then len
+  fun loop {k:nat} .<k>.
+    (rem: int(k), p: int, depth: int): int =
+    if lte_g1(rem, 0) then len
+    else if gte_int_int(p, len) then len
     else let val c = buf_get_u8(data, p)
     in
-      if eq_int_int(c, 60) then loop(p + 1, depth + 1)
+      if eq_int_int(c, 60) then loop(sub_g1(rem, 1), p + 1, depth + 1)
       else if eq_int_int(c, 62) then
-        (if eq_int_int(depth, 1) then p + 1 else loop(p + 1, sub_int_int(depth, 1)))
-      else loop(p + 1, depth)
+        (if eq_int_int(depth, 1) then p + 1 else loop(sub_g1(rem, 1), p + 1, sub_int_int(depth, 1)))
+      else loop(sub_g1(rem, 1), p + 1, depth)
     end
-in loop(pos, 1) end
+in loop(_checked_nat(len), pos, 1) end
 
 fn bytes_equal(p1: ptr, off1: int, p2: ptr, len2: int): bool = let
-  fun loop(i: int): bool =
-    if gte_int_int(i, len2) then true
-    else if eq_int_int(buf_get_u8(p1, off1 + i), buf_get_u8(p2, i)) then loop(i + 1)
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int): bool =
+    if lte_g1(rem, 0) then true
+    else if gte_int_int(i, len2) then true
+    else if eq_int_int(buf_get_u8(p1, off1 + i), buf_get_u8(p2, i)) then loop(sub_g1(rem, 1), i + 1)
     else false
-in loop(0) end
+in loop(_checked_nat(len2), 0) end
 
 fn copy_bytes(src: ptr, src_off: int, dst: ptr, dst_off: int, count: int, max: int): void = let
-  fun loop(i: int): void =
-    if gte_int_int(i, count) then ()
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int): void =
+    if lte_g1(rem, 0) then ()
+    else if gte_int_int(i, count) then ()
     else if gte_int_int(dst_off + i, max) then ()
     else let
       val () = buf_set_u8(dst, dst_off + i, buf_get_u8(src, src_off + i))
-    in loop(i + 1) end
-in loop(0) end
+    in loop(sub_g1(rem, 1), i + 1) end
+in loop(_checked_nat(count), 0) end
 
 (* ========== Attribute parser ========== *)
 
-fun parse_attrs(data: ptr, pos: int, end_pos: int): (xml_attr_list_vt, int) = let
+fun parse_attrs {k:nat} .<k>.
+  (rem: int(k), data: ptr, pos: int, end_pos: int): (xml_attr_list_vt, int) = let
   val p = skip_ws(data, pos, end_pos)
 in
-  if gte_int_int(p, end_pos) then (xml_attrs_nil(), p)
+  if lte_g1(rem, 0) then (xml_attrs_nil(), p)
+  else if gte_int_int(p, end_pos) then (xml_attrs_nil(), p)
   else if eq_int_int(is_name_char(buf_get_u8(data, p)), 0) then (xml_attrs_nil(), p)
   else let
     val name_start = p
-    fun scan_name(p2: int): int =
-      if gte_int_int(p2, end_pos) then p2
-      else if eq_int_int(is_name_char(buf_get_u8(data, p2)), 1) then scan_name(p2 + 1)
+    fun scan_name {j:nat} .<j>.
+      (jrem: int(j), p2: int): int =
+      if lte_g1(jrem, 0) then p2
+      else if gte_int_int(p2, end_pos) then p2
+      else if eq_int_int(is_name_char(buf_get_u8(data, p2)), 1) then scan_name(sub_g1(jrem, 1), p2 + 1)
       else p2
-    val name_end = scan_name(p)
+    val name_end = scan_name(_checked_nat(end_pos), p)
     val name_len = sub_int_int(name_end, name_start)
     val name_ptr = ptr_add_int(data, name_start)
     val p2 = skip_ws(data, name_end, end_pos)
@@ -143,27 +159,31 @@ in
       else let val quote = buf_get_u8(data, p3) in
         if eq_int_int(quote, 34) then let
           val vs = p3 + 1
-          fun scan_dq(p4: int): int =
-            if gte_int_int(p4, end_pos) then p4
+          fun scan_dq {j:nat} .<j>.
+            (jrem: int(j), p4: int): int =
+            if lte_g1(jrem, 0) then p4
+            else if gte_int_int(p4, end_pos) then p4
             else if eq_int_int(buf_get_u8(data, p4), 34) then p4
-            else scan_dq(p4 + 1)
-          val ve = scan_dq(vs)
+            else scan_dq(sub_g1(jrem, 1), p4 + 1)
+          val ve = scan_dq(_checked_nat(end_pos), vs)
           val vl = sub_int_int(ve, vs)
           val vp = ptr_add_int(data, vs)
           val np = if gt_int_int(end_pos, ve) then ve + 1 else ve
-          val (rest, fp) = parse_attrs(data, np, end_pos)
+          val (rest, fp) = parse_attrs(sub_g1(rem, 1), data, np, end_pos)
         in (xml_attrs_cons(name_ptr, name_len, vp, vl, rest), fp) end
         else if eq_int_int(quote, 39) then let
           val vs = p3 + 1
-          fun scan_sq(p4: int): int =
-            if gte_int_int(p4, end_pos) then p4
+          fun scan_sq {j:nat} .<j>.
+            (jrem: int(j), p4: int): int =
+            if lte_g1(jrem, 0) then p4
+            else if gte_int_int(p4, end_pos) then p4
             else if eq_int_int(buf_get_u8(data, p4), 39) then p4
-            else scan_sq(p4 + 1)
-          val ve = scan_sq(vs)
+            else scan_sq(sub_g1(jrem, 1), p4 + 1)
+          val ve = scan_sq(_checked_nat(end_pos), vs)
           val vl = sub_int_int(ve, vs)
           val vp = ptr_add_int(data, vs)
           val np = if gt_int_int(end_pos, ve) then ve + 1 else ve
-          val (rest, fp) = parse_attrs(data, np, end_pos)
+          val (rest, fp) = parse_attrs(sub_g1(rem, 1), data, np, end_pos)
         in (xml_attrs_cons(name_ptr, name_len, vp, vl, rest), fp) end
         else (xml_attrs_nil(), p3)
       end
@@ -174,13 +194,14 @@ end
 
 (* ========== Tree-building recursive descent parser ========== *)
 
-extern fun parse_nodes_impl(data: ptr, pos: int, len: int): (xml_node_list_vt, int)
-extern fun parse_element_impl(data: ptr, pos: int, len: int): (xml_node_vt, int)
-
-implement parse_nodes_impl(data, pos, len) = let
+(* Mutually recursive parser pair with shared termination metric.
+ * rem bounds total recursive calls by input length. *)
+fun parse_nodes_impl {k:nat} .<k>.
+  (rem: int(k), data: ptr, pos: int, len: int): (xml_node_list_vt, int) = let
   val p = skip_ws(data, pos, len)
 in
-  if gte_int_int(p, len) then (xml_nodes_nil(), p)
+  if lte_g1(rem, 0) then (xml_nodes_nil(), p)
+  else if gte_int_int(p, len) then (xml_nodes_nil(), p)
   else let val c = buf_get_u8(data, p) in
     if eq_int_int(c, 60) then
       if gte_int_int(p + 1, len) then (xml_nodes_nil(), p)
@@ -192,96 +213,116 @@ in
               if eq_int_int(buf_get_u8(data, p + 3), 45) then skip_comment(data, p + 4, len)
               else skip_doctype(data, p + 2, len)
             else skip_doctype(data, p + 2, len)
-        in parse_nodes_impl(data, new_pos, len) end
+        in parse_nodes_impl(sub_g1(rem, 1), data, new_pos, len) end
         else if eq_int_int(c2, 63) then
-          parse_nodes_impl(data, skip_pi(data, p + 2, len), len)
+          parse_nodes_impl(sub_g1(rem, 1), data, skip_pi(data, p + 2, len), len)
         else if eq_int_int(c2, 47) then
           (xml_nodes_nil(), p)
         else let
-          val (node, new_pos) = parse_element_impl(data, p, len)
-          val (rest, final_pos) = parse_nodes_impl(data, new_pos, len)
+          val r1 = sub_g1(rem, 1)
+          val (node, new_pos) = parse_element_impl(r1, data, p, len)
+          val (rest, final_pos) = parse_nodes_impl(r1, data, new_pos, len)
         in (xml_nodes_cons(node, rest), final_pos) end
       end
     else let
       val text_start = p
-      fun scan_text(p2: int): int =
-        if gte_int_int(p2, len) then p2
+      fun scan_text {j:nat} .<j>.
+        (jrem: int(j), p2: int): int =
+        if lte_g1(jrem, 0) then p2
+        else if gte_int_int(p2, len) then p2
         else if eq_int_int(buf_get_u8(data, p2), 60) then p2
-        else scan_text(p2 + 1)
-      val text_end = scan_text(p)
+        else scan_text(sub_g1(jrem, 1), p2 + 1)
+      val text_end = scan_text(_checked_nat(len), p)
       val text_len = sub_int_int(text_end, text_start)
       val text_ptr = ptr_add_int(data, text_start)
-      val (rest, final_pos) = parse_nodes_impl(data, text_end, len)
+      val (rest, final_pos) = parse_nodes_impl(sub_g1(rem, 1), data, text_end, len)
     in (xml_nodes_cons(xml_text_vt(text_ptr, text_len), rest), final_pos) end
   end
 end
 
-implement parse_element_impl(data, pos, len) = let
+and parse_element_impl {k:nat} .<k>.
+  (rem: int(k), data: ptr, pos: int, len: int): (xml_node_vt, int) = let
   val p = pos + 1
   val p = skip_ws(data, p, len)
   val name_start = p
-  fun scan_name(p2: int): int =
-    if gte_int_int(p2, len) then p2
-    else if eq_int_int(is_name_char(buf_get_u8(data, p2)), 1) then scan_name(p2 + 1)
+  fun scan_name {j:nat} .<j>.
+    (jrem: int(j), p2: int): int =
+    if lte_g1(jrem, 0) then p2
+    else if gte_int_int(p2, len) then p2
+    else if eq_int_int(is_name_char(buf_get_u8(data, p2)), 1) then scan_name(sub_g1(jrem, 1), p2 + 1)
     else p2
-  val name_end = scan_name(p)
+  val name_end = scan_name(_checked_nat(len), p)
   val name_len = sub_int_int(name_end, name_start)
   val name_ptr = ptr_add_int(data, name_start)
   val p2 = skip_ws(data, name_end, len)
   val attrs_start = p2
-  fun find_tag_end(p3: int): (int, int) =
-    if gte_int_int(p3, len) then (p3, 0)
+  fun find_tag_end {j:nat} .<j>.
+    (jrem: int(j), p3: int): (int, int) =
+    if lte_g1(jrem, 0) then (p3, 0)
+    else if gte_int_int(p3, len) then (p3, 0)
     else let val c = buf_get_u8(data, p3) in
       if eq_int_int(c, 62) then (p3, 0)
       else if eq_int_int(c, 47) then
         if gt_int_int(len, p3 + 1) then
           if eq_int_int(buf_get_u8(data, p3 + 1), 62) then (p3, 1)
-          else find_tag_end(p3 + 1)
+          else find_tag_end(sub_g1(jrem, 1), p3 + 1)
         else (p3, 0)
       else if eq_int_int(c, 34) then let
-        fun skip_dq(p4: int): int =
-          if gte_int_int(p4, len) then p4
+        fun skip_dq {j2:nat} .<j2>.
+          (j2rem: int(j2), p4: int): int =
+          if lte_g1(j2rem, 0) then p4
+          else if gte_int_int(p4, len) then p4
           else if eq_int_int(buf_get_u8(data, p4), 34) then p4 + 1
-          else skip_dq(p4 + 1)
-      in find_tag_end(skip_dq(p3 + 1)) end
+          else skip_dq(sub_g1(j2rem, 1), p4 + 1)
+      in find_tag_end(sub_g1(jrem, 1), skip_dq(_checked_nat(len), p3 + 1)) end
       else if eq_int_int(c, 39) then let
-        fun skip_sq(p4: int): int =
-          if gte_int_int(p4, len) then p4
+        fun skip_sq {j2:nat} .<j2>.
+          (j2rem: int(j2), p4: int): int =
+          if lte_g1(j2rem, 0) then p4
+          else if gte_int_int(p4, len) then p4
           else if eq_int_int(buf_get_u8(data, p4), 39) then p4 + 1
-          else skip_sq(p4 + 1)
-      in find_tag_end(skip_sq(p3 + 1)) end
-      else find_tag_end(p3 + 1)
+          else skip_sq(sub_g1(j2rem, 1), p4 + 1)
+      in find_tag_end(sub_g1(jrem, 1), skip_sq(_checked_nat(len), p3 + 1)) end
+      else find_tag_end(sub_g1(jrem, 1), p3 + 1)
     end
-  val (tag_end_pos, is_self) = find_tag_end(p2)
-  val (attrs, _) = parse_attrs(data, attrs_start, tag_end_pos)
+  val (tag_end_pos, is_self) = find_tag_end(_checked_nat(len), p2)
+  val (attrs, _) = parse_attrs(_checked_nat(len), data, attrs_start, tag_end_pos)
   val after_tag =
     if eq_int_int(is_self, 1) then tag_end_pos + 2
     else tag_end_pos + 1
 in
   if eq_int_int(is_self, 1) then
     (xml_element_vt(name_ptr, name_len, attrs, xml_nodes_nil()), after_tag)
+  else if lte_g1(rem, 0) then
+    (xml_element_vt(name_ptr, name_len, attrs, xml_nodes_nil()), after_tag)
   else let
-    val (children, child_end_pos) = parse_nodes_impl(data, after_tag, len)
-    fun skip_closing_tag(p3: int): int =
-      if gte_int_int(p3, len) then p3
+    val (children, child_end_pos) = parse_nodes_impl(sub_g1(rem, 1), data, after_tag, len)
+    fun skip_closing_tag {j:nat} .<j>.
+      (jrem: int(j), p3: int): int =
+      if lte_g1(jrem, 0) then p3
+      else if gte_int_int(p3, len) then p3
       else if eq_int_int(buf_get_u8(data, p3), 62) then p3 + 1
-      else skip_closing_tag(p3 + 1)
+      else skip_closing_tag(sub_g1(jrem, 1), p3 + 1)
     val final_pos =
       if gte_int_int(child_end_pos, len) then child_end_pos
       else if eq_int_int(buf_get_u8(data, child_end_pos), 60) then
         if gte_int_int(child_end_pos + 1, len) then child_end_pos
         else if eq_int_int(buf_get_u8(data, child_end_pos + 1), 47) then
-          skip_closing_tag(child_end_pos + 2)
+          skip_closing_tag(_checked_nat(len), child_end_pos + 2)
         else child_end_pos
       else child_end_pos
   in (xml_element_vt(name_ptr, name_len, attrs, children), final_pos) end
 end
 
 implement xml_parse_document(data, data_len) = let
-  val (nodes, _) = parse_nodes_impl(data, 0, data_len)
+  val (nodes, _) = parse_nodes_impl(_checked_nat(data_len), data, 0, data_len)
 in nodes end
 
 (* ========== Tree cleanup ========== *)
+(* TERMINATION: free_attrs, xml_free_node, xml_free_nodes are structural
+ * recursion over finite linear datavtypes. Linearity prevents cycles
+ * (each node consumed exactly once), so recursion depth = tree size.
+ * ATS2's integer-based termination checker cannot express this. *)
 
 fun free_attrs(attrs: xml_attr_list_vt): void =
   case+ attrs of
@@ -303,7 +344,12 @@ implement xml_free_nodes(nodes) =
     in xml_free_nodes(rest) end
 
 (* ========== Serializer ========== *)
-(* Uses algebraic pattern matching instead of null pointer checks.
+(* TERMINATION: xml_serialize_node, xml_serialize_nodes, serialize_attrs_b
+ * are structural recursion over borrowed linear datavtypes. Each call
+ * processes one node/attr and recurses on the remaining structure.
+ * Linearity prevents cycles, so recursion depth = tree size.
+ *
+ * Uses algebraic pattern matching instead of null pointer checks.
  * Borrow-reborrow pattern: borrow → extract ptr → put back → create
  * new linear from ptr → recurse with ! borrow → put back. *)
 

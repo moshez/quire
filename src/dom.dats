@@ -826,14 +826,16 @@ fn copy_arr_bytes {la:agz}{na:pos}{lb:agz}{nb:pos}
   (dst: !ward_arr(byte, la, na), dlen: int na,
    src: !ward_arr(byte, lb, nb), slen: int nb,
    src_off: int, count: int): void = let
-  fun loop(dst: !ward_arr(byte, la, na), dlen: int na,
-           src: !ward_arr(byte, lb, nb), slen: int nb,
-           src_off: int, i: int, count: int): void =
-    if i < count then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), dst: !ward_arr(byte, la, na), dlen: int na,
+     src: !ward_arr(byte, lb, nb), slen: int nb,
+     src_off: int, i: int, count: int): void =
+    if lte_g1(rem, 0) then ()
+    else if i < count then let
       val b = ward_arr_byte(src, src_off + i, slen)
       val () = ward_arr_set_byte(dst, i, dlen, b)
-    in loop(dst, dlen, src, slen, src_off, i + 1, count) end
-in loop(dst, dlen, src, slen, src_off, 0, count) end
+    in loop(sub_g1(rem, 1), dst, dlen, src, slen, src_off, i + 1, count) end
+in loop(_checked_nat(count), dst, dlen, src, slen, src_off, 0, count) end
 
 (* ========== Tag/Attribute lookup — static table + ATS2 loop ========== *)
 
@@ -936,36 +938,44 @@ extern fun _build_attr_text(idx: int): ptr = "mac#"
 extern castfn _ptr_as_safe_text {n:pos} (p: ptr): ward_safe_text(n)
 
 implement lookup_tag{lb}{n}(tree, tlen, offset, name_len) = let
-  fun cmp(tree: !ward_arr(byte, lb, n), tlen: int n,
-          off: int, idx: int, nlen: int, j: int): bool =
-    if j >= nlen then true
+  fun cmp {k:nat} .<k>.
+    (rem: int(k), tree: !ward_arr(byte, lb, n), tlen: int n,
+     off: int, idx: int, nlen: int, j: int): bool =
+    if lte_g1(rem, 0) then false
+    else if j >= nlen then true
     else if ward_arr_byte(tree, off + j, tlen) = _tag_table_byte(idx, j)
-    then cmp(tree, tlen, off, idx, nlen, j + 1)
+    then cmp(sub_g1(rem, 1), tree, tlen, off, idx, nlen, j + 1)
     else false
-  fun loop(tree: !ward_arr(byte, lb, n), tlen: int n,
-           off: int, nlen: int, i: int): int =
-    if i >= 99 then 0 - 1
+  fun loop {k:nat} .<k>.
+    (rem: int(k), tree: !ward_arr(byte, lb, n), tlen: int n,
+     off: int, nlen: int, i: int): int =
+    if lte_g1(rem, 0) then 0 - 1
+    else if i >= 99 then 0 - 1
     else if _tag_table_len(i) = nlen then
-      if cmp(tree, tlen, off, i, nlen, 0) then i
-      else loop(tree, tlen, off, nlen, i + 1)
-    else loop(tree, tlen, off, nlen, i + 1)
-in loop(tree, tlen, offset, name_len, 0) end
+      if cmp(_checked_nat(nlen), tree, tlen, off, i, nlen, 0) then i
+      else loop(sub_g1(rem, 1), tree, tlen, off, nlen, i + 1)
+    else loop(sub_g1(rem, 1), tree, tlen, off, nlen, i + 1)
+in loop(_checked_nat(99), tree, tlen, offset, name_len, 0) end
 
 implement lookup_attr{lb}{n}(tree, tlen, offset, name_len) = let
-  fun cmp(tree: !ward_arr(byte, lb, n), tlen: int n,
-          off: int, idx: int, nlen: int, j: int): bool =
-    if j >= nlen then true
+  fun cmp {k:nat} .<k>.
+    (rem: int(k), tree: !ward_arr(byte, lb, n), tlen: int n,
+     off: int, idx: int, nlen: int, j: int): bool =
+    if lte_g1(rem, 0) then false
+    else if j >= nlen then true
     else if ward_arr_byte(tree, off + j, tlen) = _attr_table_byte(idx, j)
-    then cmp(tree, tlen, off, idx, nlen, j + 1)
+    then cmp(sub_g1(rem, 1), tree, tlen, off, idx, nlen, j + 1)
     else false
-  fun loop(tree: !ward_arr(byte, lb, n), tlen: int n,
-           off: int, nlen: int, i: int): int =
-    if i >= 32 then 0 - 1
+  fun loop {k:nat} .<k>.
+    (rem: int(k), tree: !ward_arr(byte, lb, n), tlen: int n,
+     off: int, nlen: int, i: int): int =
+    if lte_g1(rem, 0) then 0 - 1
+    else if i >= 32 then 0 - 1
     else if _attr_table_len(i) = nlen then
-      if cmp(tree, tlen, off, i, nlen, 0) then i
-      else loop(tree, tlen, off, nlen, i + 1)
-    else loop(tree, tlen, off, nlen, i + 1)
-in loop(tree, tlen, offset, name_len, 0) end
+      if cmp(_checked_nat(nlen), tree, tlen, off, i, nlen, 0) then i
+      else loop(sub_g1(rem, 1), tree, tlen, off, nlen, i + 1)
+    else loop(sub_g1(rem, 1), tree, tlen, off, nlen, i + 1)
+in loop(_checked_nat(32), tree, tlen, offset, name_len, 0) end
 
 
 (* ========== Lookup dispatch via index ========== *)
@@ -1047,56 +1057,52 @@ in check(tree, start, start + text_len, tlen, _checked_nat(text_len)) end
 
 implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
 
-  fun loop {l:agz}{lb:agz}{n:pos}
-    (st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n),
+  fun loop {l:agz}{lb:agz}{n:pos}{r:nat} .<r>.
+    (rem: int(r), st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n),
      pos: int, len: int, parent: int, tlen: int n,
      has_child: int, ecnt: int)
     : @(ward_dom_stream(l), int, int) =
-    if pos >= len then @(st, pos, ecnt)
+    if lte_g1(rem, 0) then @(st, pos, ecnt)
+    else if pos >= len then @(st, pos, ecnt)
     else if ecnt >= MAX_RENDER_ELEMENTS then @(st, len, ecnt)
     else let
       val opc = ward_arr_byte(tree, pos, tlen)
+      val r1 = sub_g1(rem, 1)
     in
       if opc = 1 then let (* ELEMENT_OPEN *)
         val tag_len = ward_arr_byte(tree, pos + 1, tlen)
         val tag_idx = lookup_tag(tree, tlen, pos + 2, tag_len)
         val attr_off = pos + 2 + tag_len
         val attr_count = ward_arr_byte(tree, attr_off, tlen)
-        val after_attrs = skip_attrs(tree, attr_off + 1, attr_count, tlen)
+        val after_attrs = skip_attrs(r1, tree, attr_off + 1, attr_count, tlen)
       in
         if tag_idx >= 0 then
-          (* Skip <img> elements: image sources are paths inside the EPUB ZIP
-           * that can't be resolved, so they show as broken.
-           * TAG_IDX_IMG defined in dom.sats — single source of truth. *)
           if tag_idx = TAG_IDX_IMG then let
-            val end_pos = skip_element(tree, after_attrs, len, tlen)
+            val end_pos = skip_element(r1, tree, after_attrs, len, tlen)
           in
-            loop(st, tree, end_pos, len, parent, tlen, has_child, ecnt)
+            loop(r1, st, tree, end_pos, len, parent, tlen, has_child, ecnt)
           end
           else let
           val @(tag_st, tag_st_len) = get_tag_by_index(tag_idx)
           val nid = dom_next_id()
           val st = ward_dom_stream_create_element(st, nid, parent, tag_st, tag_st_len)
-          val st = emit_attrs(st, nid, tree, attr_off + 1, attr_count, tlen)
-          val @(st, child_end, ec2) = loop(st, tree, after_attrs, len, nid, tlen, 0, ecnt + 1)
+          val st = emit_attrs(r1, st, nid, tree, attr_off + 1, attr_count, tlen)
+          val @(st, child_end, ec2) = loop(r1, st, tree, after_attrs, len, nid, tlen, 0, ecnt + 1)
         in
-          (* SIBLING_CONTINUATION: after closing this element, continue
-           * processing remaining siblings under the same parent.
-           * has_child=1: we just created an element child under parent. *)
           if child_end < len then let
             val close_opc = ward_arr_byte(tree, child_end, tlen)
           in
             if close_opc = 2 then
-              loop(st, tree, child_end + 1, len, parent, tlen, 1, ec2)
+              loop(r1, st, tree, child_end + 1, len, parent, tlen, 1, ec2)
             else
-              loop(st, tree, child_end, len, parent, tlen, 1, ec2)
+              loop(r1, st, tree, child_end, len, parent, tlen, 1, ec2)
           end
           else @(st, child_end, ec2)
         end
         else let
-          val end_pos = skip_element(tree, after_attrs, len, tlen)
+          val end_pos = skip_element(r1, tree, after_attrs, len, tlen)
         in
-          loop(st, tree, end_pos, len, parent, tlen, has_child, ecnt)
+          loop(r1, st, tree, end_pos, len, parent, tlen, has_child, ecnt)
         end
       end
       else if opc = 3 then let (* TEXT *)
@@ -1106,11 +1112,9 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
       in
         if tl > 0 then
           if is_whitespace_only(tree, text_start, text_len, tlen) then
-            loop(st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt)
+            loop(r1, st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt)
           else if tl < 65536 then
             if has_child > 0 then let
-              (* TEXT_RENDER_SAFE: parent has existing children.
-               * Wrap text in <span> to prevent set_text from destroying them. *)
               val span_id = dom_next_id()
               val st = ward_dom_stream_create_element(
                 st, span_id, parent, tag_span(), 4)
@@ -1122,10 +1126,9 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
               val text_arr = ward_arr_thaw<byte>(frozen)
               val () = ward_arr_free<byte>(text_arr)
             in
-              loop(st, tree, text_start + text_len, len, parent, tlen, 1, ecnt + 1)
+              loop(r1, st, tree, text_start + text_len, len, parent, tlen, 1, ecnt + 1)
             end
             else let
-              (* TEXT_RENDER_SAFE: no children yet — set_text on parent is safe *)
               val text_arr = ward_arr_alloc<byte>(tl)
               val () = copy_arr_bytes(text_arr, tl, tree, tlen, text_start, text_len)
               val @(frozen, borrow) = ward_arr_freeze<byte>(text_arr)
@@ -1134,37 +1137,40 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
               val text_arr = ward_arr_thaw<byte>(frozen)
               val () = ward_arr_free<byte>(text_arr)
             in
-              loop(st, tree, text_start + text_len, len, parent, tlen, 1, ecnt)
+              loop(r1, st, tree, text_start + text_len, len, parent, tlen, 1, ecnt)
             end
-          else (* text too large for DOM buffer — skip *)
-            loop(st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt)
-        else loop(st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt)
+          else
+            loop(r1, st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt)
+        else loop(r1, st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt)
       end
       else if opc = 2 then (* ELEMENT_CLOSE — return to parent *)
         @(st, pos, ecnt)
       else (* Unknown opcode — skip byte *)
-        loop(st, tree, pos + 1, len, parent, tlen, has_child, ecnt)
+        loop(r1, st, tree, pos + 1, len, parent, tlen, has_child, ecnt)
     end
-  and skip_attrs {lb:agz}{n:pos}
-    (tree: !ward_arr(byte, lb, n), pos: int, count: int, tlen: int n): int =
-    if count <= 0 then pos
+  and skip_attrs {lb:agz}{n:pos}{r:nat} .<r>.
+    (rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, count: int, tlen: int n): int =
+    if lte_g1(rem, 0) then pos
+    else if count <= 0 then pos
     else let
       val name_len = ward_arr_byte(tree, pos, tlen)
       val val_len = rd_u16(tree, pos + 1 + name_len, tlen)
     in
-      skip_attrs(tree, pos + 1 + name_len + 2 + val_len, count - 1, tlen)
+      skip_attrs(sub_g1(rem, 1), tree, pos + 1 + name_len + 2 + val_len, count - 1, tlen)
     end
-  and emit_attrs {l:agz}{lb:agz}{n:pos}
-    (st: ward_dom_stream(l), nid: int, tree: !ward_arr(byte, lb, n),
+  and emit_attrs {l:agz}{lb:agz}{n:pos}{r:nat} .<r>.
+    (rem: int(r), st: ward_dom_stream(l), nid: int, tree: !ward_arr(byte, lb, n),
      pos: int, count: int, tlen: int n)
     : ward_dom_stream(l) =
-    if count <= 0 then st
+    if lte_g1(rem, 0) then st
+    else if count <= 0 then st
     else let
       val name_len = ward_arr_byte(tree, pos, tlen)
       val attr_idx = lookup_attr(tree, tlen, pos + 1, name_len)
       val val_off = pos + 1 + name_len
       val val_len = rd_u16(tree, val_off, tlen)
       val val_start = val_off + 2
+      val r1 = sub_g1(rem, 1)
     in
       if attr_idx >= 0 then let
         val @(attr_st, attr_st_len) = get_attr_by_index(attr_idx)
@@ -1181,43 +1187,46 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
             val val_arr = ward_arr_thaw<byte>(frozen)
             val () = ward_arr_free<byte>(val_arr)
           in
-            emit_attrs(st, nid, tree, val_start + val_len, count - 1, tlen)
+            emit_attrs(r1, st, nid, tree, val_start + val_len, count - 1, tlen)
           end
-          else (* attr value too large for DOM buffer — skip *)
-            emit_attrs(st, nid, tree, val_start + val_len, count - 1, tlen)
-          else (* attr value >= 65536 — skip *)
-            emit_attrs(st, nid, tree, val_start + val_len, count - 1, tlen)
-        else (* empty attr value — skip *)
-          emit_attrs(st, nid, tree, val_start, count - 1, tlen)
+          else
+            emit_attrs(r1, st, nid, tree, val_start + val_len, count - 1, tlen)
+          else
+            emit_attrs(r1, st, nid, tree, val_start + val_len, count - 1, tlen)
+        else
+          emit_attrs(r1, st, nid, tree, val_start, count - 1, tlen)
       end
-      else (* Unknown attribute — skip *)
-        emit_attrs(st, nid, tree, val_start + val_len, count - 1, tlen)
+      else
+        emit_attrs(r1, st, nid, tree, val_start + val_len, count - 1, tlen)
     end
-  and skip_element {lb:agz}{n:pos}
-    (tree: !ward_arr(byte, lb, n), pos: int, len: int, tlen: int n): int =
-    if pos >= len then pos
+  and skip_element {lb:agz}{n:pos}{r:nat} .<r>.
+    (rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, len: int, tlen: int n): int =
+    if lte_g1(rem, 0) then pos
+    else if pos >= len then pos
     else let
       val opc = ward_arr_byte(tree, pos, tlen)
+      val r1 = sub_g1(rem, 1)
     in
       if opc = 2 then pos + 1  (* ELEMENT_CLOSE *)
       else if opc = 1 then let (* nested ELEMENT_OPEN *)
         val tag_len = ward_arr_byte(tree, pos + 1, tlen)
         val attr_off = pos + 2 + tag_len
         val attr_count = ward_arr_byte(tree, attr_off, tlen)
-        val after_attrs = skip_attrs(tree, attr_off + 1, attr_count, tlen)
-        val end_inner = skip_element(tree, after_attrs, len, tlen)
+        val after_attrs = skip_attrs(r1, tree, attr_off + 1, attr_count, tlen)
+        val end_inner = skip_element(r1, tree, after_attrs, len, tlen)
       in
-        skip_element(tree, end_inner, len, tlen)
+        skip_element(r1, tree, end_inner, len, tlen)
       end
       else if opc = 3 then let (* TEXT *)
         val text_len = rd_u16(tree, pos + 1, tlen)
       in
-        skip_element(tree, pos + 3 + text_len, len, tlen)
+        skip_element(r1, tree, pos + 3 + text_len, len, tlen)
       end
-      else skip_element(tree, pos + 1, len, tlen) (* unknown — skip byte *)
+      else skip_element(r1, tree, pos + 1, len, tlen) (* unknown — skip byte *)
     end
 
-  val @(st, _, ecnt) = loop(stream, tree, 0, tree_len, parent_id, tree_len, 0, 0)
+  val tl_rem = _checked_nat(_g0(tree_len))
+  val @(st, _, ecnt) = loop(tl_rem, stream, tree, 0, tree_len, parent_id, tree_len, 0, 0)
   val () = _dom_set_render_ecnt(ecnt)
 in
   st
@@ -1319,50 +1328,55 @@ in
     (* Strip one directory level from chapter_dir.
      * e.g., "OEBPS/Text/" + "../Images/cover.jpg" → "OEBPS/Images/cover.jpg"
      * Find second-to-last '/' in chapter_dir (which ends with '/') *)
-    fun find_parent_slash {ld:agz}{nd:pos}
-      (d: !ward_arr(byte, ld, nd), dlen: int nd, pos: int): int =
-      if pos < 0 then 0
+    fun find_parent_slash {ld:agz}{nd:pos}{k:nat} .<k>.
+      (rem: int(k), d: !ward_arr(byte, ld, nd), dlen: int nd, pos: int): int =
+      if lte_g1(rem, 0) then 0
+      else if pos < 0 then 0
       else if ward_arr_byte(d, pos, dlen) = 47 (* '/' *)
       then pos + 1
-      else find_parent_slash(d, dlen, pos - 1)
-    val parent_len = find_parent_slash(chapter_dir, dir_len, dl - 2)
+      else find_parent_slash(sub_g1(rem, 1), d, dlen, pos - 1)
+    val parent_len = find_parent_slash(_checked_nat(dl), chapter_dir, dir_len, dl - 2)
     (* Copy parent dir to sbuf *)
-    fun copy_dir {ld:agz}{nd:pos}
-      (d: !ward_arr(byte, ld, nd), dlen: int nd, i: int, count: int): void =
-      if i < count then let
+    fun copy_dir {ld:agz}{nd:pos}{k:nat} .<k>.
+      (rem: int(k), d: !ward_arr(byte, ld, nd), dlen: int nd, i: int, count: int): void =
+      if lte_g1(rem, 0) then ()
+      else if i < count then let
         val b = ward_arr_byte(d, i, dlen)
         val _ = _app_sbuf_set_u8(i, b)
-      in copy_dir(d, dlen, i + 1, count) end
-    val () = copy_dir(chapter_dir, dir_len, 0, parent_len)
+      in copy_dir(sub_g1(rem, 1), d, dlen, i + 1, count) end
+    val () = copy_dir(_checked_nat(parent_len), chapter_dir, dir_len, 0, parent_len)
     (* Copy src after "../" to sbuf[parent_len..] *)
     val skip = 3 (* skip "../" *)
     val remain = src_len - skip
-    fun copy_src {lb:agz}{n:pos}
-      (tree: !ward_arr(byte, lb, n), tlen: int n,
+    fun copy_src {lb:agz}{n:pos}{k:nat} .<k>.
+      (rem: int(k), tree: !ward_arr(byte, lb, n), tlen: int n,
        src_start: int, i: int, count: int, dst: int): void =
-      if i < count then let
+      if lte_g1(rem, 0) then ()
+      else if i < count then let
         val b = ward_arr_byte(tree, src_start + i, tlen)
         val _ = _app_sbuf_set_u8(dst + i, b)
-      in copy_src(tree, tlen, src_start, i + 1, count, dst) end
-    val () = copy_src(tree, tlen, src_off + skip, 0, remain, parent_len)
+      in copy_src(sub_g1(rem, 1), tree, tlen, src_start, i + 1, count, dst) end
+    val () = copy_src(_checked_nat(remain), tree, tlen, src_off + skip, 0, remain, parent_len)
   in parent_len + remain end
   else let
     (* No "../" — prepend chapter_dir *)
-    fun copy_dir2 {ld:agz}{nd:pos}
-      (d: !ward_arr(byte, ld, nd), dlen: int nd, i: int, count: int): void =
-      if i < count then let
+    fun copy_dir2 {ld:agz}{nd:pos}{k:nat} .<k>.
+      (rem: int(k), d: !ward_arr(byte, ld, nd), dlen: int nd, i: int, count: int): void =
+      if lte_g1(rem, 0) then ()
+      else if i < count then let
         val b = ward_arr_byte(d, i, dlen)
         val _ = _app_sbuf_set_u8(i, b)
-      in copy_dir2(d, dlen, i + 1, count) end
-    val () = copy_dir2(chapter_dir, dir_len, 0, dl)
-    fun copy_src2 {lb:agz}{n:pos}
-      (tree: !ward_arr(byte, lb, n), tlen: int n,
+      in copy_dir2(sub_g1(rem, 1), d, dlen, i + 1, count) end
+    val () = copy_dir2(_checked_nat(dl), chapter_dir, dir_len, 0, dl)
+    fun copy_src2 {lb:agz}{n:pos}{k:nat} .<k>.
+      (rem: int(k), tree: !ward_arr(byte, lb, n), tlen: int n,
        src_start: int, i: int, count: int, dst: int): void =
-      if i < count then let
+      if lte_g1(rem, 0) then ()
+      else if i < count then let
         val b = ward_arr_byte(tree, src_start + i, tlen)
         val _ = _app_sbuf_set_u8(dst + i, b)
-      in copy_src2(tree, tlen, src_start, i + 1, count, dst) end
-    val () = copy_src2(tree, tlen, src_off, 0, src_len, dl)
+      in copy_src2(sub_g1(rem, 1), tree, tlen, src_start, i + 1, count, dst) end
+    val () = copy_src2(_checked_nat(src_len), tree, tlen, src_off, 0, src_len, dl)
   in dl + src_len end
 end
 
@@ -1385,60 +1399,58 @@ implement render_tree_with_images
   (* Reset deferred image queue before each render pass *)
   val () = deferred_image_queue_reset()
 
-  fun loop {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
-    (st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n),
+  fun loop {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}{r:nat} .<r>.
+    (rem: int(r), st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n),
      pos: int, len: int, parent: int, tlen: int n,
      has_child: int, ecnt: int,
      fh: int, cdir: !ward_arr(byte, ld, nd), cdlen: int nd)
     : @(ward_dom_stream(l), int, int) =
-    if pos >= len then @(st, pos, ecnt)
+    if lte_g1(rem, 0) then @(st, pos, ecnt)
+    else if pos >= len then @(st, pos, ecnt)
     else if ecnt >= MAX_RENDER_ELEMENTS then @(st, len, ecnt)
     else let
       val opc = ward_arr_byte(tree, pos, tlen)
+      val r1 = sub_g1(rem, 1)
     in
       if opc = 1 then let (* ELEMENT_OPEN *)
         val tag_len = ward_arr_byte(tree, pos + 1, tlen)
         val tag_idx = lookup_tag(tree, tlen, pos + 2, tag_len)
         val attr_off = pos + 2 + tag_len
         val attr_count = ward_arr_byte(tree, attr_off, tlen)
-        val after_attrs = skip_attrs_img(tree, attr_off + 1, attr_count, tlen)
+        val after_attrs = skip_attrs_img(r1, tree, attr_off + 1, attr_count, tlen)
       in
         if tag_idx >= 0 then
           if tag_idx = TAG_IDX_IMG then let
-            (* Create <img> element and handle src attribute *)
             val @(tag_st, tag_st_len) = get_tag_by_index(tag_idx)
             val nid = dom_next_id()
             val st = ward_dom_stream_create_element(st, nid, parent, tag_st, tag_st_len)
-            (* Emit non-src attributes and collect src info *)
             val @(st, src_off, src_len) = emit_attrs_img(
-              st, nid, tree, attr_off + 1, attr_count, tlen, 0, 0)
+              r1, st, nid, tree, attr_off + 1, attr_count, tlen, 0, 0)
           in
             if gt_int_int(src_len, 0) then let
               val () = record_deferred_image(nid, src_off, src_len)
-              (* <img> is void — skip to ELEMENT_CLOSE *)
-              val end_pos = skip_element_img(tree, after_attrs, len, tlen)
+              val end_pos = skip_element_img(r1, tree, after_attrs, len, tlen)
             in
               if end_pos < len then let
                 val close_opc = ward_arr_byte(tree, end_pos, tlen)
               in
                 if close_opc = 2 then
-                  loop(st, tree, end_pos + 1, len, parent, tlen, 1, ecnt + 1, fh, cdir, cdlen)
+                  loop(r1, st, tree, end_pos + 1, len, parent, tlen, 1, ecnt + 1, fh, cdir, cdlen)
                 else
-                  loop(st, tree, end_pos, len, parent, tlen, 1, ecnt + 1, fh, cdir, cdlen)
+                  loop(r1, st, tree, end_pos, len, parent, tlen, 1, ecnt + 1, fh, cdir, cdlen)
               end
               else @(st, end_pos, ecnt + 1)
             end
             else let
-              (* No src found — element exists without image *)
-              val end_pos = skip_element_img(tree, after_attrs, len, tlen)
+              val end_pos = skip_element_img(r1, tree, after_attrs, len, tlen)
             in
               if end_pos < len then let
                 val close_opc = ward_arr_byte(tree, end_pos, tlen)
               in
                 if close_opc = 2 then
-                  loop(st, tree, end_pos + 1, len, parent, tlen, 1, ecnt + 1, fh, cdir, cdlen)
+                  loop(r1, st, tree, end_pos + 1, len, parent, tlen, 1, ecnt + 1, fh, cdir, cdlen)
                 else
-                  loop(st, tree, end_pos, len, parent, tlen, 1, ecnt + 1, fh, cdir, cdlen)
+                  loop(r1, st, tree, end_pos, len, parent, tlen, 1, ecnt + 1, fh, cdir, cdlen)
               end
               else @(st, end_pos, ecnt + 1)
             end
@@ -1447,24 +1459,23 @@ implement render_tree_with_images
           val @(tag_st, tag_st_len) = get_tag_by_index(tag_idx)
           val nid = dom_next_id()
           val st = ward_dom_stream_create_element(st, nid, parent, tag_st, tag_st_len)
-          val st = emit_attrs_noimg(st, nid, tree, attr_off + 1, attr_count, tlen)
-          val @(st, child_end, ec2) = loop(st, tree, after_attrs, len, nid, tlen, 0, ecnt + 1, fh, cdir, cdlen)
+          val st = emit_attrs_noimg(r1, st, nid, tree, attr_off + 1, attr_count, tlen)
+          val @(st, child_end, ec2) = loop(r1, st, tree, after_attrs, len, nid, tlen, 0, ecnt + 1, fh, cdir, cdlen)
         in
-          (* SIBLING_CONTINUATION *)
           if child_end < len then let
             val close_opc = ward_arr_byte(tree, child_end, tlen)
           in
             if close_opc = 2 then
-              loop(st, tree, child_end + 1, len, parent, tlen, 1, ec2, fh, cdir, cdlen)
+              loop(r1, st, tree, child_end + 1, len, parent, tlen, 1, ec2, fh, cdir, cdlen)
             else
-              loop(st, tree, child_end, len, parent, tlen, 1, ec2, fh, cdir, cdlen)
+              loop(r1, st, tree, child_end, len, parent, tlen, 1, ec2, fh, cdir, cdlen)
           end
           else @(st, child_end, ec2)
         end
         else let
-          val end_pos = skip_element_img(tree, after_attrs, len, tlen)
+          val end_pos = skip_element_img(r1, tree, after_attrs, len, tlen)
         in
-          loop(st, tree, end_pos, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
+          loop(r1, st, tree, end_pos, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
         end
       end
       else if opc = 3 then let (* TEXT *)
@@ -1474,7 +1485,7 @@ implement render_tree_with_images
       in
         if tl > 0 then
           if is_whitespace_only(tree, text_start, text_len, tlen) then
-            loop(st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
+            loop(r1, st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
           else if tl < 65536 then
             if has_child > 0 then let
               val span_id = dom_next_id()
@@ -1488,7 +1499,7 @@ implement render_tree_with_images
               val text_arr = ward_arr_thaw<byte>(frozen)
               val () = ward_arr_free<byte>(text_arr)
             in
-              loop(st, tree, text_start + text_len, len, parent, tlen, 1, ecnt + 1, fh, cdir, cdlen)
+              loop(r1, st, tree, text_start + text_len, len, parent, tlen, 1, ecnt + 1, fh, cdir, cdlen)
             end
             else let
               val text_arr = ward_arr_alloc<byte>(tl)
@@ -1499,37 +1510,40 @@ implement render_tree_with_images
               val text_arr = ward_arr_thaw<byte>(frozen)
               val () = ward_arr_free<byte>(text_arr)
             in
-              loop(st, tree, text_start + text_len, len, parent, tlen, 1, ecnt, fh, cdir, cdlen)
+              loop(r1, st, tree, text_start + text_len, len, parent, tlen, 1, ecnt, fh, cdir, cdlen)
             end
           else
-            loop(st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
-        else loop(st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
+            loop(r1, st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
+        else loop(r1, st, tree, text_start + text_len, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
       end
       else if opc = 2 then (* ELEMENT_CLOSE *)
         @(st, pos, ecnt)
       else
-        loop(st, tree, pos + 1, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
+        loop(r1, st, tree, pos + 1, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
     end
-  and skip_attrs_img {lb:agz}{n:pos}
-    (tree: !ward_arr(byte, lb, n), pos: int, count: int, tlen: int n): int =
-    if count <= 0 then pos
+  and skip_attrs_img {lb:agz}{n:pos}{r:nat} .<r>.
+    (rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, count: int, tlen: int n): int =
+    if lte_g1(rem, 0) then pos
+    else if count <= 0 then pos
     else let
       val name_len = ward_arr_byte(tree, pos, tlen)
       val val_len = rd_u16(tree, pos + 1 + name_len, tlen)
     in
-      skip_attrs_img(tree, pos + 1 + name_len + 2 + val_len, count - 1, tlen)
+      skip_attrs_img(sub_g1(rem, 1), tree, pos + 1 + name_len + 2 + val_len, count - 1, tlen)
     end
-  and emit_attrs_noimg {l:agz}{lb:agz}{n:pos}
-    (st: ward_dom_stream(l), nid: int, tree: !ward_arr(byte, lb, n),
+  and emit_attrs_noimg {l:agz}{lb:agz}{n:pos}{r:nat} .<r>.
+    (rem: int(r), st: ward_dom_stream(l), nid: int, tree: !ward_arr(byte, lb, n),
      pos: int, count: int, tlen: int n)
     : ward_dom_stream(l) =
-    if count <= 0 then st
+    if lte_g1(rem, 0) then st
+    else if count <= 0 then st
     else let
       val name_len = ward_arr_byte(tree, pos, tlen)
       val attr_idx = lookup_attr(tree, tlen, pos + 1, name_len)
       val val_off = pos + 1 + name_len
       val val_len = rd_u16(tree, val_off, tlen)
       val val_start = val_off + 2
+      val r1 = sub_g1(rem, 1)
     in
       if attr_idx >= 0 then let
         val @(attr_st, attr_st_len) = get_attr_by_index(attr_idx)
@@ -1546,30 +1560,31 @@ implement render_tree_with_images
             val val_arr = ward_arr_thaw<byte>(frozen)
             val () = ward_arr_free<byte>(val_arr)
           in
-            emit_attrs_noimg(st, nid, tree, val_start + val_len, count - 1, tlen)
+            emit_attrs_noimg(r1, st, nid, tree, val_start + val_len, count - 1, tlen)
           end
-          else emit_attrs_noimg(st, nid, tree, val_start + val_len, count - 1, tlen)
-          else emit_attrs_noimg(st, nid, tree, val_start + val_len, count - 1, tlen)
-        else emit_attrs_noimg(st, nid, tree, val_start, count - 1, tlen)
+          else emit_attrs_noimg(r1, st, nid, tree, val_start + val_len, count - 1, tlen)
+          else emit_attrs_noimg(r1, st, nid, tree, val_start + val_len, count - 1, tlen)
+        else emit_attrs_noimg(r1, st, nid, tree, val_start, count - 1, tlen)
       end
-      else emit_attrs_noimg(st, nid, tree, val_start + val_len, count - 1, tlen)
+      else emit_attrs_noimg(r1, st, nid, tree, val_start + val_len, count - 1, tlen)
     end
-  and emit_attrs_img {l:agz}{lb:agz}{n:pos}
-    (st: ward_dom_stream(l), nid: int, tree: !ward_arr(byte, lb, n),
+  and emit_attrs_img {l:agz}{lb:agz}{n:pos}{r:nat} .<r>.
+    (rem: int(r), st: ward_dom_stream(l), nid: int, tree: !ward_arr(byte, lb, n),
      pos: int, count: int, tlen: int n,
      found_src_off: int, found_src_len: int)
     : @(ward_dom_stream(l), int, int) =
-    if count <= 0 then @(st, found_src_off, found_src_len)
+    if lte_g1(rem, 0) then @(st, found_src_off, found_src_len)
+    else if count <= 0 then @(st, found_src_off, found_src_len)
     else let
       val name_len = ward_arr_byte(tree, pos, tlen)
       val attr_idx = lookup_attr(tree, tlen, pos + 1, name_len)
       val val_off = pos + 1 + name_len
       val val_len = rd_u16(tree, val_off, tlen)
       val val_start = val_off + 2
+      val r1 = sub_g1(rem, 1)
     in
       if attr_idx = ATTR_IDX_SRC then
-        (* Save src offset/len but don't emit as normal attribute *)
-        emit_attrs_img(st, nid, tree, val_start + val_len, count - 1, tlen,
+        emit_attrs_img(r1, st, nid, tree, val_start + val_len, count - 1, tlen,
           val_start, val_len)
       else if attr_idx >= 0 then let
         val @(attr_st, attr_st_len) = get_attr_by_index(attr_idx)
@@ -1586,44 +1601,47 @@ implement render_tree_with_images
             val val_arr = ward_arr_thaw<byte>(frozen)
             val () = ward_arr_free<byte>(val_arr)
           in
-            emit_attrs_img(st, nid, tree, val_start + val_len, count - 1, tlen,
+            emit_attrs_img(r1, st, nid, tree, val_start + val_len, count - 1, tlen,
               found_src_off, found_src_len)
           end
-          else emit_attrs_img(st, nid, tree, val_start + val_len, count - 1, tlen,
+          else emit_attrs_img(r1, st, nid, tree, val_start + val_len, count - 1, tlen,
             found_src_off, found_src_len)
-          else emit_attrs_img(st, nid, tree, val_start + val_len, count - 1, tlen,
+          else emit_attrs_img(r1, st, nid, tree, val_start + val_len, count - 1, tlen,
             found_src_off, found_src_len)
-        else emit_attrs_img(st, nid, tree, val_start, count - 1, tlen,
+        else emit_attrs_img(r1, st, nid, tree, val_start, count - 1, tlen,
           found_src_off, found_src_len)
       end
-      else emit_attrs_img(st, nid, tree, val_start + val_len, count - 1, tlen,
+      else emit_attrs_img(r1, st, nid, tree, val_start + val_len, count - 1, tlen,
         found_src_off, found_src_len)
     end
-  and skip_element_img {lb:agz}{n:pos}
-    (tree: !ward_arr(byte, lb, n), pos: int, len: int, tlen: int n): int =
-    if pos >= len then pos
+  and skip_element_img {lb:agz}{n:pos}{r:nat} .<r>.
+    (rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, len: int, tlen: int n): int =
+    if lte_g1(rem, 0) then pos
+    else if pos >= len then pos
     else let
       val opc = ward_arr_byte(tree, pos, tlen)
+      val r1 = sub_g1(rem, 1)
     in
       if opc = 2 then pos + 1
       else if opc = 1 then let
         val tag_len = ward_arr_byte(tree, pos + 1, tlen)
         val attr_off = pos + 2 + tag_len
         val attr_count = ward_arr_byte(tree, attr_off, tlen)
-        val after_attrs = skip_attrs_img(tree, attr_off + 1, attr_count, tlen)
-        val end_inner = skip_element_img(tree, after_attrs, len, tlen)
+        val after_attrs = skip_attrs_img(r1, tree, attr_off + 1, attr_count, tlen)
+        val end_inner = skip_element_img(r1, tree, after_attrs, len, tlen)
       in
-        skip_element_img(tree, end_inner, len, tlen)
+        skip_element_img(r1, tree, end_inner, len, tlen)
       end
       else if opc = 3 then let
         val text_len = rd_u16(tree, pos + 1, tlen)
       in
-        skip_element_img(tree, pos + 3 + text_len, len, tlen)
+        skip_element_img(r1, tree, pos + 3 + text_len, len, tlen)
       end
-      else skip_element_img(tree, pos + 1, len, tlen)
+      else skip_element_img(r1, tree, pos + 1, len, tlen)
     end
 
-  val @(st, _, ecnt) = loop(stream, tree, 0, tree_len, parent_id, tree_len, 0, 0,
+  val tl_rem = _checked_nat(_g0(tree_len))
+  val @(st, _, ecnt) = loop(tl_rem, stream, tree, 0, tree_len, parent_id, tree_len, 0, 0,
     file_handle, chapter_dir, chapter_dir_len)
   val () = _dom_set_render_ecnt(ecnt)
 in
@@ -1812,13 +1830,14 @@ in
     (* Pass 2: create arena and process images *)
     val arena = ward_arena_create(arena_size_g1)
 
-    fun process {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}{la:agz}{max:pos}{k:nat}
-      (st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n), tlen: int n,
+    fun process {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}{la:agz}{max:pos}{k:nat}{r:nat} .<r>.
+      (rem: int(r), st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n), tlen: int n,
        fh: int, cdir: !ward_arr(byte, ld, nd), cdlen: int nd,
        arena: !ward_arena(la, max, k) >> ward_arena(la, max, k),
        i: int, total: int)
       : ward_dom_stream(l) =
-      if i >= total then st
+      if lte_g1(rem, 0) then st
+      else if i >= total then st
       else let
         val nid = _deferred_image_get_node_id_impl(i)
         val src_off = _deferred_image_get_src_off_impl(i)
@@ -1837,17 +1856,17 @@ in
               if data_off >= 0 then let
                 val st = load_stored_image_arena(st, nid, tree, tlen,
                   src_off, src_len, fh, data_off, entry.compressed_size, arena)
-              in process(st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total) end
-              else process(st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
+              in process(sub_g1(rem, 1), st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total) end
+              else process(sub_g1(rem, 1), st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
             end
             else (* deflated — skip for now *)
-              process(st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
-          else process(st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
+              process(sub_g1(rem, 1), st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
+          else process(sub_g1(rem, 1), st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
         end
-        else process(st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
+        else process(sub_g1(rem, 1), st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
       end
 
-    val stream = process(stream, tree, tree_len, file_handle,
+    val stream = process(_checked_nat(count), stream, tree, tree_len, file_handle,
       chapter_dir, chapter_dir_len, arena, 0, count)
     val () = ward_arena_destroy(arena)
   in

@@ -81,38 +81,46 @@ extern castfn _clamp_archived(x: int): [a:nat | a <= 1] int a
 fn _copy_book(dst: int, src_idx: int): void = let
   val dst_off = dst * REC_BYTES
   val src_off = src_idx * REC_BYTES
-  fun loop(i: int, doff: int, soff: int): void =
-    if lt_int_int(i, REC_BYTES) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, doff: int, soff: int): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, REC_BYTES) then let
       val b = _app_lib_books_get_u8(soff + i)
       val () = _app_lib_books_set_u8(doff + i, b)
-    in loop(i + 1, doff, soff) end
-in loop(0, dst_off, src_off) end
+    in loop(sub_g1(rem, 1), i + 1, doff, soff) end
+in loop(_checked_nat(REC_BYTES), 0, dst_off, src_off) end
 
 (* Swap two book records using sbuf as temp storage *)
 fn swap_books(a: int, b: int): void = let
   val a_off = a * REC_BYTES
   val b_off = b * REC_BYTES
   (* Copy a → sbuf *)
-  fun copy_to_sbuf(i: int, src: int): void =
-    if lt_int_int(i, REC_BYTES) then let
+  fun copy_to_sbuf {k:nat} .<k>.
+    (rem: int(k), i: int, src: int): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, REC_BYTES) then let
       val v = _app_lib_books_get_u8(src + i)
       val () = _app_sbuf_set_u8(i, v)
-    in copy_to_sbuf(i + 1, src) end
+    in copy_to_sbuf(sub_g1(rem, 1), i + 1, src) end
   (* Copy b → a *)
-  fun copy_b_to_a(i: int, dst: int, src: int): void =
-    if lt_int_int(i, REC_BYTES) then let
+  fun copy_b_to_a {k:nat} .<k>.
+    (rem: int(k), i: int, dst: int, src: int): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, REC_BYTES) then let
       val v = _app_lib_books_get_u8(src + i)
       val () = _app_lib_books_set_u8(dst + i, v)
-    in copy_b_to_a(i + 1, dst, src) end
+    in copy_b_to_a(sub_g1(rem, 1), i + 1, dst, src) end
   (* Copy sbuf → b *)
-  fun copy_sbuf_to_b(i: int, dst: int): void =
-    if lt_int_int(i, REC_BYTES) then let
+  fun copy_sbuf_to_b {k:nat} .<k>.
+    (rem: int(k), i: int, dst: int): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, REC_BYTES) then let
       val v = _app_sbuf_get_u8(i)
       val () = _app_lib_books_set_u8(dst + i, v)
-    in copy_sbuf_to_b(i + 1, dst) end
-  val () = copy_to_sbuf(0, a_off)
-  val () = copy_b_to_a(0, a_off, b_off)
-  val () = copy_sbuf_to_b(0, b_off)
+    in copy_sbuf_to_b(sub_g1(rem, 1), i + 1, dst) end
+  val () = copy_to_sbuf(_checked_nat(REC_BYTES), 0, a_off)
+  val () = copy_b_to_a(_checked_nat(REC_BYTES), 0, a_off, b_off)
+  val () = copy_sbuf_to_b(_checked_nat(REC_BYTES), 0, b_off)
 in end
 
 (* ========== Library functions ========== *)
@@ -136,17 +144,19 @@ in
     (* Deduplicate by content hash (book_id = SHA-256).
      * Same hash = same book by definition. No title check needed.
      * Returns: -1 = no match, >= 0 = existing book index *)
-    fun find_dup(i: int, cnt: int, blen: int): int =
-      if gte_int_int(i, cnt) then 0 - 1
+    fun find_dup {k:nat} .<k>.
+      (rem: int(k), i: int, cnt: int, blen: int): int =
+      if lte_g1(rem, 0) then 0 - 1
+      else if gte_int_int(i, cnt) then 0 - 1
       else let
         val stored_len = _app_lib_books_get_i32(i * REC_INTS + BOOKID_LEN_SLOT)
       in
-        if neq_int_int(stored_len, blen) then find_dup(i + 1, cnt, blen)
+        if neq_int_int(stored_len, blen) then find_dup(sub_g1(rem, 1), i + 1, cnt, blen)
         else if gt_int_int(_app_lib_books_match_bid(i * REC_BYTES + BOOKID_OFF, blen), 0)
         then i
-        else find_dup(i + 1, cnt, blen)
+        else find_dup(sub_g1(rem, 1), i + 1, cnt, blen)
       end
-    val dup = find_dup(0, count, bid_len)
+    val dup = find_dup(_checked_nat(count), 0, count, bid_len)
   in
     if gte_int_int(dup, 0) then _mk_added(dup)
     else let
@@ -253,17 +263,19 @@ implement library_update_position(index, chapter, page) =
 implement library_find_book_by_id() = let
   val count = _app_lib_count()
   val bid_len = _app_epub_book_id_len()
-  fun loop(i: int, cnt: int, blen: int): int =
-    if gte_int_int(i, cnt) then 0 - 1
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, cnt: int, blen: int): int =
+    if lte_g1(rem, 0) then 0 - 1
+    else if gte_int_int(i, cnt) then 0 - 1
     else let
       val stored_len = _app_lib_books_get_i32(i * REC_INTS + BOOKID_LEN_SLOT)
     in
-      if neq_int_int(stored_len, blen) then loop(i + 1, cnt, blen)
+      if neq_int_int(stored_len, blen) then loop(sub_g1(rem, 1), i + 1, cnt, blen)
       else if gt_int_int(_app_lib_books_match_bid(i * REC_BYTES + BOOKID_OFF, blen), 0)
       then i
-      else loop(i + 1, cnt, blen)
+      else loop(sub_g1(rem, 1), i + 1, cnt, blen)
     end
-in _find_idx(loop(0, count, bid_len)) end
+in _find_idx(loop(_checked_nat(count), 0, count, bid_len)) end
 
 implement library_remove_book(index) = let
   val count = _app_lib_count()
@@ -271,11 +283,13 @@ in
   if lt_int_int(index, 0) then ()
   else if gte_int_int(index, count) then ()
   else let
-    fun shift(i: int, cnt: int): void =
-      if lt_int_int(i, cnt - 1) then let
+    fun shift {k:nat} .<k>.
+      (rem: int(k), i: int, cnt: int): void =
+      if lte_g1(rem, 0) then ()
+      else if lt_int_int(i, cnt - 1) then let
         val () = _copy_book(i, i + 1)
-      in shift(i + 1, cnt) end
-    val () = shift(index, count)
+      in shift(sub_g1(rem, 1), i + 1, cnt) end
+    val () = shift(_checked_nat(count), index, count)
     val () = _app_set_lib_count(count - 1)
   in end
 end
@@ -308,6 +322,7 @@ fn to_lower_dep {b:nat | b <= 255}(b: int(b))
 fun lex_compare_loop
   {oi,oj:int | oi >= 0; oj >= 0}
   {l,k:nat | k <= l; oi + l <= LIB_BOOKS_CAP_S; oj + l <= LIB_BOOKS_CAP_S}
+  .<l - k>.
   (pf_eq: BYTES_EQ_UPTO(oi, oj, k) |
    off_i: int(oi), off_j: int(oj), len: int(l), pos: int(k))
   : [r:int] (LEX_CMP(oi, oj, l, r) | int(r)) =
@@ -337,7 +352,13 @@ fn field_offset {m:nat | m <= 1}{i:nat | i < 32}
     in (FIELD_AUTHOR() | oi, 256) end
 
 (* Compare, conditionally swap, verify post-state.
- * Returns (PROOF | int) — dummy int prevents erasure of effectful function. *)
+ * Returns (PROOF | int) — dummy int prevents erasure of effectful function.
+ *
+ * TERMINATION NOTE: This function recurses only when swap_books doesn't
+ * reverse the lex comparison — which never happens in practice because
+ * swap literally exchanges the compared bytes. Proving this requires
+ * modeling buffer contents pre/post swap, which is beyond ATS2's integer
+ * constraint solver. The function terminates after at most one swap. *)
 fun ensure_ordered {m:nat | m <= 1}{i,j:nat | j == i + 1; i < 32; j < 32}
   (pf_mode: SORT_MODE_VALID(m) | mode: int(m), i: int(i), j: int(j))
   : (PAIR_IN_ORDER(m, i, j) | int) = let
@@ -366,7 +387,7 @@ end
  * proof for that pair. *)
 fn insertion_pass_inner {m:nat | m <= 1}{k:nat | k < 32}
   (pf_mode: SORT_MODE_VALID(m) | mode: int(m), k: int(k)): void = let
-  fun loop {j:nat | j <= k}
+  fun loop {j:nat | j <= k} .<j>.
     (pf_mode: SORT_MODE_VALID(m) | mode: int(m), j: int(j), k: int(k)): void =
     if eq_g1(j, 0) then ()
     else let
@@ -383,7 +404,7 @@ in
   else let
     (* Insertion sort: for each element k from 1 to count-1,
      * bubble it into sorted position *)
-    fun outer {k:nat | k <= 32}{n2:nat | n2 <= 32}
+    fun outer {n2:nat | n2 <= 32}{k:nat | k <= n2} .<n2 - k>.
       (pf_mode: SORT_MODE_VALID(m) | mode: int(m), k: int(k), n: int(n2)): void =
       if gte_g1(k, n) then ()
       else let
@@ -396,7 +417,7 @@ in
     fun build_proof {n:nat | n >= 2; n <= 32}
       (pf_mode: SORT_MODE_VALID(m) | mode: int(m), n: int(n))
       : (LIBRARY_SORTED(m, n) | int) = let
-      fun verify_pairs {k:int | k >= 3; k <= n}
+      fun verify_pairs {k:int | k >= 3; k <= n} .<n - k>.
         (pf_sorted: LIBRARY_SORTED(m, k-1), pf_mode: SORT_MODE_VALID(m) |
          mode: int(m), k: int(k), n: int(n))
         : (LIBRARY_SORTED(m, n) | int) =
@@ -470,21 +491,25 @@ in bor_int_int(lo, bsl_int_int(hi, 8)) end
 
 (* Copy bytes from lib_books to fetch buffer *)
 fn _copy_lib_to_fbuf(src_base: int, dst_off: int, n: int): void = let
-  fun loop(j: int): void =
-    if lt_int_int(j, n) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), j: int): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(j, n) then let
       val b = _app_lib_books_get_u8(src_base + j)
       val () = _app_fbuf_set_u8(dst_off + j, b)
-    in loop(j + 1) end
-in loop(0) end
+    in loop(sub_g1(rem, 1), j + 1) end
+in loop(_checked_nat(n), 0) end
 
 (* Copy bytes from fetch buffer to lib_books *)
 fn _copy_fbuf_to_lib(src_off: int, dst_base: int, n: int): void = let
-  fun loop(j: int): void =
-    if lt_int_int(j, n) then let
+  fun loop {k:nat} .<k>.
+    (rem: int(k), j: int): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(j, n) then let
       val b = _app_fbuf_get_u8(src_off + j)
       val () = _app_lib_books_set_u8(dst_base + j, b)
-    in loop(j + 1) end
-in loop(0) end
+    in loop(sub_g1(rem, 1), j + 1) end
+in loop(_checked_nat(n), 0) end
 
 (* Clamp value to [0, max] *)
 fn _clamp(v: int, mx: int): int =
@@ -502,8 +527,10 @@ implement library_serialize() = let
   val () = _fbuf_write_u16(2, 2)
   val () = _fbuf_write_u16(4, count2)
   val () = _fbuf_write_u16(6, _app_lib_sort_mode())
-  fun loop(i: int, off: int): int =
-    if gte_int_int(i, count2) then off
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, off: int): int =
+    if lte_g1(rem, 0) then off
+    else if gte_int_int(i, count2) then off
     else if gt_int_int(off + 590, 16384) then off (* overflow guard *)
     else let
       val bi = i * REC_INTS
@@ -528,14 +555,16 @@ implement library_serialize() = let
       val () = _fbuf_write_u16(off + 2, _app_lib_books_get_i32(bi + CHAPTER_SLOT))
       val () = _fbuf_write_u16(off + 4, _app_lib_books_get_i32(bi + PAGE_SLOT))
       val () = _fbuf_write_u16(off + 6, _app_lib_books_get_i32(bi + ARCHIVED_SLOT))
-    in loop(i + 1, off + 8) end
-  val total = loop(0, 8)
+    in loop(sub_g1(rem, 1), i + 1, off + 8) end
+  val total = loop(_checked_nat(count2), 0, 8)
 in _checked_nat(total) end
 
 (* Deserialize v1 format — legacy, no archived flag *)
 fn _deserialize_v1(len: int, count2: int): int = let
-  fun loop(i: int, off: int): int =
-    if gte_int_int(i, count2) then 1
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, off: int): int =
+    if lte_g1(rem, 0) then 0
+    else if gte_int_int(i, count2) then 1
     else if gt_int_int(off + 8, len) then 0
     else let
       val bi = i * REC_INTS
@@ -572,17 +601,19 @@ fn _deserialize_v1(len: int, count2: int): int = let
               val () = _app_lib_books_set_i32(bi + PAGE_SLOT, _fbuf_read_u16(off + 4))
               val () = _app_lib_books_set_i32(bi + ARCHIVED_SLOT, 0)
               val () = _app_lib_books_set_i32(bi + RESERVED_SLOT, 0)
-            in loop(i + 1, off + 6) end
+            in loop(sub_g1(rem, 1), i + 1, off + 6) end
           end
         end
       end
     end
-in loop(0, 2) end
+in loop(_checked_nat(count2), 0, 2) end
 
 (* Deserialize v2 format — includes archived flag *)
 fn _deserialize_v2(len: int, count2: int, sort_mode: int): int = let
-  fun loop(i: int, off: int): int =
-    if gte_int_int(i, count2) then 1
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, off: int): int =
+    if lte_g1(rem, 0) then 0
+    else if gte_int_int(i, count2) then 1
     else if gt_int_int(off + 8, len) then 0
     else let
       val bi = i * REC_INTS
@@ -621,12 +652,12 @@ fn _deserialize_v2(len: int, count2: int, sort_mode: int): int = let
               val () = _app_lib_books_set_i32(bi + ARCHIVED_SLOT,
                 if eq_int_int(archived, 1) then 1 else 0)
               val () = _app_lib_books_set_i32(bi + RESERVED_SLOT, 0)
-            in loop(i + 1, off + 8) end
+            in loop(sub_g1(rem, 1), i + 1, off + 8) end
           end
         end
       end
     end
-  val ok = loop(0, 8)
+  val ok = loop(_checked_nat(count2), 0, 8)
   val () = if eq_int_int(ok, 1) then
     _app_set_lib_sort_mode(
       if eq_int_int(sort_mode, 1) then 1 else 0)
@@ -675,14 +706,15 @@ in
     val slen1 = _checked_arr_size(slen)
     val arr = ward_arr_alloc<byte>(slen1)
     (* Copy fetch buffer to ward_arr — arr passed as ! to avoid linear capture *)
-    fun copy {l:agz}{n:pos}
-      (arr: !ward_arr(byte, l, n), i: int, cnt: int, sz: int n): void =
-      if lt_int_int(i, cnt) then let
+    fun copy {l:agz}{n:pos}{k:nat} .<k>.
+      (rem: int(k), arr: !ward_arr(byte, l, n), i: int, cnt: int, sz: int n): void =
+      if lte_g1(rem, 0) then ()
+      else if lt_int_int(i, cnt) then let
         val b = _app_fbuf_get_u8(i)
         val () = ward_arr_set<byte>(arr, _ward_idx(i, sz),
           ward_int2byte(_checked_byte(band_int_int(b, 255))))
-      in copy(arr, i + 1, cnt, sz) end
-    val () = copy(arr, 0, slen, slen1)
+      in copy(sub_g1(rem, 1), arr, i + 1, cnt, sz) end
+    val () = copy(_checked_nat(slen), arr, 0, slen, slen1)
     val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
     val key = _idb_key_lib()
     val p = ward_idb_put(key, 3, borrow, slen1)
@@ -708,13 +740,14 @@ in
         val dlen = _checked_pos(data_len)
         val arr = ward_idb_get_result(dlen)
         (* Copy ward_arr to fetch buffer — arr passed as ! to avoid linear capture *)
-        fun copy {l:agz}{n:pos}
-          (arr: !ward_arr(byte, l, n), i: int, cnt: int, sz: int n): void =
-          if lt_int_int(i, cnt) then let
+        fun copy {l:agz}{n:pos}{k:nat} .<k>.
+          (rem: int(k), arr: !ward_arr(byte, l, n), i: int, cnt: int, sz: int n): void =
+          if lte_g1(rem, 0) then ()
+          else if lt_int_int(i, cnt) then let
             val b = byte2int0(ward_arr_get<byte>(arr, _ward_idx(i, sz)))
             val () = _app_fbuf_set_u8(i, b)
-          in copy(arr, i + 1, cnt, sz) end
-        val () = copy(arr, 0, data_len, dlen)
+          in copy(sub_g1(rem, 1), arr, i + 1, cnt, sz) end
+        val () = copy(_checked_nat(data_len), arr, 0, data_len, dlen)
         val () = ward_arr_free<byte>(arr)
         val ok = library_deserialize(data_len)
         val () = if eq_int_int(ok, 1) then ward_log(1, _log_lib_loaded(), 10)
