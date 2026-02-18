@@ -864,26 +864,27 @@ in
     val () = ward_arr_write_u16le(arr, 0, _u16(ec))
     val () = ward_arr_write_u16le(arr, 2, _u16(sc))
 
-    (* Write entry names — arr borrowed through recursive calls *)
+    (* Write entry names — read directly from ZIP name buffer, not sbuf *)
     fun write_entries {k:nat}{la:agz}{na:pos} .<k>.
       (rem: int(k), idx: int, count: int, off: int,
        arr: !ward_arr(byte, la, na), asz: int na): int =
       if lte_g1(rem, 0) then off
       else if gte_int_int(idx, count) then off
       else let
-        val nlen = zip_get_entry_name(idx, 0) (* writes name to sbuf at 0 *)
+        val nlen = zip_get_entry_name(idx, 0)
+        val name_off = _zip_entry_name_offset(idx)
         val () = ward_arr_write_u16le(arr, _u16_off(off, asz), _u16(nlen))
-        (* Copy name bytes from sbuf to arr *)
+        (* Copy name bytes from ZIP name buffer to arr *)
         fun copy_name {k2:nat}{la2:agz}{na2:pos} .<k2>.
-          (rem2: int(k2), i: int, name_len: int, base: int,
+          (rem2: int(k2), i: int, name_len: int, base: int, noff: int,
            arr: !ward_arr(byte, la2, na2), asz: int na2): void =
           if lte_g1(rem2, 0) then ()
           else if gte_int_int(i, name_len) then ()
           else let
-            val b = _app_sbuf_get_u8(i)
+            val b = _zip_name_char(noff + i)
             val () = ward_arr_write_byte(arr, _ward_idx(base + i, asz), _checked_byte(band_int_int(b, 255)))
-          in copy_name(sub_g1(rem2, 1), i + 1, name_len, base, arr, asz) end
-        val () = copy_name(_checked_nat(nlen), 0, nlen, off + 2, arr, asz)
+          in copy_name(sub_g1(rem2, 1), i + 1, name_len, base, noff, arr, asz) end
+        val () = copy_name(_checked_nat(nlen), 0, nlen, off + 2, name_off, arr, asz)
       in write_entries(sub_g1(rem, 1), idx + 1, count, off + 2 + nlen, arr, asz) end
     val off1 = write_entries(_checked_nat(ec), 0, ec, 4, arr, tsz)
 
