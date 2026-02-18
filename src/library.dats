@@ -563,8 +563,8 @@ in _checked_nat(total) end
 fn _deserialize_v1(len: int, count2: int): int = let
   fun loop {k:nat} .<k>.
     (rem: int(k), i: int, off: int): int =
-    if lte_g1(rem, 0) then 0
-    else if gte_int_int(i, count2) then 1
+    if gte_int_int(i, count2) then 1
+    else if lte_g1(rem, 0) then 0
     else if gt_int_int(off + 8, len) then 0
     else let
       val bi = i * REC_INTS
@@ -612,8 +612,8 @@ in loop(_checked_nat(count2), 0, 2) end
 fn _deserialize_v2(len: int, count2: int, sort_mode: int): int = let
   fun loop {k:nat} .<k>.
     (rem: int(k), i: int, off: int): int =
-    if lte_g1(rem, 0) then 0
-    else if gte_int_int(i, count2) then 1
+    if gte_int_int(i, count2) then 1
+    else if lte_g1(rem, 0) then 0
     else if gt_int_int(off + 8, len) then 0
     else let
       val bi = i * REC_INTS
