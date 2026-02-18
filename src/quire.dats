@@ -3170,6 +3170,7 @@ in
       llam (data_len: int): ward_promise_chained(int) =>
         if lte_int_int(data_len, 0) then let
           val () = ward_arr_free<byte>(dir_arr)
+          val () = ward_log(3, mk_ch_err(char2int1('g'), char2int1('e'), char2int1('t')), 10)
           val () = show_chapter_error(saved_cid, TEXT_ERR_NOT_FOUND, 17)
         in ward_promise_return<int>(0) end
         else let
@@ -3211,6 +3212,7 @@ in
     val p2 = ward_promise_then<int><int>(p,
       llam (data_len: int): ward_promise_chained(int) =>
         if lte_int_int(data_len, 0) then let
+          val () = ward_log(3, mk_ch_err(char2int1('g'), char2int1('t'), char2int1('2')), 10)
           val () = show_chapter_error(saved_cid, TEXT_ERR_NOT_FOUND, 17)
         in ward_promise_return<int>(0) end
         else let
@@ -3894,6 +3896,7 @@ implement enter_reader(root_id, book_index) = let
   val p2 = ward_promise_then<int><int>(p_manifest,
     llam (ok: int): ward_promise_chained(int) =>
       if lte_int_int(ok, 0) then let
+        val () = ward_log(3, mk_ch_err(char2int1('m'), char2int1('a'), char2int1('n')), 10)
         val () = show_chapter_error(saved_cid, TEXT_ERR_NOT_FOUND, 17)
       in ward_promise_return<int>(0) end
       else let
@@ -3908,9 +3911,11 @@ implement enter_reader(root_id, book_index) = let
           prval pf = SPINE_ENTRY()
           val () = reader_go_to_chapter(start_ch_nat, spine_g1)
           val () = reader_set_resume_page(saved_pg)
+          val () = ward_log(1, mk_ch_err(char2int1('i'), char2int1('d'), char2int1('b')), 10)
           val () = load_chapter_from_idb(pf | start_ch_nat, spine_g1, saved_cid)
         in ward_promise_return<int>(1) end
         else let
+          val () = ward_log(3, mk_ch_err(char2int1('s'), char2int1('p'), char2int1('n')), 10)
           val () = show_chapter_error(saved_cid, TEXT_ERR_NO_CHAPTERS, 19)
         in ward_promise_return<int>(0) end
       end)
