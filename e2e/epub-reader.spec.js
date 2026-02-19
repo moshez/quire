@@ -1386,4 +1386,222 @@ test.describe('EPUB Reader E2E', () => {
     await screenshot(page, 'content-persist-04-after-reload-reader');
   });
 
+  test('hide and unhide a book', async ({ page }) => {
+    // Import a book, hide it, verify it appears on the hidden shelf,
+    // unhide it, verify it returns to the active shelf.
+    const epubBuffer = createEpub({
+      title: 'Hide Test Book',
+      author: 'Hide Bot',
+      chapters: 2,
+      paragraphsPerChapter: 3,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import
+    const fileInput = page.locator('input[type="file"]');
+    const epubPath = join(SCREENSHOT_DIR, 'hide-test.epub');
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await screenshot(page, 'hide-01-imported');
+
+    // Verify hide button visible with text "Hide" in active view
+    const hideBtn = page.locator('.hide-btn');
+    await expect(hideBtn).toBeVisible();
+    await expect(hideBtn).toContainText('Hide');
+
+    // Hide the book
+    await hideBtn.click();
+
+    // Book should disappear from active view — library should show empty
+    await page.waitForSelector('.empty-lib', { timeout: 10000 });
+    await screenshot(page, 'hide-02-empty-after-hide');
+
+    // Verify empty message says "No books yet" (active view)
+    const emptyMsg = page.locator('.empty-lib');
+    await expect(emptyMsg).toContainText('No books yet');
+
+    // Switch to hidden view via shelf filter button
+    const shelfHiddenBtn = page.locator('.lib-toolbar button', { hasText: 'Hidden' });
+    await shelfHiddenBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+    await screenshot(page, 'hide-03-hidden-view');
+
+    // "Hidden" button should now have sort-active class
+    const hiddenBtnClass = await page.locator('.lib-toolbar button', { hasText: 'Hidden' }).getAttribute('class');
+    expect(hiddenBtnClass).toContain('sort-active');
+
+    // Verify the hidden book is shown with correct title
+    const bookTitle = page.locator('.book-title');
+    await expect(bookTitle).toContainText('Hide Test Book');
+
+    // Verify unhide button visible (not "Hide")
+    const unhideBtn = page.locator('.hide-btn');
+    await expect(unhideBtn).toBeVisible();
+    await expect(unhideBtn).toContainText('Unhide');
+
+    // Import button should be hidden in hidden view
+    const importBtns = page.locator('label.import-btn');
+    expect(await importBtns.count()).toBe(0);
+
+    // Unhide the book
+    await unhideBtn.click();
+
+    // Hidden view should now be empty
+    await page.waitForSelector('.empty-lib', { timeout: 10000 });
+    const hiddenEmpty = page.locator('.empty-lib');
+    await expect(hiddenEmpty).toContainText('No hidden books');
+    await screenshot(page, 'hide-04-hidden-empty');
+
+    // Switch back to active view via shelf filter button
+    const shelfActiveBtn = page.locator('.lib-toolbar button', { hasText: 'Library' });
+    await shelfActiveBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+    await screenshot(page, 'hide-05-restored');
+
+    // Book should be back in active view with correct title
+    const restoredTitle = page.locator('.book-title');
+    await expect(restoredTitle).toContainText('Hide Test Book');
+
+    // Read, Hide, and Archive buttons should all be present
+    const readBtn = page.locator('.read-btn');
+    await expect(readBtn).toBeVisible();
+    const hideBtn2 = page.locator('.hide-btn');
+    await expect(hideBtn2).toContainText('Hide');
+    const archBtn = page.locator('.archive-btn');
+    await expect(archBtn).toContainText('Archive');
+  });
+
+  test('sort books by last opened and date added', async ({ page }) => {
+    // Import two books sequentially, verify date-added and last-opened
+    // sort modes produce correct ordering.
+    const epub1 = createEpub({
+      title: 'Zephyr Book',
+      author: 'Alice Author',
+      chapters: 2,
+      paragraphsPerChapter: 2,
+    });
+    const epub2 = createEpub({
+      title: 'Alpha Book',
+      author: 'Zelda Writer',
+      chapters: 2,
+      paragraphsPerChapter: 2,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import first book (Zephyr Book — imported earlier, smaller date_added)
+    const fileInput = page.locator('input[type="file"]');
+    const path1 = join(SCREENSHOT_DIR, 'sort-lo-test1.epub');
+    writeFileSync(path1, epub1);
+    await fileInput.setInputFiles(path1);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Wait for IndexedDB save, then reload to get fresh state
+    await page.waitForTimeout(2000);
+    await page.reload();
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    await page.waitForSelector('.book-card', { timeout: 15000 });
+
+    // Import second book (Alpha Book — imported later, larger date_added)
+    const fileInput2 = page.locator('input[type="file"]');
+    const path2 = join(SCREENSHOT_DIR, 'sort-lo-test2.epub');
+    writeFileSync(path2, epub2);
+    await fileInput2.setInputFiles(path2);
+
+    // Wait for second book card to appear
+    await page.waitForFunction(() => {
+      const cards = document.querySelectorAll('.book-card');
+      return cards.length >= 2;
+    }, { timeout: 30000 });
+    await screenshot(page, 'sort-lo-01-two-books');
+
+    // --- Test date-added sort ---
+    // Sort by date added (reverse chronological — most recent first)
+    // Alpha Book was imported later → should be first
+    const sortDateAdded = page.locator('.lib-toolbar button', { hasText: 'Date added' });
+    await expect(sortDateAdded).toBeVisible();
+    await sortDateAdded.click();
+    await page.waitForTimeout(500);
+    await screenshot(page, 'sort-lo-02-by-date-added');
+
+    // Verify "Date added" button has sort-active class
+    const dateAddedClass = await sortDateAdded.getAttribute('class');
+    expect(dateAddedClass).toContain('sort-active');
+
+    // Alpha Book (imported later) should be first
+    const titlesByDate = page.locator('.book-title');
+    const firstByDate = await titlesByDate.nth(0).textContent();
+    const secondByDate = await titlesByDate.nth(1).textContent();
+    expect(firstByDate).toContain('Alpha Book');
+    expect(secondByDate).toContain('Zephyr Book');
+
+    // --- Test last-opened sort (both unread) ---
+    // Both books have last_opened=0, so order is stable/arbitrary.
+    // Just verify the button activates and both books are visible.
+    const sortLastOpened = page.locator('.lib-toolbar button', { hasText: 'Last opened' });
+    await expect(sortLastOpened).toBeVisible();
+    await sortLastOpened.click();
+    await page.waitForTimeout(500);
+    await screenshot(page, 'sort-lo-03-by-last-opened-both-unread');
+
+    // Verify "Last opened" button has sort-active class
+    const lastOpenedClass = await sortLastOpened.getAttribute('class');
+    expect(lastOpenedClass).toContain('sort-active');
+
+    // Both books should still be visible
+    const titlesLO = page.locator('.book-title');
+    expect(await titlesLO.count()).toBe(2);
+
+    // --- Open Zephyr Book to give it a nonzero last_opened ---
+    // First switch to a deterministic order so we can find the right Read button
+    const sortTitle = page.locator('.lib-toolbar button', { hasText: 'By title' });
+    await sortTitle.click();
+    await page.waitForTimeout(500);
+
+    // By title: Alpha Book first, Zephyr Book second
+    // Click Read on Zephyr Book (second card's read button)
+    const readBtns = page.locator('.read-btn');
+    await readBtns.nth(1).click();
+
+    // Wait for reader to appear
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForSelector('.chapter-container', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await screenshot(page, 'sort-lo-04-reading-zephyr');
+
+    // Go back to library
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+    await page.waitForFunction(() => {
+      const cards = document.querySelectorAll('.book-card');
+      return cards.length >= 2;
+    }, { timeout: 10000 });
+
+    // --- Now sort by last opened — Zephyr Book should be first ---
+    const sortLastOpened2 = page.locator('.lib-toolbar button', { hasText: 'Last opened' });
+    await sortLastOpened2.click();
+    await page.waitForTimeout(500);
+    await screenshot(page, 'sort-lo-05-by-last-opened-after-read');
+
+    // Verify "Last opened" button has sort-active class
+    const lastOpenedClass2 = await sortLastOpened2.getAttribute('class');
+    expect(lastOpenedClass2).toContain('sort-active');
+
+    // Zephyr Book (most recently opened) should be first
+    const titlesAfterRead = page.locator('.book-title');
+    const firstAfterRead = await titlesAfterRead.nth(0).textContent();
+    const secondAfterRead = await titlesAfterRead.nth(1).textContent();
+    expect(firstAfterRead).toContain('Zephyr Book');
+    expect(secondAfterRead).toContain('Alpha Book');
+  });
+
 });

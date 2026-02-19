@@ -52,7 +52,7 @@ everything else depends on.
   Archived, per spec wireframe). Add text constants "Hidden", "No hidden
   books", "Hide", "Unhide".
 
-- [ ] **1.6 E2e: three-shelf and sort modes.** Import book, hide it, verify
+- [x] **1.6 E2e: three-shelf and sort modes.** Import book, hide it, verify
   it appears on hidden shelf via shelf filter popover, unhide, archive, verify
   archived shelf, unarchive. Test all four sort modes (last opened, title,
   author, date added) produce correct ordering.
