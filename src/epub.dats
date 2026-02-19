@@ -831,7 +831,7 @@ in loop(_checked_nat(ec), 0, ec, file_handle) end
  * For each zip entry:  [u16: name_len] [name bytes...]
  * For each spine entry: [u16: zip_entry_index_for_this_spine_slot]
  *)
-implement epub_store_manifest() = let
+implement epub_store_manifest(pf_zip | (* *)) = let
   val entry_count = zip_get_entry_count()
   val spine_count = _app_epub_spine_count()
   val ec = _g0(entry_count): int
@@ -891,7 +891,8 @@ in
     (* Write spine→entry index mapping *)
     (* Spine paths in spine_buf are already fully qualified (include OPF dir) *)
     fun write_spine {k:nat}{la:agz}{na:pos} .<k>.
-      (rem: int(k), si: int, scount: int, off: int,
+      (pf_z: ZIP_OPEN_OK |
+       rem: int(k), si: int, scount: int, off: int,
        arr: !ward_arr(byte, la, na), asz: int na): void =
       if lte_g1(rem, 0) then ()
       else if gte_int_int(si, scount) then ()
@@ -899,11 +900,11 @@ in
         val sp_off = _app_epub_spine_offsets_get_i32(si)
         val sp_len = _app_epub_spine_lens_get_i32(si)
         val () = _app_copy_epub_spine_buf_to_sbuf(sp_off, 0, sp_len)
-        val zip_idx = zip_find_entry(sp_len)
+        val zip_idx = zip_find_entry(pf_z | sp_len)
         val idx_val: int = if lt_int_int(zip_idx, 0) then 65535 else zip_idx
         val () = ward_arr_write_u16le(arr, _u16_off(off, asz), _u16(idx_val))
-      in write_spine(sub_g1(rem, 1), si + 1, scount, off + 2, arr, asz) end
-    val () = write_spine(_checked_nat(sc), 0, sc, off1, arr, tsz)
+      in write_spine(pf_z | sub_g1(rem, 1), si + 1, scount, off + 2, arr, asz) end
+    val () = write_spine(pf_zip | _checked_nat(sc), 0, sc, off1, arr, tsz)
 
     (* Store to IDB *)
     val @(frozen, borrow) = ward_arr_freeze<byte>(arr)

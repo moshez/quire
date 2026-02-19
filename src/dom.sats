@@ -7,6 +7,7 @@
 
 staload "./../vendor/ward/lib/memory.sats"
 staload "./../vendor/ward/lib/dom.sats"
+staload "./zip.sats"
 
 (* ========== Node ID allocator ========== *)
 
@@ -342,7 +343,8 @@ fun deferred_image_get_src_len(idx: int): int
  * Missing or unrecognized images degrade gracefully (element without src). *)
 fun load_deferred_images
   {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}
-  (stream: ward_dom_stream(l),
+  (pf_zip: ZIP_OPEN_OK |
+   stream: ward_dom_stream(l),
    tree: !ward_arr(byte, lb, n), tree_len: int n,
    file_handle: int,
    chapter_dir: !ward_arr(byte, ld, nd), chapter_dir_len: int nd)

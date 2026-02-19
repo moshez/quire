@@ -993,6 +993,18 @@ fn log_err_opf(): ward_safe_text(7) = let
   val b = ward_text_putc(b, 6, char2int1('f'))
 in ward_text_done(b) end
 
+(* "err-zip" = 7 chars — ZIP parsing failed (0 entries) *)
+fn log_err_zip_parse(): ward_safe_text(7) = let
+  val b = ward_text_build(7)
+  val b = ward_text_putc(b, 0, char2int1('e'))
+  val b = ward_text_putc(b, 1, char2int1('r'))
+  val b = ward_text_putc(b, 2, char2int1('r'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('z'))
+  val b = ward_text_putc(b, 5, char2int1('i'))
+  val b = ward_text_putc(b, 6, char2int1('p'))
+in ward_text_done(b) end
+
 (* "err-lib-full" = 12 chars — library at capacity *)
 fn log_err_lib_full(): ward_safe_text(12) = let
   val b = ward_text_build(12)
@@ -1057,28 +1069,6 @@ fn mk_ch_err
   val b = ward_text_putc(b, 8, c2)
   val b = ward_text_putc(b, 9, c3)
 in ward_text_done(b) end
-
-(* CHAPTER_OUTCOME: Every code path through load_chapter either
- * renders content (calls render_tree + measure_and_set_pages),
- * starts async decompression (callback handles its own outcome),
- * or shows a visual error (calls show_chapter_error + ward_log).
- *
- * BUG PREVENTED: Silent empty page — if chapter loading fails for
- * any reason (missing ZIP entry, decompression failure, parse error),
- * the user sees a styled error message in the reading area.
- * Chapter index bounds are eliminated at compile time via SPINE_ORDERED.
- *
- * Error codes:
- *   err-ch-zip — spine path not found in ZIP
- *   err-ch-ent — ZIP entry metadata read failed
- *   err-ch-off — invalid data offset in ZIP entry
- *   err-ch-cmp — unsupported compression method (not 0 or 8)
- *   err-ch-sax — XML/HTML parse returned no SAX events
- *   err-ch-dec — decompression returned no data *)
-dataprop CHAPTER_OUTCOME(ok: int) =
-  | CHAPTER_RENDERED(1)
-  | CHAPTER_ASYNC(2)
-  | CHAPTER_ERROR_SHOWN(0)
 
 (* CHAPTER_DISPLAY_READY: proves that after chapter content is rendered,
  * both pagination measurement AND CSS transform application occurred.
@@ -2552,9 +2542,10 @@ end
  * For stored entries: reads directly, parses synchronously.
  * For deflated entries: reads compressed bytes, decompresses via ward_decompress,
  * parses in callback. Follows the load_chapter pattern exactly. *)
-fn epub_read_container_async(handle: int): ward_promise_chained(int) = let
+fn epub_read_container_async
+  (pf_zip: ZIP_OPEN_OK | handle: int): ward_promise_chained(int) = let
   val _cl = epub_copy_container_path(0)
-  val idx = zip_find_entry(22)
+  val idx = zip_find_entry(pf_zip | 22)
 in
   if gt_int_int(0, idx) then ward_promise_return<int>(0)
   else let
@@ -2616,9 +2607,10 @@ in
 end
 
 (* Read content.opf from ZIP — same pattern as container. *)
-fn epub_read_opf_async(handle: int): ward_promise_chained(int) = let
+fn epub_read_opf_async
+  (pf_zip: ZIP_OPEN_OK | handle: int): ward_promise_chained(int) = let
   val opf_len = epub_copy_opf_path(0)
-  val idx = zip_find_entry(opf_len)
+  val idx = zip_find_entry(pf_zip | opf_len)
 in
   if gt_int_int(0, idx) then ward_promise_return<int>(0)
   else let
@@ -2913,10 +2905,6 @@ fn finish_chapter_load(container_id: int)
   prval pf = MEASURED_AND_TRANSFORMED()
 in (pf | ()) end
 
-(* load_chapter: Every code path either renders content, starts async
- * decompression (whose callback renders or shows error), or shows an error.
- * CHAPTER_OUTCOME documents this invariant — see dataprop above.
- * Requires SPINE_ORDERED proof — chapter index bounds eliminated at compile time. *)
 (* Extract chapter directory from spine path in sbuf.
  * Scans sbuf[0..path_len-1] backward for last '/'.
  * Returns directory length (including trailing '/'), or 0 if no '/'.
@@ -2950,204 +2938,12 @@ fn copy_sbuf_to_arr {dl:pos | dl <= 1048576}
   val () = copy_loop(_checked_nat(_g0(dl)), arr, dl, 0, dl)
 in arr end
 
-fn load_chapter {c,t:nat | c < t}
-  (pf: SPINE_ORDERED(c, t) |
-   file_handle: int, chapter_idx: int(c), spine_count: int(t), container_id: int): void = let
-  val path_len = epub_copy_spine_path(pf | chapter_idx, spine_count, 0)
-  (* Extract chapter directory for image path resolution *)
-  val dir_len = find_chapter_dir_len(path_len)
-  val zip_idx = zip_find_entry(path_len)
-in
-  if gte_int_int(zip_idx, 0) then let
-    var entry: zip_entry
-    val found = zip_get_entry(zip_idx, entry)
-  in
-    if gt_int_int(found, 0) then let
-      val compression = entry.compression
-      val compressed_size = entry.compressed_size
-      val uncompressed_size = entry.uncompressed_size
-      val data_off = zip_get_data_offset(zip_idx)
-    in
-      if gt_int_int(data_off, 0) then
-        if eq_int_int(compression, 8) then let
-          (* Deflated — async decompression *)
-          val cs1 = (if gt_int_int(compressed_size, 0) then compressed_size else 1): int
-          val cs_pos = _checked_arr_size(cs1)
-          val arr = ward_arr_alloc<byte>(cs_pos)
-          val _rd = ward_file_read(file_handle, data_off, arr, cs_pos)
-          val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
-          val p = ward_decompress(borrow, cs_pos, 2) (* deflate-raw *)
-          val () = ward_arr_drop<byte>(frozen, borrow)
-          val arr = ward_arr_thaw<byte>(frozen)
-          val () = ward_arr_free<byte>(arr)
-          val saved_cid = container_id
-          val saved_fh = file_handle
-          (* Capture chapter dir before async — sbuf will be reused *)
-        in
-          if gt_int_int(dir_len, 0) then let
-            val dl_pos = _checked_arr_size(dir_len)
-            val dir_arr = copy_sbuf_to_arr(dl_pos)
-            val p2 = ward_promise_then<int><int>(p,
-              llam (blob_handle: int): ward_promise_chained(int) => let
-                val dlen = ward_decompress_get_len()
-              in
-                if gt_int_int(dlen, 0) then let
-                  val dl = _checked_arr_size(dlen)
-                  val arr2 = ward_arr_alloc<byte>(dl)
-                  val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
-                  val () = ward_blob_free(blob_handle)
-                  val @(frozen2, borrow2) = ward_arr_freeze<byte>(arr2)
-                  val sax_len = ward_xml_parse_html(borrow2, dl)
-                  val () = ward_arr_drop<byte>(frozen2, borrow2)
-                  val arr2 = ward_arr_thaw<byte>(frozen2)
-                  val () = ward_arr_free<byte>(arr2)
-                in
-                  if gt_int_int(sax_len, 0) then let
-                    val sl = _checked_pos(sax_len)
-                    val sax_buf = ward_xml_get_result(sl)
-                    val dom = ward_dom_init()
-                    val s = ward_dom_stream_begin(dom)
-                    val s = render_tree_with_images(s, saved_cid, sax_buf, sl,
-                      saved_fh, dir_arr, dl_pos)
-                    val dom = ward_dom_stream_end(s)
-                    (* Post-render image pass — allocations outside render loop *)
-                    val s = ward_dom_stream_begin(dom)
-                    val s = load_deferred_images(s, sax_buf, sl,
-                      saved_fh, dir_arr, dl_pos)
-                    val dom = ward_dom_stream_end(s)
-                    val () = ward_dom_fini(dom)
-                    val () = ward_arr_free<byte>(sax_buf)
-                    val () = ward_arr_free<byte>(dir_arr)
-                    val (pf_disp | ()) = finish_chapter_load(saved_cid)
-                    prval MEASURED_AND_TRANSFORMED() = pf_disp
-                  in ward_promise_return<int>(1) end
-                  else let
-                    val () = ward_arr_free<byte>(dir_arr)
-                    val () = ward_log(3, mk_ch_err(char2int1('s'), char2int1('a'), char2int1('x')), 10)
-                    val () = show_chapter_error(saved_cid, TEXT_ERR_EMPTY, 21)
-                  in ward_promise_return<int>(0) end
-                end
-                else let
-                  val () = ward_blob_free(blob_handle)
-                  val () = ward_arr_free<byte>(dir_arr)
-                  val () = ward_log(3, mk_ch_err(char2int1('d'), char2int1('e'), char2int1('c')), 10)
-                  val () = show_chapter_error(saved_cid, TEXT_ERR_DECOMPRESS, 20)
-                in ward_promise_return<int>(0) end
-              end)
-            val () = ward_promise_discard<int>(p2)
-          in end
-          else let
-            (* No directory prefix — use render_tree without images *)
-            val p2 = ward_promise_then<int><int>(p,
-              llam (blob_handle: int): ward_promise_chained(int) => let
-                val dlen = ward_decompress_get_len()
-              in
-                if gt_int_int(dlen, 0) then let
-                  val dl = _checked_arr_size(dlen)
-                  val arr2 = ward_arr_alloc<byte>(dl)
-                  val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
-                  val () = ward_blob_free(blob_handle)
-                  val @(frozen2, borrow2) = ward_arr_freeze<byte>(arr2)
-                  val sax_len = ward_xml_parse_html(borrow2, dl)
-                  val () = ward_arr_drop<byte>(frozen2, borrow2)
-                  val arr2 = ward_arr_thaw<byte>(frozen2)
-                  val () = ward_arr_free<byte>(arr2)
-                in
-                  if gt_int_int(sax_len, 0) then let
-                    val sl = _checked_pos(sax_len)
-                    val sax_buf = ward_xml_get_result(sl)
-                    val dom = ward_dom_init()
-                    val s = ward_dom_stream_begin(dom)
-                    val s = render_tree(s, saved_cid, sax_buf, sl)
-                    val dom = ward_dom_stream_end(s)
-                    val () = ward_dom_fini(dom)
-                    val () = ward_arr_free<byte>(sax_buf)
-                    val (pf_disp | ()) = finish_chapter_load(saved_cid)
-                    prval MEASURED_AND_TRANSFORMED() = pf_disp
-                  in ward_promise_return<int>(1) end
-                  else let
-                    val () = ward_log(3, mk_ch_err(char2int1('s'), char2int1('a'), char2int1('x')), 10)
-                    val () = show_chapter_error(saved_cid, TEXT_ERR_EMPTY, 21)
-                  in ward_promise_return<int>(0) end
-                end
-                else let
-                  val () = ward_blob_free(blob_handle)
-                  val () = ward_log(3, mk_ch_err(char2int1('d'), char2int1('e'), char2int1('c')), 10)
-                  val () = show_chapter_error(saved_cid, TEXT_ERR_DECOMPRESS, 20)
-                in ward_promise_return<int>(0) end
-              end)
-            val () = ward_promise_discard<int>(p2)
-          in end
-        end
-        else if eq_int_int(compression, 0) then let
-          (* Stored — read directly, no decompression needed *)
-          val us1 = (if gt_int_int(uncompressed_size, 0)
-            then uncompressed_size else 1): int
-          val us_pos = _checked_arr_size(us1)
-          val arr = ward_arr_alloc<byte>(us_pos)
-          val _rd = ward_file_read(file_handle, data_off, arr, us_pos)
-          val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
-          val sax_len = ward_xml_parse_html(borrow, us_pos)
-          val () = ward_arr_drop<byte>(frozen, borrow)
-          val arr = ward_arr_thaw<byte>(frozen)
-          val () = ward_arr_free<byte>(arr)
-        in
-          if gt_int_int(sax_len, 0) then let
-            val sl = _checked_pos(sax_len)
-            val sax_buf = ward_xml_get_result(sl)
-            val dom = ward_dom_init()
-            val s = ward_dom_stream_begin(dom)
-          in
-            if gt_int_int(dir_len, 0) then let
-              val dl_pos = _checked_arr_size(dir_len)
-              val dir_arr = copy_sbuf_to_arr(dl_pos)
-              val s = render_tree_with_images(s, container_id, sax_buf, sl,
-                file_handle, dir_arr, dl_pos)
-              val dom = ward_dom_stream_end(s)
-              (* Post-render image pass — allocations outside render loop *)
-              val s = ward_dom_stream_begin(dom)
-              val s = load_deferred_images(s, sax_buf, sl,
-                file_handle, dir_arr, dl_pos)
-              val dom = ward_dom_stream_end(s)
-              val () = ward_dom_fini(dom)
-              val () = ward_arr_free<byte>(sax_buf)
-              val () = ward_arr_free<byte>(dir_arr)
-              val (pf_disp | ()) = finish_chapter_load(container_id)
-              prval MEASURED_AND_TRANSFORMED() = pf_disp
-            in end
-            else let
-              val s = render_tree(s, container_id, sax_buf, sl)
-              val dom = ward_dom_stream_end(s)
-              val () = ward_dom_fini(dom)
-              val () = ward_arr_free<byte>(sax_buf)
-              val (pf_disp | ()) = finish_chapter_load(container_id)
-              prval MEASURED_AND_TRANSFORMED() = pf_disp
-            in end
-          end
-          else let
-            (* CHAPTER_OUTCOME: CHAPTER_ERROR_SHOWN — parse empty *)
-            val () = ward_log(3, mk_ch_err(char2int1('s'), char2int1('a'), char2int1('x')), 10)
-          in show_chapter_error(container_id, TEXT_ERR_EMPTY, 21) end
-        end
-        else let
-          (* CHAPTER_OUTCOME: CHAPTER_ERROR_SHOWN — bad compression *)
-          val () = ward_log(3, mk_ch_err(char2int1('c'), char2int1('m'), char2int1('p')), 10)
-        in show_chapter_error(container_id, TEXT_ERR_UNSUPPORTED, 18) end
-      else let
-        (* CHAPTER_OUTCOME: CHAPTER_ERROR_SHOWN — bad data offset *)
-        val () = ward_log(3, mk_ch_err(char2int1('o'), char2int1('f'), char2int1('f')), 10)
-      in show_chapter_error(container_id, TEXT_ERR_CANNOT_READ, 19) end
-    end
-    else let
-      (* CHAPTER_OUTCOME: CHAPTER_ERROR_SHOWN — entry read failed *)
-      val () = ward_log(3, mk_ch_err(char2int1('e'), char2int1('n'), char2int1('t')), 10)
-    in show_chapter_error(container_id, TEXT_ERR_CANNOT_READ, 19) end
-  end
-  else let
-    (* CHAPTER_OUTCOME: CHAPTER_ERROR_SHOWN — not found in ZIP *)
-    val () = ward_log(3, mk_ch_err(char2int1('z'), char2int1('i'), char2int1('p')), 10)
-  in show_chapter_error(container_id, TEXT_ERR_NOT_FOUND, 17) end
-end
+(*
+ * NOTE: load_chapter (ZIP-based direct read) was removed.
+ * All chapter loading now goes through load_chapter_from_idb,
+ * which reads pre-exploded resources from IDB (M1.2).
+ * ZIP_OPEN_OK proof prevents zip_find_entry on empty archives.
+ *)
 
 (* ========== IDB-based image loading from IDB ========== *)
 
@@ -3845,39 +3641,54 @@ implement render_library(root_id) = let
             (* Phase 2 — parse ZIP, consumes pf1 *)
             prval pf2 = PHASE_META(pf1)
             val () = update_status_text(ssts, TEXT_PARSING_ZIP, 15)
-            val _nentries = zip_open(sh, sfs)
-
-            (* Phase 2: Read EPUB metadata — yield for "Parsing archive" to paint *)
-            val p2 = ward_timer_set(0)
-          in ward_promise_then<int><int>(p2,
-            llam (_: int): ward_promise_chained(int) => let
-              (* Phase 3 — read metadata (async), consumes pf2 *)
+            val nentries = zip_open(sh, sfs)
+          in
+            (* ZIP_OPEN_OK proof: zip_open must return > 0 entries.
+             * Bug class: querying empty ZIP silently yields -1,
+             * causing confusing err-container instead of err-zip.
+             * Prevention: check nentries here, fail fast with clear error. *)
+            if lte_int_int(nentries, 0) then let
               prval _ = PHASE_ADD(pf2)
-              val () = update_status_text(ssts, TEXT_READING_META, 16)
-              val p_container = epub_read_container_async(sh)
+              val () = update_status_text(ssts, TEXT_ADDING_BOOK, 17)
+              val () = import_finish(
+                import_mark_failed(log_err_zip_parse(), 7),
+                slbl, sspn, ssts)
+            in ward_promise_return<int>(0) end
+            else let
+              val _np = _checked_pos(nentries)
+              prval pf_zip = ZIP_PARSED_OK()
 
-              (* Chain: container result → OPF read → add book *)
-              val ssh = sh val ssli = sli val ssr = sr
-              val sslbl = slbl val ssspn = sspn val sssts = ssts
-            in ward_promise_then<int><int>(p_container,
-              llam (ok1: int): ward_promise_chained(int) =>
-                if gt_int_int(ok1, 0) then let
-                  val p_opf = epub_read_opf_async(ssh)
-                in ward_promise_then<int><int>(p_opf,
-                  llam (ok2: int): ward_promise_chained(int) =>
-                    if lte_int_int(ok2, 0) then let
-                      val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
-                      val () = import_finish(
-                        import_mark_failed(log_err_opf(), 7),
-                        sslbl, ssspn, sssts)
-                    in ward_promise_return<int>(0) end
-                    else let
-                      (* OPF parse succeeded — store all resources to IDB *)
-                      val p_store = epub_store_all_resources(ssh)
-                    in ward_promise_then<int><int>(p_store,
-                      llam (_: int): ward_promise_chained(int) => let
-                        (* Store manifest to IDB *)
-                        val p_man = epub_store_manifest()
+              (* Phase 2: Read EPUB metadata — yield for "Parsing archive" to paint *)
+              val p2 = ward_timer_set(0)
+            in ward_promise_then<int><int>(p2,
+              llam (_: int): ward_promise_chained(int) => let
+                (* Phase 3 — read metadata (async), consumes pf2 *)
+                prval _ = PHASE_ADD(pf2)
+                val () = update_status_text(ssts, TEXT_READING_META, 16)
+                val p_container = epub_read_container_async(pf_zip | sh)
+
+                (* Chain: container result → OPF read → add book *)
+                val ssh = sh val ssli = sli val ssr = sr
+                val sslbl = slbl val ssspn = sspn val sssts = ssts
+              in ward_promise_then<int><int>(p_container,
+                llam (ok1: int): ward_promise_chained(int) =>
+                  if gt_int_int(ok1, 0) then let
+                    val p_opf = epub_read_opf_async(pf_zip | ssh)
+                  in ward_promise_then<int><int>(p_opf,
+                    llam (ok2: int): ward_promise_chained(int) =>
+                      if lte_int_int(ok2, 0) then let
+                        val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
+                        val () = import_finish(
+                          import_mark_failed(log_err_opf(), 7),
+                          sslbl, ssspn, sssts)
+                      in ward_promise_return<int>(0) end
+                      else let
+                        (* OPF parse succeeded — store all resources to IDB *)
+                        val p_store = epub_store_all_resources(ssh)
+                      in ward_promise_then<int><int>(p_store,
+                        llam (_: int): ward_promise_chained(int) => let
+                          (* Store manifest to IDB *)
+                          val p_man = epub_store_manifest(pf_zip | (* *))
                       in ward_promise_then<int><int>(p_man,
                         llam (_: int): ward_promise_chained(int) => let
                           val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
@@ -3912,7 +3723,8 @@ implement render_library(root_id) = let
                     import_mark_failed(log_err_container(), 13),
                     sslbl, ssspn, sssts)
                 in ward_promise_return<int>(0) end)
-            end)
+              end)
+            end (* else let: nentries > 0 *)
           end)
         end)
       val () = ward_promise_discard<int>(p2)

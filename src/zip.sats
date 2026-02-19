@@ -4,6 +4,7 @@
  * Uses bridge js_file_read_chunk for synchronous chunk reads.
  *
  * FUNCTIONAL CORRECTNESS PROOFS:
+ * - ZIP_OPEN_OK: ZIP was parsed with > 0 entries (required by zip_find_entry)
  * - ENTRY_INDEX_VALID: Entry indices are within bounds
  * - OFFSET_WITHIN_FILE: File offsets are valid (< file_size)
  * - DATA_OFFSET_SAFE: Data reads won't overflow file
@@ -35,6 +36,15 @@ prfun lemma_cd_sig():    [CD_SIG_S == 33639248] void
 prfun lemma_local_sig(): [LOCAL_SIG_S == 67324752] void
 
 (* ========== Functional Correctness Dataprops ========== *)
+
+(* ZIP open success proof.
+ * ZIP_OPEN_OK proves zip_open returned > 0 entries.
+ * Bug class: querying an empty ZIP (zip_open returned 0) silently yields -1,
+ * causing confusing downstream errors (e.g., err-container instead of err-zip).
+ * Prevention: callers must verify zip_open returned > 0 entries before calling
+ * zip_find_entry, constructing this proof as evidence of a successful parse. *)
+dataprop ZIP_OPEN_OK =
+  | ZIP_PARSED_OK
 
 (* Entry index validity proof.
  * ENTRY_INDEX_VALID(idx, count) proves 0 <= idx < count.
@@ -97,9 +107,10 @@ fun zip_entry_name_equals
   (index: int, name_len: int): int
 (* Find entry by exact name in string buffer
  * Name is read from string buffer at offset 0
- * Returns entry index or -1 if not found *)
+ * Returns entry index or -1 if not found
+ * REQUIRES: ZIP was opened with > 0 entries (ZIP_OPEN_OK proof) *)
 fun zip_find_entry
-  (name_len: int): int
+  (pf: ZIP_OPEN_OK | name_len: int): int
 (* Get offset where decompressed data should be read from
  * This accounts for local file header size
  * Returns -1 on error, or a valid offset on success

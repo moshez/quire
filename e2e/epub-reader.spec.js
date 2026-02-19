@@ -68,7 +68,11 @@ test.describe('EPUB Reader E2E', () => {
 
     // --- Import the EPUB ---
     const fileInput = page.locator('input[type="file"]');
-    const epubPath = join(SCREENSHOT_DIR, 'test-book.epub');
+    // Per-viewport unique file path prevents TOCTOU race when
+    // parallel Playwright workers write + read the same path.
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `test-book-${vpTag}.epub`);
     writeFileSync(epubPath, epubBuffer);
     await fileInput.setInputFiles(epubPath);
 

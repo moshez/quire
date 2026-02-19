@@ -13,6 +13,7 @@
 
 staload "./../vendor/ward/lib/memory.sats"
 staload "./../vendor/ward/lib/promise.sats"
+staload "./zip.sats"
 
 (* EPUB import state *)
 #define EPUB_STATE_IDLE           0
@@ -273,8 +274,10 @@ fun epub_build_manifest_key(): ward_safe_text(20)
 fun epub_store_all_resources(file_handle: int): ward_promise_chained(int)
 
 (* Store manifest (name→index + spine mapping) to IDB.
- * Returns promise resolving to 1 on success. *)
-fun epub_store_manifest(): ward_promise_chained(int)
+ * Returns promise resolving to 1 on success.
+ * REQUIRES: ZIP is open with entries (for spine path lookup). *)
+fun epub_store_manifest
+  (pf_zip: ZIP_OPEN_OK | (* *) ): ward_promise_chained(int)
 
 (* Load manifest from IDB. Populates in-memory lookup tables.
  * Also sets epub_spine_count from manifest data.
