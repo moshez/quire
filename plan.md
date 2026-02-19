@@ -61,7 +61,7 @@ everything else depends on.
 
 ## Phase 2 — Import Pipeline Hardening
 
-- [ ] **2.1 Cover image extraction.** During OPF parse, identify the cover
+- [x] **2.1 Cover image extraction.** During OPF parse, identify the cover
   image (manifest item with `properties="cover-image"` for EPUB3, or
   `<meta name="cover" content="..."/>` for EPUB2). Extract, generate a
   thumbnail (scale to max 200px wide via canvas in bridge), store thumbnail

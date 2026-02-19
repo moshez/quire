@@ -53,11 +53,13 @@ dataprop BOOK_IN_LIBRARY(index: int, count: int) =
 (* Serialization format proof: version↔fixed-bytes agreement.
  * Single source of truth — both serialize and deserialize call
  * ser_fixed_bytes() which constructs the appropriate proof.
- * v1: 3×u16 = 6 bytes, v2: 4×u16 = 8 bytes, v3: 4×u16 + 3×u32 = 20 bytes *)
+ * v1: 3×u16 = 6 bytes, v2: 4×u16 = 8 bytes, v3: 4×u16 + 3×u32 = 20 bytes
+ * v4: v3 + u16 has_cover = 22 bytes *)
 dataprop SER_FORMAT(version: int, fixed_bytes: int) =
   | SER_FMT_V1(1, 6)
   | SER_FMT_V2(2, 8)
   | SER_FMT_V3(3, 20)
+  | SER_FMT_V4(4, 22)
 
 (* Serialization variable field proof: index↔record offset agreement.
  * Ties field index to byte offset, max length, and length slot.
@@ -175,6 +177,7 @@ dataprop LIBRARY_SORTED(mode: int, count: int) =
 stadef SER_VERSION_MARKER = 65535
 stadef SER_VERSION_2 = 2
 stadef SER_VERSION_3 = 3
+stadef SER_VERSION_4 = 4
 
 dataprop SER_VERSION_DETECTED(marker: int, version: int) =
   | {m:int | m == 65535} IS_V2_OR_V3(m, 2)
@@ -225,11 +228,12 @@ fun should_render_book {vm:nat | vm <= 2}{s:nat | s <= 2}
 fun library_get_date_added(index: int): int
 fun library_get_last_opened(index: int): int
 fun library_get_file_size(index: int): int
+fun library_get_has_cover(index: int): [c:int | c == 0 || c == 1] int(c)
 fun library_set_last_opened {t:nat}
   (pf: TIMESTAMP_VALID(t) | index: int, ts: int(t)): void
 
 (* Serialization format helpers — single source of truth *)
-fun ser_fixed_bytes {v:int | v >= 1; v <= 3}
+fun ser_fixed_bytes {v:int | v >= 1; v <= 4}
   (version: int(v)): [fb:pos] (SER_FORMAT(v, fb) | int(fb))
 fun ser_var_field_spec {f:nat | f <= 2}
   (field: int(f)): [bo,ml,ls:nat]

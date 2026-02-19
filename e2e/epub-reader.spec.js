@@ -1579,4 +1579,93 @@ test.describe('EPUB Reader E2E', () => {
     expect(titleBtnClass).toContain('sort-active');
   });
 
+  test('displays cover image in library card', async ({ page }) => {
+    // Import a book with a cover image and verify the cover renders
+    // in the library card, then persists across page reload.
+    const epubBuffer = createEpub({
+      title: 'Cover Book',
+      author: 'Cover Author',
+      chapters: 2,
+      paragraphsPerChapter: 3,
+      coverImage: true,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `cover-test-${vpTag}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await screenshot(page, 'cover-01-after-import');
+
+    // Verify img.book-cover element exists inside the card
+    const coverImg = page.locator('.book-card img.book-cover');
+    await expect(coverImg).toBeVisible({ timeout: 10000 });
+
+    // Wait for the cover image to load from IDB (src attribute set async)
+    await page.waitForFunction(() => {
+      const img = document.querySelector('.book-card img.book-cover');
+      return img && img.src && img.src.length > 0;
+    }, { timeout: 15000 });
+    await screenshot(page, 'cover-02-image-loaded');
+
+    // Wait for IDB save to complete
+    await page.waitForTimeout(2000);
+
+    // Reload and verify cover persists
+    await page.reload();
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    await page.waitForSelector('.book-card', { timeout: 15000 });
+
+    // Cover image should still be present after reload
+    const coverAfter = page.locator('.book-card img.book-cover');
+    await expect(coverAfter).toBeVisible({ timeout: 10000 });
+
+    // Wait for IDB-loaded src
+    await page.waitForFunction(() => {
+      const img = document.querySelector('.book-card img.book-cover');
+      return img && img.src && img.src.length > 0;
+    }, { timeout: 15000 });
+    await screenshot(page, 'cover-03-after-reload');
+  });
+
+  test('books without covers show no cover image', async ({ page }) => {
+    // Import a book WITHOUT a cover image and verify no cover element exists.
+    const epubBuffer = createEpub({
+      title: 'No Cover Book',
+      author: 'Plain Author',
+      chapters: 2,
+      paragraphsPerChapter: 3,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `no-cover-test-${vpTag}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await screenshot(page, 'no-cover-01-after-import');
+
+    // Verify the book card exists with title
+    const title = page.locator('.book-title');
+    await expect(title).toBeVisible();
+    const titleText = await title.textContent();
+    expect(titleText).toContain('No Cover Book');
+
+    // Verify NO img.book-cover element exists in the card
+    const coverImg = page.locator('.book-card img.book-cover');
+    await expect(coverImg).toHaveCount(0);
+    await screenshot(page, 'no-cover-02-verified');
+  });
+
 });

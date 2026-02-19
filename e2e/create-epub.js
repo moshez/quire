@@ -287,9 +287,9 @@ ${rawBody}
     chapters.push({ name: `OEBPS/chapter${i}.xhtml`, data: xhtml });
   }
 
-  // Add cover image if requested
+  // Add cover image if requested (EPUB3: properties="cover-image")
   if (coverImage) {
-    manifestItems += `    <item id="cover-img" href="images/cover.png" media-type="image/png"/>\n`;
+    manifestItems += `    <item id="cover-img" href="images/cover.png" media-type="image/png" properties="cover-image"/>\n`;
   }
 
   // Build TOC nav document

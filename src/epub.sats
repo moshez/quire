@@ -255,6 +255,20 @@ fun epub_restore_metadata(len: int): [r:int | r == 0 || r == 1] int(r)
  * Internally produces EPUB_RESET_TO_IDLE proof. *)
 fun epub_reset(): void
 
+(* ========== Cover Image Detection (2.1) ========== *)
+
+(* Proves cover detection result *)
+dataprop COVER_DETECTED(has_cover: int) =
+  | COVER_FOUND(1) | COVER_NOT_FOUND(0)
+
+(* Build 20-char IDB cover key: {16 hex book_id}-cvr *)
+fun epub_build_cover_key(): ward_safe_text(20)
+
+(* Store cover image data from resource key to cover key in IDB.
+ * Reads cover href from app_state, looks up resource entry,
+ * copies data to cover key. Returns promise resolving to 1 on success. *)
+fun epub_store_cover(): ward_promise_chained(int)
+
 (* ========== Exploded Resource Storage (M1.2) ========== *)
 
 (* Proves manifest loaded into memory before resource lookups *)

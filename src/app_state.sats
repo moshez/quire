@@ -347,6 +347,13 @@ fun _app_deferred_img_entry_idx_set(i: int, v: int): void
 fun _app_deferred_img_count(): int
 fun _app_set_deferred_img_count(v: int): void
 
+(* EPUB cover href buffer *)
+fun _app_epub_cover_href_len(): int
+fun _app_set_epub_cover_href_len(v: int): void
+fun _app_epub_cover_href_get_u8(off: int): int
+fun _app_epub_cover_href_set_u8(off: int, v: int): void
+fun _app_copy_epub_cover_href_to_sbuf(dst_off: int, len: int): void
+
 (* Copy book_id bytes from library books at book_base to epub_book_id *)
 fun _app_copy_lib_book_id_to_epub(book_base: int, bid_len: int): void
 

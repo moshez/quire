@@ -37,6 +37,9 @@ stadef EPUB_MANIFEST_OFF_CAP = 1024      (* 256 entries x 4 bytes *)
 stadef EPUB_MANIFEST_LEN_CAP = 1024      (* 256 entries x 4 bytes *)
 stadef EPUB_SPINE_ENTRY_IDX_CAP = 128    (* 32 entries x 4 bytes *)
 
+(* EPUB cover href buffer *)
+stadef EPUB_COVER_HREF_CAP = 256
+
 (* Deferred image resolution queue *)
 stadef DEFERRED_IMG_NID_CAP = 256        (* 64 entries x 4 bytes *)
 stadef DEFERRED_IMG_EID_CAP = 256        (* 64 entries x 4 bytes *)
@@ -60,5 +63,6 @@ stadef DEFERRED_IMG_EID_CAP = 256        (* 64 entries x 4 bytes *)
 #define EPUB_MANIFEST_OFF_SIZE 1024
 #define EPUB_MANIFEST_LEN_SIZE 1024
 #define EPUB_SPINE_ENTRY_IDX_SIZE 128
+#define EPUB_COVER_HREF_SIZE 256
 #define DEFERRED_IMG_NID_SIZE 256
 #define DEFERRED_IMG_EID_SIZE 256

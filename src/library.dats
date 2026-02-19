@@ -17,15 +17,17 @@
  *   i32 slot 151: date_added (Unix seconds)
  *   i32 slot 152: last_opened (Unix seconds)
  *   i32 slot 153: file_size (bytes)
- *   i32 slot 154: reserved2 (always 0)
+ *   i32 slot 154: has_cover (0 or 1)
  *
- * Serialization format v3 (to fetch buffer):
- *   [u16: 0xFFFF] [u16: version=3] [u16: count] [u16: sort_mode]
+ * Serialization format v4 (to fetch buffer):
+ *   [u16: 0xFFFF] [u16: version=4] [u16: count] [u16: sort_mode]
  *   per book: [u16: bid_len] [bytes: bid]
  *   [u16: tlen] [bytes: title] [u16: alen] [bytes: author]
- *   [u16: spine_count] [u16: chapter] [u16: page] [u16: archived]
+ *   [u16: spine_count] [u16: chapter] [u16: page] [u16: shelf_state]
  *   [u32: date_added] [u32: last_opened] [u32: file_size]
+ *   [u16: has_cover]
  *
+ * v3 format (legacy, read-only): same as v4 minus has_cover
  * v2 format (legacy, read-only): same as v3 minus u32 metadata
  * v1 format (legacy, read-only): same as v2 minus archived
  *)
@@ -76,7 +78,7 @@ staload _ = "./../vendor/ward/lib/idb.dats"
 #define DATE_ADDED_SLOT 151
 #define LAST_OPENED_SLOT 152
 #define FILE_SIZE_SLOT 153
-#define RESERVED2_SLOT 154
+#define HAS_COVER_SLOT 154
 
 (* ========== Castfns for dependent return types ========== *)
 extern castfn _clamp32(x: int): [n:nat | n <= 32] int n
@@ -205,7 +207,9 @@ in
       val () = _app_lib_books_set_i32(base_ints + DATE_ADDED_SLOT, now)
       val () = _app_lib_books_set_i32(base_ints + LAST_OPENED_SLOT, now)
       val () = _app_lib_books_set_i32(base_ints + FILE_SIZE_SLOT, _app_epub_file_size())
-      val () = _app_lib_books_set_i32(base_ints + RESERVED2_SLOT, 0)
+      val cover_href_len = _app_epub_cover_href_len()
+      val () = _app_lib_books_set_i32(base_ints + HAS_COVER_SLOT,
+        if gt_int_int(cover_href_len, 0) then 1 else 0)
       val () = _app_set_lib_count(count + 1)
     in _mk_added(count) end
   end
@@ -283,6 +287,17 @@ implement library_get_file_size(index) =
   if lt_int_int(index, 0) then 0
   else if gte_int_int(index, _app_lib_count()) then 0
   else _app_lib_books_get_i32(index * REC_INTS + FILE_SIZE_SLOT)
+
+extern castfn _clamp_cover(x: int): [c:int | c == 0 || c == 1] int c
+
+implement library_get_has_cover(index) =
+  if lt_int_int(index, 0) then 0
+  else if gte_int_int(index, _app_lib_count()) then 0
+  else let
+    val v = _app_lib_books_get_i32(index * REC_INTS + HAS_COVER_SLOT)
+  in
+    if eq_int_int(v, 1) then _clamp_cover(1) else _clamp_cover(0)
+  end
 
 implement library_set_last_opened {t} (pf | index, ts) = let
   prval _ = pf
@@ -646,7 +661,8 @@ fn _clamp(v: int, mx: int): int =
 implement ser_fixed_bytes {v} (version) =
   if eq_g1(version, 1) then (SER_FMT_V1() | 6)
   else if eq_g1(version, 2) then (SER_FMT_V2() | 8)
-  else (SER_FMT_V3() | 20)
+  else if eq_g1(version, 3) then (SER_FMT_V3() | 20)
+  else (SER_FMT_V4() | 22)
 
 (* Single source of truth: field index → byte_off, max_len, len_slot *)
 implement ser_var_field_spec {f} (field) =
@@ -687,12 +703,12 @@ end
 implement library_serialize() = let
   val count = _app_lib_count()
   val count2 = _clamp(count, 32)
-  (* v3 header: 0xFFFF, version=3, count, sort_mode *)
+  (* v4 header: 0xFFFF, version=4, count, sort_mode *)
   val () = _fbuf_write_u16(0, 65535)
-  val () = _fbuf_write_u16(2, 3)
+  val () = _fbuf_write_u16(2, 4)
   val () = _fbuf_write_u16(4, count2)
   val () = _fbuf_write_u16(6, _app_lib_sort_mode())
-  val (pf_fmt | fixed_bytes) = ser_fixed_bytes(3)
+  val (pf_fmt | fixed_bytes) = ser_fixed_bytes(4)
   prval _ = pf_fmt
   fun loop {k:nat} .<k>.
     (rem: int(k), i: int, off: int, fb: int): int =
@@ -706,7 +722,7 @@ implement library_serialize() = let
       val off = _ser_var_field(0, bi, bb, off)  (* book_id *)
       val off = _ser_var_field(1, bi, bb, off)  (* title *)
       val off = _ser_var_field(2, bi, bb, off)  (* author *)
-      (* Fixed metadata: u16 spine, chapter, page, archived + u32 timestamps *)
+      (* Fixed metadata: u16 spine, chapter, page, shelf_state + u32 timestamps + u16 has_cover *)
       val () = _fbuf_write_u16(off, _app_lib_books_get_i32(bi + SPINE_SLOT))
       val () = _fbuf_write_u16(off + 2, _app_lib_books_get_i32(bi + CHAPTER_SLOT))
       val () = _fbuf_write_u16(off + 4, _app_lib_books_get_i32(bi + PAGE_SLOT))
@@ -714,6 +730,7 @@ implement library_serialize() = let
       val () = _fbuf_write_u32(off + 8, _app_lib_books_get_i32(bi + DATE_ADDED_SLOT))
       val () = _fbuf_write_u32(off + 12, _app_lib_books_get_i32(bi + LAST_OPENED_SLOT))
       val () = _fbuf_write_u32(off + 16, _app_lib_books_get_i32(bi + FILE_SIZE_SLOT))
+      val () = _fbuf_write_u16(off + 20, _app_lib_books_get_i32(bi + HAS_COVER_SLOT))
     in loop(sub_g1(rem, 1), i + 1, off + fb, fb) end
   val total = loop(_checked_nat(count2), 0, 8, fixed_bytes)
 in _checked_nat(total) end
@@ -747,7 +764,7 @@ fn _deserialize_v1(len: int, count2: int): int = let
             val () = _app_lib_books_set_i32(bi + DATE_ADDED_SLOT, 0)
             val () = _app_lib_books_set_i32(bi + LAST_OPENED_SLOT, 0)
             val () = _app_lib_books_set_i32(bi + FILE_SIZE_SLOT, 0)
-            val () = _app_lib_books_set_i32(bi + RESERVED2_SLOT, 0)
+            val () = _app_lib_books_set_i32(bi + HAS_COVER_SLOT, 0)
           in loop(sub_g1(rem, 1), i + 1, off2 + fb, fb) end
         end
       end
@@ -785,7 +802,7 @@ fn _deserialize_v2(len: int, count2: int, sort_mode: int): int = let
             val () = _app_lib_books_set_i32(bi + DATE_ADDED_SLOT, 0)
             val () = _app_lib_books_set_i32(bi + LAST_OPENED_SLOT, 0)
             val () = _app_lib_books_set_i32(bi + FILE_SIZE_SLOT, 0)
-            val () = _app_lib_books_set_i32(bi + RESERVED2_SLOT, 0)
+            val () = _app_lib_books_set_i32(bi + HAS_COVER_SLOT, 0)
           in loop(sub_g1(rem, 1), i + 1, off2 + fb, fb) end
         end
       end
@@ -829,7 +846,55 @@ fn _deserialize_v3(len: int, count2: int, sort_mode: int): int = let
             val () = _app_lib_books_set_i32(bi + DATE_ADDED_SLOT, _fbuf_read_u32(off2 + 8))
             val () = _app_lib_books_set_i32(bi + LAST_OPENED_SLOT, _fbuf_read_u32(off2 + 12))
             val () = _app_lib_books_set_i32(bi + FILE_SIZE_SLOT, _fbuf_read_u32(off2 + 16))
-            val () = _app_lib_books_set_i32(bi + RESERVED2_SLOT, 0)
+            val () = _app_lib_books_set_i32(bi + HAS_COVER_SLOT, 0)
+          in loop(sub_g1(rem, 1), i + 1, off2 + fb, fb) end
+        end
+      end
+    end
+  val ok = loop(_checked_nat(count2), 0, 8, fixed_bytes)
+  val () = if eq_int_int(ok, 1) then
+    _app_set_lib_sort_mode(
+      if eq_int_int(sort_mode, 1) then 1
+      else if eq_int_int(sort_mode, 2) then 2
+      else if eq_int_int(sort_mode, 3) then 3
+      else 0)
+in ok end
+
+(* Deserialize v4 format — v3 + has_cover *)
+fn _deserialize_v4(len: int, count2: int, sort_mode: int): int = let
+  val (pf_fmt | fixed_bytes) = ser_fixed_bytes(4)
+  prval _ = pf_fmt
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, off: int, fb: int): int =
+    if gte_int_int(i, count2) then 1
+    else if lte_g1(rem, 0) then 0
+    else if gt_int_int(off + 24, len) then 0
+    else let
+      val bi = i * REC_INTS
+      val bb = i * REC_BYTES
+      val off2 = _deser_var_field(0, bi, bb, off, len)
+    in
+      if lt_int_int(off2, 0) then 0
+      else let val off2 = _deser_var_field(1, bi, bb, off2, len) in
+        if lt_int_int(off2, 0) then 0
+        else let val off2 = _deser_var_field(2, bi, bb, off2, len) in
+          if lt_int_int(off2, 0) then 0
+          else if gt_int_int(off2 + fb, len) then 0
+          else let
+            val () = _app_lib_books_set_i32(bi + SPINE_SLOT, _fbuf_read_u16(off2))
+            val () = _app_lib_books_set_i32(bi + CHAPTER_SLOT, _fbuf_read_u16(off2 + 2))
+            val () = _app_lib_books_set_i32(bi + PAGE_SLOT, _fbuf_read_u16(off2 + 4))
+            val shelf_st = _fbuf_read_u16(off2 + 6)
+            val () = _app_lib_books_set_i32(bi + SHELF_STATE_SLOT,
+              if eq_int_int(shelf_st, 1) then 1
+              else if eq_int_int(shelf_st, 2) then 2
+              else 0)
+            val () = _app_lib_books_set_i32(bi + DATE_ADDED_SLOT, _fbuf_read_u32(off2 + 8))
+            val () = _app_lib_books_set_i32(bi + LAST_OPENED_SLOT, _fbuf_read_u32(off2 + 12))
+            val () = _app_lib_books_set_i32(bi + FILE_SIZE_SLOT, _fbuf_read_u32(off2 + 16))
+            val hc = _fbuf_read_u16(off2 + 20)
+            val () = _app_lib_books_set_i32(bi + HAS_COVER_SLOT,
+              if eq_int_int(hc, 1) then 1 else 0)
           in loop(sub_g1(rem, 1), i + 1, off2 + fb, fb) end
         end
       end
@@ -849,7 +914,7 @@ implement library_deserialize(len) =
     val marker = _fbuf_read_u16(0)
   in
     if eq_int_int(marker, 65535) then let
-      (* v2 or v3 format *)
+      (* v2/v3/v4 format *)
       val () =
         if lt_int_int(len, 8) then ()
       val version = _fbuf_read_u16(2)
@@ -860,7 +925,8 @@ implement library_deserialize(len) =
         val count2 = _clamp(count, 32)
         val sort_mode = _fbuf_read_u16(6)
         val ok =
-          if eq_int_int(version, 3) then _deserialize_v3(len, count2, sort_mode)
+          if eq_int_int(version, 4) then _deserialize_v4(len, count2, sort_mode)
+          else if eq_int_int(version, 3) then _deserialize_v3(len, count2, sort_mode)
           else if eq_int_int(version, 2) then _deserialize_v2(len, count2, sort_mode)
           else 0
         val () = if eq_int_int(ok, 1) then _app_set_lib_count(count2)
