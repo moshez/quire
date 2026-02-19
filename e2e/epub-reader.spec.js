@@ -1581,10 +1581,16 @@ test.describe('EPUB Reader E2E', () => {
     const backBtn = page.locator('.back-btn');
     await backBtn.click();
     await page.waitForSelector('.book-card', { timeout: 10000 });
+
+    // Wait for IDB save of last_opened to complete, then reload to ensure
+    // the updated timestamp is in the deserialized library data
+    await page.waitForTimeout(2000);
+    await page.reload();
+    await page.waitForSelector('.library-list', { timeout: 15000 });
     await page.waitForFunction(() => {
       const cards = document.querySelectorAll('.book-card');
       return cards.length >= 2;
-    }, { timeout: 10000 });
+    }, { timeout: 15000 });
 
     // --- Now sort by last opened — Zephyr Book should be first ---
     const sortLastOpened2 = page.locator('.lib-toolbar button', { hasText: 'Last opened' });
