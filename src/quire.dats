@@ -1288,10 +1288,10 @@ fn stamp_reader_css {l:agz}{n:int | n >= APP_CSS_LEN}
    child_pad_l: int(pl), child_pad_r: int(pr))
   : (CSS_READER_WRITTEN | void) = let
   (* Overwrite critical bytes from proven values *)
-  val () = write_css_100vw(arr, alen, 911)         (* column-width: 100vw *)
-  val () = write_css_zero(arr, alen, 936, pad_h)   (* padding: 2rem 0 — offset shifted by gap shorthand *)
-  val () = write_css_rem_pos(arr, alen, 1007, child_pad_l)  (* padding-left: 1.5rem *)
-  val () = write_css_rem_pos(arr, alen, 1028, child_pad_r)  (* padding-right: 1.5rem *)
+  val () = write_css_100vw(arr, alen, 1019)        (* column-width: 100vw *)
+  val () = write_css_zero(arr, alen, 1044, pad_h)  (* padding: 2rem 0 — offset shifted by gap shorthand *)
+  val () = write_css_rem_pos(arr, alen, 1115, child_pad_l)  (* padding-left: 1.5rem *)
+  val () = write_css_rem_pos(arr, alen, 1136, child_pad_r)  (* padding-right: 1.5rem *)
   (* Produce the linear view — only reachable after byte writes above *)
   extern praxi __seal_reader(): CSS_READER_WRITTEN
   prval pf = __seal_reader()
