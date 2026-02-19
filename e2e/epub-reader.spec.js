@@ -1007,10 +1007,10 @@ test.describe('EPUB Reader E2E', () => {
     await expect(viewToggle).toBeVisible();
     await expect(viewToggle).toContainText('Archived');
 
-    // Verify sort buttons visible (one has sort-btn, other has sort-active)
+    // Verify sort buttons visible (4 total: 3 inactive sort-btn + 1 sort-active)
     const sortBtnInactive = page.locator('.sort-btn');
     const sortBtnActive = page.locator('.sort-active');
-    await expect(sortBtnInactive).toBeVisible();
+    await expect(sortBtnInactive.first()).toBeVisible();
     await expect(sortBtnActive).toBeVisible();
 
     // Verify archive button visible on the book card
