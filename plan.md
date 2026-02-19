@@ -29,13 +29,13 @@ everything else depends on.
   so they can be served via blob URLs without full-archive decompression.
   Verify the existing `ward_idb` API supports this or extend it.
 
-- [ ] **1.3 Per-book metadata fields.** Add to library record: `date_added`
+- [x] **1.3 Per-book metadata fields.** Add to library record: `date_added`
   (timestamp), `last_opened` (timestamp), `file_size` (bytes), `cover_key`
   (IndexedDB key for cover thumbnail). Update `REC_INTS`/`REC_BYTES` in
   `library.dats`, serialization, and deserialize. Add dataprop proving
   timestamp fields are non-negative.
 
-- [ ] **1.4 Sort by last-opened and date-added.** Extend `SORT_MODE_VALID`
+- [x] **1.4 Sort by last-opened and date-added.** Extend `SORT_MODE_VALID`
   with two new constructors: `SORT_BY_LAST_OPENED(2)` and
   `SORT_BY_DATE_ADDED(3)`. Default sort = last-opened (per spec). Update sort
   comparison in `library.dats` to handle integer timestamp comparison (reverse
@@ -43,7 +43,7 @@ everything else depends on.
   "Date added". Update sort UI in `quire.dats` to cycle through all four
   modes. Add sort dropdown (▼) per spec wireframe.
 
-- [ ] **1.5 Hidden shelf.** Add a `hidden` flag (0 or 1) to the library
+- [x] **1.5 Hidden shelf.** Add a `hidden` flag (0 or 1) to the library
   record alongside `archived`. Three shelf states: active (hidden=0,
   archived=0), hidden (hidden=1, archived=0), archived (hidden=0, archived=1).
   Add `SHELF_STATE_VALID` dataprop proving mutual exclusion. Add
@@ -52,7 +52,7 @@ everything else depends on.
   Archived, per spec wireframe). Add text constants "Hidden", "No hidden
   books", "Hide", "Unhide".
 
-- [ ] **1.6 E2e: three-shelf and sort modes.** Import book, hide it, verify
+- [x] **1.6 E2e: three-shelf and sort modes.** Import book, hide it, verify
   it appears on hidden shelf via shelf filter popover, unhide, archive, verify
   archived shelf, unarchive. Test all four sort modes (last opened, title,
   author, date added) produce correct ordering.
@@ -61,7 +61,7 @@ everything else depends on.
 
 ## Phase 2 — Import Pipeline Hardening
 
-- [ ] **2.1 Cover image extraction.** During OPF parse, identify the cover
+- [x] **2.1 Cover image extraction.** During OPF parse, identify the cover
   image (manifest item with `properties="cover-image"` for EPUB3, or
   `<meta name="cover" content="..."/>` for EPUB2). Extract, generate a
   thumbnail (scale to max 200px wide via canvas in bridge), store thumbnail

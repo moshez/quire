@@ -106,7 +106,10 @@ datavtype app_state_impl =
       epub_spine_entry_idx = ptr,
       deferred_img_nid = ptr,
       deferred_img_eid = ptr,
-      deferred_img_count = int
+      deferred_img_count = int,
+      epub_file_size = int,
+      epub_cover_href = ptr,
+      epub_cover_href_len = int
     }
 
 assume app_state = app_state_impl
@@ -185,7 +188,7 @@ implement app_state_init() =
     lib_meta_load_pending = 0,
     lib_meta_load_index = 0 - 1,
     lib_view_mode = 0,
-    lib_sort_mode = 0,
+    lib_sort_mode = 2,
     library_books = _alloc_buf(LIB_BOOKS_SIZE),
     string_buffer = _alloc_buf(STRING_BUFFER_SIZE),
     fetch_buffer = _alloc_buf(FETCH_BUFFER_SIZE),
@@ -251,7 +254,10 @@ implement app_state_init() =
     epub_spine_entry_idx = _alloc_buf(EPUB_SPINE_ENTRY_IDX_SIZE),
     deferred_img_nid = _alloc_buf(DEFERRED_IMG_NID_SIZE),
     deferred_img_eid = _alloc_buf(DEFERRED_IMG_EID_SIZE),
-    deferred_img_count = 0
+    deferred_img_count = 0,
+    epub_file_size = 0,
+    epub_cover_href = _alloc_buf(EPUB_COVER_HREF_SIZE),
+    epub_cover_href_len = 0
   }
 
 implement app_state_fini(st) = let
@@ -276,6 +282,7 @@ implement app_state_fini(st) = let
   val () = _free_buf(r.epub_spine_entry_idx, EPUB_SPINE_ENTRY_IDX_SIZE)
   val () = _free_buf(r.deferred_img_nid, DEFERRED_IMG_NID_SIZE)
   val () = _free_buf(r.deferred_img_eid, DEFERRED_IMG_EID_SIZE)
+  val () = _free_buf(r.epub_cover_href, EPUB_COVER_HREF_SIZE)
 in end
 
 (* ========== DOM state ========== *)
@@ -800,7 +807,7 @@ implement app_set_rdr_resume_page(st, v) = let
 implement app_get_rdr_btn_id(st, idx) = let
   val @APP_STATE(r) = st
   val v = if gte_int_int(idx, 0) then
-            if lt_int_int(idx, 64) then _arr_get_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE)
+            if lt_int_int(idx, 96) then _arr_get_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE)
             else 0 - 1
           else 0 - 1
   prval () = fold@(st)
@@ -808,7 +815,7 @@ in v end
 implement app_set_rdr_btn_id(st, idx, v) = let
   val @APP_STATE(r) = st
   val () = if gte_int_int(idx, 0) then
-             if lt_int_int(idx, 64) then _arr_set_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE, v)
+             if lt_int_int(idx, 96) then _arr_set_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE, v)
   prval () = fold@(st)
 in end
 
@@ -1540,6 +1547,45 @@ implement _app_deferred_img_count() = let val st = app_state_load()
 implement _app_set_deferred_img_count(v) = let val st = app_state_load()
   val @APP_STATE(r) = st val () = r.deferred_img_count := v
   prval () = fold@(st) val () = app_state_store(st) in end
+
+implement _app_epub_file_size() = let val st = app_state_load()
+  val @APP_STATE(r) = st val v = r.epub_file_size
+  prval () = fold@(st) val () = app_state_store(st) in v end
+implement _app_set_epub_file_size(v) = let val st = app_state_load()
+  val @APP_STATE(r) = st val () = r.epub_file_size := v
+  prval () = fold@(st) val () = app_state_store(st) in end
+
+(* EPUB cover href buffer accessors *)
+implement _app_epub_cover_href_len() = let val st = app_state_load()
+  val @APP_STATE(r) = st val v = r.epub_cover_href_len
+  prval () = fold@(st) val () = app_state_store(st) in v end
+implement _app_set_epub_cover_href_len(v) = let val st = app_state_load()
+  val @APP_STATE(r) = st val () = r.epub_cover_href_len := v
+  prval () = fold@(st) val () = app_state_store(st) in end
+
+implement _app_epub_cover_href_get_u8(off) = let val st = app_state_load()
+  val @APP_STATE(r) = st
+  val v = _arr_get_u8(r.epub_cover_href, off, EPUB_COVER_HREF_SIZE)
+  prval () = fold@(st) val () = app_state_store(st) in v end
+implement _app_epub_cover_href_set_u8(off, v) = let val st = app_state_load()
+  val @APP_STATE(r) = st
+  val () = _arr_set_u8(r.epub_cover_href, off, EPUB_COVER_HREF_SIZE, v)
+  prval () = fold@(st) val () = app_state_store(st) in end
+
+implement _app_copy_epub_cover_href_to_sbuf(dst_off, len) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  fun loop {k:nat} .<k>.
+    (rem: int(k), i: int, cp: ptr, sp: ptr): void =
+    if lte_g1(rem, 0) then ()
+    else if lt_int_int(i, len) then let
+      val v = _arr_get_u8(cp, i, EPUB_COVER_HREF_SIZE)
+      val () = _arr_set_u8(sp, dst_off + i, STRING_BUFFER_SIZE, v)
+    in loop(sub_g1(rem, 1), i + 1, cp, sp) end
+  val () = loop(_checked_nat(len), 0, r.epub_cover_href, r.string_buffer)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in end
 
 (* Copy book_id bytes from library_books at book_base to epub_book_id *)
 implement _app_copy_lib_book_id_to_epub(book_base, bid_len) = let

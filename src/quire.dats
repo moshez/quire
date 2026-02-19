@@ -41,9 +41,10 @@ staload "./arith.sats"
 staload "./sha256.sats"
 staload "./quire_ext.sats"
 
-(* Forward declaration for JS import — suppresses C99 warning *)
+(* Forward declarations for JS imports — suppresses C99 warnings *)
 %{
 extern void quireSetTitle(int mode);
+extern int quire_time_now(void);
 %}
 
 (* ========== Text constant IDs ========== *)
@@ -71,6 +72,12 @@ extern void quireSetTitle(int mode);
 #define TEXT_ARCHIVE 20
 #define TEXT_UNARCHIVE 21
 #define TEXT_NO_ARCHIVED 22
+#define TEXT_SORT_LAST_OPENED 23
+#define TEXT_SORT_DATE_ADDED 24
+#define TEXT_HIDDEN 25
+#define TEXT_NO_HIDDEN 26
+#define TEXT_HIDE 27
+#define TEXT_UNHIDE 28
 
 (* ========== Listener ID constants ========== *)
 
@@ -90,10 +97,15 @@ dataprop READER_LISTENER(id: int) =
 #define LISTENER_BACK 52
 #define LISTENER_PREV 53
 #define LISTENER_NEXT 54
-#define LISTENER_VIEW_TOGGLE 55
 #define LISTENER_SORT_TITLE 56
 #define LISTENER_SORT_AUTHOR 57
+#define LISTENER_SORT_LAST_OPENED 58
+#define LISTENER_SORT_DATE_ADDED 59
 #define LISTENER_ARCHIVE_BTN_BASE 60
+#define LISTENER_VIEW_HIDDEN 92
+#define LISTENER_VIEW_ARCHIVED 93
+#define LISTENER_VIEW_ACTIVE 94
+#define LISTENER_HIDE_BTN_BASE 95
 
 (* ========== Byte-level helpers (pure ATS2) ========== *)
 
@@ -444,6 +456,70 @@ fn fill_text {l:agz}{n:pos}
     val () = ward_arr_set_byte(arr, 15, alen, 107) (* k *)
     val () = ward_arr_set_byte(arr, 16, alen, 115) (* s *)
   in end
+  else if text_id = 23 then let (* "Last opened" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 76)   (* L *)
+    val () = ward_arr_set_byte(arr, 1, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 2, alen, 115)  (* s *)
+    val () = ward_arr_set_byte(arr, 3, alen, 116)  (* t *)
+    val () = ward_arr_set_byte(arr, 4, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 5, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 6, alen, 112)  (* p *)
+    val () = ward_arr_set_byte(arr, 7, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 8, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 9, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 10, alen, 100) (* d *)
+  in end
+  else if text_id = 24 then let (* "Date added" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 68)   (* D *)
+    val () = ward_arr_set_byte(arr, 1, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 2, alen, 116)  (* t *)
+    val () = ward_arr_set_byte(arr, 3, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 4, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 5, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 6, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 7, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 8, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 9, alen, 100)  (* d *)
+  in end
+  else if text_id = 25 then let (* "Hidden" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 72)   (* H *)
+    val () = ward_arr_set_byte(arr, 1, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 2, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 3, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 4, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 5, alen, 110)  (* n *)
+  in end
+  else if text_id = 26 then let (* "No hidden books" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 78)   (* N *)
+    val () = ward_arr_set_byte(arr, 1, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 2, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 3, alen, 104)  (* h *)
+    val () = ward_arr_set_byte(arr, 4, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 5, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 6, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 7, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 8, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 9, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 10, alen, 98)  (* b *)
+    val () = ward_arr_set_byte(arr, 11, alen, 111) (* o *)
+    val () = ward_arr_set_byte(arr, 12, alen, 111) (* o *)
+    val () = ward_arr_set_byte(arr, 13, alen, 107) (* k *)
+    val () = ward_arr_set_byte(arr, 14, alen, 115) (* s *)
+  in end
+  else if text_id = 27 then let (* "Hide" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 72)   (* H *)
+    val () = ward_arr_set_byte(arr, 1, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 2, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 3, alen, 101)  (* e *)
+  in end
+  else if text_id = 28 then let (* "Unhide" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 85)   (* U *)
+    val () = ward_arr_set_byte(arr, 1, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 2, alen, 104)  (* h *)
+    val () = ward_arr_set_byte(arr, 3, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 4, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 5, alen, 101)  (* e *)
+  in end
   else () (* unused text_id *)
 
 (* Copy len bytes from string_buffer to ward_arr *)
@@ -624,6 +700,20 @@ fn cls_book_card(): ward_safe_text(9) = let
   val b = ward_text_putc(b, 8, char2int1('d'))
 in ward_text_done(b) end
 
+fn cls_book_cover(): ward_safe_text(10) = let
+  val b = ward_text_build(10)
+  val b = ward_text_putc(b, 0, char2int1('b'))
+  val b = ward_text_putc(b, 1, char2int1('o'))
+  val b = ward_text_putc(b, 2, char2int1('o'))
+  val b = ward_text_putc(b, 3, char2int1('k'))
+  val b = ward_text_putc(b, 4, 45) (* '-' *)
+  val b = ward_text_putc(b, 5, char2int1('c'))
+  val b = ward_text_putc(b, 6, char2int1('o'))
+  val b = ward_text_putc(b, 7, char2int1('v'))
+  val b = ward_text_putc(b, 8, char2int1('e'))
+  val b = ward_text_putc(b, 9, char2int1('r'))
+in ward_text_done(b) end
+
 fn cls_book_title(): ward_safe_text(10) = let
   val b = ward_text_build(10)
   val b = ward_text_putc(b, 0, char2int1('b'))
@@ -698,20 +788,17 @@ fn cls_lib_toolbar(): ward_safe_text(11) = let
   val b = ward_text_putc(b, 10, char2int1('r'))
 in ward_text_done(b) end
 
-(* "view-toggle" = 11 chars *)
-fn cls_view_toggle(): ward_safe_text(11) = let
-  val b = ward_text_build(11)
-  val b = ward_text_putc(b, 0, char2int1('v'))
+(* "hide-btn" = 8 chars *)
+fn cls_hide_btn(): ward_safe_text(8) = let
+  val b = ward_text_build(8)
+  val b = ward_text_putc(b, 0, char2int1('h'))
   val b = ward_text_putc(b, 1, char2int1('i'))
-  val b = ward_text_putc(b, 2, char2int1('e'))
-  val b = ward_text_putc(b, 3, char2int1('w'))
+  val b = ward_text_putc(b, 2, char2int1('d'))
+  val b = ward_text_putc(b, 3, char2int1('e'))
   val b = ward_text_putc(b, 4, 45) (* '-' *)
-  val b = ward_text_putc(b, 5, char2int1('t'))
-  val b = ward_text_putc(b, 6, char2int1('o'))
-  val b = ward_text_putc(b, 7, char2int1('g'))
-  val b = ward_text_putc(b, 8, char2int1('g'))
-  val b = ward_text_putc(b, 9, char2int1('l'))
-  val b = ward_text_putc(b, 10, char2int1('e'))
+  val b = ward_text_putc(b, 5, char2int1('b'))
+  val b = ward_text_putc(b, 6, char2int1('t'))
+  val b = ward_text_putc(b, 7, char2int1('n'))
 in ward_text_done(b) end
 
 (* "sort-btn" = 8 chars *)
@@ -992,6 +1079,18 @@ fn log_err_opf(): ward_safe_text(7) = let
   val b = ward_text_putc(b, 6, char2int1('f'))
 in ward_text_done(b) end
 
+(* "err-zip" = 7 chars — ZIP parsing failed (0 entries) *)
+fn log_err_zip_parse(): ward_safe_text(7) = let
+  val b = ward_text_build(7)
+  val b = ward_text_putc(b, 0, char2int1('e'))
+  val b = ward_text_putc(b, 1, char2int1('r'))
+  val b = ward_text_putc(b, 2, char2int1('r'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('z'))
+  val b = ward_text_putc(b, 5, char2int1('i'))
+  val b = ward_text_putc(b, 6, char2int1('p'))
+in ward_text_done(b) end
+
 (* "err-lib-full" = 12 chars — library at capacity *)
 fn log_err_lib_full(): ward_safe_text(12) = let
   val b = ward_text_build(12)
@@ -1056,28 +1155,6 @@ fn mk_ch_err
   val b = ward_text_putc(b, 8, c2)
   val b = ward_text_putc(b, 9, c3)
 in ward_text_done(b) end
-
-(* CHAPTER_OUTCOME: Every code path through load_chapter either
- * renders content (calls render_tree + measure_and_set_pages),
- * starts async decompression (callback handles its own outcome),
- * or shows a visual error (calls show_chapter_error + ward_log).
- *
- * BUG PREVENTED: Silent empty page — if chapter loading fails for
- * any reason (missing ZIP entry, decompression failure, parse error),
- * the user sees a styled error message in the reading area.
- * Chapter index bounds are eliminated at compile time via SPINE_ORDERED.
- *
- * Error codes:
- *   err-ch-zip — spine path not found in ZIP
- *   err-ch-ent — ZIP entry metadata read failed
- *   err-ch-off — invalid data offset in ZIP entry
- *   err-ch-cmp — unsupported compression method (not 0 or 8)
- *   err-ch-sax — XML/HTML parse returned no SAX events
- *   err-ch-dec — decompression returned no data *)
-dataprop CHAPTER_OUTCOME(ok: int) =
-  | CHAPTER_RENDERED(1)
-  | CHAPTER_ASYNC(2)
-  | CHAPTER_ERROR_SHOWN(0)
 
 (* CHAPTER_DISPLAY_READY: proves that after chapter content is rendered,
  * both pagination measurement AND CSS transform application occurred.
@@ -1191,8 +1268,8 @@ fn write_css_rem_pos {l:agz}{n:pos}{v:pos}
 
 (* ---- CSS length constants ---- *)
 (* #define: runtime values; stadef: type-level constraints *)
-#define APP_CSS_LEN 2198
-stadef APP_CSS_LEN = 2198
+#define APP_CSS_LEN 2306
+stadef APP_CSS_LEN = 2306
 #define NAV_CSS_LEN 552
 stadef NAV_CSS_LEN = 552
 
@@ -1211,10 +1288,10 @@ fn stamp_reader_css {l:agz}{n:int | n >= APP_CSS_LEN}
    child_pad_l: int(pl), child_pad_r: int(pr))
   : (CSS_READER_WRITTEN | void) = let
   (* Overwrite critical bytes from proven values *)
-  val () = write_css_100vw(arr, alen, 911)         (* column-width: 100vw *)
-  val () = write_css_zero(arr, alen, 936, pad_h)   (* padding: 2rem 0 — offset shifted by gap shorthand *)
-  val () = write_css_rem_pos(arr, alen, 1007, child_pad_l)  (* padding-left: 1.5rem *)
-  val () = write_css_rem_pos(arr, alen, 1028, child_pad_r)  (* padding-right: 1.5rem *)
+  val () = write_css_100vw(arr, alen, 1019)        (* column-width: 100vw *)
+  val () = write_css_zero(arr, alen, 1044, pad_h)  (* padding: 2rem 0 — offset shifted by gap shorthand *)
+  val () = write_css_rem_pos(arr, alen, 1115, child_pad_l)  (* padding-left: 1.5rem *)
+  val () = write_css_rem_pos(arr, alen, 1136, child_pad_r)  (* padding-right: 1.5rem *)
   (* Produce the linear view — only reachable after byte writes above *)
   extern praxi __seal_reader(): CSS_READER_WRITTEN
   prval pf = __seal_reader()
@@ -1361,226 +1438,254 @@ in end
 
 fn fill_css_cards {l:agz}{n:pos}
   (arr: !ward_arr(byte, l, n), alen: int n): void = let
-  (* .book-card *)
+  (* .book-card — with flex layout for cover images *)
   val () = _w4(arr, alen, 403, 1869570606)
   val () = _w4(arr, alen, 407, 1633889643)
   val () = _w4(arr, alen, 411, 1685808242)
   val () = _w4(arr, alen, 415, 1819308905)
   val () = _w4(arr, alen, 419, 1715108193)
   val () = _w4(arr, alen, 423, 997746028)
-  val () = _w4(arr, alen, 427, 1734962273)
-  val () = _w4(arr, alen, 431, 1953049966)
-  val () = _w4(arr, alen, 435, 980643173)
-  val () = _w4(arr, alen, 439, 1953391971)
-  val () = _w4(arr, alen, 443, 1882944101)
-  val () = _w4(arr, alen, 447, 1768186977)
-  val () = _w4(arr, alen, 451, 775579502)
-  val () = _w4(arr, alen, 455, 1701983543)
-  val () = _w4(arr, alen, 459, 1915822189)
-  val () = _w4(arr, alen, 463, 1832611173)
-  val () = _w4(arr, alen, 467, 1768387169)
-  val () = _w4(arr, alen, 471, 1868705134)
-  val () = _w4(arr, alen, 475, 1836020852)
-  val () = _w4(arr, alen, 479, 1916087866)
-  val () = _w4(arr, alen, 483, 1648061797)
-  val () = _w4(arr, alen, 487, 1735091041)
-  val () = _w4(arr, alen, 491, 1853190002)
-  val () = _w4(arr, alen, 495, 1713584740)
-  val () = _w4(arr, alen, 499, 1648060006)
-  val () = _w4(arr, alen, 503, 1701081711)
-  val () = _w4(arr, alen, 507, 1882274418)
-  val () = _w4(arr, alen, 511, 1869815928)
-  val () = _w4(arr, alen, 515, 543451500)
-  val () = _w4(arr, alen, 519, 1697670435)
-  val () = _w4(arr, alen, 523, 993027376)
-  val () = _w4(arr, alen, 527, 1685221218)
-  val () = _w4(arr, alen, 531, 1915581029)
-  val () = _w4(arr, alen, 535, 1969841249)
-  val () = _w4(arr, alen, 539, 1882602099)
-  val () = _w4(arr, alen, 543, 1647213944)
-  val () = _w4(arr, alen, 547, 762015599)
+  val () = _w4(arr, alen, 427, 980443495)
+  val () = _w4(arr, alen, 431, 2020618801)
+  val () = _w4(arr, alen, 435, 1768710459)
+  val () = _w4(arr, alen, 439, 1764585063)
+  val () = _w4(arr, alen, 443, 1936549236)
+  val () = _w4(arr, alen, 447, 1701602874)
+  val () = _w4(arr, alen, 451, 1953705336)
+  val () = _w4(arr, alen, 455, 997487201)
+  val () = _w4(arr, alen, 459, 1684300144)
+  val () = _w4(arr, alen, 463, 979857001)
+  val () = _w4(arr, alen, 467, 1916090158)
+  val () = _w4(arr, alen, 471, 824208741)
+  val () = _w4(arr, alen, 475, 997025138)
+  val () = _w4(arr, alen, 479, 1735549293)
+  val () = _w4(arr, alen, 483, 1647144553)
+  val () = _w4(arr, alen, 487, 1869902959)
+  val () = _w4(arr, alen, 491, 892222061)
+  val () = _w4(arr, alen, 495, 997025138)
+  val () = _w4(arr, alen, 499, 1801675106)
+  val () = _w4(arr, alen, 503, 1970238055)
+  val () = _w4(arr, alen, 507, 591029358)
+  val () = _w4(arr, alen, 511, 996566630)
+  val () = _w4(arr, alen, 515, 1685221218)
+  val () = _w4(arr, alen, 519, 825913957)
+  val () = _w4(arr, alen, 523, 1931507824)
+  val () = _w4(arr, alen, 527, 1684630639)
+  val () = _w4(arr, alen, 531, 811934496)
+  val () = _w4(arr, alen, 535, 811937893)
+  val () = _w4(arr, alen, 539, 1919902267)
+  val () = _w4(arr, alen, 543, 762471780)
+  val () = _w4(arr, alen, 547, 1768186226)
+  val () = _w4(arr, alen, 551, 909800309)
+  val () = _w4(arr, alen, 555, 779974768)
+  val () = _w4(arr, alen, 559, 1802465122)
+  val () = _w4(arr, alen, 563, 1987011373)
+  val () = _w4(arr, alen, 567, 1836806757)
+  val () = _w4(arr, alen, 571, 1999468641)
+  val () = _w4(arr, alen, 575, 1752458345)
+  val () = _w4(arr, alen, 579, 1882208314)
+  val () = _w4(arr, alen, 583, 1634548600)
+  val () = _w4(arr, alen, 587, 1701326200)
+  val () = _w4(arr, alen, 591, 1952999273)
+  val () = _w4(arr, alen, 595, 808595770)
+  val () = _w4(arr, alen, 599, 1866168432)
+  val () = _w4(arr, alen, 603, 1667590754)
+  val () = _w4(arr, alen, 607, 1768303988)
+  val () = _w4(arr, alen, 611, 1868774004)
+  val () = _w4(arr, alen, 615, 1767994478)
+  val () = _w4(arr, alen, 619, 1868708718)
+  val () = _w4(arr, alen, 623, 1919247474)
+  val () = _w4(arr, alen, 627, 1684107821)
+  val () = _w4(arr, alen, 631, 980645225)
+  val () = _w4(arr, alen, 635, 997748788)
+  val () = _w4(arr, alen, 639, 2019912806)
+  val () = _w4(arr, alen, 643, 1919447853)
+  val () = _w4(arr, alen, 647, 980119145)
+  val () = _w4(arr, alen, 651, 1647213872)
   (* .book-title *)
-  val () = _w4(arr, alen, 551, 1819568500)
-  val () = _w4(arr, alen, 555, 1868987237)
-  val () = _w4(arr, alen, 559, 1999467630)
-  val () = _w4(arr, alen, 563, 1751607653)
-  val () = _w4(arr, alen, 567, 1868708468)
-  val () = _w4(arr, alen, 571, 1832608876)
-  val () = _w4(arr, alen, 575, 1768387169)
-  val () = _w4(arr, alen, 579, 1769090414)
-  val () = _w4(arr, alen, 583, 980707431)
-  val () = _w4(arr, alen, 587, 1701983534)
-  val () = _w4(arr, alen, 591, 1647213933)
+  val () = _w4(arr, alen, 655, 762015599)
+  val () = _w4(arr, alen, 659, 1819568500)
+  val () = _w4(arr, alen, 663, 1868987237)
+  val () = _w4(arr, alen, 667, 1999467630)
+  val () = _w4(arr, alen, 671, 1751607653)
+  val () = _w4(arr, alen, 675, 1868708468)
+  val () = _w4(arr, alen, 679, 1832608876)
+  val () = _w4(arr, alen, 683, 1768387169)
+  val () = _w4(arr, alen, 687, 1769090414)
+  val () = _w4(arr, alen, 691, 980707431)
+  val () = _w4(arr, alen, 695, 1701983534)
+  val () = _w4(arr, alen, 699, 1647213933)
   (* .book-author *)
-  val () = _w4(arr, alen, 595, 762015599)
-  val () = _w4(arr, alen, 599, 1752462689)
-  val () = _w4(arr, alen, 603, 1669034607)
-  val () = _w4(arr, alen, 607, 1919904879)
-  val () = _w4(arr, alen, 611, 909517626)
-  val () = _w4(arr, alen, 615, 1634548534)
-  val () = _w4(arr, alen, 619, 1852401522)
-  val () = _w4(arr, alen, 623, 1734963757)
-  val () = _w4(arr, alen, 627, 1631220840)
-  val () = _w4(arr, alen, 631, 2104456309)
+  val () = _w4(arr, alen, 703, 762015599)
+  val () = _w4(arr, alen, 707, 1752462689)
+  val () = _w4(arr, alen, 711, 1669034607)
+  val () = _w4(arr, alen, 715, 1919904879)
+  val () = _w4(arr, alen, 719, 909517626)
+  val () = _w4(arr, alen, 723, 1634548534)
+  val () = _w4(arr, alen, 727, 1852401522)
+  val () = _w4(arr, alen, 731, 1734963757)
+  val () = _w4(arr, alen, 735, 1631220840)
+  val () = _w4(arr, alen, 739, 2104456309)
   (* .book-position *)
-  val () = _w4(arr, alen, 635, 1869570606)
-  val () = _w4(arr, alen, 639, 1869622635)
-  val () = _w4(arr, alen, 643, 1769236851)
-  val () = _w4(arr, alen, 647, 1669033583)
-  val () = _w4(arr, alen, 651, 1919904879)
-  val () = _w4(arr, alen, 655, 960045882)
-  val () = _w4(arr, alen, 659, 1868970809)
-  val () = _w4(arr, alen, 663, 1932358766)
-  val () = _w4(arr, alen, 667, 979729001)
-  val () = _w4(arr, alen, 671, 1916090414)
-  val () = _w4(arr, alen, 675, 1832611173)
-  val () = _w4(arr, alen, 679, 1768387169)
-  val () = _w4(arr, alen, 683, 1769090414)
-  val () = _w4(arr, alen, 687, 980707431)
-  val () = _w4(arr, alen, 691, 1835364913)
+  val () = _w4(arr, alen, 743, 1869570606)
+  val () = _w4(arr, alen, 747, 1869622635)
+  val () = _w4(arr, alen, 751, 1769236851)
+  val () = _w4(arr, alen, 755, 1669033583)
+  val () = _w4(arr, alen, 759, 1919904879)
+  val () = _w4(arr, alen, 763, 960045882)
+  val () = _w4(arr, alen, 767, 1868970809)
+  val () = _w4(arr, alen, 771, 1932358766)
+  val () = _w4(arr, alen, 775, 979729001)
+  val () = _w4(arr, alen, 779, 1916090414)
+  val () = _w4(arr, alen, 783, 1832611173)
+  val () = _w4(arr, alen, 787, 1768387169)
+  val () = _w4(arr, alen, 791, 1769090414)
+  val () = _w4(arr, alen, 795, 980707431)
+  val () = _w4(arr, alen, 799, 1835364913)
   (* .read-btn *)
-  val () = _w4(arr, alen, 695, 1701981821)
-  val () = _w4(arr, alen, 699, 1647141985)
-  val () = _w4(arr, alen, 703, 1887137396)
-  val () = _w4(arr, alen, 707, 1768186977)
-  val () = _w4(arr, alen, 711, 775579502)
-  val () = _w4(arr, alen, 715, 1835364916)
-  val () = _w4(arr, alen, 719, 1701982496)
-  val () = _w4(arr, alen, 723, 1633827693)
-  val () = _w4(arr, alen, 727, 1919380323)
-  val () = _w4(arr, alen, 731, 1684960623)
-  val () = _w4(arr, alen, 735, 1630806842)
-  val () = _w4(arr, alen, 739, 959800119)
-  val () = _w4(arr, alen, 743, 1819239227)
-  val () = _w4(arr, alen, 747, 591032943)
-  val () = _w4(arr, alen, 751, 996566630)
-  val () = _w4(arr, alen, 755, 1685221218)
-  val () = _w4(arr, alen, 759, 1849324133)
-  val () = _w4(arr, alen, 763, 996503151)
-  val () = _w4(arr, alen, 767, 1685221218)
-  val () = _w4(arr, alen, 771, 1915581029)
-  val () = _w4(arr, alen, 775, 1969841249)
-  val () = _w4(arr, alen, 779, 1882471027)
-  val () = _w4(arr, alen, 783, 1969437560)
-  val () = _w4(arr, alen, 787, 1919906674)
-  val () = _w4(arr, alen, 791, 1768910906)
-  val () = _w4(arr, alen, 795, 1919251566)
-  val () = ward_arr_set_byte(arr, 799, alen, 125)
+  val () = _w4(arr, alen, 803, 1701981821)
+  val () = _w4(arr, alen, 807, 1647141985)
+  val () = _w4(arr, alen, 811, 1887137396)
+  val () = _w4(arr, alen, 815, 1768186977)
+  val () = _w4(arr, alen, 819, 775579502)
+  val () = _w4(arr, alen, 823, 1835364916)
+  val () = _w4(arr, alen, 827, 1701982496)
+  val () = _w4(arr, alen, 831, 1633827693)
+  val () = _w4(arr, alen, 835, 1919380323)
+  val () = _w4(arr, alen, 839, 1684960623)
+  val () = _w4(arr, alen, 843, 1630806842)
+  val () = _w4(arr, alen, 847, 959800119)
+  val () = _w4(arr, alen, 851, 1819239227)
+  val () = _w4(arr, alen, 855, 591032943)
+  val () = _w4(arr, alen, 859, 996566630)
+  val () = _w4(arr, alen, 863, 1685221218)
+  val () = _w4(arr, alen, 867, 1849324133)
+  val () = _w4(arr, alen, 871, 996503151)
+  val () = _w4(arr, alen, 875, 1685221218)
+  val () = _w4(arr, alen, 879, 1915581029)
+  val () = _w4(arr, alen, 883, 1969841249)
+  val () = _w4(arr, alen, 887, 1882471027)
+  val () = _w4(arr, alen, 891, 1969437560)
+  val () = _w4(arr, alen, 895, 1919906674)
+  val () = _w4(arr, alen, 899, 1768910906)
+  val () = _w4(arr, alen, 903, 1919251566)
+  val () = ward_arr_set_byte(arr, 907, alen, 125)
 in end
+
 
 fn fill_css_reader {l:agz}{n:int | n >= APP_CSS_LEN}
   (arr: !ward_arr(byte, l, n), alen: int n): (CSS_READER_WRITTEN | void) = let
   (* .reader-viewport *)
-  val () = _w4(arr, alen, 800, 1634038318)
-  val () = _w4(arr, alen, 804, 762471780)
-  val () = _w4(arr, alen, 808, 2003134838)
-  val () = _w4(arr, alen, 812, 1953656688)
-  val () = _w4(arr, alen, 816, 1936683131)
-  val () = _w4(arr, alen, 820, 1869182057)
-  val () = _w4(arr, alen, 824, 1701984878)
-  val () = _w4(arr, alen, 828, 1769234796)
-  val () = _w4(arr, alen, 832, 1748723062)
-  val () = _w4(arr, alen, 836, 1751607653)
-  val () = _w4(arr, alen, 840, 1633892980)
-  val () = _w4(arr, alen, 844, 824730476)
-  val () = _w4(arr, alen, 848, 1752576048)
-  val () = _w4(arr, alen, 852, 857746720)
-  val () = _w4(arr, alen, 856, 1701983534)
-  val () = _w4(arr, alen, 860, 1866148205)
-  val () = _w4(arr, alen, 864, 1718773110)
-  val () = _w4(arr, alen, 868, 980905836)
-  val () = _w4(arr, alen, 872, 1684302184)
-  val () = _w4(arr, alen, 876, 779972197)
+  val () = _w4(arr, alen, 908, 1634038318)
+  val () = _w4(arr, alen, 912, 762471780)
+  val () = _w4(arr, alen, 916, 2003134838)
+  val () = _w4(arr, alen, 920, 1953656688)
+  val () = _w4(arr, alen, 924, 1936683131)
+  val () = _w4(arr, alen, 928, 1869182057)
+  val () = _w4(arr, alen, 932, 1701984878)
+  val () = _w4(arr, alen, 936, 1769234796)
+  val () = _w4(arr, alen, 940, 1748723062)
+  val () = _w4(arr, alen, 944, 1751607653)
+  val () = _w4(arr, alen, 948, 1633892980)
+  val () = _w4(arr, alen, 952, 824730476)
+  val () = _w4(arr, alen, 956, 1752576048)
+  val () = _w4(arr, alen, 960, 857746720)
+  val () = _w4(arr, alen, 964, 1701983534)
+  val () = _w4(arr, alen, 968, 1866148205)
+  val () = _w4(arr, alen, 972, 1718773110)
+  val () = _w4(arr, alen, 976, 980905836)
+  val () = _w4(arr, alen, 980, 1684302184)
+  val () = _w4(arr, alen, 984, 779972197)
   (* .chapter-container *)
-  val () = _w4(arr, alen, 880, 1885431907)
-  val () = _w4(arr, alen, 884, 762471796)
-  val () = _w4(arr, alen, 888, 1953394531)
-  val () = _w4(arr, alen, 892, 1701734753)
-  val () = _w4(arr, alen, 896, 1868790642)
-  val () = _w4(arr, alen, 900, 1852667244)
-  val () = _w4(arr, alen, 904, 1684633389)
-  val () = _w4(arr, alen, 908, 825911412)
-  val () = _w4(arr, alen, 912, 2004234288)
+  val () = _w4(arr, alen, 988, 1885431907)
+  val () = _w4(arr, alen, 992, 762471796)
+  val () = _w4(arr, alen, 996, 1953394531)
+  val () = _w4(arr, alen, 1000, 1701734753)
+  val () = _w4(arr, alen, 1004, 1868790642)
+  val () = _w4(arr, alen, 1008, 1852667244)
+  val () = _w4(arr, alen, 1012, 1684633389)
+  val () = _w4(arr, alen, 1016, 825911412)
+  val () = _w4(arr, alen, 1020, 2004234288)
   (* CSS uses 'gap' shorthand (saves 7 chars vs 'column-gap') to make
    * room for will-change:transform. will-change:transform forces the
    * browser to create a GPU compositing layer that includes ALL CSS
    * column content — without it, browsers skip painting columns that
    * start off-screen, making pages 2+ invisible even after translateX
    * brings them into view. *)
-  val () = _w4(arr, alen, 916, 1885431611)  (* ';gap' *)
-  val () = _w4(arr, alen, 920, 1882927162)  (* ':0;p' *)
-  val () = _w4(arr, alen, 924, 1768186977)  (* 'addi' *)
-  val () = _w4(arr, alen, 928, 842688366)   (* 'ng:2' *)
-  val () = _w4(arr, alen, 932, 544040306)   (* 'rem ' *)
-  val () = _w4(arr, alen, 936, 1701329712)  (* '0;he' *)
-  val () = _w4(arr, alen, 940, 1952999273)  (* 'ight' *)
-  val () = _w4(arr, alen, 944, 808464698)   (* ':100' *)
-  val () = _w4(arr, alen, 948, 1769421605)  (* '%;wi' *)
-  val () = _w4(arr, alen, 952, 1663921260)  (* 'll-c' *)
-  val () = _w4(arr, alen, 956, 1735287144)  (* 'hang' *)
-  val () = _w4(arr, alen, 960, 1920219749)  (* 'e:tr' *)
-  val () = _w4(arr, alen, 964, 1718840929)  (* 'ansf' *)
-  val () = _w4(arr, alen, 968, 997028463)   (* 'orm;' *)
-  val () = _w4(arr, alen, 972, 1751330429)
+  val () = _w4(arr, alen, 1024, 1885431611)  (* ';gap' *)
+  val () = _w4(arr, alen, 1028, 1882927162)  (* ':0;p' *)
+  val () = _w4(arr, alen, 1032, 1768186977)  (* 'addi' *)
+  val () = _w4(arr, alen, 1036, 842688366)   (* 'ng:2' *)
+  val () = _w4(arr, alen, 1040, 544040306)   (* 'rem ' *)
+  val () = _w4(arr, alen, 1044, 1701329712)  (* '0;he' *)
+  val () = _w4(arr, alen, 1048, 1952999273)  (* 'ight' *)
+  val () = _w4(arr, alen, 1052, 808464698)   (* ':100' *)
+  val () = _w4(arr, alen, 1056, 1769421605)  (* '%;wi' *)
+  val () = _w4(arr, alen, 1060, 1663921260)  (* 'll-c' *)
+  val () = _w4(arr, alen, 1064, 1735287144)  (* 'hang' *)
+  val () = _w4(arr, alen, 1068, 1920219749)  (* 'e:tr' *)
+  val () = _w4(arr, alen, 1072, 1718840929)  (* 'ansf' *)
+  val () = _w4(arr, alen, 1076, 997028463)   (* 'orm;' *)
+  val () = _w4(arr, alen, 1080, 1751330429)
   (* .chapter-container>* *)
-  val () = _w4(arr, alen, 976, 1702129761)
-  val () = _w4(arr, alen, 980, 1868770674)
-  val () = _w4(arr, alen, 984, 1767994478)
-  val () = _w4(arr, alen, 988, 1047684462)
-  val () = _w4(arr, alen, 992, 1634761514)
-  val () = _w4(arr, alen, 996, 1852400740)
-  val () = _w4(arr, alen, 1000, 1701588327)
-  val () = _w4(arr, alen, 1004, 825914470)
-  val () = _w4(arr, alen, 1008, 1701983534)
-  val () = _w4(arr, alen, 1012, 1634745197)
-  val () = _w4(arr, alen, 1016, 1852400740)
-  val () = _w4(arr, alen, 1020, 1769090407)
-  val () = _w4(arr, alen, 1024, 980707431)
-  val () = _w4(arr, alen, 1028, 1916087857)
-  val () = _w4(arr, alen, 1032, 1648061797)
-  val () = _w4(arr, alen, 1036, 1932359791)
-  val () = _w4(arr, alen, 1040, 1852406377)
-  val () = _w4(arr, alen, 1044, 1868708455)
-  val () = _w4(arr, alen, 1048, 1919247474)
-  val () = _w4(arr, alen, 1052, 2020565549)
-  val () = ward_arr_set_byte(arr, 1056, alen, 125)
+  val () = _w4(arr, alen, 1084, 1702129761)
+  val () = _w4(arr, alen, 1088, 1868770674)
+  val () = _w4(arr, alen, 1092, 1767994478)
+  val () = _w4(arr, alen, 1096, 1047684462)
+  val () = _w4(arr, alen, 1100, 1634761514)
+  val () = _w4(arr, alen, 1104, 1852400740)
+  val () = _w4(arr, alen, 1108, 1701588327)
+  val () = _w4(arr, alen, 1112, 825914470)
+  val () = _w4(arr, alen, 1116, 1701983534)
+  val () = _w4(arr, alen, 1120, 1634745197)
+  val () = _w4(arr, alen, 1124, 1852400740)
+  val () = _w4(arr, alen, 1128, 1769090407)
+  val () = _w4(arr, alen, 1132, 980707431)
+  val () = _w4(arr, alen, 1136, 1916087857)
+  val () = _w4(arr, alen, 1140, 1648061797)
+  val () = _w4(arr, alen, 1144, 1932359791)
+  val () = _w4(arr, alen, 1148, 1852406377)
+  val () = _w4(arr, alen, 1152, 1868708455)
+  val () = _w4(arr, alen, 1156, 1919247474)
+  val () = _w4(arr, alen, 1160, 2020565549)
+  val () = ward_arr_set_byte(arr, 1164, alen, 125)
   (* .chapter-error *)
-  val () = _w4(arr, alen, 1057, 1634231086)
-  val () = _w4(arr, alen, 1061, 1919251568)
-  val () = _w4(arr, alen, 1065, 1920099629)
-  val () = _w4(arr, alen, 1069, 1685811823)
-  val () = _w4(arr, alen, 1073, 1819308905)
-  val () = _w4(arr, alen, 1077, 1715108193)
-  val () = _w4(arr, alen, 1081, 997746028)
-  val () = _w4(arr, alen, 1085, 1734962273)
-  val () = _w4(arr, alen, 1089, 1953049966)
-  val () = _w4(arr, alen, 1093, 980643173)
-  val () = _w4(arr, alen, 1097, 1953391971)
-  val () = _w4(arr, alen, 1101, 1782280805)
-  val () = _w4(arr, alen, 1105, 1769239413)
-  val () = _w4(arr, alen, 1109, 1663924582)
-  val () = _w4(arr, alen, 1113, 1702129263)
-  val () = _w4(arr, alen, 1117, 1664775278)
-  val () = _w4(arr, alen, 1121, 1702129253)
-  val () = _w4(arr, alen, 1125, 1701329778)
-  val () = _w4(arr, alen, 1129, 1952999273)
-  val () = _w4(arr, alen, 1133, 808464698)
-  val () = _w4(arr, alen, 1137, 1868774181)
-  val () = _w4(arr, alen, 1141, 980578156)
-  val () = _w4(arr, alen, 1145, 943208483)
-  val () = _w4(arr, alen, 1149, 1852794427)
-  val () = _w4(arr, alen, 1153, 1769155956)
-  val () = _w4(arr, alen, 1157, 825910650)
-  val () = _w4(arr, alen, 1161, 1701982510)
-  val () = _w4(arr, alen, 1165, 1702116205)
-  val () = _w4(arr, alen, 1169, 1630368888)
-  val () = _w4(arr, alen, 1173, 1852270956)
-  val () = _w4(arr, alen, 1177, 1852138298)
-  val () = _w4(arr, alen, 1181, 997352820)
-  val () = _w4(arr, alen, 1185, 1684300144)
-  val () = _w4(arr, alen, 1189, 979857001)
-  val () = _w4(arr, alen, 1193, 1835364914)
-  val () = ward_arr_set_byte(arr, 1197, alen, 125)
+  val () = _w4(arr, alen, 1165, 1634231086)
+  val () = _w4(arr, alen, 1169, 1919251568)
+  val () = _w4(arr, alen, 1173, 1920099629)
+  val () = _w4(arr, alen, 1177, 1685811823)
+  val () = _w4(arr, alen, 1181, 1819308905)
+  val () = _w4(arr, alen, 1185, 1715108193)
+  val () = _w4(arr, alen, 1189, 997746028)
+  val () = _w4(arr, alen, 1193, 1734962273)
+  val () = _w4(arr, alen, 1197, 1953049966)
+  val () = _w4(arr, alen, 1201, 980643173)
+  val () = _w4(arr, alen, 1205, 1953391971)
+  val () = _w4(arr, alen, 1209, 1782280805)
+  val () = _w4(arr, alen, 1213, 1769239413)
+  val () = _w4(arr, alen, 1217, 1663924582)
+  val () = _w4(arr, alen, 1221, 1702129263)
+  val () = _w4(arr, alen, 1225, 1664775278)
+  val () = _w4(arr, alen, 1229, 1702129253)
+  val () = _w4(arr, alen, 1233, 1701329778)
+  val () = _w4(arr, alen, 1237, 1952999273)
+  val () = _w4(arr, alen, 1241, 808464698)
+  val () = _w4(arr, alen, 1245, 1868774181)
+  val () = _w4(arr, alen, 1249, 980578156)
+  val () = _w4(arr, alen, 1253, 943208483)
+  val () = _w4(arr, alen, 1257, 1852794427)
+  val () = _w4(arr, alen, 1261, 1769155956)
+  val () = _w4(arr, alen, 1265, 825910650)
+  val () = _w4(arr, alen, 1269, 1701982510)
+  val () = _w4(arr, alen, 1273, 1702116205)
+  val () = _w4(arr, alen, 1277, 1630368888)
+  val () = _w4(arr, alen, 1281, 1852270956)
+  val () = _w4(arr, alen, 1285, 1852138298)
+  val () = _w4(arr, alen, 1289, 997352820)
+  val () = _w4(arr, alen, 1293, 1684300144)
+  val () = _w4(arr, alen, 1297, 979857001)
+  val () = _w4(arr, alen, 1301, 1835364914)
+  val () = ward_arr_set_byte(arr, 1305, alen, 125)
 
   (* Construct proofs — solver verifies constraints *)
   prval pf_col = COLUMNS_MATCH_VIEWPORT{CSS_COL_WIDTH_VW, CSS_CONTAINER_PAD_H}()
@@ -1598,271 +1703,271 @@ in (pf_written | ()) end
 fn fill_css_content {l:agz}{n:pos}
   (arr: !ward_arr(byte, l, n), alen: int n): void = let
   (* .chapter-container h1,.chapter-container h2,.chapter-container h3 *)
-  val () = _w4(arr, alen, 1198, 1634231086)
-  val () = _w4(arr, alen, 1202, 1919251568)
-  val () = _w4(arr, alen, 1206, 1852793645)
-  val () = _w4(arr, alen, 1210, 1852399988)
-  val () = _w4(arr, alen, 1214, 1746956901)
-  val () = _w4(arr, alen, 1218, 1663970353)
-  val () = _w4(arr, alen, 1222, 1953522024)
-  val () = _w4(arr, alen, 1226, 1663922789)
-  val () = _w4(arr, alen, 1230, 1635020399)
-  val () = _w4(arr, alen, 1234, 1919250025)
-  val () = _w4(arr, alen, 1238, 741500960)
-  val () = _w4(arr, alen, 1242, 1634231086)
-  val () = _w4(arr, alen, 1246, 1919251568)
-  val () = _w4(arr, alen, 1250, 1852793645)
-  val () = _w4(arr, alen, 1254, 1852399988)
-  val () = _w4(arr, alen, 1258, 1746956901)
-  val () = _w4(arr, alen, 1262, 1634564915)
-  val () = _w4(arr, alen, 1266, 1852401522)
-  val () = _w4(arr, alen, 1270, 1886352429)
-  val () = _w4(arr, alen, 1274, 892219706)
-  val () = _w4(arr, alen, 1278, 1832611173)
-  val () = _w4(arr, alen, 1282, 1768387169)
-  val () = _w4(arr, alen, 1286, 1868705134)
-  val () = _w4(arr, alen, 1290, 1836020852)
-  val () = _w4(arr, alen, 1294, 1697984058)
-  val () = _w4(arr, alen, 1298, 1768700781)
-  val () = _w4(arr, alen, 1302, 1747805550)
-  val () = _w4(arr, alen, 1306, 1751607653)
-  val () = _w4(arr, alen, 1310, 774978164)
+  val () = _w4(arr, alen, 1306, 1634231086)
+  val () = _w4(arr, alen, 1310, 1919251568)
+  val () = _w4(arr, alen, 1314, 1852793645)
+  val () = _w4(arr, alen, 1318, 1852399988)
+  val () = _w4(arr, alen, 1322, 1746956901)
+  val () = _w4(arr, alen, 1326, 1663970353)
+  val () = _w4(arr, alen, 1330, 1953522024)
+  val () = _w4(arr, alen, 1334, 1663922789)
+  val () = _w4(arr, alen, 1338, 1635020399)
+  val () = _w4(arr, alen, 1342, 1919250025)
+  val () = _w4(arr, alen, 1346, 741500960)
+  val () = _w4(arr, alen, 1350, 1634231086)
+  val () = _w4(arr, alen, 1354, 1919251568)
+  val () = _w4(arr, alen, 1358, 1852793645)
+  val () = _w4(arr, alen, 1362, 1852399988)
+  val () = _w4(arr, alen, 1366, 1746956901)
+  val () = _w4(arr, alen, 1370, 1634564915)
+  val () = _w4(arr, alen, 1374, 1852401522)
+  val () = _w4(arr, alen, 1378, 1886352429)
+  val () = _w4(arr, alen, 1382, 892219706)
+  val () = _w4(arr, alen, 1386, 1832611173)
+  val () = _w4(arr, alen, 1390, 1768387169)
+  val () = _w4(arr, alen, 1394, 1868705134)
+  val () = _w4(arr, alen, 1398, 1836020852)
+  val () = _w4(arr, alen, 1402, 1697984058)
+  val () = _w4(arr, alen, 1406, 1768700781)
+  val () = _w4(arr, alen, 1410, 1747805550)
+  val () = _w4(arr, alen, 1414, 1751607653)
+  val () = _w4(arr, alen, 1418, 774978164)
   (* .chapter-container p *)
-  val () = _w4(arr, alen, 1314, 1663991091)
-  val () = _w4(arr, alen, 1318, 1953522024)
-  val () = _w4(arr, alen, 1322, 1663922789)
-  val () = _w4(arr, alen, 1326, 1635020399)
-  val () = _w4(arr, alen, 1330, 1919250025)
-  val () = _w4(arr, alen, 1334, 1836806176)
-  val () = _w4(arr, alen, 1338, 1768387169)
-  val () = _w4(arr, alen, 1342, 540031598)
-  val () = _w4(arr, alen, 1346, 942546992)
-  val () = _w4(arr, alen, 1350, 1950051685)
-  val () = _w4(arr, alen, 1354, 762607717)
-  val () = _w4(arr, alen, 1358, 1734962273)
-  val () = _w4(arr, alen, 1362, 1969896046)
-  val () = _w4(arr, alen, 1366, 1718187123)
+  val () = _w4(arr, alen, 1422, 1663991091)
+  val () = _w4(arr, alen, 1426, 1953522024)
+  val () = _w4(arr, alen, 1430, 1663922789)
+  val () = _w4(arr, alen, 1434, 1635020399)
+  val () = _w4(arr, alen, 1438, 1919250025)
+  val () = _w4(arr, alen, 1442, 1836806176)
+  val () = _w4(arr, alen, 1446, 1768387169)
+  val () = _w4(arr, alen, 1450, 540031598)
+  val () = _w4(arr, alen, 1454, 942546992)
+  val () = _w4(arr, alen, 1458, 1950051685)
+  val () = _w4(arr, alen, 1462, 762607717)
+  val () = _w4(arr, alen, 1466, 1734962273)
+  val () = _w4(arr, alen, 1470, 1969896046)
+  val () = _w4(arr, alen, 1474, 1718187123)
   (* .chapter-container blockquote *)
-  val () = _w4(arr, alen, 1370, 1663991161)
-  val () = _w4(arr, alen, 1374, 1953522024)
-  val () = _w4(arr, alen, 1378, 1663922789)
-  val () = _w4(arr, alen, 1382, 1635020399)
-  val () = _w4(arr, alen, 1386, 1919250025)
-  val () = _w4(arr, alen, 1390, 1869373984)
-  val () = _w4(arr, alen, 1394, 1970367331)
-  val () = _w4(arr, alen, 1398, 2070246511)
-  val () = _w4(arr, alen, 1402, 1735549293)
-  val () = _w4(arr, alen, 1406, 825912937)
-  val () = _w4(arr, alen, 1410, 840985957)
-  val () = _w4(arr, alen, 1414, 1882942821)
-  val () = _w4(arr, alen, 1418, 1768186977)
-  val () = _w4(arr, alen, 1422, 1814914926)
-  val () = _w4(arr, alen, 1426, 980706917)
-  val () = _w4(arr, alen, 1430, 997025073)
-  val () = _w4(arr, alen, 1434, 1685221218)
-  val () = _w4(arr, alen, 1438, 1814917733)
-  val () = _w4(arr, alen, 1442, 980706917)
-  val () = _w4(arr, alen, 1446, 544763955)
-  val () = _w4(arr, alen, 1450, 1768714099)
-  val () = _w4(arr, alen, 1454, 1663246436)
-  val () = _w4(arr, alen, 1458, 1664836451)
-  val () = _w4(arr, alen, 1462, 1919904879)
-  val () = _w4(arr, alen, 1466, 892674874)
+  val () = _w4(arr, alen, 1478, 1663991161)
+  val () = _w4(arr, alen, 1482, 1953522024)
+  val () = _w4(arr, alen, 1486, 1663922789)
+  val () = _w4(arr, alen, 1490, 1635020399)
+  val () = _w4(arr, alen, 1494, 1919250025)
+  val () = _w4(arr, alen, 1498, 1869373984)
+  val () = _w4(arr, alen, 1502, 1970367331)
+  val () = _w4(arr, alen, 1506, 2070246511)
+  val () = _w4(arr, alen, 1510, 1735549293)
+  val () = _w4(arr, alen, 1514, 825912937)
+  val () = _w4(arr, alen, 1518, 840985957)
+  val () = _w4(arr, alen, 1522, 1882942821)
+  val () = _w4(arr, alen, 1526, 1768186977)
+  val () = _w4(arr, alen, 1530, 1814914926)
+  val () = _w4(arr, alen, 1534, 980706917)
+  val () = _w4(arr, alen, 1538, 997025073)
+  val () = _w4(arr, alen, 1542, 1685221218)
+  val () = _w4(arr, alen, 1546, 1814917733)
+  val () = _w4(arr, alen, 1550, 980706917)
+  val () = _w4(arr, alen, 1554, 544763955)
+  val () = _w4(arr, alen, 1558, 1768714099)
+  val () = _w4(arr, alen, 1562, 1663246436)
+  val () = _w4(arr, alen, 1566, 1664836451)
+  val () = _w4(arr, alen, 1570, 1919904879)
+  val () = _w4(arr, alen, 1574, 892674874)
   (* .chapter-container pre *)
-  val () = _w4(arr, alen, 1470, 1663991093)
-  val () = _w4(arr, alen, 1474, 1953522024)
-  val () = _w4(arr, alen, 1478, 1663922789)
-  val () = _w4(arr, alen, 1482, 1635020399)
-  val () = _w4(arr, alen, 1486, 1919250025)
-  val () = _w4(arr, alen, 1490, 1701998624)
-  val () = _w4(arr, alen, 1494, 1667326587)
-  val () = _w4(arr, alen, 1498, 1869768555)
-  val () = _w4(arr, alen, 1502, 979660405)
-  val () = _w4(arr, alen, 1506, 1714710051)
-  val () = _w4(arr, alen, 1510, 993289780)
-  val () = _w4(arr, alen, 1514, 1684300144)
-  val () = _w4(arr, alen, 1518, 979857001)
-  val () = _w4(arr, alen, 1522, 1835350062)
-  val () = _w4(arr, alen, 1526, 1919902267)
-  val () = _w4(arr, alen, 1530, 762471780)
-  val () = _w4(arr, alen, 1534, 1768186226)
-  val () = _w4(arr, alen, 1538, 876245877)
-  val () = _w4(arr, alen, 1542, 1866168432)
-  val () = _w4(arr, alen, 1546, 1718773110)
-  val () = _w4(arr, alen, 1550, 762802028)
-  val () = _w4(arr, alen, 1554, 1969306232)
-  val () = _w4(arr, alen, 1558, 1715171188)
-  val () = _w4(arr, alen, 1562, 762605167)
-  val () = _w4(arr, alen, 1566, 1702521203)
-  val () = _w4(arr, alen, 1570, 1698246202)
+  val () = _w4(arr, alen, 1578, 1663991093)
+  val () = _w4(arr, alen, 1582, 1953522024)
+  val () = _w4(arr, alen, 1586, 1663922789)
+  val () = _w4(arr, alen, 1590, 1635020399)
+  val () = _w4(arr, alen, 1594, 1919250025)
+  val () = _w4(arr, alen, 1598, 1701998624)
+  val () = _w4(arr, alen, 1602, 1667326587)
+  val () = _w4(arr, alen, 1606, 1869768555)
+  val () = _w4(arr, alen, 1610, 979660405)
+  val () = _w4(arr, alen, 1614, 1714710051)
+  val () = _w4(arr, alen, 1618, 993289780)
+  val () = _w4(arr, alen, 1622, 1684300144)
+  val () = _w4(arr, alen, 1626, 979857001)
+  val () = _w4(arr, alen, 1630, 1835350062)
+  val () = _w4(arr, alen, 1634, 1919902267)
+  val () = _w4(arr, alen, 1638, 762471780)
+  val () = _w4(arr, alen, 1642, 1768186226)
+  val () = _w4(arr, alen, 1646, 876245877)
+  val () = _w4(arr, alen, 1650, 1866168432)
+  val () = _w4(arr, alen, 1654, 1718773110)
+  val () = _w4(arr, alen, 1658, 762802028)
+  val () = _w4(arr, alen, 1662, 1969306232)
+  val () = _w4(arr, alen, 1666, 1715171188)
+  val () = _w4(arr, alen, 1670, 762605167)
+  val () = _w4(arr, alen, 1674, 1702521203)
+  val () = _w4(arr, alen, 1678, 1698246202)
   (* .chapter-container code *)
-  val () = _w4(arr, alen, 1574, 1663991149)
-  val () = _w4(arr, alen, 1578, 1953522024)
-  val () = _w4(arr, alen, 1582, 1663922789)
-  val () = _w4(arr, alen, 1586, 1635020399)
-  val () = _w4(arr, alen, 1590, 1919250025)
-  val () = _w4(arr, alen, 1594, 1685021472)
-  val () = _w4(arr, alen, 1598, 1633844069)
-  val () = _w4(arr, alen, 1602, 1919380323)
-  val () = _w4(arr, alen, 1606, 1684960623)
-  val () = _w4(arr, alen, 1610, 879108922)
-  val () = _w4(arr, alen, 1614, 879113318)
-  val () = _w4(arr, alen, 1618, 1684107323)
-  val () = _w4(arr, alen, 1622, 1735289188)
-  val () = _w4(arr, alen, 1626, 1697721914)
-  val () = _w4(arr, alen, 1630, 858660973)
-  val () = _w4(arr, alen, 1634, 1648061797)
-  val () = _w4(arr, alen, 1638, 1701081711)
-  val () = _w4(arr, alen, 1642, 1634872690)
-  val () = _w4(arr, alen, 1646, 1937074532)
-  val () = _w4(arr, alen, 1650, 2020618810)
-  val () = _w4(arr, alen, 1654, 1852794427)
-  val () = _w4(arr, alen, 1658, 1769155956)
-  val () = _w4(arr, alen, 1662, 775579002)
-  val () = _w4(arr, alen, 1666, 2104321337)
+  val () = _w4(arr, alen, 1682, 1663991149)
+  val () = _w4(arr, alen, 1686, 1953522024)
+  val () = _w4(arr, alen, 1690, 1663922789)
+  val () = _w4(arr, alen, 1694, 1635020399)
+  val () = _w4(arr, alen, 1698, 1919250025)
+  val () = _w4(arr, alen, 1702, 1685021472)
+  val () = _w4(arr, alen, 1706, 1633844069)
+  val () = _w4(arr, alen, 1710, 1919380323)
+  val () = _w4(arr, alen, 1714, 1684960623)
+  val () = _w4(arr, alen, 1718, 879108922)
+  val () = _w4(arr, alen, 1722, 879113318)
+  val () = _w4(arr, alen, 1726, 1684107323)
+  val () = _w4(arr, alen, 1730, 1735289188)
+  val () = _w4(arr, alen, 1734, 1697721914)
+  val () = _w4(arr, alen, 1738, 858660973)
+  val () = _w4(arr, alen, 1742, 1648061797)
+  val () = _w4(arr, alen, 1746, 1701081711)
+  val () = _w4(arr, alen, 1750, 1634872690)
+  val () = _w4(arr, alen, 1754, 1937074532)
+  val () = _w4(arr, alen, 1758, 2020618810)
+  val () = _w4(arr, alen, 1762, 1852794427)
+  val () = _w4(arr, alen, 1766, 1769155956)
+  val () = _w4(arr, alen, 1770, 775579002)
+  val () = _w4(arr, alen, 1774, 2104321337)
   (* .chapter-container img *)
-  val () = _w4(arr, alen, 1670, 1634231086)
-  val () = _w4(arr, alen, 1674, 1919251568)
-  val () = _w4(arr, alen, 1678, 1852793645)
-  val () = _w4(arr, alen, 1682, 1852399988)
-  val () = _w4(arr, alen, 1686, 1763734117)
-  val () = _w4(arr, alen, 1690, 1836803949)
-  val () = _w4(arr, alen, 1694, 1999468641)
-  val () = _w4(arr, alen, 1698, 1752458345)
-  val () = _w4(arr, alen, 1702, 808464698)
-  val () = _w4(arr, alen, 1706, 1701329701)
-  val () = _w4(arr, alen, 1710, 1952999273)
-  val () = _w4(arr, alen, 1714, 1953849658)
+  val () = _w4(arr, alen, 1778, 1634231086)
+  val () = _w4(arr, alen, 1782, 1919251568)
+  val () = _w4(arr, alen, 1786, 1852793645)
+  val () = _w4(arr, alen, 1790, 1852399988)
+  val () = _w4(arr, alen, 1794, 1763734117)
+  val () = _w4(arr, alen, 1798, 1836803949)
+  val () = _w4(arr, alen, 1802, 1999468641)
+  val () = _w4(arr, alen, 1806, 1752458345)
+  val () = _w4(arr, alen, 1810, 808464698)
+  val () = _w4(arr, alen, 1814, 1701329701)
+  val () = _w4(arr, alen, 1818, 1952999273)
+  val () = _w4(arr, alen, 1822, 1953849658)
   (* .chapter-container a *)
-  val () = _w4(arr, alen, 1718, 1663991151)
-  val () = _w4(arr, alen, 1722, 1953522024)
-  val () = _w4(arr, alen, 1726, 1663922789)
-  val () = _w4(arr, alen, 1730, 1635020399)
-  val () = _w4(arr, alen, 1734, 1919250025)
-  val () = _w4(arr, alen, 1738, 1669030176)
-  val () = _w4(arr, alen, 1742, 1919904879)
-  val () = _w4(arr, alen, 1746, 1630806842)
-  val () = _w4(arr, alen, 1750, 959800119)
+  val () = _w4(arr, alen, 1826, 1663991151)
+  val () = _w4(arr, alen, 1830, 1953522024)
+  val () = _w4(arr, alen, 1834, 1663922789)
+  val () = _w4(arr, alen, 1838, 1635020399)
+  val () = _w4(arr, alen, 1842, 1919250025)
+  val () = _w4(arr, alen, 1846, 1669030176)
+  val () = _w4(arr, alen, 1850, 1919904879)
+  val () = _w4(arr, alen, 1854, 1630806842)
+  val () = _w4(arr, alen, 1858, 959800119)
   (* .chapter-container table *)
-  val () = _w4(arr, alen, 1754, 1751330429)
-  val () = _w4(arr, alen, 1758, 1702129761)
-  val () = _w4(arr, alen, 1762, 1868770674)
-  val () = _w4(arr, alen, 1766, 1767994478)
-  val () = _w4(arr, alen, 1770, 544367982)
-  val () = _w4(arr, alen, 1774, 1818386804)
-  val () = _w4(arr, alen, 1778, 1868725093)
-  val () = _w4(arr, alen, 1782, 1919247474)
-  val () = _w4(arr, alen, 1786, 1819239213)
-  val () = _w4(arr, alen, 1790, 1936744812)
-  val () = _w4(arr, alen, 1794, 1868773989)
-  val () = _w4(arr, alen, 1798, 1885432940)
-  val () = _w4(arr, alen, 1802, 1832609139)
-  val () = _w4(arr, alen, 1806, 1768387169)
-  val () = _w4(arr, alen, 1810, 1697725038)
-  val () = _w4(arr, alen, 1814, 2100306029)
+  val () = _w4(arr, alen, 1862, 1751330429)
+  val () = _w4(arr, alen, 1866, 1702129761)
+  val () = _w4(arr, alen, 1870, 1868770674)
+  val () = _w4(arr, alen, 1874, 1767994478)
+  val () = _w4(arr, alen, 1878, 544367982)
+  val () = _w4(arr, alen, 1882, 1818386804)
+  val () = _w4(arr, alen, 1886, 1868725093)
+  val () = _w4(arr, alen, 1890, 1919247474)
+  val () = _w4(arr, alen, 1894, 1819239213)
+  val () = _w4(arr, alen, 1898, 1936744812)
+  val () = _w4(arr, alen, 1902, 1868773989)
+  val () = _w4(arr, alen, 1906, 1885432940)
+  val () = _w4(arr, alen, 1910, 1832609139)
+  val () = _w4(arr, alen, 1914, 1768387169)
+  val () = _w4(arr, alen, 1918, 1697725038)
+  val () = _w4(arr, alen, 1922, 2100306029)
   (* .chapter-container td,.chapter-container th *)
-  val () = _w4(arr, alen, 1818, 1634231086)
-  val () = _w4(arr, alen, 1822, 1919251568)
-  val () = _w4(arr, alen, 1826, 1852793645)
-  val () = _w4(arr, alen, 1830, 1852399988)
-  val () = _w4(arr, alen, 1834, 1948283493)
-  val () = _w4(arr, alen, 1838, 1663970404)
-  val () = _w4(arr, alen, 1842, 1953522024)
-  val () = _w4(arr, alen, 1846, 1663922789)
-  val () = _w4(arr, alen, 1850, 1635020399)
-  val () = _w4(arr, alen, 1854, 1919250025)
-  val () = _w4(arr, alen, 1858, 2070443040)
-  val () = _w4(arr, alen, 1862, 1685221218)
-  val () = _w4(arr, alen, 1866, 825913957)
-  val () = _w4(arr, alen, 1870, 1931507824)
-  val () = _w4(arr, alen, 1874, 1684630639)
-  val () = _w4(arr, alen, 1878, 1684284192)
-  val () = _w4(arr, alen, 1882, 1634745188)
-  val () = _w4(arr, alen, 1886, 1852400740)
-  val () = _w4(arr, alen, 1890, 875444839)
-  val () = _w4(arr, alen, 1894, 773877093)
-  val () = _w4(arr, alen, 1898, 2104321336)
+  val () = _w4(arr, alen, 1926, 1634231086)
+  val () = _w4(arr, alen, 1930, 1919251568)
+  val () = _w4(arr, alen, 1934, 1852793645)
+  val () = _w4(arr, alen, 1938, 1852399988)
+  val () = _w4(arr, alen, 1942, 1948283493)
+  val () = _w4(arr, alen, 1946, 1663970404)
+  val () = _w4(arr, alen, 1950, 1953522024)
+  val () = _w4(arr, alen, 1954, 1663922789)
+  val () = _w4(arr, alen, 1958, 1635020399)
+  val () = _w4(arr, alen, 1962, 1919250025)
+  val () = _w4(arr, alen, 1966, 2070443040)
+  val () = _w4(arr, alen, 1970, 1685221218)
+  val () = _w4(arr, alen, 1974, 825913957)
+  val () = _w4(arr, alen, 1978, 1931507824)
+  val () = _w4(arr, alen, 1982, 1684630639)
+  val () = _w4(arr, alen, 1986, 1684284192)
+  val () = _w4(arr, alen, 1990, 1634745188)
+  val () = _w4(arr, alen, 1994, 1852400740)
+  val () = _w4(arr, alen, 1998, 875444839)
+  val () = _w4(arr, alen, 2002, 773877093)
+  val () = _w4(arr, alen, 2006, 2104321336)
 in end
 
 fn fill_css_import {l:agz}{n:pos}
   (arr: !ward_arr(byte, l, n), alen: int n): void = let
   (* .importing *)
-  val () = _w4(arr, alen, 1902, 1886218542)
-  val () = _w4(arr, alen, 1906, 1769239151)
-  val () = _w4(arr, alen, 1910, 1685809006)
-  val () = _w4(arr, alen, 1914, 1819308905)
-  val () = _w4(arr, alen, 1918, 1765439841)
-  val () = _w4(arr, alen, 1922, 1852402798)
-  val () = _w4(arr, alen, 1926, 1818373477)
-  val () = _w4(arr, alen, 1930, 996893551)
-  val () = _w4(arr, alen, 1934, 1684300144)
-  val () = _w4(arr, alen, 1938, 979857001)
-  val () = _w4(arr, alen, 1942, 1701983534)
-  val () = _w4(arr, alen, 1946, 774971501)
-  val () = _w4(arr, alen, 1950, 1835364914)
-  val () = _w4(arr, alen, 1954, 1918987579)
-  val () = _w4(arr, alen, 1958, 980314471)
-  val () = _w4(arr, alen, 1962, 1835364913)
-  val () = _w4(arr, alen, 1966, 1667326523)
-  val () = _w4(arr, alen, 1970, 1869768555)
-  val () = _w4(arr, alen, 1974, 979660405)
-  val () = _w4(arr, alen, 1978, 929117219)
-  val () = _w4(arr, alen, 1982, 993604963)
-  val () = _w4(arr, alen, 1986, 1869377379)
-  val () = _w4(arr, alen, 1990, 1713584754)
-  val () = _w4(arr, alen, 1994, 1648060006)
-  val () = _w4(arr, alen, 1998, 1701081711)
-  val () = _w4(arr, alen, 2002, 1634872690)
-  val () = _w4(arr, alen, 2006, 1937074532)
-  val () = _w4(arr, alen, 2010, 2020619322)
-  val () = _w4(arr, alen, 2014, 1852794427)
-  val () = _w4(arr, alen, 2018, 1769155956)
-  val () = _w4(arr, alen, 2022, 825910650)
-  val () = _w4(arr, alen, 2026, 997025138)
-  val () = _w4(arr, alen, 2030, 1835626081)
-  val () = _w4(arr, alen, 2034, 1869182049)
-  val () = _w4(arr, alen, 2038, 1970289262)
-  val () = _w4(arr, alen, 2042, 543519596)
-  val () = _w4(arr, alen, 2046, 1932865073)
-  val () = _w4(arr, alen, 2050, 1935762720)
-  val () = _w4(arr, alen, 2054, 1852386661)
-  val () = _w4(arr, alen, 2058, 1953853229)
-  val () = _w4(arr, alen, 2062, 1718511904)
-  val () = _w4(arr, alen, 2066, 1953066601)
-  val () = _w4(arr, alen, 2070, 1799388517)
+  val () = _w4(arr, alen, 2010, 1886218542)
+  val () = _w4(arr, alen, 2014, 1769239151)
+  val () = _w4(arr, alen, 2018, 1685809006)
+  val () = _w4(arr, alen, 2022, 1819308905)
+  val () = _w4(arr, alen, 2026, 1765439841)
+  val () = _w4(arr, alen, 2030, 1852402798)
+  val () = _w4(arr, alen, 2034, 1818373477)
+  val () = _w4(arr, alen, 2038, 996893551)
+  val () = _w4(arr, alen, 2042, 1684300144)
+  val () = _w4(arr, alen, 2046, 979857001)
+  val () = _w4(arr, alen, 2050, 1701983534)
+  val () = _w4(arr, alen, 2054, 774971501)
+  val () = _w4(arr, alen, 2058, 1835364914)
+  val () = _w4(arr, alen, 2062, 1918987579)
+  val () = _w4(arr, alen, 2066, 980314471)
+  val () = _w4(arr, alen, 2070, 1835364913)
+  val () = _w4(arr, alen, 2074, 1667326523)
+  val () = _w4(arr, alen, 2078, 1869768555)
+  val () = _w4(arr, alen, 2082, 979660405)
+  val () = _w4(arr, alen, 2086, 929117219)
+  val () = _w4(arr, alen, 2090, 993604963)
+  val () = _w4(arr, alen, 2094, 1869377379)
+  val () = _w4(arr, alen, 2098, 1713584754)
+  val () = _w4(arr, alen, 2102, 1648060006)
+  val () = _w4(arr, alen, 2106, 1701081711)
+  val () = _w4(arr, alen, 2110, 1634872690)
+  val () = _w4(arr, alen, 2114, 1937074532)
+  val () = _w4(arr, alen, 2118, 2020619322)
+  val () = _w4(arr, alen, 2122, 1852794427)
+  val () = _w4(arr, alen, 2126, 1769155956)
+  val () = _w4(arr, alen, 2130, 825910650)
+  val () = _w4(arr, alen, 2134, 997025138)
+  val () = _w4(arr, alen, 2138, 1835626081)
+  val () = _w4(arr, alen, 2142, 1869182049)
+  val () = _w4(arr, alen, 2146, 1970289262)
+  val () = _w4(arr, alen, 2150, 543519596)
+  val () = _w4(arr, alen, 2154, 1932865073)
+  val () = _w4(arr, alen, 2158, 1935762720)
+  val () = _w4(arr, alen, 2162, 1852386661)
+  val () = _w4(arr, alen, 2166, 1953853229)
+  val () = _w4(arr, alen, 2170, 1718511904)
+  val () = _w4(arr, alen, 2174, 1953066601)
+  val () = _w4(arr, alen, 2178, 1799388517)
   (* @keyframes pulse *)
-  val () = _w4(arr, alen, 2074, 1919318373)
-  val () = _w4(arr, alen, 2078, 1936026977)
-  val () = _w4(arr, alen, 2082, 1819635744)
-  val () = _w4(arr, alen, 2086, 813393267)
-  val () = _w4(arr, alen, 2090, 808528933)
-  val () = _w4(arr, alen, 2094, 1870341424)
-  val () = _w4(arr, alen, 2098, 1768120688)
-  val () = _w4(arr, alen, 2102, 825915764)
-  val () = _w4(arr, alen, 2106, 623916413)
-  val () = _w4(arr, alen, 2110, 1634758523)
-  val () = _w4(arr, alen, 2114, 2037672291)
-  val () = _w4(arr, alen, 2118, 2100702778)
+  val () = _w4(arr, alen, 2182, 1919318373)
+  val () = _w4(arr, alen, 2186, 1936026977)
+  val () = _w4(arr, alen, 2190, 1819635744)
+  val () = _w4(arr, alen, 2194, 813393267)
+  val () = _w4(arr, alen, 2198, 808528933)
+  val () = _w4(arr, alen, 2202, 1870341424)
+  val () = _w4(arr, alen, 2206, 1768120688)
+  val () = _w4(arr, alen, 2210, 825915764)
+  val () = _w4(arr, alen, 2214, 623916413)
+  val () = _w4(arr, alen, 2218, 1634758523)
+  val () = _w4(arr, alen, 2222, 2037672291)
+  val () = _w4(arr, alen, 2226, 2100702778)
   (* .import-status *)
-  val () = _w4(arr, alen, 2122, 1835609725)
-  val () = _w4(arr, alen, 2126, 1953656688)
-  val () = _w4(arr, alen, 2130, 1635021613)
-  val () = _w4(arr, alen, 2134, 2071164276)
-  val () = _w4(arr, alen, 2138, 1684300144)
-  val () = _w4(arr, alen, 2142, 979857001)
-  val () = _w4(arr, alen, 2146, 1915822128)
-  val () = _w4(arr, alen, 2150, 1664839013)
-  val () = _w4(arr, alen, 2154, 1919904879)
-  val () = _w4(arr, alen, 2158, 943203130)
-  val () = _w4(arr, alen, 2162, 1868970808)
-  val () = _w4(arr, alen, 2166, 1932358766)
-  val () = _w4(arr, alen, 2170, 979729001)
-  val () = _w4(arr, alen, 2174, 1916090414)
-  val () = _w4(arr, alen, 2178, 1832611173)
-  val () = _w4(arr, alen, 2182, 1747807849)
-  val () = _w4(arr, alen, 2186, 1751607653)
-  val () = _w4(arr, alen, 2190, 774978164)
-  val () = _w4(arr, alen, 2194, 2104321330)
+  val () = _w4(arr, alen, 2230, 1835609725)
+  val () = _w4(arr, alen, 2234, 1953656688)
+  val () = _w4(arr, alen, 2238, 1635021613)
+  val () = _w4(arr, alen, 2242, 2071164276)
+  val () = _w4(arr, alen, 2246, 1684300144)
+  val () = _w4(arr, alen, 2250, 979857001)
+  val () = _w4(arr, alen, 2254, 1915822128)
+  val () = _w4(arr, alen, 2258, 1664839013)
+  val () = _w4(arr, alen, 2262, 1919904879)
+  val () = _w4(arr, alen, 2266, 943203130)
+  val () = _w4(arr, alen, 2270, 1868970808)
+  val () = _w4(arr, alen, 2274, 1932358766)
+  val () = _w4(arr, alen, 2278, 979729001)
+  val () = _w4(arr, alen, 2282, 1916090414)
+  val () = _w4(arr, alen, 2286, 1832611173)
+  val () = _w4(arr, alen, 2290, 1747807849)
+  val () = _w4(arr, alen, 2294, 1751607653)
+  val () = _w4(arr, alen, 2298, 774978164)
+  val () = _w4(arr, alen, 2302, 2104321330)
 in end
 
 fn fill_css {l:agz}{n:int | n >= APP_CSS_LEN}
@@ -1903,14 +2008,14 @@ in s end
  * The constraint MGMT_CSS_LEN == MGMT_CSS_WRITES * 4 proves alignment.
  * If someone changes the CSS content length, they must also update
  * MGMT_CSS_WRITES to match, or the solver rejects. *)
-stadef MGMT_CSS_WRITES = 69
+stadef MGMT_CSS_WRITES = 68
 stadef MGMT_CSS_LEN = MGMT_CSS_WRITES * 4
-#define MGMT_CSS_LEN 276
+#define MGMT_CSS_LEN 272
 
 fn fill_css_mgmt {l:agz}{n:int | n >= MGMT_CSS_LEN}
   (arr: !ward_arr(byte, l, n), alen: int n): void = let
   (* .lib-toolbar{display:flex;gap:8px;padding:8px 0;align-items:center}
-   * .view-toggle,.sort-btn,.sort-active,.archive-btn{background:none;
+   * .sort-btn,.sort-active,.archive-btn,.hide-btn{background:none;
    * border:1px solid #888;border-radius:4px;padding:4px 12px;cursor:pointer;
    * font-size:.9rem;color:inherit}.sort-active{background:#333;color:#fff} *)
   val () = _w4(arr, alen, 0, 1651076142)
@@ -1930,58 +2035,57 @@ fn fill_css_mgmt {l:agz}{n:int | n >= MGMT_CSS_LEN}
   val () = _w4(arr, alen, 56, 980643173)
   val () = _w4(arr, alen, 60, 1953391971)
   val () = _w4(arr, alen, 64, 779973221)
-  val () = _w4(arr, alen, 68, 2003134838)
-  val () = _w4(arr, alen, 72, 1735357485)
-  val () = _w4(arr, alen, 76, 744844391)
-  val () = _w4(arr, alen, 80, 1919906606)
-  val () = _w4(arr, alen, 84, 1952591220)
-  val () = _w4(arr, alen, 88, 1932405870)
-  val () = _w4(arr, alen, 92, 762606191)
-  val () = _w4(arr, alen, 96, 1769235297)
-  val () = _w4(arr, alen, 100, 774661494)
-  val () = _w4(arr, alen, 104, 1751347809)
-  val () = _w4(arr, alen, 108, 761624169)
-  val () = _w4(arr, alen, 112, 2070836322)
-  val () = _w4(arr, alen, 116, 1801675106)
-  val () = _w4(arr, alen, 120, 1970238055)
-  val () = _w4(arr, alen, 124, 1849320558)
-  val () = _w4(arr, alen, 128, 996503151)
-  val () = _w4(arr, alen, 132, 1685221218)
-  val () = _w4(arr, alen, 136, 825913957)
-  val () = _w4(arr, alen, 140, 1931507824)
-  val () = _w4(arr, alen, 144, 1684630639)
-  val () = _w4(arr, alen, 148, 943203104)
-  val () = _w4(arr, alen, 152, 1868708664)
-  val () = _w4(arr, alen, 156, 1919247474)
-  val () = _w4(arr, alen, 160, 1684107821)
-  val () = _w4(arr, alen, 164, 980645225)
-  val () = _w4(arr, alen, 168, 997748788)
-  val () = _w4(arr, alen, 172, 1684300144)
-  val () = _w4(arr, alen, 176, 979857001)
-  val () = _w4(arr, alen, 180, 544763956)
-  val () = _w4(arr, alen, 184, 2020618801)
-  val () = _w4(arr, alen, 188, 1920295739)
-  val () = _w4(arr, alen, 192, 980578163)
-  val () = _w4(arr, alen, 196, 1852403568)
-  val () = _w4(arr, alen, 200, 997352820)
-  val () = _w4(arr, alen, 204, 1953394534)
-  val () = _w4(arr, alen, 208, 2053731117)
-  val () = _w4(arr, alen, 212, 959330917)
-  val () = _w4(arr, alen, 216, 997025138)
-  val () = _w4(arr, alen, 220, 1869377379)
-  val () = _w4(arr, alen, 224, 1852390002)
-  val () = _w4(arr, alen, 228, 1769104744)
-  val () = _w4(arr, alen, 232, 1932426612)
-  val () = _w4(arr, alen, 236, 762606191)
-  val () = _w4(arr, alen, 240, 1769235297)
-  val () = _w4(arr, alen, 244, 1652254070)
-  val () = _w4(arr, alen, 248, 1735091041)
-  val () = _w4(arr, alen, 252, 1853190002)
-  val () = _w4(arr, alen, 256, 857946724)
-  val () = _w4(arr, alen, 260, 1664824115)
-  val () = _w4(arr, alen, 264, 1919904879)
-  val () = _w4(arr, alen, 268, 1717969722)
-  val () = _w4(arr, alen, 272, 539000166)
+  val () = _w4(arr, alen, 68, 1953656691)
+  val () = _w4(arr, alen, 72, 1853121069)
+  val () = _w4(arr, alen, 76, 1869819436)
+  val () = _w4(arr, alen, 80, 1630368882)
+  val () = _w4(arr, alen, 84, 1986622563)
+  val () = _w4(arr, alen, 88, 1630415973)
+  val () = _w4(arr, alen, 92, 1768448882)
+  val () = _w4(arr, alen, 96, 1647142262)
+  val () = _w4(arr, alen, 100, 774663796)
+  val () = _w4(arr, alen, 104, 1701079400)
+  val () = _w4(arr, alen, 108, 1853121069)
+  val () = _w4(arr, alen, 112, 1667326587)
+  val () = _w4(arr, alen, 116, 1869768555)
+  val () = _w4(arr, alen, 120, 979660405)
+  val () = _w4(arr, alen, 124, 1701736302)
+  val () = _w4(arr, alen, 128, 1919902267)
+  val () = _w4(arr, alen, 132, 980575588)
+  val () = _w4(arr, alen, 136, 544763953)
+  val () = _w4(arr, alen, 140, 1768714099)
+  val () = _w4(arr, alen, 144, 941826148)
+  val () = _w4(arr, alen, 148, 1648048184)
+  val () = _w4(arr, alen, 152, 1701081711)
+  val () = _w4(arr, alen, 156, 1634872690)
+  val () = _w4(arr, alen, 160, 1937074532)
+  val () = _w4(arr, alen, 164, 2020619322)
+  val () = _w4(arr, alen, 168, 1684107323)
+  val () = _w4(arr, alen, 172, 1735289188)
+  val () = _w4(arr, alen, 176, 2020619322)
+  val () = _w4(arr, alen, 180, 1882337568)
+  val () = _w4(arr, alen, 184, 1969437560)
+  val () = _w4(arr, alen, 188, 1919906674)
+  val () = _w4(arr, alen, 192, 1768910906)
+  val () = _w4(arr, alen, 196, 1919251566)
+  val () = _w4(arr, alen, 200, 1852794427)
+  val () = _w4(arr, alen, 204, 1769155956)
+  val () = _w4(arr, alen, 208, 775579002)
+  val () = _w4(arr, alen, 212, 1835364921)
+  val () = _w4(arr, alen, 216, 1819239227)
+  val () = _w4(arr, alen, 220, 1765438063)
+  val () = _w4(arr, alen, 224, 1919248494)
+  val () = _w4(arr, alen, 228, 779973737)
+  val () = _w4(arr, alen, 232, 1953656691)
+  val () = _w4(arr, alen, 236, 1952669997)
+  val () = _w4(arr, alen, 240, 2070247017)
+  val () = _w4(arr, alen, 244, 1801675106)
+  val () = _w4(arr, alen, 248, 1970238055)
+  val () = _w4(arr, alen, 252, 591029358)
+  val () = _w4(arr, alen, 256, 993211187)
+  val () = _w4(arr, alen, 260, 1869377379)
+  val () = _w4(arr, alen, 264, 1713584754)
+  val () = _w4(arr, alen, 268, 545089126)
 in end
 
 fn inject_mgmt_css {l:agz}
@@ -2551,9 +2655,10 @@ end
  * For stored entries: reads directly, parses synchronously.
  * For deflated entries: reads compressed bytes, decompresses via ward_decompress,
  * parses in callback. Follows the load_chapter pattern exactly. *)
-fn epub_read_container_async(handle: int): ward_promise_chained(int) = let
+fn epub_read_container_async
+  (pf_zip: ZIP_OPEN_OK | handle: int): ward_promise_chained(int) = let
   val _cl = epub_copy_container_path(0)
-  val idx = zip_find_entry(22)
+  val idx = zip_find_entry(pf_zip | 22)
 in
   if gt_int_int(0, idx) then ward_promise_return<int>(0)
   else let
@@ -2615,9 +2720,10 @@ in
 end
 
 (* Read content.opf from ZIP — same pattern as container. *)
-fn epub_read_opf_async(handle: int): ward_promise_chained(int) = let
+fn epub_read_opf_async
+  (pf_zip: ZIP_OPEN_OK | handle: int): ward_promise_chained(int) = let
   val opf_len = epub_copy_opf_path(0)
-  val idx = zip_find_entry(opf_len)
+  val idx = zip_find_entry(pf_zip | opf_len)
 in
   if gt_int_int(0, idx) then ward_promise_return<int>(0)
   else let
@@ -2756,28 +2862,104 @@ fn render_position_text {l:agz}
  * shows archived books. Duplicating the logic with raw comparisons allowed
  * the original bug where count showed 0 visible but render would have shown cards. *)
 fn filter_book_visible(vm: int, book_idx: int): int = let
-  val archived = library_get_archived(book_idx)
+  val ss = library_get_shelf_state(book_idx)
   val vm_dep = _checked_nat(vm)
 in
   if eq_g1(vm_dep, 0) then
-    if eq_g1(archived, 0) then let
-      val (_ | r) = should_render_book(VIEW_ACTIVE(), ACTIVE() | 0, archived)
+    if eq_g1(ss, 0) then let
+      val (_ | r) = should_render_book(VIEW_ACTIVE(), SHELF_ACTIVE() | 0, ss)
+    in r end
+    else if eq_g1(ss, 1) then let
+      val (_ | r) = should_render_book(VIEW_ACTIVE(), SHELF_ARCHIVED() | 0, ss)
     in r end
     else let
-      val (_ | r) = should_render_book(VIEW_ACTIVE(), ARCHIVED() | 0, archived)
+      val (_ | r) = should_render_book(VIEW_ACTIVE(), SHELF_HIDDEN() | 0, ss)
+    in r end
+  else if eq_g1(vm_dep, 1) then
+    if eq_g1(ss, 0) then let
+      val (_ | r) = should_render_book(VIEW_ARCHIVED(), SHELF_ACTIVE() | 1, ss)
+    in r end
+    else if eq_g1(ss, 1) then let
+      val (_ | r) = should_render_book(VIEW_ARCHIVED(), SHELF_ARCHIVED() | 1, ss)
+    in r end
+    else let
+      val (_ | r) = should_render_book(VIEW_ARCHIVED(), SHELF_HIDDEN() | 1, ss)
     in r end
   else
-    if eq_g1(archived, 0) then let
-      val (_ | r) = should_render_book(VIEW_ARCHIVED(), ACTIVE() | 1, archived)
+    if eq_g1(ss, 0) then let
+      val (_ | r) = should_render_book(VIEW_HIDDEN(), SHELF_ACTIVE() | 2, ss)
+    in r end
+    else if eq_g1(ss, 1) then let
+      val (_ | r) = should_render_book(VIEW_HIDDEN(), SHELF_ARCHIVED() | 2, ss)
     in r end
     else let
-      val (_ | r) = should_render_book(VIEW_ARCHIVED(), ARCHIVED() | 1, archived)
+      val (_ | r) = should_render_book(VIEW_HIDDEN(), SHELF_HIDDEN() | 2, ss)
     in r end
 end
+
+(* Cover queue: stored in fetch buffer during library render.
+ * Layout: fbuf[0..3] = count, fbuf[4..131] = nids (32 i32),
+ *         fbuf[132..259] = bidxs (32 i32).
+ * Safe: fbuf is unused between import and next serialize. *)
+fn _cover_queue_reset(): void =
+  _app_fbuf_set_u8(0, 0)
+
+fn _cover_queue_record(nid: int, bidx: int): void = let
+  val cnt = _app_fbuf_get_u8(0)
+in
+  if gte_int_int(cnt, 32) then ()
+  else let
+    val nid_off = 4 + cnt * 4
+    val bidx_off = 132 + cnt * 4
+    val () = _app_fbuf_set_u8(nid_off, band_int_int(nid, 255))
+    val () = _app_fbuf_set_u8(nid_off + 1, band_int_int(bsr_int_int(nid, 8), 255))
+    val () = _app_fbuf_set_u8(nid_off + 2, band_int_int(bsr_int_int(nid, 16), 255))
+    val () = _app_fbuf_set_u8(nid_off + 3, band_int_int(bsr_int_int(nid, 24), 255))
+    val () = _app_fbuf_set_u8(bidx_off, band_int_int(bidx, 255))
+    val () = _app_fbuf_set_u8(bidx_off + 1, band_int_int(bsr_int_int(bidx, 8), 255))
+    val () = _app_fbuf_set_u8(bidx_off + 2, band_int_int(bsr_int_int(bidx, 16), 255))
+    val () = _app_fbuf_set_u8(bidx_off + 3, band_int_int(bsr_int_int(bidx, 24), 255))
+    val () = _app_fbuf_set_u8(0, cnt + 1)
+  in end
+end
+
+fn _cover_queue_count(): int = _app_fbuf_get_u8(0)
+
+fn _cover_queue_get_nid(idx: int): int = let
+  val off = 4 + idx * 4
+  val b0 = _app_fbuf_get_u8(off)
+  val b1 = _app_fbuf_get_u8(off + 1)
+  val b2 = _app_fbuf_get_u8(off + 2)
+  val b3 = _app_fbuf_get_u8(off + 3)
+in bor_int_int(bor_int_int(b0, bsl_int_int(b1, 8)),
+               bor_int_int(bsl_int_int(b2, 16), bsl_int_int(b3, 24))) end
+
+fn _cover_queue_get_bidx(idx: int): int = let
+  val off = 132 + idx * 4
+  val b0 = _app_fbuf_get_u8(off)
+  val b1 = _app_fbuf_get_u8(off + 1)
+  val b2 = _app_fbuf_get_u8(off + 2)
+  val b3 = _app_fbuf_get_u8(off + 3)
+in bor_int_int(bor_int_int(b0, bsl_int_int(b1, 8)),
+               bor_int_int(bsl_int_int(b2, 16), bsl_int_int(b3, 24))) end
+
+(* Conditionally add cover <img> to a book card.
+ * Separate function avoids viewtype-in-if-then-else issue. *)
+fn _maybe_add_cover {l:agz}
+  (s: ward_dom_stream(l), has_cover: int, parent_id: int, book_idx: int)
+  : ward_dom_stream(l) =
+  if gt_int_int(has_cover, 0) then let
+    val img_id = dom_next_id()
+    val s = ward_dom_stream_create_element(s, img_id, parent_id, tag_img(), 3)
+    val s = ward_dom_stream_set_attr_safe(s, img_id, attr_class(), 5, cls_book_cover(), 10)
+    val () = _cover_queue_record(img_id, book_idx)
+  in s end
+  else s
 
 fn render_library_with_books {l:agz}
   (s: ward_dom_stream(l), list_id: int, view_mode: int)
   : ward_dom_stream(l) = let
+  val () = _cover_queue_reset()
   val s = ward_dom_stream_remove_children(s, list_id)
   val count = library_get_count()
   val vm_raw = view_mode
@@ -2793,6 +2975,8 @@ fn render_library_with_books {l:agz}
         val card_id = dom_next_id()
         val s = ward_dom_stream_create_element(s, card_id, list_id, tag_div(), 3)
         val s = ward_dom_stream_set_attr_safe(s, card_id, attr_class(), 5, cls_book_card(), 9)
+
+        val s = _maybe_add_cover(s, library_get_has_cover(i), card_id, i)
 
         val title_id = dom_next_id()
         val s = ward_dom_stream_create_element(s, title_id, card_id, tag_div(), 3)
@@ -2811,18 +2995,24 @@ fn render_library_with_books {l:agz}
         val s = ward_dom_stream_set_attr_safe(s, pos_id, attr_class(), 5, cls_book_position(), 13)
         val s = render_position_text(s, pos_id, library_get_chapter(i), library_get_page(i))
 
-        (* Card actions: Read + Archive for active view, Restore for archived *)
+        (* Card actions: buttons depend on view mode *)
         val actions_id = dom_next_id()
         val s = ward_dom_stream_create_element(s, actions_id, card_id, tag_div(), 3)
         val s = ward_dom_stream_set_attr_safe(s, actions_id, attr_class(), 5, cls_card_actions(), 12)
       in
         if eq_int_int(vm, 0) then let
-          (* Active view: Read + Archive buttons *)
+          (* Active view: Read + Hide + Archive buttons *)
           val btn_id = dom_next_id()
           val () = reader_set_btn_id(i, btn_id)
           val s = ward_dom_stream_create_element(s, btn_id, actions_id, tag_button(), 6)
           val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5, cls_read_btn(), 8)
           val s = set_text_cstr(s, btn_id, TEXT_READ, 4)
+
+          val hide_btn_id = dom_next_id()
+          val () = reader_set_btn_id(i + 64, hide_btn_id)
+          val s = ward_dom_stream_create_element(s, hide_btn_id, actions_id, tag_button(), 6)
+          val s = ward_dom_stream_set_attr_safe(s, hide_btn_id, attr_class(), 5, cls_hide_btn(), 8)
+          val s = set_text_cstr(s, hide_btn_id, TEXT_HIDE, 4)
 
           val arch_btn_id = dom_next_id()
           val () = reader_set_btn_id(i + 32, arch_btn_id)
@@ -2830,8 +3020,28 @@ fn render_library_with_books {l:agz}
           val s = ward_dom_stream_set_attr_safe(s, arch_btn_id, attr_class(), 5, cls_archive_btn(), 11)
           val s = set_text_cstr(s, arch_btn_id, TEXT_ARCHIVE, 7)
         in loop(sub_g1(rem, 1), s, i + 1, n, vm) end
+        else if eq_int_int(vm, 2) then let
+          (* Hidden view: Read + Unhide buttons *)
+          val btn_id = dom_next_id()
+          val () = reader_set_btn_id(i, btn_id)
+          val s = ward_dom_stream_create_element(s, btn_id, actions_id, tag_button(), 6)
+          val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5, cls_read_btn(), 8)
+          val s = set_text_cstr(s, btn_id, TEXT_READ, 4)
+
+          val unhide_btn_id = dom_next_id()
+          val () = reader_set_btn_id(i + 64, unhide_btn_id)
+          val s = ward_dom_stream_create_element(s, unhide_btn_id, actions_id, tag_button(), 6)
+          val s = ward_dom_stream_set_attr_safe(s, unhide_btn_id, attr_class(), 5, cls_hide_btn(), 8)
+          val s = set_text_cstr(s, unhide_btn_id, TEXT_UNHIDE, 6)
+        in loop(sub_g1(rem, 1), s, i + 1, n, vm) end
         else let
-          (* Archived view: Restore button only *)
+          (* Archived view: Read + Restore buttons *)
+          val btn_id = dom_next_id()
+          val () = reader_set_btn_id(i, btn_id)
+          val s = ward_dom_stream_create_element(s, btn_id, actions_id, tag_button(), 6)
+          val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5, cls_read_btn(), 8)
+          val s = set_text_cstr(s, btn_id, TEXT_READ, 4)
+
           val restore_btn_id = dom_next_id()
           val () = reader_set_btn_id(i + 32, restore_btn_id)
           val s = ward_dom_stream_create_element(s, restore_btn_id, actions_id, tag_button(), 6)
@@ -2912,10 +3122,6 @@ fn finish_chapter_load(container_id: int)
   prval pf = MEASURED_AND_TRANSFORMED()
 in (pf | ()) end
 
-(* load_chapter: Every code path either renders content, starts async
- * decompression (whose callback renders or shows error), or shows an error.
- * CHAPTER_OUTCOME documents this invariant — see dataprop above.
- * Requires SPINE_ORDERED proof — chapter index bounds eliminated at compile time. *)
 (* Extract chapter directory from spine path in sbuf.
  * Scans sbuf[0..path_len-1] backward for last '/'.
  * Returns directory length (including trailing '/'), or 0 if no '/'.
@@ -2949,204 +3155,12 @@ fn copy_sbuf_to_arr {dl:pos | dl <= 1048576}
   val () = copy_loop(_checked_nat(_g0(dl)), arr, dl, 0, dl)
 in arr end
 
-fn load_chapter {c,t:nat | c < t}
-  (pf: SPINE_ORDERED(c, t) |
-   file_handle: int, chapter_idx: int(c), spine_count: int(t), container_id: int): void = let
-  val path_len = epub_copy_spine_path(pf | chapter_idx, spine_count, 0)
-  (* Extract chapter directory for image path resolution *)
-  val dir_len = find_chapter_dir_len(path_len)
-  val zip_idx = zip_find_entry(path_len)
-in
-  if gte_int_int(zip_idx, 0) then let
-    var entry: zip_entry
-    val found = zip_get_entry(zip_idx, entry)
-  in
-    if gt_int_int(found, 0) then let
-      val compression = entry.compression
-      val compressed_size = entry.compressed_size
-      val uncompressed_size = entry.uncompressed_size
-      val data_off = zip_get_data_offset(zip_idx)
-    in
-      if gt_int_int(data_off, 0) then
-        if eq_int_int(compression, 8) then let
-          (* Deflated — async decompression *)
-          val cs1 = (if gt_int_int(compressed_size, 0) then compressed_size else 1): int
-          val cs_pos = _checked_arr_size(cs1)
-          val arr = ward_arr_alloc<byte>(cs_pos)
-          val _rd = ward_file_read(file_handle, data_off, arr, cs_pos)
-          val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
-          val p = ward_decompress(borrow, cs_pos, 2) (* deflate-raw *)
-          val () = ward_arr_drop<byte>(frozen, borrow)
-          val arr = ward_arr_thaw<byte>(frozen)
-          val () = ward_arr_free<byte>(arr)
-          val saved_cid = container_id
-          val saved_fh = file_handle
-          (* Capture chapter dir before async — sbuf will be reused *)
-        in
-          if gt_int_int(dir_len, 0) then let
-            val dl_pos = _checked_arr_size(dir_len)
-            val dir_arr = copy_sbuf_to_arr(dl_pos)
-            val p2 = ward_promise_then<int><int>(p,
-              llam (blob_handle: int): ward_promise_chained(int) => let
-                val dlen = ward_decompress_get_len()
-              in
-                if gt_int_int(dlen, 0) then let
-                  val dl = _checked_arr_size(dlen)
-                  val arr2 = ward_arr_alloc<byte>(dl)
-                  val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
-                  val () = ward_blob_free(blob_handle)
-                  val @(frozen2, borrow2) = ward_arr_freeze<byte>(arr2)
-                  val sax_len = ward_xml_parse_html(borrow2, dl)
-                  val () = ward_arr_drop<byte>(frozen2, borrow2)
-                  val arr2 = ward_arr_thaw<byte>(frozen2)
-                  val () = ward_arr_free<byte>(arr2)
-                in
-                  if gt_int_int(sax_len, 0) then let
-                    val sl = _checked_pos(sax_len)
-                    val sax_buf = ward_xml_get_result(sl)
-                    val dom = ward_dom_init()
-                    val s = ward_dom_stream_begin(dom)
-                    val s = render_tree_with_images(s, saved_cid, sax_buf, sl,
-                      saved_fh, dir_arr, dl_pos)
-                    val dom = ward_dom_stream_end(s)
-                    (* Post-render image pass — allocations outside render loop *)
-                    val s = ward_dom_stream_begin(dom)
-                    val s = load_deferred_images(s, sax_buf, sl,
-                      saved_fh, dir_arr, dl_pos)
-                    val dom = ward_dom_stream_end(s)
-                    val () = ward_dom_fini(dom)
-                    val () = ward_arr_free<byte>(sax_buf)
-                    val () = ward_arr_free<byte>(dir_arr)
-                    val (pf_disp | ()) = finish_chapter_load(saved_cid)
-                    prval MEASURED_AND_TRANSFORMED() = pf_disp
-                  in ward_promise_return<int>(1) end
-                  else let
-                    val () = ward_arr_free<byte>(dir_arr)
-                    val () = ward_log(3, mk_ch_err(char2int1('s'), char2int1('a'), char2int1('x')), 10)
-                    val () = show_chapter_error(saved_cid, TEXT_ERR_EMPTY, 21)
-                  in ward_promise_return<int>(0) end
-                end
-                else let
-                  val () = ward_blob_free(blob_handle)
-                  val () = ward_arr_free<byte>(dir_arr)
-                  val () = ward_log(3, mk_ch_err(char2int1('d'), char2int1('e'), char2int1('c')), 10)
-                  val () = show_chapter_error(saved_cid, TEXT_ERR_DECOMPRESS, 20)
-                in ward_promise_return<int>(0) end
-              end)
-            val () = ward_promise_discard<int>(p2)
-          in end
-          else let
-            (* No directory prefix — use render_tree without images *)
-            val p2 = ward_promise_then<int><int>(p,
-              llam (blob_handle: int): ward_promise_chained(int) => let
-                val dlen = ward_decompress_get_len()
-              in
-                if gt_int_int(dlen, 0) then let
-                  val dl = _checked_arr_size(dlen)
-                  val arr2 = ward_arr_alloc<byte>(dl)
-                  val _rd = ward_blob_read(blob_handle, 0, arr2, dl)
-                  val () = ward_blob_free(blob_handle)
-                  val @(frozen2, borrow2) = ward_arr_freeze<byte>(arr2)
-                  val sax_len = ward_xml_parse_html(borrow2, dl)
-                  val () = ward_arr_drop<byte>(frozen2, borrow2)
-                  val arr2 = ward_arr_thaw<byte>(frozen2)
-                  val () = ward_arr_free<byte>(arr2)
-                in
-                  if gt_int_int(sax_len, 0) then let
-                    val sl = _checked_pos(sax_len)
-                    val sax_buf = ward_xml_get_result(sl)
-                    val dom = ward_dom_init()
-                    val s = ward_dom_stream_begin(dom)
-                    val s = render_tree(s, saved_cid, sax_buf, sl)
-                    val dom = ward_dom_stream_end(s)
-                    val () = ward_dom_fini(dom)
-                    val () = ward_arr_free<byte>(sax_buf)
-                    val (pf_disp | ()) = finish_chapter_load(saved_cid)
-                    prval MEASURED_AND_TRANSFORMED() = pf_disp
-                  in ward_promise_return<int>(1) end
-                  else let
-                    val () = ward_log(3, mk_ch_err(char2int1('s'), char2int1('a'), char2int1('x')), 10)
-                    val () = show_chapter_error(saved_cid, TEXT_ERR_EMPTY, 21)
-                  in ward_promise_return<int>(0) end
-                end
-                else let
-                  val () = ward_blob_free(blob_handle)
-                  val () = ward_log(3, mk_ch_err(char2int1('d'), char2int1('e'), char2int1('c')), 10)
-                  val () = show_chapter_error(saved_cid, TEXT_ERR_DECOMPRESS, 20)
-                in ward_promise_return<int>(0) end
-              end)
-            val () = ward_promise_discard<int>(p2)
-          in end
-        end
-        else if eq_int_int(compression, 0) then let
-          (* Stored — read directly, no decompression needed *)
-          val us1 = (if gt_int_int(uncompressed_size, 0)
-            then uncompressed_size else 1): int
-          val us_pos = _checked_arr_size(us1)
-          val arr = ward_arr_alloc<byte>(us_pos)
-          val _rd = ward_file_read(file_handle, data_off, arr, us_pos)
-          val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
-          val sax_len = ward_xml_parse_html(borrow, us_pos)
-          val () = ward_arr_drop<byte>(frozen, borrow)
-          val arr = ward_arr_thaw<byte>(frozen)
-          val () = ward_arr_free<byte>(arr)
-        in
-          if gt_int_int(sax_len, 0) then let
-            val sl = _checked_pos(sax_len)
-            val sax_buf = ward_xml_get_result(sl)
-            val dom = ward_dom_init()
-            val s = ward_dom_stream_begin(dom)
-          in
-            if gt_int_int(dir_len, 0) then let
-              val dl_pos = _checked_arr_size(dir_len)
-              val dir_arr = copy_sbuf_to_arr(dl_pos)
-              val s = render_tree_with_images(s, container_id, sax_buf, sl,
-                file_handle, dir_arr, dl_pos)
-              val dom = ward_dom_stream_end(s)
-              (* Post-render image pass — allocations outside render loop *)
-              val s = ward_dom_stream_begin(dom)
-              val s = load_deferred_images(s, sax_buf, sl,
-                file_handle, dir_arr, dl_pos)
-              val dom = ward_dom_stream_end(s)
-              val () = ward_dom_fini(dom)
-              val () = ward_arr_free<byte>(sax_buf)
-              val () = ward_arr_free<byte>(dir_arr)
-              val (pf_disp | ()) = finish_chapter_load(container_id)
-              prval MEASURED_AND_TRANSFORMED() = pf_disp
-            in end
-            else let
-              val s = render_tree(s, container_id, sax_buf, sl)
-              val dom = ward_dom_stream_end(s)
-              val () = ward_dom_fini(dom)
-              val () = ward_arr_free<byte>(sax_buf)
-              val (pf_disp | ()) = finish_chapter_load(container_id)
-              prval MEASURED_AND_TRANSFORMED() = pf_disp
-            in end
-          end
-          else let
-            (* CHAPTER_OUTCOME: CHAPTER_ERROR_SHOWN — parse empty *)
-            val () = ward_log(3, mk_ch_err(char2int1('s'), char2int1('a'), char2int1('x')), 10)
-          in show_chapter_error(container_id, TEXT_ERR_EMPTY, 21) end
-        end
-        else let
-          (* CHAPTER_OUTCOME: CHAPTER_ERROR_SHOWN — bad compression *)
-          val () = ward_log(3, mk_ch_err(char2int1('c'), char2int1('m'), char2int1('p')), 10)
-        in show_chapter_error(container_id, TEXT_ERR_UNSUPPORTED, 18) end
-      else let
-        (* CHAPTER_OUTCOME: CHAPTER_ERROR_SHOWN — bad data offset *)
-        val () = ward_log(3, mk_ch_err(char2int1('o'), char2int1('f'), char2int1('f')), 10)
-      in show_chapter_error(container_id, TEXT_ERR_CANNOT_READ, 19) end
-    end
-    else let
-      (* CHAPTER_OUTCOME: CHAPTER_ERROR_SHOWN — entry read failed *)
-      val () = ward_log(3, mk_ch_err(char2int1('e'), char2int1('n'), char2int1('t')), 10)
-    in show_chapter_error(container_id, TEXT_ERR_CANNOT_READ, 19) end
-  end
-  else let
-    (* CHAPTER_OUTCOME: CHAPTER_ERROR_SHOWN — not found in ZIP *)
-    val () = ward_log(3, mk_ch_err(char2int1('z'), char2int1('i'), char2int1('p')), 10)
-  in show_chapter_error(container_id, TEXT_ERR_NOT_FOUND, 17) end
-end
+(*
+ * NOTE: load_chapter (ZIP-based direct read) was removed.
+ * All chapter loading now goes through load_chapter_from_idb,
+ * which reads pre-exploded resources from IDB (M1.2).
+ * ZIP_OPEN_OK proof prevents zip_find_entry on empty archives.
+ *)
 
 (* ========== IDB-based image loading from IDB ========== *)
 
@@ -3567,8 +3581,8 @@ end
 
 (* ========== Render library view ========== *)
 
-(* Register click listeners on read and archive/restore buttons.
- * Read buttons: btn_ids[0..31], Archive buttons: btn_ids[32..63].
+(* Register click listeners on read, archive/restore, and hide/unhide buttons.
+ * Read buttons: btn_ids[0..31], Archive: btn_ids[32..63], Hide: btn_ids[64..95].
  * Shared by initial render and post-import re-render. *)
 fun register_card_btns {k:nat} .<k>.
   (rem: int(k), i: int, n: int, root: int, vm: int): void =
@@ -3577,20 +3591,18 @@ fun register_card_btns {k:nat} .<k>.
   else let
     val saved_r = root
     val book_idx = i
-    (* Read button listener — only in active view *)
+    (* Read button listener — available in all views *)
     val read_btn_id = reader_get_btn_id(i)
     val () =
-      if eq_int_int(vm, 0) then
-        if gt_int_int(read_btn_id, 0) then
-          ward_add_event_listener(
-            read_btn_id, evt_click(), 5, LISTENER_READ_BTN_BASE + i,
-            lam (_pl: int): int => let
-              val () = enter_reader(saved_r, book_idx)
-            in 0 end
-          )
-        else ()
+      if gt_int_int(read_btn_id, 0) then
+        ward_add_event_listener(
+          read_btn_id, evt_click(), 5, LISTENER_READ_BTN_BASE + i,
+          lam (_pl: int): int => let
+            val () = enter_reader(saved_r, book_idx)
+          in 0 end
+        )
       else ()
-    (* Archive/restore button listener *)
+    (* Archive/restore button listener — active view: archive, archived view: restore *)
     val arch_btn_id = reader_get_btn_id(i + 32)
     val () =
       if gt_int_int(arch_btn_id, 0) then let
@@ -3601,14 +3613,40 @@ fun register_card_btns {k:nat} .<k>.
           lam (_pl: int): int => let
           in
             if eq_int_int(saved_vm, 0) then let
-              (* Archive: set archived=1 *)
-              val () = library_set_archived(ARCHIVED() | book_idx, 1)
+              (* Archive: set shelf_state=1 *)
+              val () = library_set_shelf_state(SHELF_ARCHIVED() | book_idx, 1)
               val () = library_save()
               val () = render_library(saved_r)
             in 0 end
             else let
-              (* Restore: set archived=0 *)
-              val () = library_set_archived(ACTIVE() | book_idx, 0)
+              (* Restore: set shelf_state=0 *)
+              val () = library_set_shelf_state(SHELF_ACTIVE() | book_idx, 0)
+              val () = library_save()
+              val () = render_library(saved_r)
+            in 0 end
+          end
+        )
+      end
+      else ()
+    (* Hide/unhide button listener — active view: hide, hidden view: unhide *)
+    val hide_btn_id = reader_get_btn_id(i + 64)
+    val () =
+      if gt_int_int(hide_btn_id, 0) then let
+        val saved_vm = vm
+      in
+        ward_add_event_listener(
+          hide_btn_id, evt_click(), 5, LISTENER_HIDE_BTN_BASE + i,
+          lam (_pl: int): int => let
+          in
+            if eq_int_int(saved_vm, 0) then let
+              (* Hide: set shelf_state=2 *)
+              val () = library_set_shelf_state(SHELF_HIDDEN() | book_idx, 2)
+              val () = library_save()
+              val () = render_library(saved_r)
+            in 0 end
+            else let
+              (* Unhide: set shelf_state=0 *)
+              val () = library_set_shelf_state(SHELF_ACTIVE() | book_idx, 0)
               val () = library_save()
               val () = render_library(saved_r)
             in 0 end
@@ -3681,8 +3719,40 @@ fn set_empty_text {l:agz}
   : [l2:agz] ward_dom_stream(l2) =
   if eq_int_int(view_mode, 0) then
     set_text_cstr(s, node, TEXT_NO_BOOKS, 12)
+  else if eq_int_int(view_mode, 2) then
+    set_text_cstr(s, node, TEXT_NO_HIDDEN, 15)
   else
     set_text_cstr(s, node, TEXT_NO_ARCHIVED, 17)
+
+(* Load cover images from IDB for queued img elements.
+ * Sequential promise chain: for each entry, look up cover key → set img src. *)
+fun load_library_covers {k:nat} .<k>.
+  (rem: int(k), idx: int, total: int): void =
+  if lte_g1(rem, 0) then ()
+  else if gte_int_int(idx, total) then ()
+  else let
+    val nid = _cover_queue_get_nid(idx)
+    val bidx = _cover_queue_get_bidx(idx)
+    val () = epub_set_book_id_from_library(bidx)
+    val key = epub_build_cover_key()
+    val p = ward_idb_get(key, 20)
+    val saved_nid = nid
+    val saved_rem = sub_g1(rem, 1)
+    val saved_next = idx + 1
+    val saved_total = total
+    val p2 = ward_promise_then<int><int>(p,
+      llam (data_len: int): ward_promise_chained(int) =>
+        if lte_int_int(data_len, 0) then let
+          val () = load_library_covers(saved_rem, saved_next, saved_total)
+        in ward_promise_return<int>(0) end
+        else let
+          val dl = _checked_pos(data_len)
+          val arr = ward_idb_get_result(dl)
+          val () = set_image_src_idb(saved_nid, arr, dl)
+          val () = load_library_covers(saved_rem, saved_next, saved_total)
+        in ward_promise_return<int>(1) end)
+    val () = ward_promise_discard<int>(p2)
+  in end
 
 implement render_library(root_id) = let
   val dom = ward_dom_init()
@@ -3694,18 +3764,26 @@ implement render_library(root_id) = let
   val view_mode = _app_lib_view_mode()
   val sort_mode = _app_lib_sort_mode()
 
-  (* Toolbar: view toggle + sort buttons *)
+  (* Toolbar: shelf filter buttons + sort buttons *)
   val toolbar_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, toolbar_id, root_id, tag_div(), 3)
   val s = ward_dom_stream_set_attr_safe(s, toolbar_id, attr_class(), 5, cls_lib_toolbar(), 11)
 
-  (* View toggle button — "Archived" or "Library" *)
-  val view_btn_id = dom_next_id()
-  val s = ward_dom_stream_create_element(s, view_btn_id, toolbar_id, tag_button(), 6)
-  val s = ward_dom_stream_set_attr_safe(s, view_btn_id, attr_class(), 5, cls_view_toggle(), 11)
-  val view_text = if eq_int_int(view_mode, 0) then TEXT_SHOW_ARCHIVED else TEXT_SHOW_ACTIVE
-  val view_tlen = if eq_int_int(view_mode, 0) then 8 else 7
-  val s = set_text_cstr(s, view_btn_id, view_text, view_tlen)
+  (* Shelf filter buttons — Library / Hidden / Archived *)
+  val shelf_active_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, shelf_active_btn_id, toolbar_id, tag_button(), 6)
+  val s = set_sort_btn_class(s, shelf_active_btn_id, eq_int_int(view_mode, 0))
+  val s = set_text_cstr(s, shelf_active_btn_id, TEXT_SHOW_ACTIVE, 7)
+
+  val shelf_hidden_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, shelf_hidden_btn_id, toolbar_id, tag_button(), 6)
+  val s = set_sort_btn_class(s, shelf_hidden_btn_id, eq_int_int(view_mode, 2))
+  val s = set_text_cstr(s, shelf_hidden_btn_id, TEXT_HIDDEN, 6)
+
+  val shelf_archived_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, shelf_archived_btn_id, toolbar_id, tag_button(), 6)
+  val s = set_sort_btn_class(s, shelf_archived_btn_id, eq_int_int(view_mode, 1))
+  val s = set_text_cstr(s, shelf_archived_btn_id, TEXT_SHOW_ARCHIVED, 8)
 
   (* Sort by title button *)
   val sort_title_btn_id = dom_next_id()
@@ -3718,6 +3796,18 @@ implement render_library(root_id) = let
   val s = ward_dom_stream_create_element(s, sort_author_btn_id, toolbar_id, tag_button(), 6)
   val s = set_sort_btn_class(s, sort_author_btn_id, eq_int_int(sort_mode, 1))
   val s = set_text_cstr(s, sort_author_btn_id, TEXT_SORT_AUTHOR, 9)
+
+  (* Sort by last opened button *)
+  val sort_last_opened_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, sort_last_opened_btn_id, toolbar_id, tag_button(), 6)
+  val s = set_sort_btn_class(s, sort_last_opened_btn_id, eq_int_int(sort_mode, 2))
+  val s = set_text_cstr(s, sort_last_opened_btn_id, TEXT_SORT_LAST_OPENED, 11)
+
+  (* Sort by date added button *)
+  val sort_date_added_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, sort_date_added_btn_id, toolbar_id, tag_button(), 6)
+  val s = set_sort_btn_class(s, sort_date_added_btn_id, eq_int_int(sort_mode, 3))
+  val s = set_text_cstr(s, sort_date_added_btn_id, TEXT_SORT_DATE_ADDED, 10)
 
   (* Import button — only shown in active view *)
   val label_id = dom_next_id()
@@ -3757,14 +3847,31 @@ implement render_library(root_id) = let
   (* Register click listeners on read and archive/restore buttons *)
   val () = register_card_btns(_checked_nat(count), 0, count, root_id, view_mode)
 
+  (* Load cover images from IDB *)
+  val cvr_count = _cover_queue_count()
+  val () = if gt_int_int(cvr_count, 0) then
+    load_library_covers(_checked_nat(cvr_count), 0, cvr_count)
+
   (* Register toolbar button listeners *)
   val saved_root = root_id
   val () = ward_add_event_listener(
-    view_btn_id, evt_click(), 5, LISTENER_VIEW_TOGGLE,
+    shelf_active_btn_id, evt_click(), 5, LISTENER_VIEW_ACTIVE,
     lam (_pl: int): int => let
-      val cur_vm = _app_lib_view_mode()
-      val new_vm = if eq_int_int(cur_vm, 0) then 1 else 0
-      val () = _app_set_lib_view_mode(new_vm)
+      val () = _app_set_lib_view_mode(0)
+      val () = render_library(saved_root)
+    in 0 end
+  )
+  val () = ward_add_event_listener(
+    shelf_hidden_btn_id, evt_click(), 5, LISTENER_VIEW_HIDDEN,
+    lam (_pl: int): int => let
+      val () = _app_set_lib_view_mode(2)
+      val () = render_library(saved_root)
+    in 0 end
+  )
+  val () = ward_add_event_listener(
+    shelf_archived_btn_id, evt_click(), 5, LISTENER_VIEW_ARCHIVED,
+    lam (_pl: int): int => let
+      val () = _app_set_lib_view_mode(1)
       val () = render_library(saved_root)
     in 0 end
   )
@@ -3782,6 +3889,24 @@ implement render_library(root_id) = let
     lam (_pl: int): int => let
       val (_ | _n) = library_sort(SORT_BY_AUTHOR() | 1)
       val () = _app_set_lib_sort_mode(1)
+      val () = library_save()
+      val () = render_library(saved_root)
+    in 0 end
+  )
+  val () = ward_add_event_listener(
+    sort_last_opened_btn_id, evt_click(), 5, LISTENER_SORT_LAST_OPENED,
+    lam (_pl: int): int => let
+      val (_ | _n) = library_sort(SORT_BY_LAST_OPENED() | 2)
+      val () = _app_set_lib_sort_mode(2)
+      val () = library_save()
+      val () = render_library(saved_root)
+    in 0 end
+  )
+  val () = ward_add_event_listener(
+    sort_date_added_btn_id, evt_click(), 5, LISTENER_SORT_DATE_ADDED,
+    lam (_pl: int): int => let
+      val (_ | _n) = library_sort(SORT_BY_DATE_ADDED() | 3)
+      val () = _app_set_lib_sort_mode(3)
       val () = library_save()
       val () = render_library(saved_root)
     in 0 end
@@ -3813,6 +3938,7 @@ implement render_library(root_id) = let
           (* Phase 1 — file open complete, consumes pf0 *)
           prval pf1 = PHASE_ZIP(pf0)
           val file_size = ward_file_get_size()
+          val () = _app_set_epub_file_size(file_size)
           val () = reader_set_file_handle(handle)
 
           (* Compute SHA-256 content hash as book identity.
@@ -3843,41 +3969,64 @@ implement render_library(root_id) = let
             (* Phase 2 — parse ZIP, consumes pf1 *)
             prval pf2 = PHASE_META(pf1)
             val () = update_status_text(ssts, TEXT_PARSING_ZIP, 15)
-            val _nentries = zip_open(sh, sfs)
-
-            (* Phase 2: Read EPUB metadata — yield for "Parsing archive" to paint *)
-            val p2 = ward_timer_set(0)
-          in ward_promise_then<int><int>(p2,
-            llam (_: int): ward_promise_chained(int) => let
-              (* Phase 3 — read metadata (async), consumes pf2 *)
+            val nentries = zip_open(sh, sfs)
+          in
+            (* ZIP_OPEN_OK proof: zip_open must return > 0 entries.
+             * Bug class: querying empty ZIP silently yields -1,
+             * causing confusing err-container instead of err-zip.
+             * Prevention: check nentries here, fail fast with clear error. *)
+            if lte_int_int(nentries, 0) then let
               prval _ = PHASE_ADD(pf2)
-              val () = update_status_text(ssts, TEXT_READING_META, 16)
-              val p_container = epub_read_container_async(sh)
+              val () = update_status_text(ssts, TEXT_ADDING_BOOK, 17)
+              val () = import_finish(
+                import_mark_failed(log_err_zip_parse(), 7),
+                slbl, sspn, ssts)
+            in ward_promise_return<int>(0) end
+            else let
+              val _np = _checked_pos(nentries)
+              prval pf_zip = ZIP_PARSED_OK()
 
-              (* Chain: container result → OPF read → add book *)
-              val ssh = sh val ssli = sli val ssr = sr
-              val sslbl = slbl val ssspn = sspn val sssts = ssts
-            in ward_promise_then<int><int>(p_container,
-              llam (ok1: int): ward_promise_chained(int) =>
-                if gt_int_int(ok1, 0) then let
-                  val p_opf = epub_read_opf_async(ssh)
-                in ward_promise_then<int><int>(p_opf,
-                  llam (ok2: int): ward_promise_chained(int) =>
-                    if lte_int_int(ok2, 0) then let
-                      val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
-                      val () = import_finish(
-                        import_mark_failed(log_err_opf(), 7),
-                        sslbl, ssspn, sssts)
-                    in ward_promise_return<int>(0) end
-                    else let
-                      (* OPF parse succeeded — store all resources to IDB *)
-                      val p_store = epub_store_all_resources(ssh)
-                    in ward_promise_then<int><int>(p_store,
-                      llam (_: int): ward_promise_chained(int) => let
-                        (* Store manifest to IDB *)
-                        val p_man = epub_store_manifest()
+              (* Phase 2: Read EPUB metadata — yield for "Parsing archive" to paint *)
+              val p2 = ward_timer_set(0)
+            in ward_promise_then<int><int>(p2,
+              llam (_: int): ward_promise_chained(int) => let
+                (* Phase 3 — read metadata (async), consumes pf2 *)
+                prval _ = PHASE_ADD(pf2)
+                val () = update_status_text(ssts, TEXT_READING_META, 16)
+                val p_container = epub_read_container_async(pf_zip | sh)
+
+                (* Chain: container result → OPF read → add book *)
+                val ssh = sh val ssli = sli val ssr = sr
+                val sslbl = slbl val ssspn = sspn val sssts = ssts
+              in ward_promise_then<int><int>(p_container,
+                llam (ok1: int): ward_promise_chained(int) =>
+                  if gt_int_int(ok1, 0) then let
+                    val p_opf = epub_read_opf_async(pf_zip | ssh)
+                  in ward_promise_then<int><int>(p_opf,
+                    llam (ok2: int): ward_promise_chained(int) =>
+                      if lte_int_int(ok2, 0) then let
+                        val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
+                        val () = import_finish(
+                          import_mark_failed(log_err_opf(), 7),
+                          sslbl, ssspn, sssts)
+                      in ward_promise_return<int>(0) end
+                      else let
+                        (* OPF parse succeeded — store all resources to IDB *)
+                        val p_store = epub_store_all_resources(ssh)
+                      in ward_promise_then<int><int>(p_store,
+                        llam (_: int): ward_promise_chained(int) => let
+                          (* Store manifest to IDB *)
+                          val p_man = epub_store_manifest(pf_zip | (* *))
                       in ward_promise_then<int><int>(p_man,
                         llam (_: int): ward_promise_chained(int) => let
+                          (* Load manifest so epub_find_resource works for cover *)
+                          val p_load = epub_load_manifest()
+                        in ward_promise_then<int><int>(p_load,
+                          llam (_: int): ward_promise_chained(int) => let
+                            (* Store cover image to its own IDB key *)
+                            val p_cvr = epub_store_cover()
+                          in ward_promise_then<int><int>(p_cvr,
+                            llam (_: int): ward_promise_chained(int) => let
                           val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
                           val () =
                             if gt_int_int(ok2, 0) then let
@@ -3895,6 +4044,9 @@ implement render_library(root_id) = let
                                 val () = ward_dom_fini(dom)
                                 val btn_count = library_get_count()
                                 val () = register_card_btns(_checked_nat(btn_count), 0, btn_count, ssr, 0)
+                                val cvr_count = _cover_queue_count()
+                                val () = if gt_int_int(cvr_count, 0) then
+                                  load_library_covers(_checked_nat(cvr_count), 0, cvr_count)
                               in import_finish(h, sslbl, ssspn, sssts) end
                               else import_finish(
                                 import_mark_failed(log_err_lib_full(), 12),
@@ -3903,6 +4055,8 @@ implement render_library(root_id) = let
                         in ward_promise_return<int>(0) end)
                       end)
                     end)
+                  end)
+                end)
                 end
                 else let
                   val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
@@ -3910,7 +4064,8 @@ implement render_library(root_id) = let
                     import_mark_failed(log_err_container(), 13),
                     sslbl, ssspn, sssts)
                 in ward_promise_return<int>(0) end)
-            end)
+              end)
+            end (* else let: nentries > 0 *)
           end)
         end)
       val () = ward_promise_discard<int>(p2)
@@ -4098,6 +4253,10 @@ implement enter_reader(root_id, book_index) = let
         val () = show_chapter_error(saved_cid, TEXT_ERR_NOT_FOUND, 17)
       in ward_promise_return<int>(0) end
       else let
+        val now = quire_time_now()
+        val now_g1 = _checked_nat(now)
+        val () = library_set_last_opened(VALID_TIMESTAMP() | saved_bi, now_g1)
+        val () = library_save()
         val spine = epub_get_chapter_count()
         val spine_g1 = g1ofg0(spine)
         val saved_ch = library_get_chapter(saved_bi)

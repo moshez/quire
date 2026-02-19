@@ -160,6 +160,16 @@ fn _copy_arr_to_bookid {l:agz}{n:pos}
     in loop(a, i + 1, base, len, c) end
 in loop(a, 0, base, len, cap) end
 
+fn _copy_arr_to_cover_href {l:agz}{n:pos}
+  (a: !ward_arr(byte, l, n), base: int, len: int, cap: int n): void = let
+  fun loop {l:agz}{n:pos}
+    (a: !ward_arr(byte, l, n), i: int, base: int, len: int, c: int n): void =
+    if gte_int_int(i, len) then ()
+    else let
+      val () = _app_epub_cover_href_set_u8(i, _ab(a, base + i, c))
+    in loop(a, i + 1, base, len, c) end
+in loop(a, 0, base, len, cap) end
+
 fn _copy_arr_to_spine_buf {l:agz}{n:pos}
   (a: !ward_arr(byte, l, n), src_base: int, dst_off: int, len: int, cap: int n): void = let
   fun loop {l:agz}{n:pos}
@@ -268,6 +278,7 @@ implement epub_init() = let
   val () = _app_set_epub_state(0)
   val () = _app_set_epub_spine_path_count(0)
   val () = _app_set_epub_spine_path_pos(0)
+  val () = _app_set_epub_cover_href_len(0)
 in end
 
 (* ========== Simple accessors ========== *)
@@ -448,6 +459,224 @@ in
   end
 end
 
+(* ========== Cover image detection ========== *)
+
+(* Build needle: properties="cover-image" (24 bytes) *)
+fn _n_cover_props(): [l:agz] ward_arr(byte, l, 24) = let
+  val a = ward_arr_alloc<byte>(24)
+  (* p=112 r=114 o=111 p=112 e=101 r=114 t=116 i=105 e=101 s=115 *)
+  val () = _wb(a,0,112,24)  val () = _wb(a,1,114,24) val () = _wb(a,2,111,24)
+  val () = _wb(a,3,112,24)  val () = _wb(a,4,101,24) val () = _wb(a,5,114,24)
+  val () = _wb(a,6,116,24)  val () = _wb(a,7,105,24) val () = _wb(a,8,101,24)
+  val () = _wb(a,9,115,24)
+  (* ="cover-image" → =61 "=34 c=99 o=111 v=118 e=101 r=114 -=45 i=105 m=109 a=97 g=103 e=101 "=34 *)
+  val () = _wb(a,10,61,24)  val () = _wb(a,11,34,24)
+  val () = _wb(a,12,99,24)  val () = _wb(a,13,111,24) val () = _wb(a,14,118,24)
+  val () = _wb(a,15,101,24) val () = _wb(a,16,114,24) val () = _wb(a,17,45,24)
+  val () = _wb(a,18,105,24) val () = _wb(a,19,109,24) val () = _wb(a,20,97,24)
+  val () = _wb(a,21,103,24) val () = _wb(a,22,101,24) val () = _wb(a,23,34,24)
+in a end
+
+(* Build needle: name="cover" (12 bytes) *)
+fn _n_meta_cover(): [l:agz] ward_arr(byte, l, 12) = let
+  val a = ward_arr_alloc<byte>(12)
+  (* n=110 a=97 m=109 e=101 =61 "=34 c=99 o=111 v=118 e=101 r=114 "=34 *)
+  val () = _wb(a,0,110,12) val () = _wb(a,1,97,12)  val () = _wb(a,2,109,12)
+  val () = _wb(a,3,101,12) val () = _wb(a,4,61,12)  val () = _wb(a,5,34,12)
+  val () = _wb(a,6,99,12)  val () = _wb(a,7,111,12) val () = _wb(a,8,118,12)
+  val () = _wb(a,9,101,12) val () = _wb(a,10,114,12) val () = _wb(a,11,34,12)
+in a end
+
+(* Build needle: content=" (9 bytes) *)
+fn _n_content(): [l:agz] ward_arr(byte, l, 9) = let
+  val a = ward_arr_alloc<byte>(9)
+  (* c=99 o=111 n=110 t=116 e=101 n=110 t=116 =61 "=34 *)
+  val () = _wb(a,0,99,9)  val () = _wb(a,1,111,9) val () = _wb(a,2,110,9)
+  val () = _wb(a,3,116,9) val () = _wb(a,4,101,9) val () = _wb(a,5,110,9)
+  val () = _wb(a,6,116,9) val () = _wb(a,7,61,9)  val () = _wb(a,8,34,9)
+in a end
+
+(* Extract cover image href from OPF.
+ * EPUB3: find <item ... properties="cover-image" ... href="...">
+ * EPUB2 fallback: find <meta name="cover" content="[id]"/> then look up <item id="[id]" href="...">
+ * Stores result in app_state cover_href buffer. Length 0 = no cover found. *)
+extern fun _opf_extract_cover {l:agz}{n:pos}
+  (buf: !ward_arr(byte, l, n), len: int n): void = "ext#"
+implement _opf_extract_cover(buf, len) = let
+  val () = _app_set_epub_cover_href_len(0)
+  val opf_dir_len = _app_epub_opf_dir_len()
+
+  (* Try EPUB3 first: search for properties="cover-image" *)
+  val ndl_cp = _n_cover_props()
+  val cp_pos = _find_bytes(buf, len, len, ndl_cp, 24, 24, 0)
+  val () = ward_arr_free<byte>(ndl_cp)
+in
+  if gte_int_int(cp_pos, 0) then let
+    (* Found properties="cover-image" at cp_pos. Backtrack to find enclosing <item *)
+    val nit = _n_item()
+    (* Search forward from 0 for <item tags; find the one that contains cp_pos *)
+    fun find_enclosing_item {lb:agz}{nb:pos}{ln:agz}
+      (buf: !ward_arr(byte, lb, nb), ndl: !ward_arr(byte, ln, 6),
+       pos: int, target: int, cap: int nb, hlen: int): int =
+      let val found = _find_bytes(buf, hlen, cap, ndl, 6, 6, pos) in
+        if lt_int_int(found, 0) then 0 - 1
+        else if gt_int_int(found, target) then 0 - 1
+        else let
+          val next = _find_bytes(buf, hlen, cap, ndl, 6, 6, found + 6)
+        in
+          if lt_int_int(next, 0) then found  (* last item before target *)
+          else if gt_int_int(next, target) then found  (* next item is past target *)
+          else find_enclosing_item(buf, ndl, found + 6, target, cap, hlen)
+        end
+      end
+    val item_pos = find_enclosing_item(buf, nit, 0, cp_pos, len, len)
+    val () = ward_arr_free<byte>(nit)
+  in
+    if lt_int_int(item_pos, 0) then ()
+    else let
+      (* Extract href from this <item> tag *)
+      val nhr = _n_href()
+      val item_limit0 = item_pos + 500
+      val item_limit = if gt_int_int(item_limit0, len) then len else item_limit0
+      val href_pos = _find_bytes(buf, item_limit, len, nhr, 6, 6, item_pos)
+      val () = ward_arr_free<byte>(nhr)
+    in
+      if lt_int_int(href_pos, 0) then ()
+      else let
+        val href_start = href_pos + 6
+        val href_end = _find_quote(buf, len, len, href_start)
+        val href_len = href_end - href_start
+        val full_len = opf_dir_len + href_len
+      in
+        if lte_int_int(href_len, 0) then ()
+        else if gte_int_int(full_len, 256) then ()
+        else let
+          (* Copy opf_dir prefix to cover_href[0..opf_dir_len-1] *)
+          fun copy_dir {k:nat} .<k>.
+            (rem: int(k), i: int, dlen: int): void =
+            if lte_g1(rem, 0) then ()
+            else if gte_int_int(i, dlen) then ()
+            else let
+              val () = _app_epub_cover_href_set_u8(i, _app_epub_opf_path_get_u8(i))
+            in copy_dir(sub_g1(rem, 1), i + 1, dlen) end
+          val () = copy_dir(_checked_nat(opf_dir_len), 0, opf_dir_len)
+          (* Copy href from arr to cover_href[opf_dir_len..full_len-1] *)
+          fun copy_h {l:agz}{n:pos}{k:nat} .<k>.
+            (rem: int(k), a: !ward_arr(byte, l, n), i: int, src: int, dst: int, hl: int, c: int n): void =
+            if lte_g1(rem, 0) then ()
+            else if gte_int_int(i, hl) then ()
+            else let
+              val () = _app_epub_cover_href_set_u8(dst + i, _ab(a, src + i, c))
+            in copy_h(sub_g1(rem, 1), a, i + 1, src, dst, hl, c) end
+          val () = copy_h(_checked_nat(href_len), buf, 0, href_start, opf_dir_len, href_len, len)
+          val () = _app_set_epub_cover_href_len(full_len)
+        in end
+      end
+    end
+  end
+  else let
+    (* EPUB3 not found, try EPUB2: <meta name="cover" content="[id]"/> *)
+    val ndl_mc = _n_meta_cover()
+    val mc_pos = _find_bytes(buf, len, len, ndl_mc, 12, 12, 0)
+    val () = ward_arr_free<byte>(ndl_mc)
+  in
+    if lt_int_int(mc_pos, 0) then ()
+    else let
+      (* Found name="cover" — extract content="[id]" *)
+      val ndl_ct = _n_content()
+      val ct_limit = if gt_int_int(mc_pos + 200, len) then len else mc_pos + 200
+      val ct_pos = _find_bytes(buf, ct_limit, len, ndl_ct, 9, 9, mc_pos)
+      val () = ward_arr_free<byte>(ndl_ct)
+    in
+      if lt_int_int(ct_pos, 0) then ()
+      else let
+        val id_start = ct_pos + 9
+        val id_end = _find_quote(buf, len, len, id_start)
+        val id_len = id_end - id_start
+      in
+        if lte_int_int(id_len, 0) then ()
+        else if gt_int_int(id_len, 63) then ()
+        else let
+          (* Look up <item id="[id]" href="..."> *)
+          val nit = _n_item()
+          val nmid = _n_id()
+          val nhr = _n_href()
+          fun find_item_by_id
+            {lb:agz}{nb:pos}{l3:agz}{l4:agz}{l5:agz}
+            (buf: !ward_arr(byte, lb, nb),
+             nit: !ward_arr(byte, l3, 6),
+             nmid: !ward_arr(byte, l4, 5),
+             nhr: !ward_arr(byte, l5, 6),
+             item_pos: int, id_start: int, idref_len: int,
+             cap: int nb, hlen: int): @(int, int) = let
+            val found_item = _find_bytes(buf, hlen, cap, nit, 6, 6, item_pos)
+          in
+            if lt_int_int(found_item, 0) then @(0 - 1, 0 - 1)
+            else let
+              val il0 = found_item + 500
+              val il = if gt_int_int(il0, hlen) then hlen else il0
+              val mid_pos = _find_bytes(buf, il, cap, nmid, 5, 5, found_item)
+            in
+              if lt_int_int(mid_pos, 0) then
+                find_item_by_id(buf, nit, nmid, nhr, found_item + 6, id_start, idref_len, cap, hlen)
+              else let
+                val mid_start = mid_pos + 5
+                val mid_end = _find_quote(buf, hlen, cap, mid_start)
+                val mid_len = mid_end - mid_start
+              in
+                if neq_int_int(mid_len, idref_len) then
+                  find_item_by_id(buf, nit, nmid, nhr, found_item + 6, id_start, idref_len, cap, hlen)
+                else if _arr_bytes_equal(buf, mid_start, id_start, idref_len, cap) then let
+                  val hp = _find_bytes(buf, il, cap, nhr, 6, 6, found_item)
+                in
+                  if lt_int_int(hp, 0) then @(0 - 1, 0 - 1)
+                  else let
+                    val hs = hp + 6
+                    val he = _find_quote(buf, hlen, cap, hs)
+                  in @(hs, he) end
+                end
+                else find_item_by_id(buf, nit, nmid, nhr, found_item + 6, id_start, idref_len, cap, hlen)
+              end
+            end
+          end
+          val @(href_s, href_e) = find_item_by_id(buf, nit, nmid, nhr, 0, id_start, id_len, len, len)
+          val () = ward_arr_free<byte>(nit)
+          val () = ward_arr_free<byte>(nmid)
+          val () = ward_arr_free<byte>(nhr)
+        in
+          if lt_int_int(href_s, 0) then ()
+          else let
+            val h_len = href_e - href_s
+            val full_len = opf_dir_len + h_len
+          in
+            if lte_int_int(h_len, 0) then ()
+            else if gte_int_int(full_len, 256) then ()
+            else let
+              fun cp_dir {k:nat} .<k>.
+                (rem: int(k), i: int, dlen: int): void =
+                if lte_g1(rem, 0) then ()
+                else if gte_int_int(i, dlen) then ()
+                else let
+                  val () = _app_epub_cover_href_set_u8(i, _app_epub_opf_path_get_u8(i))
+                in cp_dir(sub_g1(rem, 1), i + 1, dlen) end
+              val () = cp_dir(_checked_nat(opf_dir_len), 0, opf_dir_len)
+              fun cp_href {l:agz}{n:pos}{k:nat} .<k>.
+                (rem: int(k), a: !ward_arr(byte, l, n), i: int, src: int, dst: int, hl: int, c: int n): void =
+                if lte_g1(rem, 0) then ()
+                else if gte_int_int(i, hl) then ()
+                else let
+                  val () = _app_epub_cover_href_set_u8(dst + i, _ab(a, src + i, c))
+                in cp_href(sub_g1(rem, 1), a, i + 1, src, dst, hl, c) end
+              val () = cp_href(_checked_nat(h_len), buf, 0, href_s, opf_dir_len, h_len, len)
+              val () = _app_set_epub_cover_href_len(full_len)
+            in end
+          end
+        end
+      end
+    end
+  end
+end
+
 extern fun _opf_count_spine {l:agz}{n:pos}
   (buf: !ward_arr(byte, l, n), len: int n): int = "ext#"
 implement _opf_count_spine(buf, len) = let
@@ -597,6 +826,7 @@ in end
 implement epub_parse_opf_bytes(arr, len) = let
   val () = _opf_extract_title(arr, len)
   val () = _opf_extract_author(arr, len)
+  val () = _opf_extract_cover(arr, len)
   (* book_id is now set by sha256_file_hash in quire.dats import path,
    * not extracted from dc:identifier. See BOOK_IDENTITY_IS_CONTENT_HASH. *)
   val spine_count = _opf_count_spine(arr, len)
@@ -736,6 +966,75 @@ implement epub_build_manifest_key() = let
   val bld = ward_text_putc(bld, 19, 110)
 in ward_text_done(bld) end
 
+(* Build 20-char IDB cover key: {16 hex book_id}-cvr *)
+implement epub_build_cover_key() = let
+  val b0 = _app_epub_book_id_get_u8(0)
+  val b1 = _app_epub_book_id_get_u8(1)
+  val b2 = _app_epub_book_id_get_u8(2)
+  val b3 = _app_epub_book_id_get_u8(3)
+  val b4 = _app_epub_book_id_get_u8(4)
+  val b5 = _app_epub_book_id_get_u8(5)
+  val b6 = _app_epub_book_id_get_u8(6)
+  val b7 = _app_epub_book_id_get_u8(7)
+  val bld = ward_text_build(20)
+  val bld = ward_text_putc(bld, 0, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b0, 255), 16))))
+  val bld = ward_text_putc(bld, 1, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b0, 255), 16))))
+  val bld = ward_text_putc(bld, 2, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b1, 255), 16))))
+  val bld = ward_text_putc(bld, 3, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b1, 255), 16))))
+  val bld = ward_text_putc(bld, 4, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b2, 255), 16))))
+  val bld = ward_text_putc(bld, 5, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b2, 255), 16))))
+  val bld = ward_text_putc(bld, 6, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b3, 255), 16))))
+  val bld = ward_text_putc(bld, 7, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b3, 255), 16))))
+  val bld = ward_text_putc(bld, 8, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b4, 255), 16))))
+  val bld = ward_text_putc(bld, 9, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b4, 255), 16))))
+  val bld = ward_text_putc(bld, 10, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b5, 255), 16))))
+  val bld = ward_text_putc(bld, 11, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b5, 255), 16))))
+  val bld = ward_text_putc(bld, 12, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b6, 255), 16))))
+  val bld = ward_text_putc(bld, 13, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b6, 255), 16))))
+  val bld = ward_text_putc(bld, 14, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b7, 255), 16))))
+  val bld = ward_text_putc(bld, 15, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b7, 255), 16))))
+  (* "-cvr" suffix: '-'=45, 'c'=99, 'v'=118, 'r'=114 — all SAFE_CHAR *)
+  val bld = ward_text_putc(bld, 16, 45)
+  val bld = ward_text_putc(bld, 17, 99)
+  val bld = ward_text_putc(bld, 18, 118)
+  val bld = ward_text_putc(bld, 19, 114)
+in ward_text_done(bld) end
+
+(* ========== epub_store_cover ========== *)
+
+(* Store cover image: copy resource blob from its resource key to the cover key.
+ * Requires manifest to be loaded (for epub_find_resource). *)
+implement epub_store_cover() = let
+  val href_len = _app_epub_cover_href_len()
+in
+  if lte_int_int(href_len, 0) then ward_promise_return<int>(0)
+  else let
+    (* Copy cover href to sbuf[0..href_len-1] for epub_find_resource *)
+    val () = _app_copy_epub_cover_href_to_sbuf(0, href_len)
+    val entry_idx = epub_find_resource(href_len)
+  in
+    if lt_int_int(entry_idx, 0) then ward_promise_return<int>(0)
+    else let
+      val key = epub_build_resource_key(entry_idx)
+      val p = ward_idb_get(key, 20)
+    in
+      ward_promise_then<int><int>(p,
+        llam (data_len: int): ward_promise_chained(int) =>
+          if lte_int_int(data_len, 0) then ward_promise_return<int>(0)
+          else let
+            val dl = _checked_pos(data_len)
+            val arr = ward_idb_get_result(dl)
+            val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+            val cvr_key = epub_build_cover_key()
+            val p2 = ward_idb_put(cvr_key, 20, borrow, dl)
+            val () = ward_arr_drop<byte>(frozen, borrow)
+            val arr = ward_arr_thaw<byte>(frozen)
+            val () = ward_arr_free<byte>(arr)
+          in ward_promise_vow(p2) end)
+    end
+  end
+end
+
 (* ========== epub_store_all_resources ========== *)
 
 (* Store a single ZIP entry to IDB. Handles stored (compression=0) and
@@ -831,7 +1130,7 @@ in loop(_checked_nat(ec), 0, ec, file_handle) end
  * For each zip entry:  [u16: name_len] [name bytes...]
  * For each spine entry: [u16: zip_entry_index_for_this_spine_slot]
  *)
-implement epub_store_manifest() = let
+implement epub_store_manifest(pf_zip | (* *)) = let
   val entry_count = zip_get_entry_count()
   val spine_count = _app_epub_spine_count()
   val ec = _g0(entry_count): int
@@ -891,7 +1190,8 @@ in
     (* Write spine→entry index mapping *)
     (* Spine paths in spine_buf are already fully qualified (include OPF dir) *)
     fun write_spine {k:nat}{la:agz}{na:pos} .<k>.
-      (rem: int(k), si: int, scount: int, off: int,
+      (pf_z: ZIP_OPEN_OK |
+       rem: int(k), si: int, scount: int, off: int,
        arr: !ward_arr(byte, la, na), asz: int na): void =
       if lte_g1(rem, 0) then ()
       else if gte_int_int(si, scount) then ()
@@ -899,11 +1199,11 @@ in
         val sp_off = _app_epub_spine_offsets_get_i32(si)
         val sp_len = _app_epub_spine_lens_get_i32(si)
         val () = _app_copy_epub_spine_buf_to_sbuf(sp_off, 0, sp_len)
-        val zip_idx = zip_find_entry(sp_len)
+        val zip_idx = zip_find_entry(pf_z | sp_len)
         val idx_val: int = if lt_int_int(zip_idx, 0) then 65535 else zip_idx
         val () = ward_arr_write_u16le(arr, _u16_off(off, asz), _u16(idx_val))
-      in write_spine(sub_g1(rem, 1), si + 1, scount, off + 2, arr, asz) end
-    val () = write_spine(_checked_nat(sc), 0, sc, off1, arr, tsz)
+      in write_spine(pf_z | sub_g1(rem, 1), si + 1, scount, off + 2, arr, asz) end
+    val () = write_spine(pf_zip | _checked_nat(sc), 0, sc, off1, arr, tsz)
 
     (* Store to IDB *)
     val @(frozen, borrow) = ward_arr_freeze<byte>(arr)

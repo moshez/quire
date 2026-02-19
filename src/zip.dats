@@ -315,7 +315,8 @@ in
   end
 end
 
-implement zip_find_entry(name_len) = let
+implement zip_find_entry(pf | name_len) = let
+  prval _ = pf
   val count = _get_zip_count()
   val cnt = _checked_nat(count)
   fun search {k:nat}{c:nat | k <= c} .<c-k>.

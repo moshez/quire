@@ -1784,7 +1784,8 @@ end
  * looks up the ZIP entry, and sums compressed_size for stored entries.
  * Adds 8 bytes per image for arena bump-allocator alignment. *)
 fun compute_arena_size {lb:agz}{n:pos}{ld:agz}{nd:pos}{k:nat} .<k>.
-  (tree: !ward_arr(byte, lb, n), tlen: int n,
+  (pf_zip: ZIP_OPEN_OK |
+   tree: !ward_arr(byte, lb, n), tlen: int n,
    cdir: !ward_arr(byte, ld, nd), cdlen: int nd,
    i: int, total: int, acc: int, rem: int(k)): int =
   if lte_g1(rem, 0) then acc
@@ -1793,7 +1794,7 @@ fun compute_arena_size {lb:agz}{n:pos}{ld:agz}{nd:pos}{k:nat} .<k>.
     val src_off = _deferred_image_get_src_off_impl(i)
     val src_len = _deferred_image_get_src_len_impl(i)
     val path_len = resolve_img_src(tree, tlen, src_off, src_len, cdir, cdlen)
-    val entry_idx = zip_find_entry(path_len)
+    val entry_idx = zip_find_entry(pf_zip | path_len)
     val r1 = sub_g1(rem, 1)
   in
     if entry_idx >= 0 then let
@@ -1805,24 +1806,24 @@ fun compute_arena_size {lb:agz}{n:pos}{ld:agz}{nd:pos}{k:nat} .<k>.
           val sz = entry.compressed_size
         in
           if sz > 0 then
-            compute_arena_size(tree, tlen, cdir, cdlen,
+            compute_arena_size(pf_zip | tree, tlen, cdir, cdlen,
               i + 1, total, acc + sz + 8, r1)
           else
-            compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc, r1)
+            compute_arena_size(pf_zip | tree, tlen, cdir, cdlen, i + 1, total, acc, r1)
         end
-        else compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc, r1)
-      else compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc, r1)
+        else compute_arena_size(pf_zip | tree, tlen, cdir, cdlen, i + 1, total, acc, r1)
+      else compute_arena_size(pf_zip | tree, tlen, cdir, cdlen, i + 1, total, acc, r1)
     end
-    else compute_arena_size(tree, tlen, cdir, cdlen, i + 1, total, acc, r1)
+    else compute_arena_size(pf_zip | tree, tlen, cdir, cdlen, i + 1, total, acc, r1)
   end
 
 implement load_deferred_images
   {l}{lb}{n}{ld}{nd}
-  (stream, tree, tree_len, file_handle, chapter_dir, chapter_dir_len) = let
+  (pf_zip | stream, tree, tree_len, file_handle, chapter_dir, chapter_dir_len) = let
   val count = _deferred_image_get_count_impl()
 
   (* Pass 1: compute total arena size *)
-  val arena_size = compute_arena_size(tree, tree_len,
+  val arena_size = compute_arena_size(pf_zip | tree, tree_len,
     chapter_dir, chapter_dir_len, 0, count, 0, _checked_nat(count))
   val arena_size_g1 = g1ofg0(arena_size)
 in
@@ -1833,7 +1834,8 @@ in
     val arena = ward_arena_create(arena_size_g1)
 
     fun process {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}{la:agz}{max:pos}{k:nat}{r:nat} .<r>.
-      (rem: int(r), st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n), tlen: int n,
+      (pf_zip: ZIP_OPEN_OK |
+       rem: int(r), st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n), tlen: int n,
        fh: int, cdir: !ward_arr(byte, ld, nd), cdlen: int nd,
        arena: !ward_arena(la, max, k) >> ward_arena(la, max, k),
        i: int, total: int)
@@ -1845,7 +1847,7 @@ in
         val src_off = _deferred_image_get_src_off_impl(i)
         val src_len = _deferred_image_get_src_len_impl(i)
         val path_len = resolve_img_src(tree, tlen, src_off, src_len, cdir, cdlen)
-        val entry_idx = zip_find_entry(path_len)
+        val entry_idx = zip_find_entry(pf_zip | path_len)
       in
         if entry_idx >= 0 then let
           var entry: zip_entry
@@ -1858,17 +1860,17 @@ in
               if data_off >= 0 then let
                 val st = load_stored_image_arena(st, nid, tree, tlen,
                   src_off, src_len, fh, data_off, entry.compressed_size, arena)
-              in process(sub_g1(rem, 1), st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total) end
-              else process(sub_g1(rem, 1), st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
+              in process(pf_zip | sub_g1(rem, 1), st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total) end
+              else process(pf_zip | sub_g1(rem, 1), st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
             end
             else (* deflated — skip for now *)
-              process(sub_g1(rem, 1), st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
-          else process(sub_g1(rem, 1), st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
+              process(pf_zip | sub_g1(rem, 1), st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
+          else process(pf_zip | sub_g1(rem, 1), st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
         end
-        else process(sub_g1(rem, 1), st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
+        else process(pf_zip | sub_g1(rem, 1), st, tree, tlen, fh, cdir, cdlen, arena, i + 1, total)
       end
 
-    val stream = process(_checked_nat(count), stream, tree, tree_len, file_handle,
+    val stream = process(pf_zip | _checked_nat(count), stream, tree, tree_len, file_handle,
       chapter_dir, chapter_dir_len, arena, 0, count)
     val () = ward_arena_destroy(arena)
   in

@@ -2,16 +2,18 @@
  *
  * M15: Manages a persistent library of imported books.
  * Each book entry stores title, author, reading position, chapter count,
- * and archived flag.
+ * and shelf state (active/archived/hidden).
  * Library index is serialized to IndexedDB for persistence.
  *
  * FUNCTIONAL CORRECTNESS PROOFS:
  * - LIBRARY_INDEX_VALID: Book count within bounds, all entries have valid data
  * - BOOK_POSITION_VALID: Reading position within book bounds
  * - BOOK_IN_LIBRARY: Proves a book index is valid for the current library
- * - SERIALIZE_ROUNDTRIP: Serialize then deserialize preserves library data
- * - ARCHIVE_STATE_VALID: Archived flag is 0 or 1
- * - SORT_MODE_VALID: Sort mode is 0 (title) or 1 (author)
+ * - SER_FORMAT: Version↔fixed-bytes agreement (prevents metadata size drift)
+ * - SER_VAR_FIELD: Field index↔record offset agreement (prevents field order/offset drift)
+ * - TIMESTAMP_VALID: Timestamp is non-negative
+ * - SHELF_STATE_VALID: Shelf state is 0 (active), 1 (archived), or 2 (hidden)
+ * - SORT_MODE_VALID: Sort mode is 0..3 (title, author, last-opened, date-added)
  * - LIBRARY_SORTED: Library is sorted by the given mode
  *)
 
@@ -24,8 +26,8 @@ staload "./buf.sats"
 (* ========== Record layout stadefs (type-level) ========== *)
 
 stadef MAX_BOOKS_S = 32
-stadef REC_INTS_S = 152
-stadef REC_BYTES_S = 608           (* REC_INTS_S * 4 *)
+stadef REC_INTS_S = 155
+stadef REC_BYTES_S = 620           (* REC_INTS_S * 4 *)
 
 (* Byte offsets within a book record *)
 stadef TITLE_BYTE_OFF_S = 0
@@ -48,8 +50,28 @@ dataprop BOOK_POSITION_VALID(chapter: int, page: int, total: int) =
 dataprop BOOK_IN_LIBRARY(index: int, count: int) =
   | {i,c:nat | i < c} VALID_BOOK_INDEX(i, c)
 
-(* Serialization roundtrip correctness proof. *)
-absprop SERIALIZE_ROUNDTRIP(len: int)
+(* Serialization format proof: version↔fixed-bytes agreement.
+ * Single source of truth — both serialize and deserialize call
+ * ser_fixed_bytes() which constructs the appropriate proof.
+ * v1: 3×u16 = 6 bytes, v2: 4×u16 = 8 bytes, v3: 4×u16 + 3×u32 = 20 bytes
+ * v4: v3 + u16 has_cover = 22 bytes *)
+dataprop SER_FORMAT(version: int, fixed_bytes: int) =
+  | SER_FMT_V1(1, 6)
+  | SER_FMT_V2(2, 8)
+  | SER_FMT_V3(3, 20)
+  | SER_FMT_V4(4, 22)
+
+(* Serialization variable field proof: index↔record offset agreement.
+ * Ties field index to byte offset, max length, and length slot.
+ * Both serialize and deserialize call ser_var_field_spec() for each field. *)
+dataprop SER_VAR_FIELD(idx: int, byte_off: int, max_len: int, len_slot: int) =
+  | SFIELD_BID(0, 520, 64, 146)
+  | SFIELD_TITLE(1, 0, 256, 64)
+  | SFIELD_AUTHOR(2, 260, 256, 129)
+
+(* Timestamp validity proof. *)
+dataprop TIMESTAMP_VALID(t: int) =
+  | {t:nat} VALID_TIMESTAMP(t)
 
 (* Single-pending-flag invariant proof. *)
 dataprop SINGLE_PENDING(handler_id: int) =
@@ -62,29 +84,39 @@ dataprop SINGLE_PENDING(handler_id: int) =
 (* Import lock proof. *)
 absprop IMPORT_LOCK_FREE
 
-(* ========== Archive/Sort Dataprops ========== *)
+(* ========== Shelf/Sort Dataprops ========== *)
 
-(* Archive flag: only 0 or 1 are valid *)
-dataprop ARCHIVE_STATE_VALID(a: int) =
-  | ACTIVE(0)
-  | ARCHIVED(1)
+(* Shelf state: 0=active, 1=archived, 2=hidden *)
+dataprop SHELF_STATE_VALID(s: int) =
+  | SHELF_ACTIVE(0)
+  | SHELF_ARCHIVED(1)
+  | SHELF_HIDDEN(2)
 
-(* Sort mode: only title or author *)
+(* Sort mode: title, author, last-opened, date-added *)
 dataprop SORT_MODE_VALID(m: int) =
   | SORT_BY_TITLE(0)
   | SORT_BY_AUTHOR(1)
+  | SORT_BY_LAST_OPENED(2)
+  | SORT_BY_DATE_ADDED(3)
 
-(* View mode: active books or archived books *)
+(* View mode: active, archived, or hidden shelf *)
 dataprop VIEW_MODE_VALID(m: int) =
   | VIEW_ACTIVE(0)
   | VIEW_ARCHIVED(1)
+  | VIEW_HIDDEN(2)
 
-(* View filtering: compile-time proof that the render decision is correct *)
-dataprop VIEW_FILTER_CORRECT(view_mode: int, archived: int, render: int) =
+(* View filtering: compile-time proof that the render decision is correct.
+ * 3×3 exhaustive dispatch: view_mode × shelf_state → render decision. *)
+dataprop VIEW_FILTER_CORRECT(view_mode: int, shelf_state: int, render: int) =
   | RENDER_ACTIVE(0, 0, 1)
   | SKIP_ARCHIVED_IN_ACTIVE(0, 1, 0)
-  | RENDER_ARCHIVED(1, 1, 1)
+  | SKIP_HIDDEN_IN_ACTIVE(0, 2, 0)
   | SKIP_ACTIVE_IN_ARCHIVED(1, 0, 0)
+  | RENDER_ARCHIVED(1, 1, 1)
+  | SKIP_HIDDEN_IN_ARCHIVED(1, 2, 0)
+  | SKIP_ACTIVE_IN_HIDDEN(2, 0, 0)
+  | SKIP_ARCHIVED_IN_HIDDEN(2, 1, 0)
+  | RENDER_HIDDEN(2, 2, 1)
 
 (* Case normalization: proves the lowered value is correct *)
 dataprop TO_LOWER_CORRECT(input: int, output: int) =
@@ -113,12 +145,26 @@ dataprop FIELD_SPEC(mode: int, book_idx: int, offset: int, len: int) =
   | {i:nat | i < 32}
     FIELD_AUTHOR(1, i, i * REC_BYTES_S + AUTHOR_BYTE_OFF_S, AUTHOR_FIELD_LEN_S)
 
+(* Integer field specification: ties sort mode + book index to i32 slot *)
+dataprop FIELD_INT_SPEC(mode: int, book_idx: int, slot: int) =
+  | {i:nat | i < 32} FIELD_LAST_OPENED(2, i, i * REC_INTS_S + 152)
+  | {i:nat | i < 32} FIELD_DATE_ADDED(3, i, i * REC_INTS_S + 151)
+
+(* Integer comparison proof (reverse chronological: higher value = first) *)
+dataprop INT_CMP(slot_i: int, slot_j: int, result: int) =
+  | {si,sj:int}{r:int | r <= 0} INT_GTE(si, sj, r)
+  | {si,sj:int}{r:int | r > 0} INT_LT_VAL(si, sj, r)
+
 (* Pair ordering: verified by post-state comparison *)
 dataprop PAIR_IN_ORDER(mode: int, i: int, j: int) =
   | {m:int}{i,j:nat | j == i + 1; i < 32; j < 32}
     {oi,oj:int}{l:pos}{r:int | r <= 0}
     PAIR_VERIFIED(m, i, j) of
       (FIELD_SPEC(m, i, oi, l), FIELD_SPEC(m, j, oj, l), LEX_CMP(oi, oj, l, r))
+  | {m:int}{i,j:nat | j == i + 1; i < 32; j < 32}
+    {si,sj:int}{r:int | r <= 0}
+    PAIR_INT_VERIFIED(m, i, j) of
+      (FIELD_INT_SPEC(m, i, si), FIELD_INT_SPEC(m, j, sj), INT_CMP(si, sj, r))
 
 (* Sorted: every adjacent pair is in order — inductive *)
 dataprop LIBRARY_SORTED(mode: int, count: int) =
@@ -130,9 +176,11 @@ dataprop LIBRARY_SORTED(mode: int, count: int) =
 (* Serialization version marker *)
 stadef SER_VERSION_MARKER = 65535
 stadef SER_VERSION_2 = 2
+stadef SER_VERSION_3 = 3
+stadef SER_VERSION_4 = 4
 
 dataprop SER_VERSION_DETECTED(marker: int, version: int) =
-  | {m:int | m == 65535} IS_V2(m, 2)
+  | {m:int | m == 65535} IS_V2_OR_V3(m, 2)
   | {m:nat | m <= 32} IS_V1(m, 1)
 
 (* ========== Import outcome proof ========== *)
@@ -155,10 +203,10 @@ fun library_get_chapter(index: int): [ch:nat] int(ch)
 fun library_get_page(index: int): [pg:nat] int(pg)
 fun library_get_spine_count(index: int): [sc:nat] int(sc)
 
-(* Get/set archived flag *)
-fun library_get_archived(index: int): [a:nat | a <= 1] int(a)
-fun library_set_archived {a:int}
-  (pf: ARCHIVE_STATE_VALID(a) | index: int, v: int(a)): void
+(* Get/set shelf state: 0=active, 1=archived, 2=hidden *)
+fun library_get_shelf_state(index: int): [s:nat | s <= 2] int(s)
+fun library_set_shelf_state {s:int}
+  (pf: SHELF_STATE_VALID(s) | index: int, v: int(s)): void
 
 fun library_add_book(): [i:int | i >= ~1; i < 32] (ADD_BOOK_RESULT(i) | int(i))
 fun library_remove_book(index: int): void
@@ -166,15 +214,30 @@ fun library_update_position(index: int, chapter: int, page: int): void
 fun library_find_book_by_id(): [i:int | i >= ~1] int(i)
 
 (* Sort library in place. Returns book count with sorted proof. *)
-fun library_sort {m:nat | m <= 1}
+fun library_sort {m:nat | m <= 3}
   (pf_mode: SORT_MODE_VALID(m) | mode: int(m))
   : [n:nat | n <= 32] (LIBRARY_SORTED(m, n) | int(n))
 
 (* View filter — requires precondition proofs, returns render decision *)
-fun should_render_book {vm:nat | vm <= 1}{a:nat | a <= 1}
-  (pf_vm: VIEW_MODE_VALID(vm), pf_a: ARCHIVE_STATE_VALID(a) |
-   vm: int(vm), a: int(a))
-  : [r:int] (VIEW_FILTER_CORRECT(vm, a, r) | int(r))
+fun should_render_book {vm:nat | vm <= 2}{s:nat | s <= 2}
+  (pf_vm: VIEW_MODE_VALID(vm), pf_ss: SHELF_STATE_VALID(s) |
+   vm: int(vm), ss: int(s))
+  : [r:int] (VIEW_FILTER_CORRECT(vm, s, r) | int(r))
+
+(* Per-book metadata *)
+fun library_get_date_added(index: int): int
+fun library_get_last_opened(index: int): int
+fun library_get_file_size(index: int): int
+fun library_get_has_cover(index: int): [c:int | c == 0 || c == 1] int(c)
+fun library_set_last_opened {t:nat}
+  (pf: TIMESTAMP_VALID(t) | index: int, ts: int(t)): void
+
+(* Serialization format helpers — single source of truth *)
+fun ser_fixed_bytes {v:int | v >= 1; v <= 4}
+  (version: int(v)): [fb:pos] (SER_FORMAT(v, fb) | int(fb))
+fun ser_var_field_spec {f:nat | f <= 2}
+  (field: int(f)): [bo,ml,ls:nat]
+  (SER_VAR_FIELD(f, bo, ml, ls) | int(bo), int(ml), int(ls))
 
 (* Serialization *)
 fun library_serialize(): [len:nat] int(len)
