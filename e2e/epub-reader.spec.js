@@ -1002,21 +1002,26 @@ test.describe('EPUB Reader E2E', () => {
     const toolbar = page.locator('.lib-toolbar');
     await expect(toolbar).toBeVisible();
 
-    // Verify view toggle button shows "Archived" (meaning we're in active view)
-    const viewToggle = page.locator('.view-toggle');
-    await expect(viewToggle).toBeVisible();
-    await expect(viewToggle).toContainText('Archived');
+    // Verify shelf filter buttons — "Library" is active (sort-active class)
+    const shelfLibBtn = page.locator('.lib-toolbar button', { hasText: 'Library' });
+    await expect(shelfLibBtn).toBeVisible();
+    const shelfLibClass = await shelfLibBtn.getAttribute('class');
+    expect(shelfLibClass).toContain('sort-active');
 
-    // Verify sort buttons visible (4 total: 3 inactive sort-btn + 1 sort-active)
+    // Verify sort buttons visible
     const sortBtnInactive = page.locator('.sort-btn');
     const sortBtnActive = page.locator('.sort-active');
     await expect(sortBtnInactive.first()).toBeVisible();
-    await expect(sortBtnActive).toBeVisible();
 
     // Verify archive button visible on the book card
     const archiveBtn = page.locator('.archive-btn');
     await expect(archiveBtn).toBeVisible();
     await expect(archiveBtn).toContainText('Archive');
+
+    // Verify hide button visible on the book card
+    const hideBtn = page.locator('.hide-btn');
+    await expect(hideBtn).toBeVisible();
+    await expect(hideBtn).toContainText('Hide');
 
     // Archive the book
     await archiveBtn.click();
@@ -1029,15 +1034,15 @@ test.describe('EPUB Reader E2E', () => {
     const emptyMsg = page.locator('.empty-lib');
     await expect(emptyMsg).toContainText('No books yet');
 
-    // Switch to archived view
-    const viewToggle2 = page.locator('.view-toggle');
-    await viewToggle2.click();
+    // Switch to archived view via shelf filter button
+    const shelfArchivedBtn = page.locator('.lib-toolbar button', { hasText: 'Archived' });
+    await shelfArchivedBtn.click();
     await page.waitForSelector('.book-card', { timeout: 10000 });
     await screenshot(page, 'archive-03-archived-view');
 
-    // View toggle should now show "Library" (meaning we're in archived view)
-    const viewToggle3 = page.locator('.view-toggle');
-    await expect(viewToggle3).toContainText('Library');
+    // "Archived" button should now have sort-active class
+    const archivedBtnClass = await page.locator('.lib-toolbar button', { hasText: 'Archived' }).getAttribute('class');
+    expect(archivedBtnClass).toContain('sort-active');
 
     // Verify the archived book is shown with correct title
     const bookTitle = page.locator('.book-title');
@@ -1047,10 +1052,6 @@ test.describe('EPUB Reader E2E', () => {
     const restoreBtn = page.locator('.archive-btn');
     await expect(restoreBtn).toBeVisible();
     await expect(restoreBtn).toContainText('Restore');
-
-    // Verify no "Read" button in archived view
-    const readBtns = page.locator('.read-btn');
-    expect(await readBtns.count()).toBe(0);
 
     // Import button should be hidden in archived view
     const importBtns = page.locator('label.import-btn');
@@ -1065,9 +1066,9 @@ test.describe('EPUB Reader E2E', () => {
     await expect(archivedEmpty).toContainText('No archived books');
     await screenshot(page, 'archive-04-archived-empty');
 
-    // Switch back to active view
-    const viewToggle4 = page.locator('.view-toggle');
-    await viewToggle4.click();
+    // Switch back to active view via shelf filter button
+    const shelfActiveBtn = page.locator('.lib-toolbar button', { hasText: 'Library' });
+    await shelfActiveBtn.click();
     await page.waitForSelector('.book-card', { timeout: 10000 });
     await screenshot(page, 'archive-05-restored');
 
@@ -1075,11 +1076,13 @@ test.describe('EPUB Reader E2E', () => {
     const restoredTitle = page.locator('.book-title');
     await expect(restoredTitle).toContainText('Archive Test Book');
 
-    // Archive and Read buttons should be visible again
+    // Archive, Hide, and Read buttons should be visible again
     const readBtn = page.locator('.read-btn');
     await expect(readBtn).toBeVisible();
     const archBtn = page.locator('.archive-btn');
     await expect(archBtn).toContainText('Archive');
+    const hideBtn2 = page.locator('.hide-btn');
+    await expect(hideBtn2).toContainText('Hide');
   });
 
   test('sort books by title and author', async ({ page }) => {

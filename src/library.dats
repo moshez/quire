@@ -13,7 +13,7 @@
  *   i32 slot 147: spine_count
  *   i32 slot 148: current_chapter
  *   i32 slot 149: current_page
- *   i32 slot 150: archived (0=active, 1=archived)
+ *   i32 slot 150: shelf_state (0=active, 1=archived, 2=hidden)
  *   i32 slot 151: date_added (Unix seconds)
  *   i32 slot 152: last_opened (Unix seconds)
  *   i32 slot 153: file_size (bytes)
@@ -72,7 +72,7 @@ staload _ = "./../vendor/ward/lib/idb.dats"
 #define SPINE_SLOT 147
 #define CHAPTER_SLOT 148
 #define PAGE_SLOT 149
-#define ARCHIVED_SLOT 150
+#define SHELF_STATE_SLOT 150
 #define DATE_ADDED_SLOT 151
 #define LAST_OPENED_SLOT 152
 #define FILE_SIZE_SLOT 153
@@ -86,7 +86,7 @@ extern castfn _mk_added(x: int)
   : [i:nat | i < 32] (ADD_BOOK_RESULT(i) | int(i))
 extern castfn _mk_lib_full(x: int): (ADD_BOOK_RESULT(~1) | int(~1))
 extern castfn _find_idx(x: int): [i:int | i >= ~1] int i
-extern castfn _clamp_archived(x: int): [a:nat | a <= 1] int a
+extern castfn _clamp_shelf_state(x: int): [s:nat | s <= 2] int s
 
 (* ========== Helpers ========== *)
 
@@ -200,7 +200,7 @@ in
       val () = _app_lib_books_set_i32(base_ints + SPINE_SLOT, sc)
       val () = _app_lib_books_set_i32(base_ints + CHAPTER_SLOT, 0)
       val () = _app_lib_books_set_i32(base_ints + PAGE_SLOT, 0)
-      val () = _app_lib_books_set_i32(base_ints + ARCHIVED_SLOT, 0)
+      val () = _app_lib_books_set_i32(base_ints + SHELF_STATE_SLOT, 0)
       val now = quire_time_now()
       val () = _app_lib_books_set_i32(base_ints + DATE_ADDED_SLOT, now)
       val () = _app_lib_books_set_i32(base_ints + LAST_OPENED_SLOT, now)
@@ -250,22 +250,23 @@ implement library_get_spine_count(index) =
   else if gte_int_int(index, _app_lib_count()) then 0
   else _checked_nat(_app_lib_books_get_i32(index * REC_INTS + SPINE_SLOT))
 
-implement library_get_archived(index) =
+implement library_get_shelf_state(index) =
   if lt_int_int(index, 0) then 0
   else if gte_int_int(index, _app_lib_count()) then 0
   else let
-    val v = _app_lib_books_get_i32(index * REC_INTS + ARCHIVED_SLOT)
+    val v = _app_lib_books_get_i32(index * REC_INTS + SHELF_STATE_SLOT)
   in
     if eq_int_int(v, 1) then 1
+    else if eq_int_int(v, 2) then 2
     else 0
   end
 
-implement library_set_archived {a} (pf | index, v) = let
+implement library_set_shelf_state {s} (pf | index, v) = let
   prval _ = pf
 in
   if lt_int_int(index, 0) then ()
   else if gte_int_int(index, _app_lib_count()) then ()
-  else _app_lib_books_set_i32(index * REC_INTS + ARCHIVED_SLOT, v)
+  else _app_lib_books_set_i32(index * REC_INTS + SHELF_STATE_SLOT, v)
 end
 
 implement library_get_date_added(index) =
@@ -336,13 +337,19 @@ end
 
 (* ========== View filter ========== *)
 
-implement should_render_book {vm}{a} (pf_vm, pf_a | vm, a) =
+implement should_render_book {vm}{s} (pf_vm, pf_ss | vm, ss) =
   if eq_g1(vm, 0) then
-    if eq_g1(a, 0) then (RENDER_ACTIVE() | 1)
-    else (SKIP_ARCHIVED_IN_ACTIVE() | 0)
+    if eq_g1(ss, 0) then (RENDER_ACTIVE() | 1)
+    else if eq_g1(ss, 1) then (SKIP_ARCHIVED_IN_ACTIVE() | 0)
+    else (SKIP_HIDDEN_IN_ACTIVE() | 0)
+  else if eq_g1(vm, 1) then
+    if eq_g1(ss, 1) then (RENDER_ARCHIVED() | 1)
+    else if eq_g1(ss, 0) then (SKIP_ACTIVE_IN_ARCHIVED() | 0)
+    else (SKIP_HIDDEN_IN_ARCHIVED() | 0)
   else
-    if eq_g1(a, 1) then (RENDER_ARCHIVED() | 1)
-    else (SKIP_ACTIVE_IN_ARCHIVED() | 0)
+    if eq_g1(ss, 2) then (RENDER_HIDDEN() | 1)
+    else if eq_g1(ss, 0) then (SKIP_ACTIVE_IN_HIDDEN() | 0)
+    else (SKIP_ARCHIVED_IN_HIDDEN() | 0)
 
 (* ========== Sort infrastructure ========== *)
 
@@ -703,7 +710,7 @@ implement library_serialize() = let
       val () = _fbuf_write_u16(off, _app_lib_books_get_i32(bi + SPINE_SLOT))
       val () = _fbuf_write_u16(off + 2, _app_lib_books_get_i32(bi + CHAPTER_SLOT))
       val () = _fbuf_write_u16(off + 4, _app_lib_books_get_i32(bi + PAGE_SLOT))
-      val () = _fbuf_write_u16(off + 6, _app_lib_books_get_i32(bi + ARCHIVED_SLOT))
+      val () = _fbuf_write_u16(off + 6, _app_lib_books_get_i32(bi + SHELF_STATE_SLOT))
       val () = _fbuf_write_u32(off + 8, _app_lib_books_get_i32(bi + DATE_ADDED_SLOT))
       val () = _fbuf_write_u32(off + 12, _app_lib_books_get_i32(bi + LAST_OPENED_SLOT))
       val () = _fbuf_write_u32(off + 16, _app_lib_books_get_i32(bi + FILE_SIZE_SLOT))
@@ -736,7 +743,7 @@ fn _deserialize_v1(len: int, count2: int): int = let
             val () = _app_lib_books_set_i32(bi + SPINE_SLOT, _fbuf_read_u16(off2))
             val () = _app_lib_books_set_i32(bi + CHAPTER_SLOT, _fbuf_read_u16(off2 + 2))
             val () = _app_lib_books_set_i32(bi + PAGE_SLOT, _fbuf_read_u16(off2 + 4))
-            val () = _app_lib_books_set_i32(bi + ARCHIVED_SLOT, 0)
+            val () = _app_lib_books_set_i32(bi + SHELF_STATE_SLOT, 0)
             val () = _app_lib_books_set_i32(bi + DATE_ADDED_SLOT, 0)
             val () = _app_lib_books_set_i32(bi + LAST_OPENED_SLOT, 0)
             val () = _app_lib_books_set_i32(bi + FILE_SIZE_SLOT, 0)
@@ -772,9 +779,9 @@ fn _deserialize_v2(len: int, count2: int, sort_mode: int): int = let
             val () = _app_lib_books_set_i32(bi + SPINE_SLOT, _fbuf_read_u16(off2))
             val () = _app_lib_books_set_i32(bi + CHAPTER_SLOT, _fbuf_read_u16(off2 + 2))
             val () = _app_lib_books_set_i32(bi + PAGE_SLOT, _fbuf_read_u16(off2 + 4))
-            val archived = _fbuf_read_u16(off2 + 6)
-            val () = _app_lib_books_set_i32(bi + ARCHIVED_SLOT,
-              if eq_int_int(archived, 1) then 1 else 0)
+            val shelf_st = _fbuf_read_u16(off2 + 6)
+            val () = _app_lib_books_set_i32(bi + SHELF_STATE_SLOT,
+              if eq_int_int(shelf_st, 1) then 1 else 0)
             val () = _app_lib_books_set_i32(bi + DATE_ADDED_SLOT, 0)
             val () = _app_lib_books_set_i32(bi + LAST_OPENED_SLOT, 0)
             val () = _app_lib_books_set_i32(bi + FILE_SIZE_SLOT, 0)
@@ -814,9 +821,11 @@ fn _deserialize_v3(len: int, count2: int, sort_mode: int): int = let
             val () = _app_lib_books_set_i32(bi + SPINE_SLOT, _fbuf_read_u16(off2))
             val () = _app_lib_books_set_i32(bi + CHAPTER_SLOT, _fbuf_read_u16(off2 + 2))
             val () = _app_lib_books_set_i32(bi + PAGE_SLOT, _fbuf_read_u16(off2 + 4))
-            val archived = _fbuf_read_u16(off2 + 6)
-            val () = _app_lib_books_set_i32(bi + ARCHIVED_SLOT,
-              if eq_int_int(archived, 1) then 1 else 0)
+            val shelf_st = _fbuf_read_u16(off2 + 6)
+            val () = _app_lib_books_set_i32(bi + SHELF_STATE_SLOT,
+              if eq_int_int(shelf_st, 1) then 1
+              else if eq_int_int(shelf_st, 2) then 2
+              else 0)
             val () = _app_lib_books_set_i32(bi + DATE_ADDED_SLOT, _fbuf_read_u32(off2 + 8))
             val () = _app_lib_books_set_i32(bi + LAST_OPENED_SLOT, _fbuf_read_u32(off2 + 12))
             val () = _app_lib_books_set_i32(bi + FILE_SIZE_SLOT, _fbuf_read_u32(off2 + 16))

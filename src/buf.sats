@@ -28,8 +28,8 @@ stadef LIB_BOOKS_CAP_S = 19840    (* type-level alias for sort proofs *)
 stadef ZIP_ENTRIES_CAP = 7168     (* 256 entries x 7 ints x 4 bytes *)
 stadef ZIP_NAMEBUF_CAP = 8192
 
-(* Reader button IDs — 64 slots: [0..31] read btns, [32..63] archive btns *)
-stadef RDR_BTNS_CAP = 256        (* 64 ints x 4 bytes *)
+(* Reader button IDs — 96 slots: [0..31] read, [32..63] archive, [64..95] hide *)
+stadef RDR_BTNS_CAP = 384        (* 96 ints x 4 bytes *)
 
 (* EPUB manifest in-memory tables (loaded from IDB) *)
 stadef EPUB_MANIFEST_NAMES_CAP = 16384   (* concatenated entry names *)
@@ -55,7 +55,7 @@ stadef DEFERRED_IMG_EID_CAP = 256        (* 64 entries x 4 bytes *)
 #define LIB_BOOKS_SIZE 19840
 #define ZIP_ENTRIES_SIZE 7168
 #define ZIP_NAMEBUF_SIZE 8192
-#define RDR_BTNS_SIZE 256
+#define RDR_BTNS_SIZE 384
 #define EPUB_MANIFEST_NAMES_SIZE 16384
 #define EPUB_MANIFEST_OFF_SIZE 1024
 #define EPUB_MANIFEST_LEN_SIZE 1024

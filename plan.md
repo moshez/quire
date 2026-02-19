@@ -43,7 +43,7 @@ everything else depends on.
   "Date added". Update sort UI in `quire.dats` to cycle through all four
   modes. Add sort dropdown (▼) per spec wireframe.
 
-- [ ] **1.5 Hidden shelf.** Add a `hidden` flag (0 or 1) to the library
+- [x] **1.5 Hidden shelf.** Add a `hidden` flag (0 or 1) to the library
   record alongside `archived`. Three shelf states: active (hidden=0,
   archived=0), hidden (hidden=1, archived=0), archived (hidden=0, archived=1).
   Add `SHELF_STATE_VALID` dataprop proving mutual exclusion. Add

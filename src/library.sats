@@ -2,7 +2,7 @@
  *
  * M15: Manages a persistent library of imported books.
  * Each book entry stores title, author, reading position, chapter count,
- * and archived flag.
+ * and shelf state (active/archived/hidden).
  * Library index is serialized to IndexedDB for persistence.
  *
  * FUNCTIONAL CORRECTNESS PROOFS:
@@ -12,7 +12,7 @@
  * - SER_FORMAT: Version↔fixed-bytes agreement (prevents metadata size drift)
  * - SER_VAR_FIELD: Field index↔record offset agreement (prevents field order/offset drift)
  * - TIMESTAMP_VALID: Timestamp is non-negative
- * - ARCHIVE_STATE_VALID: Archived flag is 0 or 1
+ * - SHELF_STATE_VALID: Shelf state is 0 (active), 1 (archived), or 2 (hidden)
  * - SORT_MODE_VALID: Sort mode is 0..3 (title, author, last-opened, date-added)
  * - LIBRARY_SORTED: Library is sorted by the given mode
  *)
@@ -82,12 +82,13 @@ dataprop SINGLE_PENDING(handler_id: int) =
 (* Import lock proof. *)
 absprop IMPORT_LOCK_FREE
 
-(* ========== Archive/Sort Dataprops ========== *)
+(* ========== Shelf/Sort Dataprops ========== *)
 
-(* Archive flag: only 0 or 1 are valid *)
-dataprop ARCHIVE_STATE_VALID(a: int) =
-  | ACTIVE(0)
-  | ARCHIVED(1)
+(* Shelf state: 0=active, 1=archived, 2=hidden *)
+dataprop SHELF_STATE_VALID(s: int) =
+  | SHELF_ACTIVE(0)
+  | SHELF_ARCHIVED(1)
+  | SHELF_HIDDEN(2)
 
 (* Sort mode: title, author, last-opened, date-added *)
 dataprop SORT_MODE_VALID(m: int) =
@@ -96,17 +97,24 @@ dataprop SORT_MODE_VALID(m: int) =
   | SORT_BY_LAST_OPENED(2)
   | SORT_BY_DATE_ADDED(3)
 
-(* View mode: active books or archived books *)
+(* View mode: active, archived, or hidden shelf *)
 dataprop VIEW_MODE_VALID(m: int) =
   | VIEW_ACTIVE(0)
   | VIEW_ARCHIVED(1)
+  | VIEW_HIDDEN(2)
 
-(* View filtering: compile-time proof that the render decision is correct *)
-dataprop VIEW_FILTER_CORRECT(view_mode: int, archived: int, render: int) =
+(* View filtering: compile-time proof that the render decision is correct.
+ * 3×3 exhaustive dispatch: view_mode × shelf_state → render decision. *)
+dataprop VIEW_FILTER_CORRECT(view_mode: int, shelf_state: int, render: int) =
   | RENDER_ACTIVE(0, 0, 1)
   | SKIP_ARCHIVED_IN_ACTIVE(0, 1, 0)
-  | RENDER_ARCHIVED(1, 1, 1)
+  | SKIP_HIDDEN_IN_ACTIVE(0, 2, 0)
   | SKIP_ACTIVE_IN_ARCHIVED(1, 0, 0)
+  | RENDER_ARCHIVED(1, 1, 1)
+  | SKIP_HIDDEN_IN_ARCHIVED(1, 2, 0)
+  | SKIP_ACTIVE_IN_HIDDEN(2, 0, 0)
+  | SKIP_ARCHIVED_IN_HIDDEN(2, 1, 0)
+  | RENDER_HIDDEN(2, 2, 1)
 
 (* Case normalization: proves the lowered value is correct *)
 dataprop TO_LOWER_CORRECT(input: int, output: int) =
@@ -192,10 +200,10 @@ fun library_get_chapter(index: int): [ch:nat] int(ch)
 fun library_get_page(index: int): [pg:nat] int(pg)
 fun library_get_spine_count(index: int): [sc:nat] int(sc)
 
-(* Get/set archived flag *)
-fun library_get_archived(index: int): [a:nat | a <= 1] int(a)
-fun library_set_archived {a:int}
-  (pf: ARCHIVE_STATE_VALID(a) | index: int, v: int(a)): void
+(* Get/set shelf state: 0=active, 1=archived, 2=hidden *)
+fun library_get_shelf_state(index: int): [s:nat | s <= 2] int(s)
+fun library_set_shelf_state {s:int}
+  (pf: SHELF_STATE_VALID(s) | index: int, v: int(s)): void
 
 fun library_add_book(): [i:int | i >= ~1; i < 32] (ADD_BOOK_RESULT(i) | int(i))
 fun library_remove_book(index: int): void
@@ -208,10 +216,10 @@ fun library_sort {m:nat | m <= 3}
   : [n:nat | n <= 32] (LIBRARY_SORTED(m, n) | int(n))
 
 (* View filter — requires precondition proofs, returns render decision *)
-fun should_render_book {vm:nat | vm <= 1}{a:nat | a <= 1}
-  (pf_vm: VIEW_MODE_VALID(vm), pf_a: ARCHIVE_STATE_VALID(a) |
-   vm: int(vm), a: int(a))
-  : [r:int] (VIEW_FILTER_CORRECT(vm, a, r) | int(r))
+fun should_render_book {vm:nat | vm <= 2}{s:nat | s <= 2}
+  (pf_vm: VIEW_MODE_VALID(vm), pf_ss: SHELF_STATE_VALID(s) |
+   vm: int(vm), ss: int(s))
+  : [r:int] (VIEW_FILTER_CORRECT(vm, s, r) | int(r))
 
 (* Per-book metadata *)
 fun library_get_date_added(index: int): int

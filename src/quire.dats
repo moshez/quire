@@ -74,6 +74,10 @@ extern int quire_time_now(void);
 #define TEXT_NO_ARCHIVED 22
 #define TEXT_SORT_LAST_OPENED 23
 #define TEXT_SORT_DATE_ADDED 24
+#define TEXT_HIDDEN 25
+#define TEXT_NO_HIDDEN 26
+#define TEXT_HIDE 27
+#define TEXT_UNHIDE 28
 
 (* ========== Listener ID constants ========== *)
 
@@ -93,12 +97,15 @@ dataprop READER_LISTENER(id: int) =
 #define LISTENER_BACK 52
 #define LISTENER_PREV 53
 #define LISTENER_NEXT 54
-#define LISTENER_VIEW_TOGGLE 55
 #define LISTENER_SORT_TITLE 56
 #define LISTENER_SORT_AUTHOR 57
 #define LISTENER_SORT_LAST_OPENED 58
 #define LISTENER_SORT_DATE_ADDED 59
 #define LISTENER_ARCHIVE_BTN_BASE 60
+#define LISTENER_VIEW_HIDDEN 92
+#define LISTENER_VIEW_ARCHIVED 93
+#define LISTENER_VIEW_ACTIVE 94
+#define LISTENER_HIDE_BTN_BASE 95
 
 (* ========== Byte-level helpers (pure ATS2) ========== *)
 
@@ -474,6 +481,45 @@ fn fill_text {l:agz}{n:pos}
     val () = ward_arr_set_byte(arr, 8, alen, 101)  (* e *)
     val () = ward_arr_set_byte(arr, 9, alen, 100)  (* d *)
   in end
+  else if text_id = 25 then let (* "Hidden" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 72)   (* H *)
+    val () = ward_arr_set_byte(arr, 1, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 2, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 3, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 4, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 5, alen, 110)  (* n *)
+  in end
+  else if text_id = 26 then let (* "No hidden books" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 78)   (* N *)
+    val () = ward_arr_set_byte(arr, 1, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 2, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 3, alen, 104)  (* h *)
+    val () = ward_arr_set_byte(arr, 4, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 5, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 6, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 7, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 8, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 9, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 10, alen, 98)  (* b *)
+    val () = ward_arr_set_byte(arr, 11, alen, 111) (* o *)
+    val () = ward_arr_set_byte(arr, 12, alen, 111) (* o *)
+    val () = ward_arr_set_byte(arr, 13, alen, 107) (* k *)
+    val () = ward_arr_set_byte(arr, 14, alen, 115) (* s *)
+  in end
+  else if text_id = 27 then let (* "Hide" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 72)   (* H *)
+    val () = ward_arr_set_byte(arr, 1, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 2, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 3, alen, 101)  (* e *)
+  in end
+  else if text_id = 28 then let (* "Unhide" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 85)   (* U *)
+    val () = ward_arr_set_byte(arr, 1, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 2, alen, 104)  (* h *)
+    val () = ward_arr_set_byte(arr, 3, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 4, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 5, alen, 101)  (* e *)
+  in end
   else () (* unused text_id *)
 
 (* Copy len bytes from string_buffer to ward_arr *)
@@ -728,20 +774,17 @@ fn cls_lib_toolbar(): ward_safe_text(11) = let
   val b = ward_text_putc(b, 10, char2int1('r'))
 in ward_text_done(b) end
 
-(* "view-toggle" = 11 chars *)
-fn cls_view_toggle(): ward_safe_text(11) = let
-  val b = ward_text_build(11)
-  val b = ward_text_putc(b, 0, char2int1('v'))
+(* "hide-btn" = 8 chars *)
+fn cls_hide_btn(): ward_safe_text(8) = let
+  val b = ward_text_build(8)
+  val b = ward_text_putc(b, 0, char2int1('h'))
   val b = ward_text_putc(b, 1, char2int1('i'))
-  val b = ward_text_putc(b, 2, char2int1('e'))
-  val b = ward_text_putc(b, 3, char2int1('w'))
+  val b = ward_text_putc(b, 2, char2int1('d'))
+  val b = ward_text_putc(b, 3, char2int1('e'))
   val b = ward_text_putc(b, 4, 45) (* '-' *)
-  val b = ward_text_putc(b, 5, char2int1('t'))
-  val b = ward_text_putc(b, 6, char2int1('o'))
-  val b = ward_text_putc(b, 7, char2int1('g'))
-  val b = ward_text_putc(b, 8, char2int1('g'))
-  val b = ward_text_putc(b, 9, char2int1('l'))
-  val b = ward_text_putc(b, 10, char2int1('e'))
+  val b = ward_text_putc(b, 5, char2int1('b'))
+  val b = ward_text_putc(b, 6, char2int1('t'))
+  val b = ward_text_putc(b, 7, char2int1('n'))
 in ward_text_done(b) end
 
 (* "sort-btn" = 8 chars *)
@@ -1923,14 +1966,14 @@ in s end
  * The constraint MGMT_CSS_LEN == MGMT_CSS_WRITES * 4 proves alignment.
  * If someone changes the CSS content length, they must also update
  * MGMT_CSS_WRITES to match, or the solver rejects. *)
-stadef MGMT_CSS_WRITES = 69
+stadef MGMT_CSS_WRITES = 68
 stadef MGMT_CSS_LEN = MGMT_CSS_WRITES * 4
-#define MGMT_CSS_LEN 276
+#define MGMT_CSS_LEN 272
 
 fn fill_css_mgmt {l:agz}{n:int | n >= MGMT_CSS_LEN}
   (arr: !ward_arr(byte, l, n), alen: int n): void = let
   (* .lib-toolbar{display:flex;gap:8px;padding:8px 0;align-items:center}
-   * .view-toggle,.sort-btn,.sort-active,.archive-btn{background:none;
+   * .sort-btn,.sort-active,.archive-btn,.hide-btn{background:none;
    * border:1px solid #888;border-radius:4px;padding:4px 12px;cursor:pointer;
    * font-size:.9rem;color:inherit}.sort-active{background:#333;color:#fff} *)
   val () = _w4(arr, alen, 0, 1651076142)
@@ -1950,58 +1993,57 @@ fn fill_css_mgmt {l:agz}{n:int | n >= MGMT_CSS_LEN}
   val () = _w4(arr, alen, 56, 980643173)
   val () = _w4(arr, alen, 60, 1953391971)
   val () = _w4(arr, alen, 64, 779973221)
-  val () = _w4(arr, alen, 68, 2003134838)
-  val () = _w4(arr, alen, 72, 1735357485)
-  val () = _w4(arr, alen, 76, 744844391)
-  val () = _w4(arr, alen, 80, 1919906606)
-  val () = _w4(arr, alen, 84, 1952591220)
-  val () = _w4(arr, alen, 88, 1932405870)
-  val () = _w4(arr, alen, 92, 762606191)
-  val () = _w4(arr, alen, 96, 1769235297)
-  val () = _w4(arr, alen, 100, 774661494)
-  val () = _w4(arr, alen, 104, 1751347809)
-  val () = _w4(arr, alen, 108, 761624169)
-  val () = _w4(arr, alen, 112, 2070836322)
-  val () = _w4(arr, alen, 116, 1801675106)
-  val () = _w4(arr, alen, 120, 1970238055)
-  val () = _w4(arr, alen, 124, 1849320558)
-  val () = _w4(arr, alen, 128, 996503151)
-  val () = _w4(arr, alen, 132, 1685221218)
-  val () = _w4(arr, alen, 136, 825913957)
-  val () = _w4(arr, alen, 140, 1931507824)
-  val () = _w4(arr, alen, 144, 1684630639)
-  val () = _w4(arr, alen, 148, 943203104)
-  val () = _w4(arr, alen, 152, 1868708664)
-  val () = _w4(arr, alen, 156, 1919247474)
-  val () = _w4(arr, alen, 160, 1684107821)
-  val () = _w4(arr, alen, 164, 980645225)
-  val () = _w4(arr, alen, 168, 997748788)
-  val () = _w4(arr, alen, 172, 1684300144)
-  val () = _w4(arr, alen, 176, 979857001)
-  val () = _w4(arr, alen, 180, 544763956)
-  val () = _w4(arr, alen, 184, 2020618801)
-  val () = _w4(arr, alen, 188, 1920295739)
-  val () = _w4(arr, alen, 192, 980578163)
-  val () = _w4(arr, alen, 196, 1852403568)
-  val () = _w4(arr, alen, 200, 997352820)
-  val () = _w4(arr, alen, 204, 1953394534)
-  val () = _w4(arr, alen, 208, 2053731117)
-  val () = _w4(arr, alen, 212, 959330917)
-  val () = _w4(arr, alen, 216, 997025138)
-  val () = _w4(arr, alen, 220, 1869377379)
-  val () = _w4(arr, alen, 224, 1852390002)
-  val () = _w4(arr, alen, 228, 1769104744)
-  val () = _w4(arr, alen, 232, 1932426612)
-  val () = _w4(arr, alen, 236, 762606191)
-  val () = _w4(arr, alen, 240, 1769235297)
-  val () = _w4(arr, alen, 244, 1652254070)
-  val () = _w4(arr, alen, 248, 1735091041)
-  val () = _w4(arr, alen, 252, 1853190002)
-  val () = _w4(arr, alen, 256, 857946724)
-  val () = _w4(arr, alen, 260, 1664824115)
-  val () = _w4(arr, alen, 264, 1919904879)
-  val () = _w4(arr, alen, 268, 1717969722)
-  val () = _w4(arr, alen, 272, 539000166)
+  val () = _w4(arr, alen, 68, 1953656691)
+  val () = _w4(arr, alen, 72, 1853121069)
+  val () = _w4(arr, alen, 76, 1869819436)
+  val () = _w4(arr, alen, 80, 1630368882)
+  val () = _w4(arr, alen, 84, 1986622563)
+  val () = _w4(arr, alen, 88, 1630415973)
+  val () = _w4(arr, alen, 92, 1768448882)
+  val () = _w4(arr, alen, 96, 1647142262)
+  val () = _w4(arr, alen, 100, 774663796)
+  val () = _w4(arr, alen, 104, 1701079400)
+  val () = _w4(arr, alen, 108, 1853121069)
+  val () = _w4(arr, alen, 112, 1667326587)
+  val () = _w4(arr, alen, 116, 1869768555)
+  val () = _w4(arr, alen, 120, 979660405)
+  val () = _w4(arr, alen, 124, 1701736302)
+  val () = _w4(arr, alen, 128, 1919902267)
+  val () = _w4(arr, alen, 132, 980575588)
+  val () = _w4(arr, alen, 136, 544763953)
+  val () = _w4(arr, alen, 140, 1768714099)
+  val () = _w4(arr, alen, 144, 941826148)
+  val () = _w4(arr, alen, 148, 1648048184)
+  val () = _w4(arr, alen, 152, 1701081711)
+  val () = _w4(arr, alen, 156, 1634872690)
+  val () = _w4(arr, alen, 160, 1937074532)
+  val () = _w4(arr, alen, 164, 2020619322)
+  val () = _w4(arr, alen, 168, 1684107323)
+  val () = _w4(arr, alen, 172, 1735289188)
+  val () = _w4(arr, alen, 176, 2020619322)
+  val () = _w4(arr, alen, 180, 1882337568)
+  val () = _w4(arr, alen, 184, 1969437560)
+  val () = _w4(arr, alen, 188, 1919906674)
+  val () = _w4(arr, alen, 192, 1768910906)
+  val () = _w4(arr, alen, 196, 1919251566)
+  val () = _w4(arr, alen, 200, 1852794427)
+  val () = _w4(arr, alen, 204, 1769155956)
+  val () = _w4(arr, alen, 208, 775579002)
+  val () = _w4(arr, alen, 212, 1835364921)
+  val () = _w4(arr, alen, 216, 1819239227)
+  val () = _w4(arr, alen, 220, 1765438063)
+  val () = _w4(arr, alen, 224, 1919248494)
+  val () = _w4(arr, alen, 228, 779973737)
+  val () = _w4(arr, alen, 232, 1953656691)
+  val () = _w4(arr, alen, 236, 1952669997)
+  val () = _w4(arr, alen, 240, 2070247017)
+  val () = _w4(arr, alen, 244, 1801675106)
+  val () = _w4(arr, alen, 248, 1970238055)
+  val () = _w4(arr, alen, 252, 591029358)
+  val () = _w4(arr, alen, 256, 993211187)
+  val () = _w4(arr, alen, 260, 1869377379)
+  val () = _w4(arr, alen, 264, 1713584754)
+  val () = _w4(arr, alen, 268, 545089126)
 in end
 
 fn inject_mgmt_css {l:agz}
@@ -2778,22 +2820,38 @@ fn render_position_text {l:agz}
  * shows archived books. Duplicating the logic with raw comparisons allowed
  * the original bug where count showed 0 visible but render would have shown cards. *)
 fn filter_book_visible(vm: int, book_idx: int): int = let
-  val archived = library_get_archived(book_idx)
+  val ss = library_get_shelf_state(book_idx)
   val vm_dep = _checked_nat(vm)
 in
   if eq_g1(vm_dep, 0) then
-    if eq_g1(archived, 0) then let
-      val (_ | r) = should_render_book(VIEW_ACTIVE(), ACTIVE() | 0, archived)
+    if eq_g1(ss, 0) then let
+      val (_ | r) = should_render_book(VIEW_ACTIVE(), SHELF_ACTIVE() | 0, ss)
+    in r end
+    else if eq_g1(ss, 1) then let
+      val (_ | r) = should_render_book(VIEW_ACTIVE(), SHELF_ARCHIVED() | 0, ss)
     in r end
     else let
-      val (_ | r) = should_render_book(VIEW_ACTIVE(), ARCHIVED() | 0, archived)
+      val (_ | r) = should_render_book(VIEW_ACTIVE(), SHELF_HIDDEN() | 0, ss)
+    in r end
+  else if eq_g1(vm_dep, 1) then
+    if eq_g1(ss, 0) then let
+      val (_ | r) = should_render_book(VIEW_ARCHIVED(), SHELF_ACTIVE() | 1, ss)
+    in r end
+    else if eq_g1(ss, 1) then let
+      val (_ | r) = should_render_book(VIEW_ARCHIVED(), SHELF_ARCHIVED() | 1, ss)
+    in r end
+    else let
+      val (_ | r) = should_render_book(VIEW_ARCHIVED(), SHELF_HIDDEN() | 1, ss)
     in r end
   else
-    if eq_g1(archived, 0) then let
-      val (_ | r) = should_render_book(VIEW_ARCHIVED(), ACTIVE() | 1, archived)
+    if eq_g1(ss, 0) then let
+      val (_ | r) = should_render_book(VIEW_HIDDEN(), SHELF_ACTIVE() | 2, ss)
+    in r end
+    else if eq_g1(ss, 1) then let
+      val (_ | r) = should_render_book(VIEW_HIDDEN(), SHELF_ARCHIVED() | 2, ss)
     in r end
     else let
-      val (_ | r) = should_render_book(VIEW_ARCHIVED(), ARCHIVED() | 1, archived)
+      val (_ | r) = should_render_book(VIEW_HIDDEN(), SHELF_HIDDEN() | 2, ss)
     in r end
 end
 
@@ -2833,18 +2891,24 @@ fn render_library_with_books {l:agz}
         val s = ward_dom_stream_set_attr_safe(s, pos_id, attr_class(), 5, cls_book_position(), 13)
         val s = render_position_text(s, pos_id, library_get_chapter(i), library_get_page(i))
 
-        (* Card actions: Read + Archive for active view, Restore for archived *)
+        (* Card actions: buttons depend on view mode *)
         val actions_id = dom_next_id()
         val s = ward_dom_stream_create_element(s, actions_id, card_id, tag_div(), 3)
         val s = ward_dom_stream_set_attr_safe(s, actions_id, attr_class(), 5, cls_card_actions(), 12)
       in
         if eq_int_int(vm, 0) then let
-          (* Active view: Read + Archive buttons *)
+          (* Active view: Read + Hide + Archive buttons *)
           val btn_id = dom_next_id()
           val () = reader_set_btn_id(i, btn_id)
           val s = ward_dom_stream_create_element(s, btn_id, actions_id, tag_button(), 6)
           val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5, cls_read_btn(), 8)
           val s = set_text_cstr(s, btn_id, TEXT_READ, 4)
+
+          val hide_btn_id = dom_next_id()
+          val () = reader_set_btn_id(i + 64, hide_btn_id)
+          val s = ward_dom_stream_create_element(s, hide_btn_id, actions_id, tag_button(), 6)
+          val s = ward_dom_stream_set_attr_safe(s, hide_btn_id, attr_class(), 5, cls_hide_btn(), 8)
+          val s = set_text_cstr(s, hide_btn_id, TEXT_HIDE, 4)
 
           val arch_btn_id = dom_next_id()
           val () = reader_set_btn_id(i + 32, arch_btn_id)
@@ -2852,8 +2916,28 @@ fn render_library_with_books {l:agz}
           val s = ward_dom_stream_set_attr_safe(s, arch_btn_id, attr_class(), 5, cls_archive_btn(), 11)
           val s = set_text_cstr(s, arch_btn_id, TEXT_ARCHIVE, 7)
         in loop(sub_g1(rem, 1), s, i + 1, n, vm) end
+        else if eq_int_int(vm, 2) then let
+          (* Hidden view: Read + Unhide buttons *)
+          val btn_id = dom_next_id()
+          val () = reader_set_btn_id(i, btn_id)
+          val s = ward_dom_stream_create_element(s, btn_id, actions_id, tag_button(), 6)
+          val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5, cls_read_btn(), 8)
+          val s = set_text_cstr(s, btn_id, TEXT_READ, 4)
+
+          val unhide_btn_id = dom_next_id()
+          val () = reader_set_btn_id(i + 64, unhide_btn_id)
+          val s = ward_dom_stream_create_element(s, unhide_btn_id, actions_id, tag_button(), 6)
+          val s = ward_dom_stream_set_attr_safe(s, unhide_btn_id, attr_class(), 5, cls_hide_btn(), 8)
+          val s = set_text_cstr(s, unhide_btn_id, TEXT_UNHIDE, 6)
+        in loop(sub_g1(rem, 1), s, i + 1, n, vm) end
         else let
-          (* Archived view: Restore button only *)
+          (* Archived view: Read + Restore buttons *)
+          val btn_id = dom_next_id()
+          val () = reader_set_btn_id(i, btn_id)
+          val s = ward_dom_stream_create_element(s, btn_id, actions_id, tag_button(), 6)
+          val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5, cls_read_btn(), 8)
+          val s = set_text_cstr(s, btn_id, TEXT_READ, 4)
+
           val restore_btn_id = dom_next_id()
           val () = reader_set_btn_id(i + 32, restore_btn_id)
           val s = ward_dom_stream_create_element(s, restore_btn_id, actions_id, tag_button(), 6)
@@ -3393,8 +3477,8 @@ end
 
 (* ========== Render library view ========== *)
 
-(* Register click listeners on read and archive/restore buttons.
- * Read buttons: btn_ids[0..31], Archive buttons: btn_ids[32..63].
+(* Register click listeners on read, archive/restore, and hide/unhide buttons.
+ * Read buttons: btn_ids[0..31], Archive: btn_ids[32..63], Hide: btn_ids[64..95].
  * Shared by initial render and post-import re-render. *)
 fun register_card_btns {k:nat} .<k>.
   (rem: int(k), i: int, n: int, root: int, vm: int): void =
@@ -3403,20 +3487,18 @@ fun register_card_btns {k:nat} .<k>.
   else let
     val saved_r = root
     val book_idx = i
-    (* Read button listener — only in active view *)
+    (* Read button listener — available in all views *)
     val read_btn_id = reader_get_btn_id(i)
     val () =
-      if eq_int_int(vm, 0) then
-        if gt_int_int(read_btn_id, 0) then
-          ward_add_event_listener(
-            read_btn_id, evt_click(), 5, LISTENER_READ_BTN_BASE + i,
-            lam (_pl: int): int => let
-              val () = enter_reader(saved_r, book_idx)
-            in 0 end
-          )
-        else ()
+      if gt_int_int(read_btn_id, 0) then
+        ward_add_event_listener(
+          read_btn_id, evt_click(), 5, LISTENER_READ_BTN_BASE + i,
+          lam (_pl: int): int => let
+            val () = enter_reader(saved_r, book_idx)
+          in 0 end
+        )
       else ()
-    (* Archive/restore button listener *)
+    (* Archive/restore button listener — active view: archive, archived view: restore *)
     val arch_btn_id = reader_get_btn_id(i + 32)
     val () =
       if gt_int_int(arch_btn_id, 0) then let
@@ -3427,14 +3509,40 @@ fun register_card_btns {k:nat} .<k>.
           lam (_pl: int): int => let
           in
             if eq_int_int(saved_vm, 0) then let
-              (* Archive: set archived=1 *)
-              val () = library_set_archived(ARCHIVED() | book_idx, 1)
+              (* Archive: set shelf_state=1 *)
+              val () = library_set_shelf_state(SHELF_ARCHIVED() | book_idx, 1)
               val () = library_save()
               val () = render_library(saved_r)
             in 0 end
             else let
-              (* Restore: set archived=0 *)
-              val () = library_set_archived(ACTIVE() | book_idx, 0)
+              (* Restore: set shelf_state=0 *)
+              val () = library_set_shelf_state(SHELF_ACTIVE() | book_idx, 0)
+              val () = library_save()
+              val () = render_library(saved_r)
+            in 0 end
+          end
+        )
+      end
+      else ()
+    (* Hide/unhide button listener — active view: hide, hidden view: unhide *)
+    val hide_btn_id = reader_get_btn_id(i + 64)
+    val () =
+      if gt_int_int(hide_btn_id, 0) then let
+        val saved_vm = vm
+      in
+        ward_add_event_listener(
+          hide_btn_id, evt_click(), 5, LISTENER_HIDE_BTN_BASE + i,
+          lam (_pl: int): int => let
+          in
+            if eq_int_int(saved_vm, 0) then let
+              (* Hide: set shelf_state=2 *)
+              val () = library_set_shelf_state(SHELF_HIDDEN() | book_idx, 2)
+              val () = library_save()
+              val () = render_library(saved_r)
+            in 0 end
+            else let
+              (* Unhide: set shelf_state=0 *)
+              val () = library_set_shelf_state(SHELF_ACTIVE() | book_idx, 0)
               val () = library_save()
               val () = render_library(saved_r)
             in 0 end
@@ -3507,6 +3615,8 @@ fn set_empty_text {l:agz}
   : [l2:agz] ward_dom_stream(l2) =
   if eq_int_int(view_mode, 0) then
     set_text_cstr(s, node, TEXT_NO_BOOKS, 12)
+  else if eq_int_int(view_mode, 2) then
+    set_text_cstr(s, node, TEXT_NO_HIDDEN, 15)
   else
     set_text_cstr(s, node, TEXT_NO_ARCHIVED, 17)
 
@@ -3520,18 +3630,26 @@ implement render_library(root_id) = let
   val view_mode = _app_lib_view_mode()
   val sort_mode = _app_lib_sort_mode()
 
-  (* Toolbar: view toggle + sort buttons *)
+  (* Toolbar: shelf filter buttons + sort buttons *)
   val toolbar_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, toolbar_id, root_id, tag_div(), 3)
   val s = ward_dom_stream_set_attr_safe(s, toolbar_id, attr_class(), 5, cls_lib_toolbar(), 11)
 
-  (* View toggle button — "Archived" or "Library" *)
-  val view_btn_id = dom_next_id()
-  val s = ward_dom_stream_create_element(s, view_btn_id, toolbar_id, tag_button(), 6)
-  val s = ward_dom_stream_set_attr_safe(s, view_btn_id, attr_class(), 5, cls_view_toggle(), 11)
-  val view_text = if eq_int_int(view_mode, 0) then TEXT_SHOW_ARCHIVED else TEXT_SHOW_ACTIVE
-  val view_tlen = if eq_int_int(view_mode, 0) then 8 else 7
-  val s = set_text_cstr(s, view_btn_id, view_text, view_tlen)
+  (* Shelf filter buttons — Library / Hidden / Archived *)
+  val shelf_active_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, shelf_active_btn_id, toolbar_id, tag_button(), 6)
+  val s = set_sort_btn_class(s, shelf_active_btn_id, eq_int_int(view_mode, 0))
+  val s = set_text_cstr(s, shelf_active_btn_id, TEXT_SHOW_ACTIVE, 7)
+
+  val shelf_hidden_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, shelf_hidden_btn_id, toolbar_id, tag_button(), 6)
+  val s = set_sort_btn_class(s, shelf_hidden_btn_id, eq_int_int(view_mode, 2))
+  val s = set_text_cstr(s, shelf_hidden_btn_id, TEXT_HIDDEN, 6)
+
+  val shelf_archived_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, shelf_archived_btn_id, toolbar_id, tag_button(), 6)
+  val s = set_sort_btn_class(s, shelf_archived_btn_id, eq_int_int(view_mode, 1))
+  val s = set_text_cstr(s, shelf_archived_btn_id, TEXT_SHOW_ARCHIVED, 8)
 
   (* Sort by title button *)
   val sort_title_btn_id = dom_next_id()
@@ -3598,11 +3716,23 @@ implement render_library(root_id) = let
   (* Register toolbar button listeners *)
   val saved_root = root_id
   val () = ward_add_event_listener(
-    view_btn_id, evt_click(), 5, LISTENER_VIEW_TOGGLE,
+    shelf_active_btn_id, evt_click(), 5, LISTENER_VIEW_ACTIVE,
     lam (_pl: int): int => let
-      val cur_vm = _app_lib_view_mode()
-      val new_vm = if eq_int_int(cur_vm, 0) then 1 else 0
-      val () = _app_set_lib_view_mode(new_vm)
+      val () = _app_set_lib_view_mode(0)
+      val () = render_library(saved_root)
+    in 0 end
+  )
+  val () = ward_add_event_listener(
+    shelf_hidden_btn_id, evt_click(), 5, LISTENER_VIEW_HIDDEN,
+    lam (_pl: int): int => let
+      val () = _app_set_lib_view_mode(2)
+      val () = render_library(saved_root)
+    in 0 end
+  )
+  val () = ward_add_event_listener(
+    shelf_archived_btn_id, evt_click(), 5, LISTENER_VIEW_ARCHIVED,
+    lam (_pl: int): int => let
+      val () = _app_set_lib_view_mode(1)
       val () = render_library(saved_root)
     in 0 end
   )

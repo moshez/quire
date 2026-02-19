@@ -802,7 +802,7 @@ implement app_set_rdr_resume_page(st, v) = let
 implement app_get_rdr_btn_id(st, idx) = let
   val @APP_STATE(r) = st
   val v = if gte_int_int(idx, 0) then
-            if lt_int_int(idx, 64) then _arr_get_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE)
+            if lt_int_int(idx, 96) then _arr_get_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE)
             else 0 - 1
           else 0 - 1
   prval () = fold@(st)
@@ -810,7 +810,7 @@ in v end
 implement app_set_rdr_btn_id(st, idx, v) = let
   val @APP_STATE(r) = st
   val () = if gte_int_int(idx, 0) then
-             if lt_int_int(idx, 64) then _arr_set_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE, v)
+             if lt_int_int(idx, 96) then _arr_set_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE, v)
   prval () = fold@(st)
 in end
 
