@@ -391,7 +391,57 @@ fn field_offset {m:nat | m <= 1}{i:nat | i < 32}
       val oi = add_g1(mul_g1(book, 620), 260)
     in (FIELD_AUTHOR() | oi, 256) end
 
-(* Compare, conditionally swap, verify post-state.
+(* Compute i32 slot for a book's timestamp field (modes 2-3) *)
+fn int_field_slot {m:nat | m >= 2; m <= 3}{i:nat | i < 32}
+  (mode: int(m), book: int(i))
+  : [sl:nat] (FIELD_INT_SPEC(m, i, sl) | int(sl)) =
+  if eq_g1(mode, 2) then let
+    val sl = add_g1(mul_g1(book, 155), 152)
+  in (FIELD_LAST_OPENED() | sl) end
+  else let
+    val sl = add_g1(mul_g1(book, 155), 151)
+  in (FIELD_DATE_ADDED() | sl) end
+
+(* Compare two i32 slots — reverse chronological (higher value = first).
+ * Returns (INT_CMP | int): 0 if val_i >= val_j (in order), 1 if val_i < val_j (out of order). *)
+fn int_compare {mi,mj:int}{ii,ij:int}{si,sj:int}
+  (pf_fi: FIELD_INT_SPEC(mi, ii, si), pf_fj: FIELD_INT_SPEC(mj, ij, sj) |
+   slot_i: int(si), slot_j: int(sj))
+  : [r:int] (INT_CMP(si, sj, r) | int(r)) = let
+  prval _ = pf_fi
+  prval _ = pf_fj
+  val vi = _app_lib_books_get_i32(slot_i)
+  val vj = _app_lib_books_get_i32(slot_j)
+in
+  if gte_int_int(vi, vj) then (INT_GTE() | 0)
+  else (INT_LT_VAL() | 1)
+end
+
+(* Compare, conditionally swap, verify post-state (integer path for modes 2-3).
+ * Same swap-and-verify pattern as lex path. *)
+fun ensure_ordered_int {m:nat | m >= 2; m <= 3}{i,j:nat | j == i + 1; i < 32; j < 32}
+  (mode: int(m), i: int(i), j: int(j))
+  : (PAIR_IN_ORDER(m, i, j) | int) = let
+  val (pf_fi | si) = int_field_slot(mode, i)
+  val (pf_fj | sj) = int_field_slot(mode, j)
+  val (pf_cmp | cmp) = int_compare(pf_fi, pf_fj | si, sj)
+in
+  if lte_g1(cmp, 0) then
+    (PAIR_INT_VERIFIED(pf_fi, pf_fj, pf_cmp) | 0)
+  else let
+    val () = swap_books(i, j)
+    val (pf_fi2 | si2) = int_field_slot(mode, i)
+    val (pf_fj2 | sj2) = int_field_slot(mode, j)
+    val (pf_cmp2 | cmp2) = int_compare(pf_fi2, pf_fj2 | si2, sj2)
+  in
+    if lte_g1(cmp2, 0) then
+      (PAIR_INT_VERIFIED(pf_fi2, pf_fj2, pf_cmp2) | 0)
+    else
+      ensure_ordered_int(mode, i, j)
+  end
+end
+
+(* Compare, conditionally swap, verify post-state (lex path for modes 0-1).
  * Returns (PROOF | int) — dummy int prevents erasure of effectful function.
  *
  * TERMINATION NOTE: This function recurses only when swap_books doesn't
@@ -399,7 +449,7 @@ fn field_offset {m:nat | m <= 1}{i:nat | i < 32}
  * swap literally exchanges the compared bytes. Proving this requires
  * modeling buffer contents pre/post swap, which is beyond ATS2's integer
  * constraint solver. The function terminates after at most one swap. *)
-fun ensure_ordered {m:nat | m <= 1}{i,j:nat | j == i + 1; i < 32; j < 32}
+fun ensure_ordered_lex {m:nat | m <= 1}{i,j:nat | j == i + 1; i < 32; j < 32}
   (pf_mode: SORT_MODE_VALID(m) | mode: int(m), i: int(i), j: int(j))
   : (PAIR_IN_ORDER(m, i, j) | int) = let
   val (pf_fi | oi, l) = field_offset(pf_mode | mode, i)
@@ -417,15 +467,24 @@ in
     if lte_g1(cmp2, 0) then
       (PAIR_VERIFIED(pf_fi2, pf_fj2, pf_lex2) | 0)
     else
-      ensure_ordered(pf_mode | mode, i, j)
+      ensure_ordered_lex(pf_mode | mode, i, j)
   end
 end
+
+(* Dispatch: modes 0-1 use lex comparison, modes 2-3 use integer comparison *)
+fn ensure_ordered {m:nat | m <= 3}{i,j:nat | j == i + 1; i < 32; j < 32}
+  (pf_mode: SORT_MODE_VALID(m) | mode: int(m), i: int(i), j: int(j))
+  : (PAIR_IN_ORDER(m, i, j) | int) =
+  if lte_g1(mode, 1) then
+    ensure_ordered_lex(pf_mode | mode, i, j)
+  else
+    ensure_ordered_int(mode, i, j)
 
 (* Insert element k into sorted prefix, extending proof.
  * Walks backwards from position k-1 down to 0, calling ensure_ordered
  * on each adjacent pair. Each call may swap, producing a PAIR_IN_ORDER
  * proof for that pair. *)
-fn insertion_pass_inner {m:nat | m <= 1}{k:nat | k < 32}
+fn insertion_pass_inner {m:nat | m <= 3}{k:nat | k < 32}
   (pf_mode: SORT_MODE_VALID(m) | mode: int(m), k: int(k)): void = let
   fun loop {j:nat | j <= k} .<j>.
     (pf_mode: SORT_MODE_VALID(m) | mode: int(m), j: int(j), k: int(k)): void =
@@ -769,7 +828,10 @@ fn _deserialize_v3(len: int, count2: int, sort_mode: int): int = let
   val ok = loop(_checked_nat(count2), 0, 8, fixed_bytes)
   val () = if eq_int_int(ok, 1) then
     _app_set_lib_sort_mode(
-      if eq_int_int(sort_mode, 1) then 1 else 0)
+      if eq_int_int(sort_mode, 1) then 1
+      else if eq_int_int(sort_mode, 2) then 2
+      else if eq_int_int(sort_mode, 3) then 3
+      else 0)
 in ok end
 
 implement library_deserialize(len) =

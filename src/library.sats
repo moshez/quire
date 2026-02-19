@@ -13,7 +13,7 @@
  * - SER_VAR_FIELD: Field index↔record offset agreement (prevents field order/offset drift)
  * - TIMESTAMP_VALID: Timestamp is non-negative
  * - ARCHIVE_STATE_VALID: Archived flag is 0 or 1
- * - SORT_MODE_VALID: Sort mode is 0 (title) or 1 (author)
+ * - SORT_MODE_VALID: Sort mode is 0..3 (title, author, last-opened, date-added)
  * - LIBRARY_SORTED: Library is sorted by the given mode
  *)
 
@@ -89,10 +89,12 @@ dataprop ARCHIVE_STATE_VALID(a: int) =
   | ACTIVE(0)
   | ARCHIVED(1)
 
-(* Sort mode: only title or author *)
+(* Sort mode: title, author, last-opened, date-added *)
 dataprop SORT_MODE_VALID(m: int) =
   | SORT_BY_TITLE(0)
   | SORT_BY_AUTHOR(1)
+  | SORT_BY_LAST_OPENED(2)
+  | SORT_BY_DATE_ADDED(3)
 
 (* View mode: active books or archived books *)
 dataprop VIEW_MODE_VALID(m: int) =
@@ -133,12 +135,26 @@ dataprop FIELD_SPEC(mode: int, book_idx: int, offset: int, len: int) =
   | {i:nat | i < 32}
     FIELD_AUTHOR(1, i, i * REC_BYTES_S + AUTHOR_BYTE_OFF_S, AUTHOR_FIELD_LEN_S)
 
+(* Integer field specification: ties sort mode + book index to i32 slot *)
+dataprop FIELD_INT_SPEC(mode: int, book_idx: int, slot: int) =
+  | {i:nat | i < 32} FIELD_LAST_OPENED(2, i, i * REC_INTS_S + 152)
+  | {i:nat | i < 32} FIELD_DATE_ADDED(3, i, i * REC_INTS_S + 151)
+
+(* Integer comparison proof (reverse chronological: higher value = first) *)
+dataprop INT_CMP(slot_i: int, slot_j: int, result: int) =
+  | {si,sj:int}{r:int | r <= 0} INT_GTE(si, sj, r)
+  | {si,sj:int}{r:int | r > 0} INT_LT_VAL(si, sj, r)
+
 (* Pair ordering: verified by post-state comparison *)
 dataprop PAIR_IN_ORDER(mode: int, i: int, j: int) =
   | {m:int}{i,j:nat | j == i + 1; i < 32; j < 32}
     {oi,oj:int}{l:pos}{r:int | r <= 0}
     PAIR_VERIFIED(m, i, j) of
       (FIELD_SPEC(m, i, oi, l), FIELD_SPEC(m, j, oj, l), LEX_CMP(oi, oj, l, r))
+  | {m:int}{i,j:nat | j == i + 1; i < 32; j < 32}
+    {si,sj:int}{r:int | r <= 0}
+    PAIR_INT_VERIFIED(m, i, j) of
+      (FIELD_INT_SPEC(m, i, si), FIELD_INT_SPEC(m, j, sj), INT_CMP(si, sj, r))
 
 (* Sorted: every adjacent pair is in order — inductive *)
 dataprop LIBRARY_SORTED(mode: int, count: int) =
@@ -187,7 +203,7 @@ fun library_update_position(index: int, chapter: int, page: int): void
 fun library_find_book_by_id(): [i:int | i >= ~1] int(i)
 
 (* Sort library in place. Returns book count with sorted proof. *)
-fun library_sort {m:nat | m <= 1}
+fun library_sort {m:nat | m <= 3}
   (pf_mode: SORT_MODE_VALID(m) | mode: int(m))
   : [n:nat | n <= 32] (LIBRARY_SORTED(m, n) | int(n))
 

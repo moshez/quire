@@ -72,6 +72,8 @@ extern int quire_time_now(void);
 #define TEXT_ARCHIVE 20
 #define TEXT_UNARCHIVE 21
 #define TEXT_NO_ARCHIVED 22
+#define TEXT_SORT_LAST_OPENED 23
+#define TEXT_SORT_DATE_ADDED 24
 
 (* ========== Listener ID constants ========== *)
 
@@ -94,6 +96,8 @@ dataprop READER_LISTENER(id: int) =
 #define LISTENER_VIEW_TOGGLE 55
 #define LISTENER_SORT_TITLE 56
 #define LISTENER_SORT_AUTHOR 57
+#define LISTENER_SORT_LAST_OPENED 58
+#define LISTENER_SORT_DATE_ADDED 59
 #define LISTENER_ARCHIVE_BTN_BASE 60
 
 (* ========== Byte-level helpers (pure ATS2) ========== *)
@@ -444,6 +448,31 @@ fn fill_text {l:agz}{n:pos}
     val () = ward_arr_set_byte(arr, 14, alen, 111) (* o *)
     val () = ward_arr_set_byte(arr, 15, alen, 107) (* k *)
     val () = ward_arr_set_byte(arr, 16, alen, 115) (* s *)
+  in end
+  else if text_id = 23 then let (* "Last opened" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 76)   (* L *)
+    val () = ward_arr_set_byte(arr, 1, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 2, alen, 115)  (* s *)
+    val () = ward_arr_set_byte(arr, 3, alen, 116)  (* t *)
+    val () = ward_arr_set_byte(arr, 4, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 5, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 6, alen, 112)  (* p *)
+    val () = ward_arr_set_byte(arr, 7, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 8, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 9, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 10, alen, 100) (* d *)
+  in end
+  else if text_id = 24 then let (* "Date added" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 68)   (* D *)
+    val () = ward_arr_set_byte(arr, 1, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 2, alen, 116)  (* t *)
+    val () = ward_arr_set_byte(arr, 3, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 4, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 5, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 6, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 7, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 8, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 9, alen, 100)  (* d *)
   in end
   else () (* unused text_id *)
 
@@ -3516,6 +3545,18 @@ implement render_library(root_id) = let
   val s = set_sort_btn_class(s, sort_author_btn_id, eq_int_int(sort_mode, 1))
   val s = set_text_cstr(s, sort_author_btn_id, TEXT_SORT_AUTHOR, 9)
 
+  (* Sort by last opened button *)
+  val sort_last_opened_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, sort_last_opened_btn_id, toolbar_id, tag_button(), 6)
+  val s = set_sort_btn_class(s, sort_last_opened_btn_id, eq_int_int(sort_mode, 2))
+  val s = set_text_cstr(s, sort_last_opened_btn_id, TEXT_SORT_LAST_OPENED, 11)
+
+  (* Sort by date added button *)
+  val sort_date_added_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, sort_date_added_btn_id, toolbar_id, tag_button(), 6)
+  val s = set_sort_btn_class(s, sort_date_added_btn_id, eq_int_int(sort_mode, 3))
+  val s = set_text_cstr(s, sort_date_added_btn_id, TEXT_SORT_DATE_ADDED, 10)
+
   (* Import button — only shown in active view *)
   val label_id = dom_next_id()
   val span_id = dom_next_id()
@@ -3579,6 +3620,24 @@ implement render_library(root_id) = let
     lam (_pl: int): int => let
       val (_ | _n) = library_sort(SORT_BY_AUTHOR() | 1)
       val () = _app_set_lib_sort_mode(1)
+      val () = library_save()
+      val () = render_library(saved_root)
+    in 0 end
+  )
+  val () = ward_add_event_listener(
+    sort_last_opened_btn_id, evt_click(), 5, LISTENER_SORT_LAST_OPENED,
+    lam (_pl: int): int => let
+      val (_ | _n) = library_sort(SORT_BY_LAST_OPENED() | 2)
+      val () = _app_set_lib_sort_mode(2)
+      val () = library_save()
+      val () = render_library(saved_root)
+    in 0 end
+  )
+  val () = ward_add_event_listener(
+    sort_date_added_btn_id, evt_click(), 5, LISTENER_SORT_DATE_ADDED,
+    lam (_pl: int): int => let
+      val (_ | _n) = library_sort(SORT_BY_DATE_ADDED() | 3)
+      val () = _app_set_lib_sort_mode(3)
       val () = library_save()
       val () = render_library(saved_root)
     in 0 end

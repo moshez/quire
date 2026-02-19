@@ -35,7 +35,7 @@ everything else depends on.
   `library.dats`, serialization, and deserialize. Add dataprop proving
   timestamp fields are non-negative.
 
-- [ ] **1.4 Sort by last-opened and date-added.** Extend `SORT_MODE_VALID`
+- [x] **1.4 Sort by last-opened and date-added.** Extend `SORT_MODE_VALID`
   with two new constructors: `SORT_BY_LAST_OPENED(2)` and
   `SORT_BY_DATE_ADDED(3)`. Default sort = last-opened (per spec). Update sort
   comparison in `library.dats` to handle integer timestamp comparison (reverse
