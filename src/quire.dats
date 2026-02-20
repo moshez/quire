@@ -4442,27 +4442,22 @@ implement render_library(root_id) = let
                           (* Store manifest to IDB *)
                           val p_man = epub_store_manifest(pf_zip | (* *))
                       in ward_promise_then<int><int>(p_man,
-                        llam (man_ok: int): ward_promise_chained(int) =>
-                          if lte_int_int(man_ok, 0) then let
-                            val () = update_status_text(sssts, TEXT_ERR_MANIFEST, 13)
-                            val () = ward_file_close(ssh)
-                            val () = import_finish(
-                              import_mark_failed(log_err_manifest(), 12),
-                              sslbl, ssspn, sssts)
-                          in ward_promise_return<int>(0) end
-                          else let
-                            val p_load = epub_load_manifest()
-                          in ward_promise_then<int><int>(p_load,
-                            llam (load_ok: int): ward_promise_chained(int) =>
-                              if lte_int_int(load_ok, 0) then let
-                                val () = update_status_text(sssts, TEXT_ERR_MANIFEST, 13)
-                                val () = ward_file_close(ssh)
-                                val () = import_finish(
-                                  import_mark_failed(log_err_manifest(), 12),
-                                  sslbl, ssspn, sssts)
-                              in ward_promise_return<int>(0) end
-                              else let
-                                val p_cvr = epub_store_cover()
+                        llam (_: int): ward_promise_chained(int) => let
+                          (* Load manifest — ward_idb_put resolves with 0 on success,
+                           * so we cannot check p_man result. Instead check load result:
+                           * epub_load_manifest returns 1 on success, 0 on failure. *)
+                          val p_load = epub_load_manifest()
+                        in ward_promise_then<int><int>(p_load,
+                          llam (load_ok: int): ward_promise_chained(int) =>
+                            if lte_int_int(load_ok, 0) then let
+                              val () = update_status_text(sssts, TEXT_ERR_MANIFEST, 13)
+                              val () = ward_file_close(ssh)
+                              val () = import_finish(
+                                import_mark_failed(log_err_manifest(), 12),
+                                sslbl, ssspn, sssts)
+                            in ward_promise_return<int>(0) end
+                            else let
+                              val p_cvr = epub_store_cover()
                               in ward_promise_then<int><int>(p_cvr,
                                 llam (_: int): ward_promise_chained(int) => let
                                   val p_si = epub_store_search_index()
