@@ -110,8 +110,8 @@ dataprop READER_LISTENER(id: int) =
 #define LISTENER_VIEW_ARCHIVED 93
 #define LISTENER_VIEW_ACTIVE 94
 #define LISTENER_HIDE_BTN_BASE 95
-#define LISTENER_DUP_SKIP 128
-#define LISTENER_DUP_REPLACE 129
+#define LISTENER_DUP_SKIP 34
+#define LISTENER_DUP_REPLACE 35
 
 (* ========== Byte-level helpers (pure ATS2) ========== *)
 
