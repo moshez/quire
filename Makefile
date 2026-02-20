@@ -122,6 +122,11 @@ build/quire.wasm: $(ALL_OBJS)
 
 # --- Utilities ---
 
+# --- Static tests (compile-time only, C output discarded) ---
+
+static-tests: | build
+	$(PATSOPT) -IATS src -IATS $(WARD_DIR) -o /dev/null -d src/static_tests.dats
+
 clean:
 	rm -rf build/*
 
@@ -155,4 +160,4 @@ dist: build/quire.wasm
 	sed -i "s|>dev</div>|>$(COMMIT_SHA)</div>|" dist/index.html
 	sed -i "s|quire-v3|quire-$(COMMIT_SHA)|" dist/service-worker.js
 
-.PHONY: all clean install dist
+.PHONY: all clean install dist static-tests
