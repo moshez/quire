@@ -1196,19 +1196,23 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.library-list', { timeout: 15000 });
     await page.waitForSelector('.book-card', { timeout: 15000 });
 
-    // Import same EPUB again — should deduplicate silently
+    // Import same EPUB again — duplicate modal appears for active books
     const fileInput2 = page.locator('input[type="file"]');
     await fileInput2.setInputFiles(epubPath);
 
-    // Wait for import to start (label → "importing"), then finish (→ "import-btn").
-    // Race against a short delay in case import is near-instant for dedup.
-    await Promise.race([
-      page.waitForSelector('label.importing', { timeout: 5000 }),
-      page.waitForTimeout(1000),
-    ]);
+    // Wait for duplicate modal to appear
+    await page.waitForSelector('.dup-overlay', { timeout: 30000 });
+    await screenshot(page, 'dedup-02-modal-shown');
+
+    // Click "Replace" to proceed with reimport
+    const replaceBtn = page.locator('.dup-replace');
+    await replaceBtn.click();
+
+    // Wait for modal to dismiss and import to complete
+    await expect(page.locator('.dup-overlay')).not.toBeVisible({ timeout: 10000 });
     await page.waitForSelector('label.import-btn', { timeout: 30000 });
     await page.waitForTimeout(1000);
-    await screenshot(page, 'dedup-02-after-reimport');
+    await screenshot(page, 'dedup-03-after-replace');
 
     // Still only 1 book card — same content hash, same book
     const bookCards = page.locator('.book-card');
@@ -1762,7 +1766,7 @@ test.describe('EPUB Reader E2E', () => {
       title: 'Duplicate Test Book',
       author: 'Dup Author',
       chapters: 1,
-      paragraphs: 3,
+      paragraphsPerChapter: 3,
     });
 
     await page.goto('/');
