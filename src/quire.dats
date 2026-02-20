@@ -3316,7 +3316,7 @@ fun prescan_deferred_for_idb {lb:agz}{n:pos}{ld:agz}{nd:pos}{k:nat} .<k>.
     val entry_idx = epub_find_resource(path_len)
   in
     if gte_g1(entry_idx, 0) then let
-      val () = _app_deferred_img_node_id_set(out, _g0(entry_idx))
+      val () = _app_deferred_img_node_id_set(out, nid)
       val () = _app_deferred_img_entry_idx_set(out, _g0(entry_idx))
     in prescan_deferred_for_idb(sub_g1(rem, 1), tree, tlen, cdir, cdlen,
       i + 1, total, out + 1) end
