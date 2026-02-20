@@ -2195,9 +2195,9 @@ in s end
  * The constraint MGMT_CSS_LEN == MGMT_CSS_WRITES * 4 proves alignment.
  * If someone changes the CSS content length, they must also update
  * MGMT_CSS_WRITES to match, or the solver rejects. *)
-stadef MGMT_CSS_WRITES = 68
+stadef MGMT_CSS_WRITES = 76
 stadef MGMT_CSS_LEN = MGMT_CSS_WRITES * 4
-#define MGMT_CSS_LEN 272
+#define MGMT_CSS_LEN 304
 
 fn fill_css_mgmt {l:agz}{n:int | n >= MGMT_CSS_LEN}
   (arr: !ward_arr(byte, l, n), alen: int n): void = let
@@ -2273,6 +2273,15 @@ fn fill_css_mgmt {l:agz}{n:int | n >= MGMT_CSS_LEN}
   val () = _w4(arr, alen, 260, 1869377379)
   val () = _w4(arr, alen, 264, 1713584754)
   val () = _w4(arr, alen, 268, 545089126)
+  (* .lib-toolbar{flex-wrap:wrap} — prevents button overflow on narrow viewports *)
+  val () = _w4(arr, alen, 272, 1651076142)
+  val () = _w4(arr, alen, 276, 1869575213)
+  val () = _w4(arr, alen, 280, 1918984812)
+  val () = _w4(arr, alen, 284, 1701602939)
+  val () = _w4(arr, alen, 288, 1920413048)
+  val () = _w4(arr, alen, 292, 2000318561)
+  val () = _w4(arr, alen, 296, 2104516978)
+  val () = _w4(arr, alen, 300, 538976288)
 in end
 
 fn inject_mgmt_css {l:agz}
