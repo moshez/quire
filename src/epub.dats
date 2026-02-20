@@ -20,6 +20,8 @@ staload _ = "./../vendor/ward/lib/promise.dats"
 staload "./../vendor/ward/lib/idb.sats"
 staload "./../vendor/ward/lib/file.sats"
 staload "./../vendor/ward/lib/decompress.sats"
+staload "./../vendor/ward/lib/xml.sats"
+staload _ = "./../vendor/ward/lib/xml.dats"
 
 (* ========== Ward arr byte helpers ========== *)
 
@@ -275,7 +277,7 @@ implement epub_init() = let
   val () = _app_set_epub_opf_path_len(0)
   val () = _app_set_epub_opf_dir_len(0)
   val () = _app_set_epub_spine_count(0)
-  val () = _app_set_epub_state(0)
+  val () = _app_set_epub_state(0) (* init-only: no proof required *)
   val () = _app_set_epub_spine_path_count(0)
   val () = _app_set_epub_spine_path_pos(0)
   val () = _app_set_epub_cover_href_len(0)
@@ -289,7 +291,9 @@ implement epub_get_progress() = 0
 
 implement epub_get_error(_) = 0
 
-implement epub_start_import(_) = 0
+implement epub_start_import(pf_idle | _) = let
+  prval EPUB_IS_IDLE() = pf_idle
+in 0 end
 
 implement epub_get_title(buf_offset) = let
   val tlen = _app_epub_title_len()
@@ -315,8 +319,6 @@ in
   else _clamp256(sc)
 end
 
-implement epub_get_chapter_key(_, _) = 0
-
 implement epub_continue() = ()
 
 implement epub_on_file_open(_, _) = ()
@@ -327,7 +329,7 @@ implement epub_on_db_open(_) = ()
 
 implement epub_on_db_put(_) = ()
 
-implement epub_cancel() = _app_set_epub_state(0)
+implement epub_cancel() = _app_set_epub_state(0) (* cancel resets to idle *)
 
 (* TOC stubs *)
 implement epub_get_toc_count() = 0
@@ -341,11 +343,15 @@ implement epub_get_toc_level(_) = 0
 implement epub_get_chapter_title(_, _) = 0
 
 (* Serialization stubs *)
-implement epub_serialize_metadata() = 0
+implement epub_serialize_metadata() = (SERIALIZE_OK() | 0)
 
-implement epub_restore_metadata(_) = 0
+implement epub_restore_metadata(pf | _) = let
+  prval SERIALIZE_OK() = pf
+in 0 end
 
-implement epub_reset() = epub_init()
+implement epub_reset() = let
+  val () = epub_init()
+in (EPUB_IS_IDLE() | ()) end
 
 (* ========== epub_parse_container_bytes ========== *)
 
@@ -833,7 +839,7 @@ implement epub_parse_opf_bytes(arr, len) = let
   val () = _app_set_epub_spine_count(spine_count)
   val () = _opf_resolve_spine(arr, len, spine_count)
 in
-  _app_set_epub_state(8); (* EPUB_STATE_DONE *)
+  _app_set_epub_state(8); (* EPUB_STATE_DONE — set by OPF parse *)
   spine_count
 end
 
@@ -1005,17 +1011,20 @@ in ward_text_done(bld) end
 (* Store cover image: copy resource blob from its resource key to the cover key.
  * Requires manifest to be loaded (for epub_find_resource). *)
 implement epub_store_cover() = let
-  val href_len = _app_epub_cover_href_len()
+  val href_len0 = _app_epub_cover_href_len()
+  val href_len = g1ofg0(href_len0)
 in
-  if lte_int_int(href_len, 0) then ward_promise_return<int>(0)
+  if lte_g1(href_len, 0) then ward_promise_return<int>(0)
   else let
+    (* href_len > 0 — constraint solver tracks this *)
     (* Copy cover href to sbuf[0..href_len-1] for epub_find_resource *)
-    val () = _app_copy_epub_cover_href_to_sbuf(0, href_len)
-    val entry_idx = epub_find_resource(href_len)
+    val () = _app_copy_epub_cover_href_to_sbuf(0, _g0(href_len))
+    val entry_idx = epub_find_resource(_g0(href_len))
   in
-    if lt_int_int(entry_idx, 0) then ward_promise_return<int>(0)
+    if lt_g1(entry_idx, 0) then ward_promise_return<int>(0)
     else let
-      val key = epub_build_resource_key(entry_idx)
+      (* entry_idx >= 0 — constraint solver tracks this *)
+      val key = epub_build_resource_key(_g0(entry_idx))
       val p = ward_idb_get(key, 20)
     in
       ward_promise_then<int><int>(p,
@@ -1281,19 +1290,22 @@ end
 
 (* ========== epub_find_resource ========== *)
 
-(* Linear scan of manifest names, comparing against sbuf[0..path_len-1] *)
+(* Linear scan of manifest names, comparing against sbuf[0..path_len-1].
+ * Returns [r:int | r >= ~1] int(r) — -1 for not found, >= 0 for index. *)
 implement epub_find_resource(path_len) = let
   val count = _app_epub_manifest_count()
   fun scan {k:nat} .<k>.
-    (rem: int(k), idx: int, cnt: int, plen: int): int =
-    if lte_g1(rem, 0) then 0 - 1
-    else if gte_int_int(idx, cnt) then 0 - 1
+    (rem: int(k), idx: int, cnt: int, plen: int): [r:int | r >= ~1] int(r) =
+    if lte_g1(rem, 0) then ~1
+    else if gte_int_int(idx, cnt) then ~1
     else let
       val noff = _app_epub_manifest_offsets_get_i32(idx)
       val nlen = _app_epub_manifest_lens_get_i32(idx)
     in
       if neq_int_int(nlen, plen) then scan(sub_g1(rem, 1), idx + 1, cnt, plen)
-      else if gt_int_int(_app_manifest_name_match_sbuf(noff, nlen, plen), 0) then idx
+      else if gt_int_int(_app_manifest_name_match_sbuf(noff, nlen, plen), 0) then let
+        extern castfn _res_idx(x: int): [r:int | r >= ~1] int(r)
+      in _res_idx(idx) end
       else scan(sub_g1(rem, 1), idx + 1, cnt, plen)
     end
 in scan(_checked_nat(count), 0, count, path_len) end
@@ -1313,3 +1325,509 @@ implement epub_set_book_id_from_library(book_index) = let
   val () = _app_copy_lib_book_id_to_epub(base_bytes + LIB_BOOKID_OFF, bid_len)
   val () = _app_set_epub_book_id_len(bid_len)
 in end
+
+(* ========== Search Index (2.2) ========== *)
+
+(* Module-level castfns for search index functions *)
+extern castfn _si_tcap {n:pos}(x: int, sz: int n): [m:nat | m < n] int m
+extern castfn _si_bv(x: int): [v:nat | v < 256] int v
+extern castfn _si_u16v(x: int): [v:nat | v < 65536] int v
+extern castfn _si_u16_off {n:pos}(x: int, sz: int n): [i:nat | i + 2 <= n] int i
+extern castfn _si_i32_off {n:pos}(x: int, sz: int n): [i:nat | i + 4 <= n] int i
+extern castfn _si_rcap {n:pos}(x: int, sz: int n): [i:nat | i + 2 <= n] int i
+extern castfn _si_buf_size(x: int): [n:pos | n <= 1048576] int n
+
+(* Fold uppercase ASCII [65-90] to lowercase [97-122].
+ * Solver verifies: 65+32=97, 90+32=122. *)
+fn _fold_upper {b:int | b >= 65; b <= 90}
+  (b: int(b)): [out:int | out >= 97; out <= 122] int(out) =
+  add_g1(b, 32)
+
+(* Fold Latin-1 diacritics (0xC0-0xFF after 0xC3 prefix in UTF-8).
+ * byte is the second byte of a 0xC3 two-byte sequence (0x80-0xBF = 128-191).
+ * Returns > 0: folded ASCII letter (proven <= 122, thus NOT a diacritics byte).
+ * Returns 0: non-letter passthrough (multiply sign, thorn, eth, etc.).
+ *
+ * Toddler test: can't return 200 — violates out <= 122. *)
+fn _fold_latin1 {b:int | b >= 128; b <= 191}
+  (b: int(b)): [out:nat | out <= 122] int(out) = let
+  extern castfn _fl(x: int): [r:nat | r <= 122] int(r)
+in
+  (* À-Æ = 192-198 → 0x80-0x86 = 128-134 → 'a' = 97 *)
+  if lte_g1(b, 134) then _fl(97) (* a *)
+  (* Ç = 199 → 0x87 = 135 → 'c' = 99 *)
+  else if eq_g1(b, 135) then _fl(99)
+  (* È-Ë = 200-203 → 0x88-0x8B = 136-139 → 'e' = 101 *)
+  else if lte_g1(b, 139) then _fl(101)
+  (* Ì-Ï = 204-207 → 0x8C-0x8F = 140-143 → 'i' = 105 *)
+  else if lte_g1(b, 143) then _fl(105)
+  (* Ð = 208 → 0x90 = 144 → 'd' = 100 *)
+  else if eq_g1(b, 144) then _fl(100)
+  (* Ñ = 209 → 0x91 = 145 → 'n' = 110 *)
+  else if eq_g1(b, 145) then _fl(110)
+  (* Ò-Ö = 210-214 → 0x92-0x96 = 146-150 → 'o' = 111 *)
+  else if lte_g1(b, 150) then _fl(111)
+  (* × = 215 → 0x97 = 151 → passthrough *)
+  else if eq_g1(b, 151) then _fl(0)
+  (* Ø = 216 → 0x98 = 152 → 'o' = 111 *)
+  else if eq_g1(b, 152) then _fl(111)
+  (* Ù-Ü = 217-220 → 0x99-0x9C = 153-156 → 'u' = 117 *)
+  else if lte_g1(b, 156) then _fl(117)
+  (* Ý = 221 → 0x9D = 157 → 'y' = 121 *)
+  else if eq_g1(b, 157) then _fl(121)
+  (* Þ = 222 → 0x9E = 158 → passthrough *)
+  else if eq_g1(b, 158) then _fl(0)
+  (* ß = 223 → 0x9F = 159 → 's' = 115 *)
+  else if eq_g1(b, 159) then _fl(115)
+  (* à-æ = 224-230 → 0xA0-0xA6 = 160-166 → 'a' = 97 *)
+  else if lte_g1(b, 166) then _fl(97)
+  (* ç = 231 → 0xA7 = 167 → 'c' = 99 *)
+  else if eq_g1(b, 167) then _fl(99)
+  (* è-ë = 232-235 → 0xA8-0xAB = 168-171 → 'e' = 101 *)
+  else if lte_g1(b, 171) then _fl(101)
+  (* ì-ï = 236-239 → 0xAC-0xAF = 172-175 → 'i' = 105 *)
+  else if lte_g1(b, 175) then _fl(105)
+  (* ð = 240 → 0xB0 = 176 → 'd' = 100 *)
+  else if eq_g1(b, 176) then _fl(100)
+  (* ñ = 241 → 0xB1 = 177 → 'n' = 110 *)
+  else if eq_g1(b, 177) then _fl(110)
+  (* ò-ö = 242-246 → 0xB2-0xB6 = 178-182 → 'o' = 111 *)
+  else if lte_g1(b, 182) then _fl(111)
+  (* ÷ = 247 → 0xB7 = 183 → passthrough *)
+  else if eq_g1(b, 183) then _fl(0)
+  (* ø = 248 → 0xB8 = 184 → 'o' = 111 *)
+  else if eq_g1(b, 184) then _fl(111)
+  (* ù-ü = 249-252 → 0xB9-0xBC = 185-188 → 'u' = 117 *)
+  else if lte_g1(b, 188) then _fl(117)
+  (* ý = 253 → 0xBD = 189 → 'y' = 121 *)
+  else if eq_g1(b, 189) then _fl(121)
+  (* þ = 254 → 0xBE = 190 → passthrough *)
+  else if eq_g1(b, 190) then _fl(0)
+  (* ÿ = 255 → 0xBF = 191 → 'y' = 121 *)
+  else _fl(121)
+end
+
+(* Check if a tag name (by length and first letter) is a block-level element.
+ * Used to insert space separators between block content.
+ * Length-first dispatch avoids string comparison for most tags. *)
+fn _is_block_tag {lb:agz}{nb:pos}
+  (buf: !ward_arr_borrow(byte, lb, nb), tag_off: int, tag_len: int, cap: int nb): bool =
+  if eq_int_int(tag_len, 1) then let
+    val c = ward_arr_read<byte>(buf, _ward_idx(tag_off, cap))
+  in eq_int_int(byte2int0(c), 112) end (* p *)
+  else if eq_int_int(tag_len, 2) then let
+    val c = ward_arr_read<byte>(buf, _ward_idx(tag_off, cap))
+    val ch = byte2int0(c)
+  in (* br, dd, dl, dt, hr, li, ol, td, th, tr, ul *)
+    eq_int_int(ch, 98) || eq_int_int(ch, 100) || eq_int_int(ch, 104) ||
+    eq_int_int(ch, 108) || eq_int_int(ch, 111) || eq_int_int(ch, 116) ||
+    eq_int_int(ch, 117)
+  end
+  else if eq_int_int(tag_len, 3) then let
+    val c = ward_arr_read<byte>(buf, _ward_idx(tag_off, cap))
+    val ch = byte2int0(c)
+  in (* div, nav, pre *)
+    eq_int_int(ch, 100) || eq_int_int(ch, 110) || eq_int_int(ch, 112)
+  end
+  else if eq_int_int(tag_len, 4) then let
+    val c = ward_arr_read<byte>(buf, _ward_idx(tag_off, cap))
+  in eq_int_int(byte2int0(c), 109) end (* main *)
+  else if eq_int_int(tag_len, 5) then let
+    val c = ward_arr_read<byte>(buf, _ward_idx(tag_off, cap))
+    val ch = byte2int0(c)
+  in (* aside, table, tbody, tfoot, thead *)
+    eq_int_int(ch, 97) || eq_int_int(ch, 116)
+  end
+  else if eq_int_int(tag_len, 6) then let
+    val c = ward_arr_read<byte>(buf, _ward_idx(tag_off, cap))
+    val ch = byte2int0(c)
+  in (* figure, footer, header *)
+    eq_int_int(ch, 102) || eq_int_int(ch, 104)
+  end
+  else if eq_int_int(tag_len, 7) then let
+    val c = ward_arr_read<byte>(buf, _ward_idx(tag_off, cap))
+    val ch = byte2int0(c)
+  in (* article, details, section *)
+    eq_int_int(ch, 97) || eq_int_int(ch, 100) || eq_int_int(ch, 115)
+  end
+  else if eq_int_int(tag_len, 10) then let
+    val c = ward_arr_read<byte>(buf, _ward_idx(tag_off, cap))
+    val ch = byte2int0(c)
+  in (* blockquote, figcaption *)
+    eq_int_int(ch, 98) || eq_int_int(ch, 102)
+  end
+  else false
+
+(* Check if tag is "script" (6 bytes: 115,99,114,105,112,116) or
+ * "style" (5 bytes: 115,116,121,108,101) *)
+fn _is_skip_tag {lb:agz}{nb:pos}
+  (buf: !ward_arr_borrow(byte, lb, nb), tag_off: int, tag_len: int, cap: int nb): bool =
+  if eq_int_int(tag_len, 6) then let
+    val c0 = byte2int0(ward_arr_read<byte>(buf, _ward_idx(tag_off, cap)))
+    val c1 = byte2int0(ward_arr_read<byte>(buf, _ward_idx(tag_off + 1, cap)))
+  in eq_int_int(c0, 115) && eq_int_int(c1, 99) end (* sc... = script *)
+  else if eq_int_int(tag_len, 5) then let
+    val c0 = byte2int0(ward_arr_read<byte>(buf, _ward_idx(tag_off, cap)))
+    val c1 = byte2int0(ward_arr_read<byte>(buf, _ward_idx(tag_off + 1, cap)))
+  in eq_int_int(c0, 115) && eq_int_int(c1, 116) end (* st... = style *)
+  else false
+
+(* Extract plain text from SAX buffer into a text output buffer.
+ * Folds diacritics and lowercases as it goes. Records offset map runs.
+ *
+ * Parameters:
+ *   sax_buf: borrowed SAX buffer from ward_xml_parse_html
+ *   sax_len: length of SAX buffer
+ *   text_arr: output buffer for folded plain text
+ *   text_cap: capacity of text_arr
+ *   run_arr: output buffer for offset map runs (u16 pairs: text_off, sax_pos)
+ *   run_cap: capacity of run_arr (in bytes, must be divisible by 4)
+ *
+ * Returns @(text_len, run_count) *)
+extern fun _extract_chapter_text
+  {ls:agz}{ns:pos}{lt:agz}{nt:pos}{lr:agz}{nr:pos}
+  (sax_buf: !ward_arr_borrow(byte, ls, ns), sax_len: int ns,
+   text_arr: !ward_arr(byte, lt, nt), text_cap: int nt,
+   run_arr: !ward_arr(byte, lr, nr), run_cap: int nr
+  ): @(int, int) = "ext#"
+
+implement _extract_chapter_text
+  (sax_buf, sax_len, text_arr, text_cap, run_arr, run_cap) = let
+
+  fun walk {ls:agz}{ns:pos}{lt:agz}{nt:pos}{lr:agz}{nr:pos}{k:nat} .<k>.
+    (rem: int(k),
+     sax: !ward_arr_borrow(byte, ls, ns), slen: int ns,
+     txt: !ward_arr(byte, lt, nt), tcap: int nt,
+     runs: !ward_arr(byte, lr, nr), rcap: int nr,
+     sax_pos: int, txt_off: int, run_count: int,
+     skip_depth: int, pending_c3: int): @(int, int) =
+    if lte_g1(rem, 0) then @(txt_off, run_count)
+    else if gte_int_int(sax_pos, _g0(slen)) then @(txt_off, run_count)
+    else if gte_int_int(txt_off, _g0(tcap)) then @(txt_off, run_count)
+    else let
+      val opc = ward_xml_opcode(sax, _ward_idx(sax_pos, slen))
+    in
+      if eq_int_int(opc, 1) then let
+        (* ELEMENT_OPEN *)
+        val @(tag_off, tag_len, _attr_count, next_pos) =
+          ward_xml_element_open(sax, _ward_idx(sax_pos, slen), slen)
+      in
+        if lt_int_int(next_pos, 0) then @(txt_off, run_count)
+        else if gt_int_int(skip_depth, 0) then
+          walk(sub_g1(rem, 1), sax, slen, txt, tcap, runs, rcap,
+               next_pos, txt_off, run_count, skip_depth + 1, pending_c3)
+        else if _is_skip_tag(sax, tag_off, tag_len, slen) then
+          walk(sub_g1(rem, 1), sax, slen, txt, tcap, runs, rcap,
+               next_pos, txt_off, run_count, 1, pending_c3)
+        else let
+          (* If block element, append space *)
+          val is_block = _is_block_tag(sax, tag_off, tag_len, slen)
+        in
+          if is_block then
+            if gt_int_int(txt_off, 0) then
+              if lt_int_int(txt_off, _g0(tcap)) then let
+                val () = ward_arr_write_byte(txt, _si_tcap(txt_off, tcap), _si_bv(32))
+              in walk(sub_g1(rem, 1), sax, slen, txt, tcap, runs, rcap,
+                      next_pos, txt_off + 1, run_count, 0, pending_c3)
+              end
+              else @(txt_off, run_count)
+            else walk(sub_g1(rem, 1), sax, slen, txt, tcap, runs, rcap,
+                      next_pos, txt_off, run_count, 0, pending_c3)
+          else walk(sub_g1(rem, 1), sax, slen, txt, tcap, runs, rcap,
+                    next_pos, txt_off, run_count, 0, pending_c3)
+        end
+      end
+      else if eq_int_int(opc, 2) then let
+        (* ELEMENT_CLOSE: 1 byte opcode *)
+        val next_pos = sax_pos + 1
+      in
+        if gt_int_int(skip_depth, 0) then
+          walk(sub_g1(rem, 1), sax, slen, txt, tcap, runs, rcap,
+               next_pos, txt_off, run_count, skip_depth - 1, pending_c3)
+        else
+          walk(sub_g1(rem, 1), sax, slen, txt, tcap, runs, rcap,
+               next_pos, txt_off, run_count, 0, pending_c3)
+      end
+      else if eq_int_int(opc, 3) then let
+        (* TEXT *)
+        val @(text_off, text_len, next_pos) =
+          ward_xml_read_text(sax, _ward_idx(sax_pos, slen), slen)
+      in
+        if lt_int_int(next_pos, 0) then @(txt_off, run_count)
+        else if gt_int_int(skip_depth, 0) then
+          walk(sub_g1(rem, 1), sax, slen, txt, tcap, runs, rcap,
+               next_pos, txt_off, run_count, skip_depth, pending_c3)
+        else if lte_int_int(text_len, 0) then
+          walk(sub_g1(rem, 1), sax, slen, txt, tcap, runs, rcap,
+               next_pos, txt_off, run_count, 0, pending_c3)
+        else let
+          (* Record run entry: (txt_off, sax_pos) *)
+          val run_off = mul_int_int(run_count, 4)
+          val new_rc =
+            if lt_int_int(run_off + 4, _g0(rcap)) then let
+              val () = ward_arr_write_u16le(runs, _si_rcap(run_off, rcap), _si_u16v(txt_off))
+              val () = ward_arr_write_u16le(runs, _si_rcap(run_off + 2, rcap), _si_u16v(sax_pos))
+            in run_count + 1 end
+            else run_count
+          (* Copy text bytes with folding *)
+          fun fold_text {ls2:agz}{ns2:pos}{lt2:agz}{nt2:pos}{k2:nat} .<k2>.
+            (rem2: int(k2),
+             sax2: !ward_arr_borrow(byte, ls2, ns2), slen2: int ns2,
+             txt2: !ward_arr(byte, lt2, nt2), tcap2: int nt2,
+             si: int, send: int, ti: int, pc3: int): @(int, int) =
+            if lte_g1(rem2, 0) then @(ti, pc3)
+            else if gte_int_int(si, send) then @(ti, pc3)
+            else if gte_int_int(ti, _g0(tcap2)) then @(ti, pc3)
+            else let
+              val b = byte2int0(ward_arr_read<byte>(sax2, _ward_idx(si, slen2)))
+            in
+              if eq_int_int(pc3, 1) then let
+                (* Previous byte was 0xC3 — this is the second byte *)
+                val b1 = g1ofg0(b)
+              in
+                if gte_g1(b1, 128) then
+                  if lte_g1(b1, 191) then let
+                    val folded = _fold_latin1(b1)
+                  in
+                    if gt_g1(folded, 0) then let
+                      val () = ward_arr_write_byte(txt2, _si_tcap(ti, tcap2), _si_bv(_g0(folded)))
+                    in fold_text(sub_g1(rem2, 1), sax2, slen2, txt2, tcap2,
+                                 si + 1, send, ti + 1, 0) end
+                    else
+                      (* Non-letter: output original 2 bytes (0xC3 + b) *)
+                      if lt_int_int(ti + 1, _g0(tcap2)) then let
+                        val () = ward_arr_write_byte(txt2, _si_tcap(ti, tcap2), _si_bv(195))
+                        val () = ward_arr_write_byte(txt2, _si_tcap(ti + 1, tcap2), _si_bv(b))
+                      in fold_text(sub_g1(rem2, 1), sax2, slen2, txt2, tcap2,
+                                   si + 1, send, ti + 2, 0) end
+                      else @(ti, 0)
+                  end
+                  else let
+                    (* Out of Latin-1 range — output raw bytes *)
+                    val () = ward_arr_write_byte(txt2, _si_tcap(ti, tcap2), _si_bv(195))
+                  in
+                    if lt_int_int(ti + 1, _g0(tcap2)) then let
+                      val () = ward_arr_write_byte(txt2, _si_tcap(ti + 1, tcap2), _si_bv(b))
+                    in fold_text(sub_g1(rem2, 1), sax2, slen2, txt2, tcap2,
+                                 si + 1, send, ti + 2, 0) end
+                    else @(ti + 1, 0)
+                  end
+                else let
+                  (* byte < 128 after 0xC3 — shouldn't happen, output raw *)
+                  val () = ward_arr_write_byte(txt2, _si_tcap(ti, tcap2), _si_bv(195))
+                in
+                  if lt_int_int(ti + 1, _g0(tcap2)) then let
+                    val () = ward_arr_write_byte(txt2, _si_tcap(ti + 1, tcap2), _si_bv(b))
+                  in fold_text(sub_g1(rem2, 1), sax2, slen2, txt2, tcap2,
+                               si + 1, send, ti + 2, 0) end
+                  else @(ti + 1, 0)
+                end
+              end
+              (* 0xC3 prefix — set pending *)
+              else if eq_int_int(b, 195) then
+                fold_text(sub_g1(rem2, 1), sax2, slen2, txt2, tcap2,
+                          si + 1, send, ti, 1)
+              (* Uppercase ASCII [65-90] → lowercase *)
+              else let val b1 = g1ofg0(b) in
+                if gte_g1(b1, 65) then
+                  if lte_g1(b1, 90) then let
+                    val folded = _fold_upper(b1)
+                    val () = ward_arr_write_byte(txt2, _si_tcap(ti, tcap2), _si_bv(_g0(folded)))
+                  in fold_text(sub_g1(rem2, 1), sax2, slen2, txt2, tcap2,
+                               si + 1, send, ti + 1, 0) end
+                  else let
+                    (* Regular byte — copy as-is *)
+                    val () = ward_arr_write_byte(txt2, _si_tcap(ti, tcap2), _si_bv(b))
+                  in fold_text(sub_g1(rem2, 1), sax2, slen2, txt2, tcap2,
+                               si + 1, send, ti + 1, 0) end
+                else let
+                  val () = ward_arr_write_byte(txt2, _si_tcap(ti, tcap2), _si_bv(b))
+                in fold_text(sub_g1(rem2, 1), sax2, slen2, txt2, tcap2,
+                             si + 1, send, ti + 1, 0) end
+              end
+            end
+          val @(new_ti, new_pc3) = fold_text(
+            _checked_nat(text_len), sax, slen, txt, tcap,
+            text_off, text_off + text_len, txt_off, pending_c3)
+        in
+          walk(sub_g1(rem, 1), sax, slen, txt, tcap, runs, rcap,
+               next_pos, new_ti, new_rc, 0, new_pc3)
+        end
+      end
+      else (* Unknown opcode — skip *)
+        @(txt_off, run_count)
+    end
+in
+  walk(_checked_nat(_g0(sax_len)), sax_buf, sax_len,
+       text_arr, text_cap, run_arr, run_cap,
+       0, 0, 0, 0, 0)
+end
+
+(* Build 20-char IDB search key: {16 hex book_id}s{3 hex spine_idx} *)
+implement epub_build_search_key(pf | spine_idx, _count) = let
+  prval SPINE_ENTRY() = pf
+  val b0 = _app_epub_book_id_get_u8(0)
+  val b1 = _app_epub_book_id_get_u8(1)
+  val b2 = _app_epub_book_id_get_u8(2)
+  val b3 = _app_epub_book_id_get_u8(3)
+  val b4 = _app_epub_book_id_get_u8(4)
+  val b5 = _app_epub_book_id_get_u8(5)
+  val b6 = _app_epub_book_id_get_u8(6)
+  val b7 = _app_epub_book_id_get_u8(7)
+  val bld = ward_text_build(20)
+  val bld = ward_text_putc(bld, 0, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b0, 255), 16))))
+  val bld = ward_text_putc(bld, 1, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b0, 255), 16))))
+  val bld = ward_text_putc(bld, 2, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b1, 255), 16))))
+  val bld = ward_text_putc(bld, 3, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b1, 255), 16))))
+  val bld = ward_text_putc(bld, 4, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b2, 255), 16))))
+  val bld = ward_text_putc(bld, 5, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b2, 255), 16))))
+  val bld = ward_text_putc(bld, 6, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b3, 255), 16))))
+  val bld = ward_text_putc(bld, 7, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b3, 255), 16))))
+  val bld = ward_text_putc(bld, 8, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b4, 255), 16))))
+  val bld = ward_text_putc(bld, 9, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b4, 255), 16))))
+  val bld = ward_text_putc(bld, 10, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b5, 255), 16))))
+  val bld = ward_text_putc(bld, 11, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b5, 255), 16))))
+  val bld = ward_text_putc(bld, 12, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b6, 255), 16))))
+  val bld = ward_text_putc(bld, 13, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b6, 255), 16))))
+  val bld = ward_text_putc(bld, 14, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b7, 255), 16))))
+  val bld = ward_text_putc(bld, 15, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b7, 255), 16))))
+  (* 's' separator: ASCII 115, SAFE_CHAR [97-122] *)
+  val bld = ward_text_putc(bld, 16, 115)
+  (* 3-digit hex spine index *)
+  val si = band_int_int(_g0(spine_idx), 4095)
+  val bld = ward_text_putc(bld, 17, _safe_hex_char(_hex_nibble(div_int_int(si, 256))))
+  val bld = ward_text_putc(bld, 18, _safe_hex_char(_hex_nibble(mod_int_int(div_int_int(si, 16), 16))))
+  val bld = ward_text_putc(bld, 19, _safe_hex_char(_hex_nibble(mod_int_int(si, 16))))
+in ward_text_done(bld) end
+
+(* Process one chapter: load resource from IDB, parse HTML, extract text,
+ * store search index record. Returns chained promise. *)
+fn _build_chapter_search_index {c,t:nat | c < t}
+  (pf: SPINE_ORDERED(c, t) | ch_idx: int(c), ch_count: int(t)): ward_promise_chained(int) = let
+  (* Get spine entry index for this chapter *)
+  val entry_idx = _app_epub_spine_entry_idx_get(_g0(ch_idx))
+  val key = epub_build_resource_key(entry_idx)
+  val p = ward_idb_get(key, 20)
+  val saved_idx = ch_idx
+  val saved_count = ch_count
+in
+  ward_promise_then<int><int>(p,
+    llam (data_len: int): ward_promise_chained(int) =>
+      if lte_int_int(data_len, 0) then ward_promise_return<int>(1)
+      else let
+        val dl = _checked_pos(data_len)
+        val html_arr = ward_idb_get_result(dl)
+        val @(frozen, borrow) = ward_arr_freeze<byte>(html_arr)
+        (* Parse HTML to SAX *)
+        val sax_len = ward_xml_parse_html(borrow, dl)
+        val () = ward_arr_drop<byte>(frozen, borrow)
+        val html_arr = ward_arr_thaw<byte>(frozen)
+        val () = ward_arr_free<byte>(html_arr)
+      in
+        if lte_int_int(sax_len, 0) then ward_promise_return<int>(1)
+        else let
+          val sl = _checked_pos(sax_len)
+          val sax_arr = ward_xml_get_result(sl)
+          val @(sax_frozen, sax_borrow) = ward_arr_freeze<byte>(sax_arr)
+          (* Allocate text and run buffers *)
+          val text_sz = _si_buf_size(65536) (* 64K text buffer *)
+          val run_sz = _si_buf_size(16384) (* 16K = 4096 runs * 4 bytes *)
+          val text_buf = ward_arr_alloc<byte>(text_sz)
+          val run_buf = ward_arr_alloc<byte>(run_sz)
+          (* Extract text *)
+          val @(text_len, run_count) =
+            _extract_chapter_text(sax_borrow, sl,
+              text_buf, text_sz, run_buf, run_sz)
+          val () = ward_arr_drop<byte>(sax_frozen, sax_borrow)
+          val sax_arr = ward_arr_thaw<byte>(sax_frozen)
+          val () = ward_arr_free<byte>(sax_arr)
+          (* Build final IDB record:
+           * Header (8 bytes): [u32 text_len] [u16 run_count] [u16 reserved]
+           * Runs (run_count * 4 bytes): per run [u16 text_off] [u16 sax_pos]
+           * Text (text_len bytes): folded plain text *)
+          val run_bytes = mul_int_int(run_count, 4)
+          val total_size = add_int_int(8, add_int_int(run_bytes, text_len))
+        in
+          if lte_int_int(total_size, 8) then let
+            val () = ward_arr_free<byte>(text_buf)
+            val () = ward_arr_free<byte>(run_buf)
+          in ward_promise_return<int>(1) end
+          else if gt_int_int(total_size, 1048576) then let
+            val () = ward_arr_free<byte>(text_buf)
+            val () = ward_arr_free<byte>(run_buf)
+          in ward_promise_return<int>(1) end
+          else let
+            val tsz = _si_buf_size(total_size)
+            val final_arr = ward_arr_alloc<byte>(tsz)
+            (* Write header *)
+            val () = ward_arr_write_i32(final_arr, _si_i32_off(0, tsz), text_len)
+            val () = ward_arr_write_u16le(final_arr, _si_u16_off(4, tsz), _si_u16v(run_count))
+            val () = ward_arr_write_u16le(final_arr, _si_u16_off(6, tsz), _si_u16v(0))
+            (* Copy run data *)
+            fun copy_runs {la:agz}{na:pos}{lr:agz}{nr:pos}{k:nat} .<k>.
+              (rem: int(k), i: int, cnt: int,
+               dst: !ward_arr(byte, la, na), dsz: int na,
+               src: !ward_arr(byte, lr, nr), ssz: int nr): void =
+              if lte_g1(rem, 0) then ()
+              else if gte_int_int(i, cnt) then ()
+              else let
+                val src_off = mul_int_int(i, 4)
+                val dst_off = 8 + src_off
+                val v0 = _ab(src, src_off, ssz)
+                val v1 = _ab(src, src_off + 1, ssz)
+                val v2 = _ab(src, src_off + 2, ssz)
+                val v3 = _ab(src, src_off + 3, ssz)
+                val () = _wb(dst, dst_off, v0, dsz)
+                val () = _wb(dst, dst_off + 1, v1, dsz)
+                val () = _wb(dst, dst_off + 2, v2, dsz)
+                val () = _wb(dst, dst_off + 3, v3, dsz)
+              in copy_runs(sub_g1(rem, 1), i + 1, cnt, dst, dsz, src, ssz) end
+            val () = copy_runs(_checked_nat(run_count), 0, run_count,
+              final_arr, tsz, run_buf, run_sz)
+            val () = ward_arr_free<byte>(run_buf)
+            (* Copy text data *)
+            val text_base = 8 + run_bytes
+            fun copy_text {la:agz}{na:pos}{lt2:agz}{nt2:pos}{k:nat} .<k>.
+              (rem: int(k), i: int, tlen: int,
+               dst: !ward_arr(byte, la, na), dsz: int na,
+               src: !ward_arr(byte, lt2, nt2), ssz: int nt2,
+               base: int): void =
+              if lte_g1(rem, 0) then ()
+              else if gte_int_int(i, tlen) then ()
+              else let
+                val () = _wb(dst, base + i, _ab(src, i, ssz), dsz)
+              in copy_text(sub_g1(rem, 1), i + 1, tlen, dst, dsz, src, ssz, base) end
+            val () = copy_text(_checked_nat(text_len), 0, text_len,
+              final_arr, tsz, text_buf, text_sz, text_base)
+            val () = ward_arr_free<byte>(text_buf)
+            (* Store to IDB *)
+            val @(final_frozen, final_borrow) = ward_arr_freeze<byte>(final_arr)
+            val search_key = epub_build_search_key(SPINE_ENTRY() | saved_idx, saved_count)
+            val p2 = ward_idb_put(search_key, 20, final_borrow, tsz)
+            val () = ward_arr_drop<byte>(final_frozen, final_borrow)
+            val final_arr = ward_arr_thaw<byte>(final_frozen)
+            val () = ward_arr_free<byte>(final_arr)
+          in ward_promise_vow(p2) end
+        end
+      end)
+end
+
+(* Store search index for all chapters. Sequential promise chain. *)
+implement epub_store_search_index() = let
+  val count0 = epub_get_chapter_count()
+  val count = count0: int
+  fun loop {c:nat}{t:nat | c <= t; t <= 256}{k:nat} .<k>.
+    (rem: int(k), idx: int(c), total: int(t)): ward_promise_chained(int) =
+    if lte_g1(rem, 0) then ward_promise_return<int>(1)
+    else if gte_g1(idx, total) then ward_promise_return<int>(1)
+    else let
+      val saved_idx = add_g1(idx, 1)
+      val saved_total = total
+      val saved_rem = sub_g1(rem, 1)
+      val p = _build_chapter_search_index(SPINE_ENTRY() | idx, total)
+    in
+      ward_promise_then<int><int>(p,
+        llam (_status: int): ward_promise_chained(int) =>
+          loop(saved_rem, saved_idx, saved_total))
+    end
+in loop(count0, 0, count0) end

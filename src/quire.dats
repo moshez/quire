@@ -3315,9 +3315,9 @@ fun prescan_deferred_for_idb {lb:agz}{n:pos}{ld:agz}{nd:pos}{k:nat} .<k>.
     val path_len = resolve_img_src(tree, tlen, src_off, src_len, cdir, cdlen)
     val entry_idx = epub_find_resource(path_len)
   in
-    if gte_int_int(entry_idx, 0) then let
-      val () = _app_deferred_img_node_id_set(out, nid)
-      val () = _app_deferred_img_entry_idx_set(out, entry_idx)
+    if gte_g1(entry_idx, 0) then let
+      val () = _app_deferred_img_node_id_set(out, _g0(entry_idx))
+      val () = _app_deferred_img_entry_idx_set(out, _g0(entry_idx))
     in prescan_deferred_for_idb(sub_g1(rem, 1), tree, tlen, cdir, cdlen,
       i + 1, total, out + 1) end
     else prescan_deferred_for_idb(sub_g1(rem, 1), tree, tlen, cdir, cdlen,
@@ -4027,6 +4027,10 @@ implement render_library(root_id) = let
                             val p_cvr = epub_store_cover()
                           in ward_promise_then<int><int>(p_cvr,
                             llam (_: int): ward_promise_chained(int) => let
+                            (* Build search index for all chapters *)
+                            val p_si = epub_store_search_index()
+                          in ward_promise_then<int><int>(p_si,
+                            llam (_: int): ward_promise_chained(int) => let
                           val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
                           val () =
                             if gt_int_int(ok2, 0) then let
@@ -4056,6 +4060,7 @@ implement render_library(root_id) = let
                       end)
                     end)
                   end)
+                end)
                 end)
                 end
                 else let

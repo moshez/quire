@@ -67,7 +67,7 @@ everything else depends on.
   thumbnail (scale to max 200px wide via canvas in bridge), store thumbnail
   blob in IndexedDB keyed by book content hash. Display in library cards.
 
-- [ ] **2.2 Search index building at import time.** Extract plain text per
+- [x] **2.2 Search index building at import time.** Extract plain text per
   chapter during import. Store in IndexedDB with character offset mapping back
   to XML tree positions. Fold diacritics during indexing. Schema: one record
   per chapter with `{bookHash, chapterIndex, plainText, offsets[]}`.

@@ -1668,4 +1668,87 @@ test.describe('EPUB Reader E2E', () => {
     await screenshot(page, 'no-cover-02-verified');
   });
 
+  test('search index records stored at import time', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    page.on('crash', () => { throw new Error('PAGE CRASHED: ' + errors.join('; ')); });
+
+    // 2-chapter EPUB — expect 2 search index records
+    const epubBuffer = createEpub({
+      title: 'Search Index Test',
+      author: 'Test Bot',
+      chapters: 2,
+      paragraphsPerChapter: 3,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('label.import-btn', { timeout: 15000 });
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `search-index-test-${vpTag}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await screenshot(page, 'search-index-01-imported');
+
+    // Query IDB for search index records (keys matching *s*)
+    const searchKeys = await page.evaluate(async () => {
+      const db = await new Promise((resolve, reject) => {
+        const req = indexedDB.open('ward', 1);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      const tx = db.transaction('kv', 'readonly');
+      const store = tx.objectStore('kv');
+      const allKeys = await new Promise((resolve, reject) => {
+        const req = store.getAllKeys();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      // Search keys have 's' at position 16 (format: {16-hex}s{3-hex})
+      const sKeys = allKeys.filter(k =>
+        typeof k === 'string' && k.length === 20 && k[16] === 's'
+      );
+      // Read header of each search index record
+      const records = [];
+      for (const key of sKeys) {
+        const val = await new Promise((resolve, reject) => {
+          const tx2 = db.transaction('kv', 'readonly');
+          const req = tx2.objectStore('kv').get(key);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+        if (val instanceof Uint8Array && val.length >= 8) {
+          const dv = new DataView(val.buffer, val.byteOffset, val.byteLength);
+          records.push({
+            key,
+            textLen: dv.getUint32(0, true),
+            runCount: dv.getUint16(4, true),
+            reserved: dv.getUint16(6, true),
+            totalSize: val.length,
+          });
+        }
+      }
+      return records;
+    });
+
+    // Expect exactly 2 search index records (one per chapter)
+    expect(searchKeys.length).toBe(2);
+
+    // Verify headers are valid
+    for (const rec of searchKeys) {
+      expect(rec.textLen).toBeGreaterThan(0);
+      expect(rec.runCount).toBeGreaterThan(0);
+      expect(rec.reserved).toBe(0);
+      // Total size = 8 (header) + runCount*4 (offset map) + textLen (text)
+      expect(rec.totalSize).toBe(8 + rec.runCount * 4 + rec.textLen);
+    }
+
+    await screenshot(page, 'search-index-02-verified');
+    expect(errors).toEqual([]);
+  });
+
 });
