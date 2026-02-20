@@ -1161,7 +1161,7 @@ implement epub_store_manifest(pf_zip | (* *)) = let
 
 in
   if lt_int_int(total_size, 4) then ward_promise_return<int>(0)
-  else if gt_int_int(total_size, 65536) then ward_promise_return<int>(0)
+  else if gt_int_int(total_size, 262144) then ward_promise_return<int>(0)
   else let
     extern castfn _manifest_size(x: int): [n:int | n >= 4; n <= 1048576] int n
     val tsz = _manifest_size(total_size)

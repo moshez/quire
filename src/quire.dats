@@ -78,6 +78,10 @@ extern int quire_time_now(void);
 #define TEXT_NO_HIDDEN 26
 #define TEXT_HIDE 27
 #define TEXT_UNHIDE 28
+#define TEXT_ERR_MANIFEST 29
+#define TEXT_DUP_SKIP 30
+#define TEXT_DUP_REPLACE 31
+#define TEXT_DUP_MSG 32
 
 (* ========== Listener ID constants ========== *)
 
@@ -106,6 +110,8 @@ dataprop READER_LISTENER(id: int) =
 #define LISTENER_VIEW_ARCHIVED 93
 #define LISTENER_VIEW_ACTIVE 94
 #define LISTENER_HIDE_BTN_BASE 95
+#define LISTENER_DUP_SKIP 34
+#define LISTENER_DUP_REPLACE 35
 
 (* ========== Byte-level helpers (pure ATS2) ========== *)
 
@@ -519,6 +525,56 @@ fn fill_text {l:agz}{n:pos}
     val () = ward_arr_set_byte(arr, 3, alen, 105)  (* i *)
     val () = ward_arr_set_byte(arr, 4, alen, 100)  (* d *)
     val () = ward_arr_set_byte(arr, 5, alen, 101)  (* e *)
+  in end
+  else if text_id = 29 then let (* "Import failed" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 73)   (* I *)
+    val () = ward_arr_set_byte(arr, 1, alen, 109)  (* m *)
+    val () = ward_arr_set_byte(arr, 2, alen, 112)  (* p *)
+    val () = ward_arr_set_byte(arr, 3, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 4, alen, 114)  (* r *)
+    val () = ward_arr_set_byte(arr, 5, alen, 116)  (* t *)
+    val () = ward_arr_set_byte(arr, 6, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 7, alen, 102)  (* f *)
+    val () = ward_arr_set_byte(arr, 8, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 9, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 10, alen, 108) (* l *)
+    val () = ward_arr_set_byte(arr, 11, alen, 101) (* e *)
+    val () = ward_arr_set_byte(arr, 12, alen, 100) (* d *)
+  in end
+  else if text_id = 30 then let (* "Skip" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 83)   (* S *)
+    val () = ward_arr_set_byte(arr, 1, alen, 107)  (* k *)
+    val () = ward_arr_set_byte(arr, 2, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 3, alen, 112)  (* p *)
+  in end
+  else if text_id = 31 then let (* "Replace" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 82)   (* R *)
+    val () = ward_arr_set_byte(arr, 1, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 2, alen, 112)  (* p *)
+    val () = ward_arr_set_byte(arr, 3, alen, 108)  (* l *)
+    val () = ward_arr_set_byte(arr, 4, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 5, alen, 99)   (* c *)
+    val () = ward_arr_set_byte(arr, 6, alen, 101)  (* e *)
+  in end
+  else if text_id = 32 then let (* "Already in library" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 65)   (* A *)
+    val () = ward_arr_set_byte(arr, 1, alen, 108)  (* l *)
+    val () = ward_arr_set_byte(arr, 2, alen, 114)  (* r *)
+    val () = ward_arr_set_byte(arr, 3, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 4, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 5, alen, 100)  (* d *)
+    val () = ward_arr_set_byte(arr, 6, alen, 121)  (* y *)
+    val () = ward_arr_set_byte(arr, 7, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 8, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 9, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 10, alen, 32)  (*   *)
+    val () = ward_arr_set_byte(arr, 11, alen, 108) (* l *)
+    val () = ward_arr_set_byte(arr, 12, alen, 105) (* i *)
+    val () = ward_arr_set_byte(arr, 13, alen, 98)  (* b *)
+    val () = ward_arr_set_byte(arr, 14, alen, 114) (* r *)
+    val () = ward_arr_set_byte(arr, 15, alen, 97)  (* a *)
+    val () = ward_arr_set_byte(arr, 16, alen, 114) (* r *)
+    val () = ward_arr_set_byte(arr, 17, alen, 121) (* y *)
   in end
   else () (* unused text_id *)
 
@@ -1008,6 +1064,101 @@ fn cls_next_btn(): ward_safe_text(8) = let
   val b = ward_text_putc(b, 7, char2int1('n'))
 in ward_text_done(b) end
 
+(* ========== Duplicate modal CSS class builders ========== *)
+
+fn cls_dup_overlay(): ward_safe_text(11) = let
+  val b = ward_text_build(11)
+  val b = ward_text_putc(b, 0, char2int1('d'))
+  val b = ward_text_putc(b, 1, char2int1('u'))
+  val b = ward_text_putc(b, 2, char2int1('p'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('o'))
+  val b = ward_text_putc(b, 5, char2int1('v'))
+  val b = ward_text_putc(b, 6, char2int1('e'))
+  val b = ward_text_putc(b, 7, char2int1('r'))
+  val b = ward_text_putc(b, 8, char2int1('l'))
+  val b = ward_text_putc(b, 9, char2int1('a'))
+  val b = ward_text_putc(b, 10, char2int1('y'))
+in ward_text_done(b) end
+
+fn cls_dup_modal(): ward_safe_text(9) = let
+  val b = ward_text_build(9)
+  val b = ward_text_putc(b, 0, char2int1('d'))
+  val b = ward_text_putc(b, 1, char2int1('u'))
+  val b = ward_text_putc(b, 2, char2int1('p'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('m'))
+  val b = ward_text_putc(b, 5, char2int1('o'))
+  val b = ward_text_putc(b, 6, char2int1('d'))
+  val b = ward_text_putc(b, 7, char2int1('a'))
+  val b = ward_text_putc(b, 8, char2int1('l'))
+in ward_text_done(b) end
+
+fn cls_dup_title(): ward_safe_text(9) = let
+  val b = ward_text_build(9)
+  val b = ward_text_putc(b, 0, char2int1('d'))
+  val b = ward_text_putc(b, 1, char2int1('u'))
+  val b = ward_text_putc(b, 2, char2int1('p'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('t'))
+  val b = ward_text_putc(b, 5, char2int1('i'))
+  val b = ward_text_putc(b, 6, char2int1('t'))
+  val b = ward_text_putc(b, 7, char2int1('l'))
+  val b = ward_text_putc(b, 8, char2int1('e'))
+in ward_text_done(b) end
+
+fn cls_dup_msg(): ward_safe_text(7) = let
+  val b = ward_text_build(7)
+  val b = ward_text_putc(b, 0, char2int1('d'))
+  val b = ward_text_putc(b, 1, char2int1('u'))
+  val b = ward_text_putc(b, 2, char2int1('p'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('m'))
+  val b = ward_text_putc(b, 5, char2int1('s'))
+  val b = ward_text_putc(b, 6, char2int1('g'))
+in ward_text_done(b) end
+
+fn cls_dup_actions(): ward_safe_text(11) = let
+  val b = ward_text_build(11)
+  val b = ward_text_putc(b, 0, char2int1('d'))
+  val b = ward_text_putc(b, 1, char2int1('u'))
+  val b = ward_text_putc(b, 2, char2int1('p'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('a'))
+  val b = ward_text_putc(b, 5, char2int1('c'))
+  val b = ward_text_putc(b, 6, char2int1('t'))
+  val b = ward_text_putc(b, 7, char2int1('i'))
+  val b = ward_text_putc(b, 8, char2int1('o'))
+  val b = ward_text_putc(b, 9, char2int1('n'))
+  val b = ward_text_putc(b, 10, char2int1('s'))
+in ward_text_done(b) end
+
+fn cls_dup_btn(): ward_safe_text(7) = let
+  val b = ward_text_build(7)
+  val b = ward_text_putc(b, 0, char2int1('d'))
+  val b = ward_text_putc(b, 1, char2int1('u'))
+  val b = ward_text_putc(b, 2, char2int1('p'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('b'))
+  val b = ward_text_putc(b, 5, char2int1('t'))
+  val b = ward_text_putc(b, 6, char2int1('n'))
+in ward_text_done(b) end
+
+fn cls_dup_replace(): ward_safe_text(11) = let
+  val b = ward_text_build(11)
+  val b = ward_text_putc(b, 0, char2int1('d'))
+  val b = ward_text_putc(b, 1, char2int1('u'))
+  val b = ward_text_putc(b, 2, char2int1('p'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('r'))
+  val b = ward_text_putc(b, 5, char2int1('e'))
+  val b = ward_text_putc(b, 6, char2int1('p'))
+  val b = ward_text_putc(b, 7, char2int1('l'))
+  val b = ward_text_putc(b, 8, char2int1('a'))
+  val b = ward_text_putc(b, 9, char2int1('c'))
+  val b = ward_text_putc(b, 10, char2int1('e'))
+in ward_text_done(b) end
+
 (* tabindex value "0" = 1 char *)
 fn val_zero(): ward_safe_text(1) = let
   val b = ward_text_build(1)
@@ -1106,6 +1257,23 @@ fn log_err_lib_full(): ward_safe_text(12) = let
   val b = ward_text_putc(b, 9, char2int1('u'))
   val b = ward_text_putc(b, 10, char2int1('l'))
   val b = ward_text_putc(b, 11, char2int1('l'))
+in ward_text_done(b) end
+
+(* "err-manifest" = 12 chars — manifest too large or failed *)
+fn log_err_manifest(): ward_safe_text(12) = let
+  val b = ward_text_build(12)
+  val b = ward_text_putc(b, 0, char2int1('e'))
+  val b = ward_text_putc(b, 1, char2int1('r'))
+  val b = ward_text_putc(b, 2, char2int1('r'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('m'))
+  val b = ward_text_putc(b, 5, char2int1('a'))
+  val b = ward_text_putc(b, 6, char2int1('n'))
+  val b = ward_text_putc(b, 7, char2int1('i'))
+  val b = ward_text_putc(b, 8, char2int1('f'))
+  val b = ward_text_putc(b, 9, char2int1('e'))
+  val b = ward_text_putc(b, 10, char2int1('s'))
+  val b = ward_text_putc(b, 11, char2int1('t'))
 in ward_text_done(b) end
 
 
@@ -2379,6 +2547,265 @@ in
     val dom = ward_dom_stream_end(s)
     val () = ward_dom_fini(dom)
   in end
+end
+
+(* ========== Duplicate modal CSS ========== *)
+
+#define DUP_CSS_WRITES 140
+stadef DUP_CSS_WRITES = 140
+stadef DUP_CSS_LEN = DUP_CSS_WRITES * 4
+#define DUP_CSS_LEN 560
+
+fn fill_css_dup {l:agz}{n:int | n >= DUP_CSS_LEN}
+  (arr: !ward_arr(byte, l, n), alen: int n): void = let
+  val () = _w4(arr, alen, 0, 1886741550)
+  val () = _w4(arr, alen, 4, 1702260525)
+  val () = _w4(arr, alen, 8, 2036427890)
+  val () = _w4(arr, alen, 12, 1936683131)
+  val () = _w4(arr, alen, 16, 1869182057)
+  val () = _w4(arr, alen, 20, 1768307310)
+  val () = _w4(arr, alen, 24, 996435320)
+  val () = _w4(arr, alen, 28, 1702063721)
+  val () = _w4(arr, alen, 32, 993016436)
+  val () = _w4(arr, alen, 36, 1801675106)
+  val () = _w4(arr, alen, 40, 1970238055)
+  val () = _w4(arr, alen, 44, 1916429422)
+  val () = _w4(arr, alen, 48, 677470823)
+  val () = _w4(arr, alen, 52, 741354544)
+  val () = _w4(arr, alen, 56, 875441200)
+  val () = _w4(arr, alen, 60, 1768176425)
+  val () = _w4(arr, alen, 64, 1634496627)
+  val () = _w4(arr, alen, 68, 1818638969)
+  val () = _w4(arr, alen, 72, 1631287397)
+  val () = _w4(arr, alen, 76, 1852270956)
+  val () = _w4(arr, alen, 80, 1702127917)
+  val () = _w4(arr, alen, 84, 1664775021)
+  val () = _w4(arr, alen, 88, 1702129253)
+  val () = _w4(arr, alen, 92, 1969896306)
+  val () = _w4(arr, alen, 96, 1718187123)
+  val () = _w4(arr, alen, 100, 1868770681)
+  val () = _w4(arr, alen, 104, 1852142702)
+  val () = _w4(arr, alen, 108, 1701001844)
+  val () = _w4(arr, alen, 112, 1919251566)
+  val () = _w4(arr, alen, 116, 1764588091)
+  val () = _w4(arr, alen, 120, 2019910766)
+  val () = _w4(arr, alen, 124, 808464698)
+  val () = _w4(arr, alen, 128, 1969499773)
+  val () = _w4(arr, alen, 132, 1869426032)
+  val () = _w4(arr, alen, 136, 2070700388)
+  val () = _w4(arr, alen, 140, 1801675106)
+  val () = _w4(arr, alen, 144, 1970238055)
+  val () = _w4(arr, alen, 148, 591029358)
+  val () = _w4(arr, alen, 152, 996566630)
+  val () = _w4(arr, alen, 156, 1685221218)
+  val () = _w4(arr, alen, 160, 1915581029)
+  val () = _w4(arr, alen, 164, 1969841249)
+  val () = _w4(arr, alen, 168, 1882733171)
+  val () = _w4(arr, alen, 172, 1634745208)
+  val () = _w4(arr, alen, 176, 1852400740)
+  val () = _w4(arr, alen, 180, 774978151)
+  val () = _w4(arr, alen, 184, 1835364917)
+  val () = _w4(arr, alen, 188, 2019650875)
+  val () = _w4(arr, alen, 192, 1684633389)
+  val () = _w4(arr, alen, 196, 842688628)
+  val () = _w4(arr, alen, 200, 1835364916)
+  val () = _w4(arr, alen, 204, 1684633403)
+  val () = _w4(arr, alen, 208, 960129140)
+  val () = _w4(arr, alen, 212, 1950033200)
+  val () = _w4(arr, alen, 216, 762607717)
+  val () = _w4(arr, alen, 220, 1734962273)
+  val () = _w4(arr, alen, 224, 1701001838)
+  val () = _w4(arr, alen, 228, 1919251566)
+  val () = _w4(arr, alen, 232, 1969499773)
+  val () = _w4(arr, alen, 236, 1769221488)
+  val () = _w4(arr, alen, 240, 2070244468)
+  val () = _w4(arr, alen, 244, 1953394534)
+  val () = _w4(arr, alen, 248, 1768257325)
+  val () = _w4(arr, alen, 252, 980707431)
+  val () = _w4(arr, alen, 256, 993013815)
+  val () = _w4(arr, alen, 260, 1735549293)
+  val () = _w4(arr, alen, 264, 1647144553)
+  val () = _w4(arr, alen, 268, 1869902959)
+  val () = _w4(arr, alen, 272, 892222061)
+  val () = _w4(arr, alen, 276, 2104321394)
+  val () = _w4(arr, alen, 280, 1886741550)
+  val () = _w4(arr, alen, 284, 1735617837)
+  val () = _w4(arr, alen, 288, 1819239291)
+  val () = _w4(arr, alen, 292, 591032943)
+  val () = _w4(arr, alen, 296, 993408566)
+  val () = _w4(arr, alen, 300, 1735549293)
+  val () = _w4(arr, alen, 304, 1647144553)
+  val () = _w4(arr, alen, 308, 1869902959)
+  val () = _w4(arr, alen, 312, 774978157)
+  val () = _w4(arr, alen, 316, 1835364917)
+  val () = _w4(arr, alen, 320, 1969499773)
+  val () = _w4(arr, alen, 324, 1667313008)
+  val () = _w4(arr, alen, 328, 1852795252)
+  val () = _w4(arr, alen, 332, 1768192883)
+  val () = _w4(arr, alen, 336, 1634496627)
+  val () = _w4(arr, alen, 340, 1818638969)
+  val () = _w4(arr, alen, 344, 1731950693)
+  val () = _w4(arr, alen, 348, 775581793)
+  val () = _w4(arr, alen, 352, 1701983543)
+  val () = _w4(arr, alen, 356, 1969896301)
+  val () = _w4(arr, alen, 360, 1718187123)
+  val () = _w4(arr, alen, 364, 1868770681)
+  val () = _w4(arr, alen, 368, 1852142702)
+  val () = _w4(arr, alen, 372, 1701001844)
+  val () = _w4(arr, alen, 376, 1919251566)
+  val () = _w4(arr, alen, 380, 1969499773)
+  val () = _w4(arr, alen, 384, 1952591216)
+  val () = _w4(arr, alen, 388, 1680747630)
+  val () = _w4(arr, alen, 392, 1915580533)
+  val () = _w4(arr, alen, 396, 1634496613)
+  val () = _w4(arr, alen, 400, 1887135075)
+  val () = _w4(arr, alen, 404, 1768186977)
+  val () = _w4(arr, alen, 408, 775579502)
+  val () = _w4(arr, alen, 412, 1835364917)
+  val () = _w4(arr, alen, 416, 892219680)
+  val () = _w4(arr, alen, 420, 997025138)
+  val () = _w4(arr, alen, 424, 1685221218)
+  val () = _w4(arr, alen, 428, 1915581029)
+  val () = _w4(arr, alen, 432, 1969841249)
+  val () = _w4(arr, alen, 436, 1882471027)
+  val () = _w4(arr, alen, 440, 1868708728)
+  val () = _w4(arr, alen, 444, 1919247474)
+  val () = _w4(arr, alen, 448, 2020618554)
+  val () = _w4(arr, alen, 452, 1819243296)
+  val () = _w4(arr, alen, 456, 589325417)
+  val () = _w4(arr, alen, 460, 996369251)
+  val () = _w4(arr, alen, 464, 1936880995)
+  val () = _w4(arr, alen, 468, 1882878575)
+  val () = _w4(arr, alen, 472, 1953393007)
+  val () = _w4(arr, alen, 476, 1715171941)
+  val () = _w4(arr, alen, 480, 762605167)
+  val () = _w4(arr, alen, 484, 1702521203)
+  val () = _w4(arr, alen, 488, 1701982522)
+  val () = _w4(arr, alen, 492, 1680768365)
+  val () = _w4(arr, alen, 496, 1915580533)
+  val () = _w4(arr, alen, 500, 1634496613)
+  val () = _w4(arr, alen, 504, 1652254051)
+  val () = _w4(arr, alen, 508, 1735091041)
+  val () = _w4(arr, alen, 512, 1853190002)
+  val () = _w4(arr, alen, 516, 874723940)
+  val () = _w4(arr, alen, 520, 895694689)
+  val () = _w4(arr, alen, 524, 1868774201)
+  val () = _w4(arr, alen, 528, 980578156)
+  val () = _w4(arr, alen, 532, 1717986851)
+  val () = _w4(arr, alen, 536, 1919902267)
+  val () = _w4(arr, alen, 540, 762471780)
+  val () = _w4(arr, alen, 544, 1869377379)
+  val () = _w4(arr, alen, 548, 874723954)
+  val () = _w4(arr, alen, 552, 895694689)
+  val () = _w4(arr, alen, 556, 539000121)
+in end
+
+(* Inject dup modal CSS as a separate <style> element.
+ * Called when rendering the duplicate modal overlay. *)
+fn inject_dup_css(parent: int): void = let
+  val dup_arr = ward_arr_alloc<byte>(DUP_CSS_LEN)
+  val () = fill_css_dup(dup_arr, DUP_CSS_LEN)
+  val style_id = dom_next_id()
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+  val s = ward_dom_stream_create_element(s, style_id, parent, tag_style(), 5)
+  val @(frozen, borrow) = ward_arr_freeze<byte>(dup_arr)
+  val s = ward_dom_stream_set_text(s, style_id, borrow, DUP_CSS_LEN)
+  val () = ward_arr_drop<byte>(frozen, borrow)
+  val dup_arr = ward_arr_thaw<byte>(frozen)
+  val () = ward_arr_free<byte>(dup_arr)
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
+in end
+
+(* Render duplicate book modal: overlay with book title, message, Skip and Replace buttons.
+ * Sets _app_dup_overlay_id so the overlay can be removed when user makes a choice. *)
+fn render_dup_modal(dup_idx: int, root: int): void = let
+  (* Inject dup CSS under root *)
+  val () = inject_dup_css(root)
+
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+
+  (* Overlay *)
+  val overlay_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, overlay_id, root, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, overlay_id, attr_class(), 5,
+    cls_dup_overlay(), 11)
+  val () = _app_set_dup_overlay_id(overlay_id)
+
+  (* Modal container *)
+  val modal_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, modal_id, overlay_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, modal_id, attr_class(), 5,
+    cls_dup_modal(), 9)
+
+  (* Title: show existing book's title *)
+  val title_div_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, title_div_id, modal_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, title_div_id, attr_class(), 5,
+    cls_dup_title(), 9)
+  val title_len = library_get_title(dup_idx, 0)
+  val s = set_text_from_sbuf(s, title_div_id, title_len)
+
+  (* Message: "Already in library" *)
+  val msg_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, msg_id, modal_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, msg_id, attr_class(), 5,
+    cls_dup_msg(), 7)
+  val s = set_text_cstr(s, msg_id, TEXT_DUP_MSG, 18)
+
+  (* Actions container *)
+  val actions_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, actions_id, modal_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, actions_id, attr_class(), 5,
+    cls_dup_actions(), 11)
+
+  (* Skip button *)
+  val skip_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, skip_btn_id, actions_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, skip_btn_id, attr_class(), 5,
+    cls_dup_btn(), 7)
+  val s = set_text_cstr(s, skip_btn_id, TEXT_DUP_SKIP, 4)
+
+  (* Replace button *)
+  val replace_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, replace_btn_id, actions_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, replace_btn_id, attr_class(), 5,
+    cls_dup_replace(), 11)
+  val s = set_text_cstr(s, replace_btn_id, TEXT_DUP_REPLACE, 7)
+
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
+
+  (* Register click listeners on buttons *)
+  val () = ward_add_event_listener(
+    skip_btn_id, evt_click(), 5, LISTENER_DUP_SKIP,
+    lam (_pl: int): int => let
+      val () = _app_set_dup_choice(1) (* skip *)
+    in 0 end
+  )
+  val () = ward_add_event_listener(
+    replace_btn_id, evt_click(), 5, LISTENER_DUP_REPLACE,
+    lam (_pl: int): int => let
+      val () = _app_set_dup_choice(2) (* replace *)
+    in 0 end
+  )
+in end
+
+(* Remove the duplicate modal overlay from the DOM *)
+fn dismiss_dup_modal(): void = let
+  val overlay_id = _app_dup_overlay_id()
+in
+  if gt_int_int(overlay_id, 0) then let
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_remove_child(s, overlay_id)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = _app_set_dup_overlay_id(0)
+  in end
+  else ()
 end
 
 (* Clear text content of a node by removing its children *)
@@ -4019,48 +4446,129 @@ implement render_library(root_id) = let
                           val p_man = epub_store_manifest(pf_zip | (* *))
                       in ward_promise_then<int><int>(p_man,
                         llam (_: int): ward_promise_chained(int) => let
-                          (* Load manifest so epub_find_resource works for cover *)
+                          (* Load manifest — ward_idb_put resolves with 0 on success,
+                           * so we cannot check p_man result. Instead check load result:
+                           * epub_load_manifest returns 1 on success, 0 on failure. *)
                           val p_load = epub_load_manifest()
                         in ward_promise_then<int><int>(p_load,
-                          llam (_: int): ward_promise_chained(int) => let
-                            (* Store cover image to its own IDB key *)
-                            val p_cvr = epub_store_cover()
-                          in ward_promise_then<int><int>(p_cvr,
-                            llam (_: int): ward_promise_chained(int) => let
-                            (* Build search index for all chapters *)
-                            val p_si = epub_store_search_index()
-                          in ward_promise_then<int><int>(p_si,
-                            llam (_: int): ward_promise_chained(int) => let
-                          val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
-                          val () =
-                            if gt_int_int(ok2, 0) then let
-                              val (pf_result | book_idx) = library_add_book()
-                              prval _ = pf_result
-                            in
-                              if gte_int_int(book_idx, 0) then let
-                                val () = library_save()
-                                val () = ward_file_close(ssh)
-                                val h = import_mark_success()
-                                val dom = ward_dom_init()
-                                val s = ward_dom_stream_begin(dom)
-                                val s = render_library_with_books(s, ssli, 0)
-                                val dom = ward_dom_stream_end(s)
-                                val () = ward_dom_fini(dom)
-                                val btn_count = library_get_count()
-                                val () = register_card_btns(_checked_nat(btn_count), 0, btn_count, ssr, 0)
-                                val cvr_count = _cover_queue_count()
-                                val () = if gt_int_int(cvr_count, 0) then
-                                  load_library_covers(_checked_nat(cvr_count), 0, cvr_count)
-                              in import_finish(h, sslbl, ssspn, sssts) end
-                              else import_finish(
-                                import_mark_failed(log_err_lib_full(), 12),
+                          llam (load_ok: int): ward_promise_chained(int) =>
+                            if lte_int_int(load_ok, 0) then let
+                              val () = update_status_text(sssts, TEXT_ERR_MANIFEST, 13)
+                              val () = ward_file_close(ssh)
+                              val () = import_finish(
+                                import_mark_failed(log_err_manifest(), 12),
                                 sslbl, ssspn, sssts)
-                            end
-                        in ward_promise_return<int>(0) end)
-                      end)
-                    end)
-                  end)
-                end)
+                            in ward_promise_return<int>(0) end
+                            else let
+                              val p_cvr = epub_store_cover()
+                              in ward_promise_then<int><int>(p_cvr,
+                                llam (_: int): ward_promise_chained(int) => let
+                                  val p_si = epub_store_search_index()
+                                in ward_promise_then<int><int>(p_si,
+                                  llam (_: int): ward_promise_chained(int) => let
+                                    val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
+                                  in
+                                    if lte_int_int(ok2, 0) then
+                                      ward_promise_return<int>(0)
+                                    else let
+                                      val dup_idx = library_find_book_by_id()
+                                    in
+                                      if gte_int_int(dup_idx, 0) then let
+                                        val shelf = library_get_shelf_state(dup_idx)
+                                      in
+                                        if gt_int_int(shelf, 0) then let
+                                          val () = library_replace_book(dup_idx)
+                                          val () = library_save()
+                                          val () = ward_file_close(ssh)
+                                          val h = import_mark_success()
+                                          val dom = ward_dom_init()
+                                          val s = ward_dom_stream_begin(dom)
+                                          val s = render_library_with_books(s, ssli, 0)
+                                          val dom = ward_dom_stream_end(s)
+                                          val () = ward_dom_fini(dom)
+                                          val btn_count = library_get_count()
+                                          val () = register_card_btns(_checked_nat(btn_count), 0, btn_count, ssr, 0)
+                                          val cvr_count = _cover_queue_count()
+                                          val () = if gt_int_int(cvr_count, 0) then
+                                            load_library_covers(_checked_nat(cvr_count), 0, cvr_count)
+                                          val () = import_finish(h, sslbl, ssspn, sssts)
+                                        in ward_promise_return<int>(0) end
+                                        else let
+                                          val () = _app_set_dup_choice(0)
+                                          val () = render_dup_modal(dup_idx, ssr)
+                                          val sdi = dup_idx
+                                          fun poll_dup {k:nat} .<k>.
+                                            (rem: int(k)): ward_promise_chained(int) = let
+                                            val c = _app_dup_choice()
+                                          in
+                                            if lte_g1(rem, 0) then let
+                                              val () = dismiss_dup_modal()
+                                              val () = ward_file_close(ssh)
+                                              val h = import_mark_success()
+                                              val () = import_finish(h, sslbl, ssspn, sssts)
+                                            in ward_promise_return<int>(0) end
+                                            else if eq_int_int(c, 0) then
+                                              ward_promise_then<int><int>(ward_timer_set(50),
+                                                llam (_: int) => poll_dup(sub_g1(rem, 1)))
+                                            else if eq_int_int(c, 1) then let
+                                              val () = dismiss_dup_modal()
+                                              val () = ward_file_close(ssh)
+                                              val h = import_mark_success()
+                                              val () = import_finish(h, sslbl, ssspn, sssts)
+                                            in ward_promise_return<int>(0) end
+                                            else let
+                                              val () = dismiss_dup_modal()
+                                              val () = library_replace_book(sdi)
+                                              val () = library_save()
+                                              val () = ward_file_close(ssh)
+                                              val h = import_mark_success()
+                                              val dom = ward_dom_init()
+                                              val s = ward_dom_stream_begin(dom)
+                                              val s = render_library_with_books(s, ssli, 0)
+                                              val dom = ward_dom_stream_end(s)
+                                              val () = ward_dom_fini(dom)
+                                              val btn_count = library_get_count()
+                                              val () = register_card_btns(_checked_nat(btn_count), 0, btn_count, ssr, 0)
+                                              val cvr_count = _cover_queue_count()
+                                              val () = if gt_int_int(cvr_count, 0) then
+                                                load_library_covers(_checked_nat(cvr_count), 0, cvr_count)
+                                              val () = import_finish(h, sslbl, ssspn, sssts)
+                                            in ward_promise_return<int>(0) end
+                                          end
+                                        in poll_dup(_checked_nat(60000)) end
+                                      end
+                                      else let
+                                        val (pf_result | book_idx) = library_add_book()
+                                        prval _ = pf_result
+                                      in
+                                        if gte_int_int(book_idx, 0) then let
+                                          val () = library_save()
+                                          val () = ward_file_close(ssh)
+                                          val h = import_mark_success()
+                                          val dom = ward_dom_init()
+                                          val s = ward_dom_stream_begin(dom)
+                                          val s = render_library_with_books(s, ssli, 0)
+                                          val dom = ward_dom_stream_end(s)
+                                          val () = ward_dom_fini(dom)
+                                          val btn_count = library_get_count()
+                                          val () = register_card_btns(_checked_nat(btn_count), 0, btn_count, ssr, 0)
+                                          val cvr_count = _cover_queue_count()
+                                          val () = if gt_int_int(cvr_count, 0) then
+                                            load_library_covers(_checked_nat(cvr_count), 0, cvr_count)
+                                          val () = import_finish(h, sslbl, ssspn, sssts)
+                                        in ward_promise_return<int>(0) end
+                                        else let
+                                          val () = import_finish(
+                                            import_mark_failed(log_err_lib_full(), 12),
+                                            sslbl, ssspn, sssts)
+                                        in ward_promise_return<int>(0) end
+                                      end
+                                    end
+                                  end)
+                                end)
+                              end)
+                            end)
+                          end)
                 end)
                 end
                 else let

@@ -1196,19 +1196,23 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.library-list', { timeout: 15000 });
     await page.waitForSelector('.book-card', { timeout: 15000 });
 
-    // Import same EPUB again — should deduplicate silently
+    // Import same EPUB again — duplicate modal appears for active books
     const fileInput2 = page.locator('input[type="file"]');
     await fileInput2.setInputFiles(epubPath);
 
-    // Wait for import to start (label → "importing"), then finish (→ "import-btn").
-    // Race against a short delay in case import is near-instant for dedup.
-    await Promise.race([
-      page.waitForSelector('label.importing', { timeout: 5000 }),
-      page.waitForTimeout(1000),
-    ]);
+    // Wait for duplicate modal to appear
+    await page.waitForSelector('.dup-overlay', { timeout: 30000 });
+    await screenshot(page, 'dedup-02-modal-shown');
+
+    // Click "Replace" to proceed with reimport
+    const replaceBtn = page.locator('.dup-replace');
+    await replaceBtn.click();
+
+    // Wait for modal to dismiss and import to complete
+    await expect(page.locator('.dup-overlay')).not.toBeVisible({ timeout: 10000 });
     await page.waitForSelector('label.import-btn', { timeout: 30000 });
     await page.waitForTimeout(1000);
-    await screenshot(page, 'dedup-02-after-reimport');
+    await screenshot(page, 'dedup-03-after-replace');
 
     // Still only 1 book card — same content hash, same book
     const bookCards = page.locator('.book-card');
@@ -1748,6 +1752,96 @@ test.describe('EPUB Reader E2E', () => {
     }
 
     await screenshot(page, 'search-index-02-verified');
+    expect(errors).toEqual([]);
+  });
+
+  test('duplicate import shows skip/replace modal', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED. Errors:', errors);
+    });
+
+    const epubBuffer = createEpub({
+      title: 'Duplicate Test Book',
+      author: 'Dup Author',
+      chapters: 1,
+      paragraphsPerChapter: 3,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // --- First import: should succeed normally ---
+    const fileInput = page.locator('input[type="file"]');
+    await fileInput.setInputFiles({
+      name: 'dup-test.epub',
+      mimeType: 'application/epub+zip',
+      buffer: Buffer.from(epubBuffer),
+    });
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await screenshot(page, 'dup-01-first-import');
+
+    const cardCount1 = await page.locator('.book-card').count();
+    expect(cardCount1).toBe(1);
+
+    // --- Second import of same EPUB: should show dup modal ---
+    await fileInput.setInputFiles({
+      name: 'dup-test.epub',
+      mimeType: 'application/epub+zip',
+      buffer: Buffer.from(epubBuffer),
+    });
+
+    // Wait for the dup overlay to appear
+    const overlay = page.locator('.dup-overlay');
+    await expect(overlay).toBeVisible({ timeout: 30000 });
+    await screenshot(page, 'dup-02-modal-visible');
+
+    // Verify modal shows book title and message
+    const dupTitle = page.locator('.dup-title');
+    await expect(dupTitle).toContainText('Duplicate Test Book');
+    const dupMsg = page.locator('.dup-msg');
+    await expect(dupMsg).toContainText('Already in library');
+
+    // Verify both buttons are visible
+    const skipBtn = page.locator('.dup-btn');
+    await expect(skipBtn).toBeVisible();
+    const replaceBtn = page.locator('.dup-replace');
+    await expect(replaceBtn).toBeVisible();
+
+    // --- Click Skip: overlay dismissed, still 1 book ---
+    await skipBtn.click();
+    await expect(overlay).not.toBeVisible({ timeout: 5000 });
+    await screenshot(page, 'dup-03-after-skip');
+
+    // Wait for import to finish
+    const importBtn = page.locator('label.import-btn');
+    await expect(importBtn).toBeVisible({ timeout: 10000 });
+    const cardCount2 = await page.locator('.book-card').count();
+    expect(cardCount2).toBe(1);
+
+    // --- Third import of same EPUB: show modal again, click Replace ---
+    await fileInput.setInputFiles({
+      name: 'dup-test.epub',
+      mimeType: 'application/epub+zip',
+      buffer: Buffer.from(epubBuffer),
+    });
+    await expect(overlay).toBeVisible({ timeout: 30000 });
+    await screenshot(page, 'dup-04-modal-again');
+
+    await replaceBtn.click();
+    await expect(overlay).not.toBeVisible({ timeout: 5000 });
+    await screenshot(page, 'dup-05-after-replace');
+
+    // Wait for import to finish
+    await expect(importBtn).toBeVisible({ timeout: 10000 });
+    const cardCount3 = await page.locator('.book-card').count();
+    expect(cardCount3).toBe(1);
+
+    // Book title should still be correct
+    const bookTitle = page.locator('.book-title');
+    await expect(bookTitle).toContainText('Duplicate Test Book');
+
     expect(errors).toEqual([]);
   });
 
