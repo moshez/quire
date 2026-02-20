@@ -625,6 +625,11 @@ end
  * Used for ward_arr(byte, l, 48) where max write index is 35. *)
 extern castfn _idx48(x: int): [i:nat | i < 48] int i
 
+(* Proof construction after runtime validation via check_book_index.
+ * The caller MUST verify check_book_index(idx, count) == 1 before calling.
+ * Dataprop erased at runtime — cast is identity on int. *)
+extern castfn _mk_book_access(x: int): [i:nat | i < 32] (BOOK_ACCESS_SAFE(i) | int(i))
+
 (* Safe byte conversion: value must be 0-255.
  * For static chars: use char2int1('x') which carries the static value.
  * For computed digits: 48 + (v % 10) is always 48-57 — in range. *)
@@ -1436,8 +1441,8 @@ fn write_css_rem_pos {l:agz}{n:pos}{v:pos}
 
 (* ---- CSS length constants ---- *)
 (* #define: runtime values; stadef: type-level constraints *)
-#define APP_CSS_LEN 2306
-stadef APP_CSS_LEN = 2306
+#define APP_CSS_LEN 2332
+stadef APP_CSS_LEN = 2332
 #define NAV_CSS_LEN 552
 stadef NAV_CSS_LEN = 552
 
@@ -2138,6 +2143,19 @@ fn fill_css_import {l:agz}{n:pos}
   val () = _w4(arr, alen, 2302, 2104321330)
 in end
 
+(* .book-card{flex-wrap:wrap} — appended at end to avoid re-encoding all CSS *)
+fn fill_css_wrap {l:agz}{n:int | n >= APP_CSS_LEN}
+  (arr: !ward_arr(byte, l, n), alen: int n): void = let
+  val () = _w4(arr, alen, 2306, 1869570606)
+  val () = _w4(arr, alen, 2310, 1633889643)
+  val () = _w4(arr, alen, 2314, 1719362674)
+  val () = _w4(arr, alen, 2318, 762865004)
+  val () = _w4(arr, alen, 2322, 1885434487)
+  val () = _w4(arr, alen, 2326, 1634891578)
+  val () = ward_arr_set_byte(arr, 2330, alen, 112)
+  val () = ward_arr_set_byte(arr, 2331, alen, 125)
+in end
+
 fn fill_css {l:agz}{n:int | n >= APP_CSS_LEN}
   (arr: !ward_arr(byte, l, n), alen: int n): (CSS_READER_WRITTEN | void) = let
   val () = fill_css_base(arr, alen)
@@ -2145,6 +2163,7 @@ fn fill_css {l:agz}{n:int | n >= APP_CSS_LEN}
   val (pf_reader | ()) = fill_css_reader(arr, alen)
   val () = fill_css_content(arr, alen)
   val () = fill_css_import(arr, alen)
+  val () = fill_css_wrap(arr, alen)
 in (pf_reader | ()) end
 
 (* Create a <style> element under parent and fill it with app CSS.
@@ -4159,27 +4178,35 @@ fun load_library_covers {k:nat} .<k>.
   else if gte_int_int(idx, total) then ()
   else let
     val nid = _cover_queue_get_nid(idx)
-    val bidx = _cover_queue_get_bidx(idx)
-    val () = epub_set_book_id_from_library(bidx)
-    val key = epub_build_cover_key()
-    val p = ward_idb_get(key, 20)
-    val saved_nid = nid
-    val saved_rem = sub_g1(rem, 1)
-    val saved_next = idx + 1
-    val saved_total = total
-    val p2 = ward_promise_then<int><int>(p,
-      llam (data_len: int): ward_promise_chained(int) =>
-        if lte_int_int(data_len, 0) then let
-          val () = load_library_covers(saved_rem, saved_next, saved_total)
-        in ward_promise_return<int>(0) end
-        else let
-          val dl = _checked_pos(data_len)
-          val arr = ward_idb_get_result(dl)
-          val () = set_image_src_idb(saved_nid, arr, dl)
-          val () = load_library_covers(saved_rem, saved_next, saved_total)
-        in ward_promise_return<int>(1) end)
-    val () = ward_promise_discard<int>(p2)
-  in end
+    val bidx0 = _cover_queue_get_bidx(idx)
+    val bidx = g1ofg0(bidx0)
+    val cnt = library_get_count()
+    val ok = check_book_index(bidx, cnt)
+  in
+    if eq_g1(ok, 1) then let
+      val (pf_ba | bi) = _mk_book_access(bidx0)
+      val _ = epub_set_book_id_from_library(pf_ba | bi)
+      val key = epub_build_cover_key()
+      val p = ward_idb_get(key, 20)
+      val saved_nid = nid
+      val saved_rem = sub_g1(rem, 1)
+      val saved_next = idx + 1
+      val saved_total = total
+      val p2 = ward_promise_then<int><int>(p,
+        llam (data_len: int): ward_promise_chained(int) =>
+          if lte_int_int(data_len, 0) then let
+            val () = load_library_covers(saved_rem, saved_next, saved_total)
+          in ward_promise_return<int>(0) end
+          else let
+            val dl = _checked_pos(data_len)
+            val arr = ward_idb_get_result(dl)
+            val () = set_image_src_idb(saved_nid, arr, dl)
+            val () = load_library_covers(saved_rem, saved_next, saved_total)
+          in ward_promise_return<int>(1) end)
+      val () = ward_promise_discard<int>(p2)
+    in end
+    else load_library_covers(sub_g1(rem, 1), idx + 1, total)
+  end
 
 implement render_library(root_id) = let
   val dom = ward_dom_init()
@@ -4592,7 +4619,13 @@ in end
 implement enter_reader(root_id, book_index) = let
   val () = reader_enter(root_id, 0)
   val () = reader_set_book_index(book_index)
-  val () = epub_set_book_id_from_library(book_index)
+  val bi = g1ofg0(book_index)
+  val cnt = library_get_count()
+  val ok = check_book_index(bi, cnt)
+  val () = if eq_g1(ok, 1) then let
+    val (pf_ba | biv) = _mk_book_access(book_index)
+    val _ = epub_set_book_id_from_library(pf_ba | biv)
+  in end
 
   val dom = ward_dom_init()
   val s = ward_dom_stream_begin(dom)

@@ -262,3 +262,78 @@ in eq_g1(0, 0) end
 fun test_dup_choice_replace(): bool(true) = let
   prval pf = DUP_REPLACE()
 in eq_g1(1, 1) end
+
+(* ================================================================
+ * Test 9: BOOK_ACCESS_SAFE — proof constructibility + function call
+ *
+ * Verifies the BOOK_ACCESS_SAFE dataprop constraints are satisfiable
+ * at index 0 and at the maximum index 31. If constants change so that
+ * 31*155+154 >= 4960, BOOK_ACCESS_OK{31}() fails to compile.
+ * ================================================================ *)
+
+(* UNIT TEST — proof constructible + function callable at index 0 *)
+fun test_proof_at_zero(): bool(true) = let
+  val _ = epub_set_book_id_from_library(BOOK_ACCESS_OK{0}() | 0)
+in true end
+
+(* UNIT TEST — proof constructible + function callable at max index 31 *)
+fun test_proof_at_max(): bool(true) = let
+  val _ = epub_set_book_id_from_library(BOOK_ACCESS_OK{31}() | 31)
+in true end
+
+(* ================================================================
+ * Test 10: check_book_index — bounds checker
+ *
+ * Verifies check_book_index returns a value in [0,1] for various
+ * inputs. Tests the type signature (nat, <= 1), not concrete values
+ * (sif not available in stadef for this ATS2 version).
+ * ================================================================ *)
+
+(* UNIT TEST — return is bounded [0,1] for valid input *)
+fun test_check_bounded_valid(): bool(true) = let
+  val v = check_book_index(0, 1)
+in lte_g1(v, 1) end
+
+(* UNIT TEST — return is bounded [0,1] for boundary input *)
+fun test_check_bounded_boundary(): bool(true) = let
+  val v = check_book_index(31, 32)
+in lte_g1(v, 1) end
+
+(* UNIT TEST — return is bounded [0,1] for OOB input *)
+fun test_check_bounded_oob(): bool(true) = let
+  val v = check_book_index(32, 32)
+in lte_g1(v, 1) end
+
+(* UNIT TEST — return is bounded [0,1] for negative input *)
+fun test_check_bounded_negative(): bool(true) = let
+  val v = check_book_index(~1, 5)
+in lte_g1(v, 1) end
+
+(* UNIT TEST — return is bounded [0,1] for empty library *)
+fun test_check_bounded_empty(): bool(true) = let
+  val v = check_book_index(0, 0)
+in lte_g1(v, 1) end
+
+(* UNIT TEST — return is bounded [0,1] for index past count *)
+fun test_check_bounded_past(): bool(true) = let
+  val v = check_book_index(5, 5)
+in lte_g1(v, 1) end
+
+(* ================================================================
+ * Test 11: library_rec_ints/bytes — arithmetic consistency
+ *
+ * Independent verification of dataprop constraints. If someone
+ * changes the dataprop to be wrong, these still catch it.
+ * ================================================================ *)
+
+(* UNIT TEST — max i32 slot fits buffer *)
+fun test_max_i32_slot(): bool(true) =
+  lt_g1(add_g1(mul_g1(library_rec_ints(), 31), 154), 4960)
+
+(* UNIT TEST — max byte copy fits buffer *)
+fun test_max_byte_access(): bool(true) =
+  lte_g1(add_g1(add_g1(mul_g1(library_rec_bytes(), 31), 520), 64), 19840)
+
+(* UNIT TEST — byte stride = int stride × 4 *)
+fun test_stride_consistent(): bool(true) =
+  eq_g1(library_rec_bytes(), mul_g1(library_rec_ints(), 4))

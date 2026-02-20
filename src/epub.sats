@@ -23,6 +23,7 @@
 staload "./../vendor/ward/lib/memory.sats"
 staload "./../vendor/ward/lib/promise.sats"
 staload "./zip.sats"
+staload "./library.sats"
 
 (* EPUB import state *)
 #define EPUB_STATE_IDLE           0
@@ -236,8 +237,13 @@ fun epub_load_manifest(): ward_promise_chained(int)
  * the constraint solver the sign information in each branch. *)
 fun epub_find_resource(path_len: int): [r:int | r >= ~1] int(r)
 
-(* Copy book_id from library slot to epub module state *)
-fun epub_set_book_id_from_library(book_index: int): void
+(* Copy book_id from library slot to epub module state.
+ * Requires BOOK_ACCESS_SAFE proof — proves index is within buffer bounds.
+ * Returns bid_len clamped to [0, 64]. *)
+fun epub_set_book_id_from_library
+  {i:nat | i < 32}
+  (pf: BOOK_ACCESS_SAFE(i) | book_index: int(i))
+  : [len:nat | len <= 64] int(len)
 
 (* ========== Parsing and accessor functions ========== *)
 

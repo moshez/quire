@@ -90,6 +90,19 @@ extern castfn _mk_lib_full(x: int): (ADD_BOOK_RESULT(~1) | int(~1))
 extern castfn _find_idx(x: int): [i:int | i >= ~1] int i
 extern castfn _clamp_shelf_state(x: int): [s:nat | s <= 2] int s
 
+(* ========== Record layout accessor functions ========== *)
+
+implement library_rec_ints() = REC_INTS   (* won't compile if REC_INTS != 155 *)
+implement library_rec_bytes() = REC_BYTES  (* won't compile if REC_BYTES != 620 *)
+
+implement check_book_index {b,c} (bidx, count) =
+  if gte_g1(bidx, 0) then
+    if lt_g1(bidx, count) then
+      if lt_g1(bidx, 32) then 1
+      else 0
+    else 0
+  else 0
+
 (* ========== Helpers ========== *)
 
 (* Copy book record via per-byte lib_books accessors *)
@@ -953,6 +966,55 @@ fn _deserialize_v4(len: int, count2: int, sort_mode: int): int = let
       else 0)
 in ok end
 
+(* ========== Post-deserialization validation ========== *)
+
+(* Validate a single deserialized book record.
+ * All data from IndexedDB is adversarial. If any field is out of range,
+ * zero the entire record to prevent downstream OOB access.
+ * Fields validated: bid_len ∈ [0,64], title_len ∈ [0,256],
+ * author_len ∈ [0,256], shelf_state ∈ {0,1,2}, has_cover ∈ {0,1}. *)
+fn _validate_book_record(bi: int, bb: int): void = let
+  val bid_len = _app_lib_books_get_i32(bi + BOOKID_LEN_SLOT)
+  val title_len = _app_lib_books_get_i32(bi + TITLE_LEN_SLOT)
+  val author_len = _app_lib_books_get_i32(bi + AUTHOR_LEN_SLOT)
+  val shelf = _app_lib_books_get_i32(bi + SHELF_STATE_SLOT)
+  val has_cov = _app_lib_books_get_i32(bi + HAS_COVER_SLOT)
+  val bad =
+    if lt_int_int(bid_len, 0) then 1
+    else if gt_int_int(bid_len, BOOKID_MAX) then 1
+    else if lt_int_int(title_len, 0) then 1
+    else if gt_int_int(title_len, TITLE_MAX) then 1
+    else if lt_int_int(author_len, 0) then 1
+    else if gt_int_int(author_len, AUTHOR_MAX) then 1
+    else if lt_int_int(shelf, 0) then 1
+    else if gt_int_int(shelf, 2) then 1
+    else if lt_int_int(has_cov, 0) then 1
+    else if gt_int_int(has_cov, 1) then 1
+    else 0
+in
+  if gt_int_int(bad, 0) then let
+    (* Zero out the entire record *)
+    fun zero_loop {k:nat} .<k>.
+      (rem: int(k), j: int, base: int): void =
+      if lte_g1(rem, 0) then ()
+      else if lt_int_int(j, REC_BYTES) then let
+        val () = _app_lib_books_set_u8(base + j, 0)
+      in zero_loop(sub_g1(rem, 1), j + 1, base) end
+    val () = zero_loop(_checked_nat(REC_BYTES), 0, bb)
+  in end
+end
+
+(* Validate all deserialized book records *)
+fn _validate_all_records(count2: int): void = let
+  fun vloop {k:nat} .<k>.
+    (rem: int(k), i: int, cnt: int): void =
+    if lte_g1(rem, 0) then ()
+    else if gte_int_int(i, cnt) then ()
+    else let
+      val () = _validate_book_record(i * REC_INTS, i * REC_BYTES)
+    in vloop(sub_g1(rem, 1), i + 1, cnt) end
+in vloop(_checked_nat(count2), 0, count2) end
+
 implement library_deserialize(len) =
   if lt_int_int(len, 2) then 0
   else let
@@ -974,7 +1036,10 @@ implement library_deserialize(len) =
           else if eq_int_int(version, 3) then _deserialize_v3(len, count2, sort_mode)
           else if eq_int_int(version, 2) then _deserialize_v2(len, count2, sort_mode)
           else 0
-        val () = if eq_int_int(ok, 1) then _app_set_lib_count(count2)
+        val () = if eq_int_int(ok, 1) then let
+          val () = _validate_all_records(count2)
+          val () = _app_set_lib_count(count2)
+        in end
       in
         if eq_int_int(ok, 1) then 1 else 0
       end
@@ -984,6 +1049,7 @@ implement library_deserialize(len) =
       val count2 = _clamp(marker, 32)
       val ok = _deserialize_v1(len, count2)
       val () = if eq_int_int(ok, 1) then let
+        val () = _validate_all_records(count2)
         val () = _app_set_lib_count(count2)
         val () = _app_set_lib_sort_mode(0)
       in end
