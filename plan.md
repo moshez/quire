@@ -72,7 +72,7 @@ everything else depends on.
   to XML tree positions. Fold diacritics during indexing. Schema: one record
   per chapter with `{bookHash, chapterIndex, plainText, offsets[]}`.
 
-- [ ] **2.3 Duplicate detection with Skip/Replace prompt.** When content hash
+- [x] **2.3 Duplicate detection with Skip/Replace prompt.** When content hash
   matches an existing book (any shelf state), show a WASM-rendered modal:
   `"[Title]" is already in your library.` with two buttons: "Skip" (cancel
   import) and "Replace" (swap content, preserve annotations and reading

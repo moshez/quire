@@ -183,6 +183,14 @@ dataprop SER_VERSION_DETECTED(marker: int, version: int) =
   | {m:int | m == 65535} IS_V2_OR_V3(m, 2)
   | {m:nat | m <= 32} IS_V1(m, 1)
 
+(* ========== Duplicate choice proof ========== *)
+
+(* DUP_CHOICE_VALID: enumerates valid duplicate-detection outcomes.
+ * 0 = skip (keep existing), 1 = replace (update existing with new data). *)
+dataprop DUP_CHOICE_VALID(c: int) =
+  | DUP_SKIP(0)
+  | DUP_REPLACE(1)
+
 (* ========== Import outcome proof ========== *)
 
 (* ADD_BOOK_RESULT: proves every library_add_book outcome is handled.
@@ -212,6 +220,12 @@ fun library_add_book(): [i:int | i >= ~1; i < 32] (ADD_BOOK_RESULT(i) | int(i))
 fun library_remove_book(index: int): void
 fun library_update_position(index: int, chapter: int, page: int): void
 fun library_find_book_by_id(): [i:int | i >= ~1] int(i)
+
+(* Replace an existing book entry with new epub data.
+ * Updates title, author, book_id, spine_count, file_size, has_cover.
+ * Resets chapter/page to 0, sets shelf_state to 0 (active),
+ * updates last_opened to now. Preserves date_added. *)
+fun library_replace_book(index: int): void
 
 (* Sort library in place. Returns book count with sorted proof. *)
 fun library_sort {m:nat | m <= 3}

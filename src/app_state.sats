@@ -164,10 +164,22 @@ fun app_set_epub_spine_path_count(st: !app_state, v: int): void
 fun app_get_epub_spine_path_pos(st: !app_state): int
 fun app_set_epub_spine_path_pos(st: !app_state, v: int): void
 
+(* Duplicate detection state *)
+fun app_get_dup_choice(st: !app_state): int
+fun app_set_dup_choice(st: !app_state, v: int): void
+fun app_get_dup_overlay_id(st: !app_state): int
+fun app_set_dup_overlay_id(st: !app_state, v: int): void
+
 (* ========== Convenience wrappers (load/store internally) ========== *)
 (* These load app_state from the callback registry, access the field,
  * then store it back. Prefer using app_get_*/app_set_* with !app_state
  * when you already hold the state. *)
+
+(* Duplicate detection *)
+fun _app_dup_choice(): int
+fun _app_set_dup_choice(v: int): void
+fun _app_dup_overlay_id(): int
+fun _app_set_dup_overlay_id(v: int): void
 
 (* Library accessors *)
 fun _app_lib_count(): int

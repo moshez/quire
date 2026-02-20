@@ -109,7 +109,9 @@ datavtype app_state_impl =
       deferred_img_count = int,
       epub_file_size = int,
       epub_cover_href = ptr,
-      epub_cover_href_len = int
+      epub_cover_href_len = int,
+      dup_choice = int,
+      dup_overlay_id = int
     }
 
 assume app_state = app_state_impl
@@ -257,7 +259,9 @@ implement app_state_init() =
     deferred_img_count = 0,
     epub_file_size = 0,
     epub_cover_href = _alloc_buf(EPUB_COVER_HREF_SIZE),
-    epub_cover_href_len = 0
+    epub_cover_href_len = 0,
+    dup_choice = 0,
+    dup_overlay_id = 0
   }
 
 implement app_state_fini(st) = let
@@ -502,6 +506,30 @@ implement app_get_lib_sort_mode(st) = let
 implement app_set_lib_sort_mode(st, v) = let
   val @APP_STATE(r) = st val () = r.lib_sort_mode := v
   prval () = fold@(st) in end
+
+(* ========== Duplicate detection state ========== *)
+
+implement app_get_dup_choice(st) = let
+  val @APP_STATE(r) = st val v = r.dup_choice
+  prval () = fold@(st) in v end
+implement app_set_dup_choice(st, v) = let
+  val @APP_STATE(r) = st val () = r.dup_choice := v
+  prval () = fold@(st) in end
+implement app_get_dup_overlay_id(st) = let
+  val @APP_STATE(r) = st val v = r.dup_overlay_id
+  prval () = fold@(st) in v end
+implement app_set_dup_overlay_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.dup_overlay_id := v
+  prval () = fold@(st) in end
+
+implement _app_dup_choice() = let val st = app_state_load()
+  val v = app_get_dup_choice(st) val () = app_state_store(st) in v end
+implement _app_set_dup_choice(v) = let val st = app_state_load()
+  val () = app_set_dup_choice(st, v) val () = app_state_store(st) in end
+implement _app_dup_overlay_id() = let val st = app_state_load()
+  val v = app_get_dup_overlay_id(st) val () = app_state_store(st) in v end
+implement _app_set_dup_overlay_id(v) = let val st = app_state_load()
+  val () = app_set_dup_overlay_id(st, v) val () = app_state_store(st) in end
 
 (* ========== C-callable wrappers for library module ========== *)
 

@@ -333,6 +333,51 @@ implement library_find_book_by_id() = let
     end
 in _find_idx(loop(_checked_nat(count), 0, count, bid_len)) end
 
+implement library_replace_book(index) = let
+  val count = _app_lib_count()
+in
+  if lt_int_int(index, 0) then ()
+  else if gte_int_int(index, count) then ()
+  else let
+    val tlen = _app_epub_title_len()
+    val alen = _app_epub_author_len()
+    val sc = _app_epub_spine_count()
+    val bid_len = _app_epub_book_id_len()
+    val base_ints = index * REC_INTS
+    val base_bytes = index * REC_BYTES
+
+    (* Copy title: epub_title → sbuf → lib_books *)
+    val tlen2 = if gt_int_int(tlen, TITLE_MAX) then TITLE_MAX else tlen
+    val () = _app_copy_epub_title_to_sbuf(0, tlen2)
+    val () = _app_copy_sbuf_to_lib_books(base_bytes + TITLE_OFF, 0, tlen2)
+    val () = _app_lib_books_set_i32(base_ints + TITLE_LEN_SLOT, tlen2)
+
+    (* Copy author: epub_author → sbuf → lib_books *)
+    val alen2 = if gt_int_int(alen, AUTHOR_MAX) then AUTHOR_MAX else alen
+    val () = _app_copy_epub_author_to_sbuf(0, alen2)
+    val () = _app_copy_sbuf_to_lib_books(base_bytes + AUTHOR_OFF, 0, alen2)
+    val () = _app_lib_books_set_i32(base_ints + AUTHOR_LEN_SLOT, alen2)
+
+    (* Copy book_id: epub_book_id → sbuf → lib_books *)
+    val blen2 = if gt_int_int(bid_len, BOOKID_MAX) then BOOKID_MAX else bid_len
+    val () = _app_copy_epub_book_id_to_sbuf(0, blen2)
+    val () = _app_copy_sbuf_to_lib_books(base_bytes + BOOKID_OFF, 0, blen2)
+    val () = _app_lib_books_set_i32(base_ints + BOOKID_LEN_SLOT, blen2)
+
+    val () = _app_lib_books_set_i32(base_ints + SPINE_SLOT, sc)
+    val () = _app_lib_books_set_i32(base_ints + CHAPTER_SLOT, 0)
+    val () = _app_lib_books_set_i32(base_ints + PAGE_SLOT, 0)
+    val () = _app_lib_books_set_i32(base_ints + SHELF_STATE_SLOT, 0)
+    (* Preserve date_added — don't overwrite *)
+    val now = quire_time_now()
+    val () = _app_lib_books_set_i32(base_ints + LAST_OPENED_SLOT, now)
+    val () = _app_lib_books_set_i32(base_ints + FILE_SIZE_SLOT, _app_epub_file_size())
+    val cover_href_len = _app_epub_cover_href_len()
+    val () = _app_lib_books_set_i32(base_ints + HAS_COVER_SLOT,
+      if gt_int_int(cover_href_len, 0) then 1 else 0)
+  in end
+end
+
 implement library_remove_book(index) = let
   val count = _app_lib_count()
 in
