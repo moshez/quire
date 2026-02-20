@@ -257,7 +257,7 @@ and parse_element_impl {k:nat} .<k>.
   val p2 = skip_ws(data, name_end, len)
   val attrs_start = p2
   fun find_tag_end {j:nat} .<j>.
-    (jrem: int(j), p3: int): (int, int) =
+    (jrem: int(j), p3: int): (int, [s:int | s == 0 || s == 1] int(s)) =
     if lte_g1(jrem, 0) then (p3, 0)
     else if gte_int_int(p3, len) then (p3, 0)
     else let val c = buf_get_u8(data, p3) in

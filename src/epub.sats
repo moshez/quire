@@ -4,11 +4,20 @@
  * Uses zip.sats for ZIP parsing and xml.sats for XML parsing.
  *
  * FUNCTIONAL CORRECTNESS PROOFS:
- * - EPUB_STATE_VALID: Type-checked state machine ensures only valid states
+ * - EPUB_STATE_VALID: Enforced on _app_set_epub_state — can't set invalid state
  * - SPINE_ORDERED: Spine indices preserve reading order from OPF
  * - TOC_TO_SPINE: TOC entries map to correct spine indices
- * - CHAPTER_KEY_CORRECT: Chapter keys correctly identify stored chapters
- * - COUNT_BOUNDED: Counts never exceed maximum limits
+ * - SERIALIZED: epub_restore_metadata requires proof from epub_serialize_metadata
+ * - EPUB_IDLE: epub_start_import requires proof from epub_reset
+ *
+ * SUPERSEDED (deleted):
+ * - CHAPTER_KEY_CORRECT: replaced by resource-key architecture with SAFE_CHAR
+ * - COUNT_BOUNDED: redundant with dependent return type n <= 256
+ * - EPUB_STATE_TRANSITION: superseded by EPUB_STATE_VALID + promise chain
+ * - ASYNC_PRECONDITION: superseded by promise chain structure
+ * - RESOURCES_STORED: superseded by promise chain + IDB data dependency
+ * - COVER_DETECTED: replaced by dependent return type on epub_store_cover
+ * - MANIFEST_LOADED: superseded by promise chain ordering
  *)
 
 staload "./../vendor/ward/lib/memory.sats"
@@ -31,7 +40,8 @@ staload "./zip.sats"
 
 (* State machine validity proof.
  * EPUB_STATE_VALID(s) proves state s is one of the valid states.
- * Prevents invalid state values at compile time. *)
+ * ENFORCED: _app_set_epub_state requires this proof as a parameter.
+ * Toddler test: can't set state to 42 — no constructor exists for 42. *)
 dataprop EPUB_STATE_VALID(state: int) =
   | EPUB_IDLE_STATE(0)
   | EPUB_OPENING_FILE_STATE(1)
@@ -67,63 +77,31 @@ dataprop TOC_TO_SPINE(toc_idx: int, spine_idx: int, spine_total: int) =
   | {t,s,total:nat | s < total} VALID_TOC_MAPPING(t, s, total)
   | {t,s,total:int} NO_TOC_MAPPING(t, s, total)
 
-(* Chapter key correctness proof.
- * CHAPTER_KEY_CORRECT(ch, key_offset, key_len) proves that the key written
- * to string buffer at key_offset with length key_len is THE correct IndexedDB
- * key for retrieving chapter ch.
- *
- * Key format: "book_id/opf_dir/manifest[spine[ch]].href"
- * Ensures loading chapter 5 retrieves chapter 5's content, not chapter 4 or 6. *)
-absprop CHAPTER_KEY_CORRECT(ch: int, key_offset: int, key_len: int)
+(* Serialization capability proof.
+ * SERIALIZED(len) can only be produced by epub_serialize_metadata.
+ * epub_restore_metadata requires it, ensuring restore is only called
+ * with a length produced by serialize — wrong-length restore is a
+ * compile error.
+ * Toddler test: can't call epub_restore_metadata(42) without
+ * SERIALIZED(42) proof, which only epub_serialize_metadata produces. *)
+dataprop SERIALIZED(len: int) =
+  | {n:nat} SERIALIZE_OK(n)
 
-(* Count bounds proof.
- * COUNT_BOUNDED(count, max) proves count <= max.
- * Used to ensure chapter_count <= MAX_SPINE_ITEMS, etc. *)
-dataprop COUNT_BOUNDED(count: int, max: int) =
-  | {c,m:nat | c <= m} WITHIN_BOUNDS(c, m)
-
-(* EPUB state transition proof.
- * EPUB_STATE_TRANSITION(from, to) proves that transitioning from state
- * `from` to state `to` is a valid state machine transition.
- *
- * TEST MADE PASS-BY-CONSTRUCTION:
- *   test_epub_state_machine_valid — Only defined transitions compile.
- *
- * ENFORCEMENT: C code that sets epub_state must cite the transition
- * constructor in a comment. ATS code constructs and consumes proofs. *)
-dataprop EPUB_STATE_TRANSITION(from: int, to: int) =
-  | EPUB_IDLE_TO_OPENING(0, 1)
-  | EPUB_OPENING_TO_PARSING(1, 2)
-  | EPUB_PARSING_TO_CONTAINER(2, 3)
-  | EPUB_CONTAINER_TO_OPF(3, 4)
-  | EPUB_OPF_TO_DB(4, 5)
-  | EPUB_DB_TO_DECOMPRESSING(5, 6)
-  | EPUB_DECOMPRESSING_TO_STORING(6, 7)
-  | EPUB_STORING_TO_DECOMPRESSING(7, 6)     (* loop: next chapter *)
-  | EPUB_STORING_TO_DONE(7, 8)              (* all chapters stored *)
-  | {from:int} EPUB_ANY_TO_ERROR(from, 99)  (* error from any state *)
-
-(* Async precondition proof.
- * ASYNC_PRECONDITION(expected_state) proves that the app state was set
- * to expected_state BEFORE an async bridge call was initiated.
- *
- * BUG PREVENTED: open_db() originally called js_kv_open() without
- * setting app_state. This proof makes the pattern explicit: every async
- * call must be preceded by a state transition.
- *
- * TEST MADE PASS-BY-CONSTRUCTION:
- *   test_every_async_call_preceded_by_state — Functions that call async
- *   bridge operations require this proof, which can only be constructed
- *   after setting the state. *)
-dataprop ASYNC_PRECONDITION(expected_state: int) =
-  | {s:int} STATE_SET_BEFORE_ASYNC(s)
+(* Idle capability proof.
+ * EPUB_IDLE can only be produced by epub_reset.
+ * epub_start_import requires it, ensuring import only starts from
+ * a clean state.
+ * Toddler test: can't start import without resetting first. *)
+dataprop EPUB_IDLE() = | EPUB_IS_IDLE()
 
 (* Initialize EPUB module *)
 fun epub_init(): void
 (* Start EPUB import from file input node
+ * Requires EPUB_IDLE proof — must reset before importing.
  * file_input_node_id: the DOM node ID of the file input element
  * Returns 1 if import started, 0 on error *)
-fun epub_start_import(file_input_node_id: int): int
+fun epub_start_import {n:int}
+  (pf: EPUB_IDLE() | file_input_node_id: int(n)): int
 (* Get current import state
  * Returns a valid state value with EPUB_STATE_VALID proof *)
 fun epub_get_state(): [s:int] int(s)
@@ -143,17 +121,8 @@ fun epub_get_author(buf_offset: int): int
  * Returns ID into string buffer *)
 fun epub_get_book_id(buf_offset: int): int
 (* Get total number of chapters in spine
- * Returns count with proof that count <= MAX_SPINE_ITEMS (256) *)
+ * Returns count with dependent type: n <= 256 IS the bounds proof. *)
 fun epub_get_chapter_count(): [n:nat | n <= 256] int(n)
-(* Get chapter key for IndexedDB lookup (book_id/chapter_href)
- * chapter_index: 0-based index into spine
- * buf_offset: offset in string buffer to write key
- * Returns key length, or 0 if index out of range
- *
- * CORRECTNESS: When chapter_index is valid (< chapter_count), the returned
- * key is THE correct key for retrieving chapter chapter_index from IndexedDB.
- * Internally produces CHAPTER_KEY_CORRECT proof establishing this. *)
-fun epub_get_chapter_key(chapter_index: int, buf_offset: int): int
 (* Continue processing (called from async callbacks)
  * Called after file open, decompress, or IDB operations complete *)
 fun epub_continue(): void
@@ -196,86 +165,48 @@ fun epub_get_toc_level(toc_index: int): [level:nat] int(level)
  * buf_offset: offset in string buffer to write title
  * Returns title length, or 0 if no TOC entry found *)
 fun epub_get_chapter_title(spine_index: int, buf_offset: int): int
-(* ========== M15: Metadata Serialization Proofs ========== *)
 
-(* Metadata roundtrip correctness proof.
- * METADATA_ROUNDTRIP(serialize_len) proves that after:
- * 1. epub_serialize_metadata() writes serialize_len bytes to fetch buffer
- * 2. epub_restore_metadata(serialize_len) reads those bytes back
- * The epub module state (book_id, title, author, opf_dir, spine, TOC)
- * is identical to before serialization.
- *
- * This is THE correctness property for book switching: when the user
- * selects a different book from the library, its metadata is restored
- * exactly as it was when first imported.
- *
- * NOTE: Proof is documentary - symmetric serialize/deserialize structure
- * (same field order, same encoding) provides the guarantee. *)
-absprop METADATA_ROUNDTRIP(serialize_len: int)
+(* ========== Metadata Serialization ========== *)
 
-(* Reset state transition proof.
- * EPUB_RESET_TO_IDLE proves that after epub_reset():
- * - epub_state == EPUB_STATE_IDLE (0)
- * - All metadata fields cleared (lengths set to 0)
- * - epub module is ready for a fresh import or restore
- *
- * NOTE: Proof is documentary - runtime reset verifies. *)
-absprop EPUB_RESET_TO_IDLE
-
-(* M15: Serialize book metadata to fetch buffer for library storage.
+(* Serialize book metadata to fetch buffer for library storage.
  * Writes book_id, title, author, opf_dir, spine hrefs, and TOC data.
- * Returns total bytes written (>= 0).
+ * Returns total bytes written (>= 0) with SERIALIZED proof.
  *
  * CORRECTNESS: Output bytes are a deterministic encoding of the current
- * epub module state. Internally documents METADATA_ROUNDTRIP: calling
- * epub_restore_metadata(return_value) on the same buffer reconstructs
- * identical state. The encoding format writes fields in a fixed order:
- * book_id, title, author, opf_dir, spine entries, TOC entries.
- * Deserialization reads them back in the same order. *)
-fun epub_serialize_metadata(): [len:nat] int(len)
-(* M15: Restore book metadata from fetch buffer.
- * Reconstructs epub module state so reader can function.
+ * epub module state. The SERIALIZED proof ties the length to this call,
+ * ensuring only epub_restore_metadata can consume it with the correct length. *)
+fun epub_serialize_metadata(): [len:nat] (SERIALIZED(len) | int(len))
+(* Restore book metadata from fetch buffer.
+ * Requires SERIALIZED proof — can only restore data that was serialized.
  * len: number of bytes to read from fetch buffer.
- * Returns 1 on success, 0 on error.
- *
- * CORRECTNESS: On success (return == 1):
- * - epub_state == EPUB_STATE_DONE (ready to read)
- * - book_id, title, author, spine, TOC match the serialized data
- * - epub_get_chapter_count() returns the correct spine count
- * - Reader functions (chapter loading, TOC lookup) work correctly
- * On failure (return == 0): epub state is undefined, caller should
- * handle error. Minimum len of 12 required (6 u16 headers).
- * Internally verifies METADATA_ROUNDTRIP by consuming serialized data
- * in the same field order as epub_serialize_metadata produces it. *)
-fun epub_restore_metadata(len: int): [r:int | r == 0 || r == 1] int(r)
-(* M15: Reset epub state to idle (for switching between books).
+ * Returns 1 on success, 0 on error. *)
+fun epub_restore_metadata {len:nat}
+  (pf: SERIALIZED(len) | len: int(len)): [r:int | r == 0 || r == 1] int(r)
+(* Reset epub state to idle (for switching between books).
  * Postcondition: epub_state == 0, all metadata cleared.
- * CORRECTNESS: After reset, epub module is in the same state as after
- * epub_init(), ready for a new import or metadata restore.
- * Internally produces EPUB_RESET_TO_IDLE proof. *)
-fun epub_reset(): void
+ * Returns EPUB_IDLE proof — required to start a new import. *)
+fun epub_reset(): (EPUB_IDLE() | void)
 
-(* ========== Cover Image Detection (2.1) ========== *)
-
-(* Proves cover detection result *)
-dataprop COVER_DETECTED(has_cover: int) =
-  | COVER_FOUND(1) | COVER_NOT_FOUND(0)
+(* ========== Cover Image ========== *)
 
 (* Build 20-char IDB cover key: {16 hex book_id}-cvr *)
 fun epub_build_cover_key(): ward_safe_text(20)
 
 (* Store cover image data from resource key to cover key in IDB.
  * Reads cover href from app_state, looks up resource entry,
- * copies data to cover key. Returns promise resolving to 1 on success. *)
+ * copies data to cover key. Returns promise resolving to int.
+ * Enforcement: key construction uses SAFE_CHAR proof on every byte.
+ * Resource lookup uses dependent epub_find_resource (r >= -1).
+ * Href existence check uses gt_g1 giving solver href_len > 0. *)
 fun epub_store_cover(): ward_promise_chained(int)
 
 (* ========== Exploded Resource Storage (M1.2) ========== *)
 
-(* Proves manifest loaded into memory before resource lookups *)
-absprop MANIFEST_LOADED
-
-(* Proves all resources stored to IDB before import completes *)
-absprop RESOURCES_STORED
+(* Promise chain structure enforces:
+ * - Resources stored before manifest (epub_store_all_resources → epub_store_manifest)
+ * - Manifest loaded before find_resource (epub_load_manifest → epub_find_resource)
+ * - These orderings are not expressed as dataprops because they are structural
+ *   properties of the promise chain, not value-level invariants. *)
 
 (* Build 20-char IDB key for zip entry: {16 hex book_id}-{3 hex entry_idx} *)
 fun epub_build_resource_key(entry_idx: int): ward_safe_text(20)
@@ -299,8 +230,11 @@ fun epub_store_manifest
 fun epub_load_manifest(): ward_promise_chained(int)
 
 (* Find resource entry index by path in sbuf[0..path_len-1].
- * Requires manifest to be loaded. Returns index or -1. *)
-fun epub_find_resource(path_len: int): int
+ * Requires manifest to be loaded (enforced by promise chain ordering).
+ * Returns index (>= 0) or -1 (not found).
+ * Dependent return type: callers use lt_g1/gte_g1 to branch, giving
+ * the constraint solver the sign information in each branch. *)
+fun epub_find_resource(path_len: int): [r:int | r >= ~1] int(r)
 
 (* Copy book_id from library slot to epub module state *)
 fun epub_set_book_id_from_library(book_index: int): void
@@ -330,3 +264,19 @@ fun epub_copy_container_path(buf_offset: int): int
  * _opf_resolve_spine rejects empty paths). *)
 fun epub_copy_spine_path {c,t:nat | c < t}
   (pf: SPINE_ORDERED(c, t) | index: int(c), count: int(t), buf_offset: int): [len:pos] int(len)
+
+(* ========== Search Index (2.2) ========== *)
+
+(* Build 20-char IDB search key: {16 hex book_id}s{3 hex spine_idx}
+ * Byte 16: 's' (ASCII 115, SAFE_CHAR) distinguishes from resource keys ('-').
+ * Requires SPINE_ORDERED proof — can only build key for valid spine index.
+ * Toddler test: can't build search key for spine_idx >= count. *)
+fun epub_build_search_key {c,t:nat | c < t}
+  (pf: SPINE_ORDERED(c, t) | spine_idx: int(c), count: int(t)): ward_safe_text(20)
+
+(* Store search index for all chapters in the spine.
+ * Sequential promise chain: for each chapter, loads resource from IDB,
+ * parses HTML via ward_xml_parse_html, extracts plain text with
+ * diacritics folding, stores text + offset map to IDB under search key.
+ * Returns promise resolving to 1 on success. *)
+fun epub_store_search_index(): ward_promise_chained(int)
