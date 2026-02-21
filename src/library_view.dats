@@ -588,10 +588,6 @@ fn set_empty_text {l:agz}
 
 (* ========== load_library_covers ========== *)
 
-(* Forward declaration: set_image_src_idb is defined in quire.dats *)
-extern fn set_image_src_idb {lb:agz}{n:pos}
-  (node_id: int, data: ward_arr(byte, lb, n), data_len: int n): void
-
 implement load_library_covers(rem, idx, total) =
   if lte_g1(rem, 0) then ()
   else if gte_int_int(idx, total) then ()
@@ -626,6 +622,140 @@ implement load_library_covers(rem, idx, total) =
     in end
     else load_library_covers(sub_g1(rem, 1), idx + 1, total)
   end
+
+(* ========== IDB-based image loading from IDB ========== *)
+
+(* Detect MIME type from image data magic bytes.
+ * Returns: 1=jpeg, 2=png, 3=gif, 4=svg+xml, 0=unknown *)
+implement detect_mime_from_magic {lb}{n}
+  (arr, len) =
+  if gte_int_int(len, 4) then let
+    val b0 = byte2int0(ward_arr_get<byte>(arr, _ward_idx(0, len)))
+    val b1 = byte2int0(ward_arr_get<byte>(arr, _ward_idx(1, len)))
+    val b2 = byte2int0(ward_arr_get<byte>(arr, _ward_idx(2, len)))
+    val b3 = byte2int0(ward_arr_get<byte>(arr, _ward_idx(3, len)))
+  in
+    if eq_int_int(b0, 255) then (* 0xFF *)
+      if eq_int_int(b1, 216) then 1 (* 0xD8 → JPEG *)
+      else 0
+    else if eq_int_int(b0, 137) then (* 0x89 *)
+      if eq_int_int(b1, 80) then (* 0x50 = 'P' *)
+        if eq_int_int(b2, 78) then (* 0x4E = 'N' *)
+          if eq_int_int(b3, 71) then 2 (* 0x47 = 'G' → PNG *)
+          else 0
+        else 0
+      else 0
+    else if eq_int_int(b0, 71) then (* 0x47 = 'G' *)
+      if eq_int_int(b1, 73) then (* 0x49 = 'I' *)
+        if eq_int_int(b2, 70) then 3 (* 0x46 = 'F' → GIF *)
+        else 0
+      else 0
+    else if eq_int_int(b0, 60) then 4 (* 0x3C = '<' → SVG/XML *)
+    else 0
+  end
+  else 0
+
+(* Set image src on a DOM node from IDB-retrieved data.
+ * Detects MIME from magic bytes, creates its own DOM stream.
+ * Consumes the data array. *)
+implement set_image_src_idb {lb}{n}
+  (node_id, data, data_len) = let
+  val mime_type = detect_mime_from_magic(data, data_len)
+in
+  if eq_int_int(mime_type, 0) then
+    ward_arr_free<byte>(data) (* unknown MIME — skip, free data *)
+  else let
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(data)
+  in
+    if eq_int_int(mime_type, 1) then let (* JPEG *)
+      val b = ward_content_text_build(10)
+      val b = ward_content_text_putc(b, 0, char2int1('i'))
+      val b = ward_content_text_putc(b, 1, char2int1('m'))
+      val b = ward_content_text_putc(b, 2, char2int1('a'))
+      val b = ward_content_text_putc(b, 3, char2int1('g'))
+      val b = ward_content_text_putc(b, 4, char2int1('e'))
+      val b = ward_content_text_putc(b, 5, 47) (* '/' *)
+      val b = ward_content_text_putc(b, 6, char2int1('j'))
+      val b = ward_content_text_putc(b, 7, char2int1('p'))
+      val b = ward_content_text_putc(b, 8, char2int1('e'))
+      val b = ward_content_text_putc(b, 9, char2int1('g'))
+      val mime = ward_content_text_done(b)
+      val s = ward_dom_stream_set_image_src(s, node_id, borrow, data_len, mime, 10)
+      val () = ward_safe_content_text_free(mime)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val data = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(data)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+    in end
+    else if eq_int_int(mime_type, 2) then let (* PNG *)
+      val b = ward_content_text_build(9)
+      val b = ward_content_text_putc(b, 0, char2int1('i'))
+      val b = ward_content_text_putc(b, 1, char2int1('m'))
+      val b = ward_content_text_putc(b, 2, char2int1('a'))
+      val b = ward_content_text_putc(b, 3, char2int1('g'))
+      val b = ward_content_text_putc(b, 4, char2int1('e'))
+      val b = ward_content_text_putc(b, 5, 47) (* '/' *)
+      val b = ward_content_text_putc(b, 6, char2int1('p'))
+      val b = ward_content_text_putc(b, 7, char2int1('n'))
+      val b = ward_content_text_putc(b, 8, char2int1('g'))
+      val mime = ward_content_text_done(b)
+      val s = ward_dom_stream_set_image_src(s, node_id, borrow, data_len, mime, 9)
+      val () = ward_safe_content_text_free(mime)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val data = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(data)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+    in end
+    else if eq_int_int(mime_type, 3) then let (* GIF *)
+      val b = ward_content_text_build(9)
+      val b = ward_content_text_putc(b, 0, char2int1('i'))
+      val b = ward_content_text_putc(b, 1, char2int1('m'))
+      val b = ward_content_text_putc(b, 2, char2int1('a'))
+      val b = ward_content_text_putc(b, 3, char2int1('g'))
+      val b = ward_content_text_putc(b, 4, char2int1('e'))
+      val b = ward_content_text_putc(b, 5, 47) (* '/' *)
+      val b = ward_content_text_putc(b, 6, char2int1('g'))
+      val b = ward_content_text_putc(b, 7, char2int1('i'))
+      val b = ward_content_text_putc(b, 8, char2int1('f'))
+      val mime = ward_content_text_done(b)
+      val s = ward_dom_stream_set_image_src(s, node_id, borrow, data_len, mime, 9)
+      val () = ward_safe_content_text_free(mime)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val data = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(data)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+    in end
+    else let (* SVG *)
+      val b = ward_content_text_build(13)
+      val b = ward_content_text_putc(b, 0, char2int1('i'))
+      val b = ward_content_text_putc(b, 1, char2int1('m'))
+      val b = ward_content_text_putc(b, 2, char2int1('a'))
+      val b = ward_content_text_putc(b, 3, char2int1('g'))
+      val b = ward_content_text_putc(b, 4, char2int1('e'))
+      val b = ward_content_text_putc(b, 5, 47) (* '/' *)
+      val b = ward_content_text_putc(b, 6, char2int1('s'))
+      val b = ward_content_text_putc(b, 7, char2int1('v'))
+      val b = ward_content_text_putc(b, 8, char2int1('g'))
+      val b = ward_content_text_putc(b, 9, 43) (* '+' *)
+      val b = ward_content_text_putc(b, 10, char2int1('x'))
+      val b = ward_content_text_putc(b, 11, char2int1('m'))
+      val b = ward_content_text_putc(b, 12, char2int1('l'))
+      val mime = ward_content_text_done(b)
+      val s = ward_dom_stream_set_image_src(s, node_id, borrow, data_len, mime, 13)
+      val () = ward_safe_content_text_free(mime)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val data = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(data)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+    in end
+  end
+end
 
 (* ========== EPUB import: read and parse ZIP entries (async) ========== *)
 

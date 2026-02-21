@@ -73,3 +73,11 @@ fun dismiss_reset_modal(): void
 
 (* Render factory reset modal — implemented in modals.dats *)
 fun render_reset_modal(root: int): void
+
+(* Detect MIME type from magic bytes — implemented in library_view.dats *)
+fun detect_mime_from_magic {lb:agz}{n:pos}
+  (data: !ward_arr(byte, lb, n), data_len: int n): int
+
+(* Set image src on a DOM node from IDB data — implemented in library_view.dats *)
+fun set_image_src_idb {lb:agz}{n:pos}
+  (node_id: int, data: ward_arr(byte, lb, n), data_len: int n): void
