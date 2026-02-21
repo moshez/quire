@@ -3779,8 +3779,8 @@ in end
 (* import_finish_with_card: removes import card then does standard import_finish cleanup. *)
 fn import_finish_with_card
   {c:pos}
-  (h: import_handled, pf_term: PROGRESS_TERMINAL() |
-   card_id: int(c), label_id: int, span_id: int, status_id: int): void = let
+  (pf_term: PROGRESS_TERMINAL() |
+   h: import_handled, card_id: int(c), label_id: int, span_id: int, status_id: int): void = let
   val () = remove_import_card(pf_term | card_id)
 in import_finish(h, label_id, span_id, status_id) end
 
@@ -5392,8 +5392,9 @@ implement render_library(root_id) = let
               prval pf_term = PTERMINAL_ERR(pf2)
               val () = render_error_banner(sr)
               val () = import_finish_with_card(
+                pf_term |
                 import_mark_failed(log_err_zip_parse(), 7),
-                pf_term | scard, slbl, sspn, ssts)
+                scard, slbl, sspn, ssts)
             in ward_promise_return<int>(0) end
             else let
               val _np = _checked_pos(nentries)
@@ -5423,8 +5424,9 @@ implement render_library(root_id) = let
                         prval pf_term = PTERMINAL_ERR(pf3)
                         val () = render_error_banner(ssr)
                         val () = import_finish_with_card(
+                          pf_term |
                           import_mark_failed(log_err_opf(), 7),
-                          pf_term | sscard, sslbl, ssspn, sssts)
+                          sscard, sslbl, ssspn, sssts)
                       in ward_promise_return<int>(0) end
                       else let
                         (* OPF parse succeeded — store all resources to IDB *)
@@ -5446,8 +5448,9 @@ implement render_library(root_id) = let
                               val () = ward_file_close(ssh)
                               val () = render_error_banner(ssr)
                               val () = import_finish_with_card(
+                                pf_term |
                                 import_mark_failed(log_err_manifest(), 12),
-                                pf_term | sscard, sslbl, ssspn, sssts)
+                                sscard, sslbl, ssspn, sssts)
                             in ward_promise_return<int>(0) end
                             else let
                               val p_cvr = epub_store_cover()
@@ -5473,7 +5476,7 @@ implement render_library(root_id) = let
                                           val () = ward_file_close(ssh)
                                           val h = import_mark_success()
                                           prval pf_term = PTERMINAL_OK(pf3)
-                                          val () = import_finish_with_card(h, pf_term | sscard, sslbl, ssspn, sssts)
+                                          val () = import_finish_with_card(pf_term | h, sscard, sslbl, ssspn, sssts)
                                           val dom = ward_dom_init()
                                           val s = ward_dom_stream_begin(dom)
                                           val s = render_library_with_books(s, ssli, 0)
@@ -5498,7 +5501,7 @@ implement render_library(root_id) = let
                                               val () = ward_file_close(ssh)
                                               val h = import_mark_success()
                                               prval pf_term = PTERMINAL_OK(pf3)
-                                              val () = import_finish_with_card(h, pf_term | sscard, sslbl, ssspn, sssts)
+                                              val () = import_finish_with_card(pf_term | h, sscard, sslbl, ssspn, sssts)
                                             in ward_promise_return<int>(0) end
                                             else if eq_int_int(c, 0) then
                                               ward_promise_then<int><int>(ward_timer_set(50),
@@ -5508,7 +5511,7 @@ implement render_library(root_id) = let
                                               val () = ward_file_close(ssh)
                                               val h = import_mark_success()
                                               prval pf_term = PTERMINAL_OK(pf3)
-                                              val () = import_finish_with_card(h, pf_term | sscard, sslbl, ssspn, sssts)
+                                              val () = import_finish_with_card(pf_term | h, sscard, sslbl, ssspn, sssts)
                                             in ward_promise_return<int>(0) end
                                             else let
                                               val () = dismiss_dup_modal()
@@ -5517,7 +5520,7 @@ implement render_library(root_id) = let
                                               val () = ward_file_close(ssh)
                                               val h = import_mark_success()
                                               prval pf_term = PTERMINAL_OK(pf3)
-                                              val () = import_finish_with_card(h, pf_term | sscard, sslbl, ssspn, sssts)
+                                              val () = import_finish_with_card(pf_term | h, sscard, sslbl, ssspn, sssts)
                                               val dom = ward_dom_init()
                                               val s = ward_dom_stream_begin(dom)
                                               val s = render_library_with_books(s, ssli, 0)
@@ -5541,7 +5544,7 @@ implement render_library(root_id) = let
                                           val () = ward_file_close(ssh)
                                           val h = import_mark_success()
                                           prval pf_term = PTERMINAL_OK(pf3)
-                                          val () = import_finish_with_card(h, pf_term | sscard, sslbl, ssspn, sssts)
+                                          val () = import_finish_with_card(pf_term | h, sscard, sslbl, ssspn, sssts)
                                           val dom = ward_dom_init()
                                           val s = ward_dom_stream_begin(dom)
                                           val s = render_library_with_books(s, ssli, 0)
@@ -5557,8 +5560,9 @@ implement render_library(root_id) = let
                                           val () = render_error_banner(ssr)
                                           prval pf_term = PTERMINAL_ERR(pf3)
                                           val () = import_finish_with_card(
+                                            pf_term |
                                             import_mark_failed(log_err_lib_full(), 12),
-                                            pf_term | sscard, sslbl, ssspn, sssts)
+                                            sscard, sslbl, ssspn, sssts)
                                         in ward_promise_return<int>(0) end
                                       end
                                     end
@@ -5573,8 +5577,9 @@ implement render_library(root_id) = let
                   prval pf_term = PTERMINAL_ERR(pf3)
                   val () = render_error_banner(ssr)
                   val () = import_finish_with_card(
+                    pf_term |
                     import_mark_failed(log_err_container(), 13),
-                    pf_term | sscard, sslbl, ssspn, sssts)
+                    sscard, sslbl, ssspn, sssts)
                 in ward_promise_return<int>(0) end)
               end)
             end (* else let: nentries > 0 *)
