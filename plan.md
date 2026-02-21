@@ -111,7 +111,7 @@ everything else depends on.
   "Done" (full bar). Calculate percentage from chapter/spine_count and
   page/page_count (approximate until character-offset tracking lands).
 
-- [ ] **3.3 Context menu (long-press / right-click).** Implement a context
+- [x] **3.3 Context menu (long-press / right-click).** Implement a context
   menu on book cards. Long-press on mobile, right-click on desktop (per spec:
   browser right-click menu is NOT intercepted in reading view, only in
   library). Menu items per spec wireframe: Book info, Hide, Archive, Delete.
