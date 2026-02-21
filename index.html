@@ -29,6 +29,10 @@
         },
         quire_time_now() {
           return Math.floor(Date.now() / 1000);
+        },
+        quire_factory_reset() {
+          indexedDB.deleteDatabase('ward');
+          location.reload();
         }
       }
     });

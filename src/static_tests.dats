@@ -337,3 +337,28 @@ fun test_max_byte_access(): bool(true) =
 (* UNIT TEST — byte stride = int stride × 4 *)
 fun test_stride_consistent(): bool(true) =
   eq_g1(library_rec_bytes(), mul_g1(library_rec_ints(), 4))
+
+(* ================================================================
+ * Test 12: epub_delete_book_data — spine count bounds
+ *
+ * Verifies epub_delete_book_data type-checks at boundary values.
+ * The function signature requires {sc:nat | sc <= 256}. Compilation
+ * success proves the constraint solver accepts both bounds.
+ * The SPINE_ENTRY proofs and termination metric are verified by
+ * epub.dats compilation itself (not duplicated here).
+ * ================================================================ *)
+
+(* UNIT TEST — delete with zero chapters is valid *)
+fun test_delete_zero_spine(): bool(true) = let
+  val () = epub_delete_book_data(0)
+in true end
+
+(* UNIT TEST — delete with max chapters (256) is valid *)
+fun test_delete_max_spine(): bool(true) = let
+  val () = epub_delete_book_data(256)
+in true end
+
+(* UNIT TEST — epub_get_chapter_count return type satisfies delete bounds *)
+fun test_chapter_count_satisfies_delete(): bool(true) = let
+  val n = epub_get_chapter_count()
+in lte_g1(n, 256) end

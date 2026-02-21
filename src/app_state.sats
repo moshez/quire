@@ -170,6 +170,10 @@ fun app_set_dup_choice(st: !app_state, v: int): void
 fun app_get_dup_overlay_id(st: !app_state): int
 fun app_set_dup_overlay_id(st: !app_state, v: int): void
 
+(* Factory reset state *)
+fun app_get_reset_overlay_id(st: !app_state): int
+fun app_set_reset_overlay_id(st: !app_state, v: int): void
+
 (* ========== Convenience wrappers (load/store internally) ========== *)
 (* These load app_state from the callback registry, access the field,
  * then store it back. Prefer using app_get_*/app_set_* with !app_state
@@ -180,6 +184,10 @@ fun _app_dup_choice(): int
 fun _app_set_dup_choice(v: int): void
 fun _app_dup_overlay_id(): int
 fun _app_set_dup_overlay_id(v: int): void
+
+(* Factory reset *)
+fun _app_reset_overlay_id(): int
+fun _app_set_reset_overlay_id(v: int): void
 
 (* Library accessors *)
 fun _app_lib_count(): int

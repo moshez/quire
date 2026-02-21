@@ -286,3 +286,11 @@ fun epub_build_search_key {c,t:nat | c < t}
  * diacritics folding, stores text + offset map to IDB under search key.
  * Returns promise resolving to 1 on success. *)
 fun epub_store_search_index(): ward_promise_chained(int)
+
+(* Delete all IDB content for the current book: manifest, cover, search index.
+ * Requires epub book_id to be set (via epub_set_book_id_from_library).
+ * spine_count determines how many search keys to delete.
+ * Resource entries are NOT deleted (orphaned until factory reset).
+ * Termination: loop bounded by spine_count via dependent int. *)
+fun epub_delete_book_data {sc:nat | sc <= 256}
+  (spine_count: int(sc)): void

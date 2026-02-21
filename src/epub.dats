@@ -1836,3 +1836,25 @@ implement epub_store_search_index() = let
           loop(saved_rem, saved_idx, saved_total))
     end
 in loop(count0, 0, count0) end
+
+(* Delete all IDB content for current book: manifest, cover, search keys.
+ * Fire-and-forget: each ward_idb_delete returns a promise which we discard.
+ * Termination: _delete_search_keys loop bounded by sc-idx via dependent int. *)
+implement epub_delete_book_data {sc} (spine_count) = let
+  (* sc <= 256 from signature, needed for epub_build_search_key's t <= 256 *)
+  (* Delete manifest key *)
+  val manifest_key = epub_build_manifest_key()
+  val () = ward_promise_discard<int>(ward_idb_delete(manifest_key, 20))
+  (* Delete cover key *)
+  val cover_key = epub_build_cover_key()
+  val () = ward_promise_discard<int>(ward_idb_delete(cover_key, 20))
+  (* Delete search index keys for each spine entry *)
+  fun _delete_search_keys {idx:nat}{t:nat | idx <= t; t <= 256}{k:nat} .<k>.
+    (rem: int(k), idx: int(idx), total: int(t)): void =
+    if lte_g1(rem, 0) then ()
+    else if gte_g1(idx, total) then ()
+    else let
+      val search_key = epub_build_search_key(SPINE_ENTRY() | idx, total)
+      val () = ward_promise_discard<int>(ward_idb_delete(search_key, 20))
+    in _delete_search_keys(sub_g1(rem, 1), add_g1(idx, 1), total) end
+in _delete_search_keys(spine_count, 0, spine_count) end
