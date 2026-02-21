@@ -122,9 +122,9 @@ test.describe('EPUB Reader E2E', () => {
     const bookAuthor = page.locator('.book-author');
     await expect(bookAuthor).toContainText('Quire Bot');
 
-    // Verify "Not started" position
+    // Verify "New" progress state (unstarted book)
     const bookPosition = page.locator('.book-position');
-    await expect(bookPosition).toContainText('Not started');
+    await expect(bookPosition).toContainText('New');
 
     // --- Open the book ---
     const readBtn = page.locator('.read-btn');
@@ -322,11 +322,11 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 10000 });
     await screenshot(page, '13-library-after-reading');
 
-    // Verify reading position was saved (must NOT be "Not started")
+    // Verify reading position was saved (must NOT be "New")
     const posAfterRead = page.locator('.book-position');
     await expect(posAfterRead).toBeVisible();
     const posText = await posAfterRead.textContent();
-    expect(posText).not.toBe('Not started');
+    expect(posText).not.toBe('New');
   });
 
   test('import real-world epub with deflate-compressed metadata', async ({ page }) => {
@@ -860,9 +860,9 @@ test.describe('EPUB Reader E2E', () => {
     await backBtn.click();
     await page.waitForSelector('.book-card', { timeout: 10000 });
 
-    // Verify position is saved (should show "Ch 2" in library)
+    // Verify position is saved (should show progress percentage in library)
     const posText = await page.locator('.book-position').textContent();
-    expect(posText).toMatch(/Ch 2/);
+    expect(posText).toMatch(/\d+%/);
     await screenshot(page, 'position-02-library-saved');
 
     // Re-enter the book
@@ -2131,9 +2131,9 @@ test.describe('EPUB Reader E2E', () => {
     await backBtn.click();
     await page.waitForSelector('.book-card', { timeout: 10000 });
 
-    // Verify library shows the position (not "Not started")
+    // Verify library shows the position (not "New")
     const posText = await page.locator('.book-position').textContent();
-    expect(posText).not.toBe('Not started');
+    expect(posText).not.toBe('New');
     await screenshot(page, 'page-pos-02-library');
 
     // Re-enter the book
