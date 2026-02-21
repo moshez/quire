@@ -113,7 +113,10 @@ datavtype app_state_impl =
       dup_choice = int,
       dup_overlay_id = int,
       reset_overlay_id = int,
-      err_banner_id = int
+      err_banner_id = int,
+      import_card_id = int,
+      import_card_bar_id = int,
+      import_card_status_id = int
     }
 
 assume app_state = app_state_impl
@@ -265,7 +268,10 @@ implement app_state_init() =
     dup_choice = 0,
     dup_overlay_id = 0,
     reset_overlay_id = 0,
-    err_banner_id = 0
+    err_banner_id = 0,
+    import_card_id = 0,
+    import_card_bar_id = 0,
+    import_card_status_id = 0
   }
 
 implement app_state_fini(st) = let
@@ -562,6 +568,42 @@ implement _app_err_banner_id() = let val st = app_state_load()
   val v = app_get_err_banner_id(st) val () = app_state_store(st) in v end
 implement _app_set_err_banner_id(v) = let val st = app_state_load()
   val () = app_set_err_banner_id(st, v) val () = app_state_store(st) in end
+
+(* ========== Import card state ========== *)
+
+implement app_get_import_card_id(st) = let
+  val @APP_STATE(r) = st val v = r.import_card_id
+  prval () = fold@(st) in v end
+implement app_set_import_card_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.import_card_id := v
+  prval () = fold@(st) in end
+
+implement app_get_import_card_bar_id(st) = let
+  val @APP_STATE(r) = st val v = r.import_card_bar_id
+  prval () = fold@(st) in v end
+implement app_set_import_card_bar_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.import_card_bar_id := v
+  prval () = fold@(st) in end
+
+implement app_get_import_card_status_id(st) = let
+  val @APP_STATE(r) = st val v = r.import_card_status_id
+  prval () = fold@(st) in v end
+implement app_set_import_card_status_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.import_card_status_id := v
+  prval () = fold@(st) in end
+
+implement _app_import_card_id() = let val st = app_state_load()
+  val v = app_get_import_card_id(st) val () = app_state_store(st) in v end
+implement _app_set_import_card_id(v) = let val st = app_state_load()
+  val () = app_set_import_card_id(st, v) val () = app_state_store(st) in end
+implement _app_import_card_bar_id() = let val st = app_state_load()
+  val v = app_get_import_card_bar_id(st) val () = app_state_store(st) in v end
+implement _app_set_import_card_bar_id(v) = let val st = app_state_load()
+  val () = app_set_import_card_bar_id(st, v) val () = app_state_store(st) in end
+implement _app_import_card_status_id() = let val st = app_state_load()
+  val v = app_get_import_card_status_id(st) val () = app_state_store(st) in v end
+implement _app_set_import_card_status_id(v) = let val st = app_state_load()
+  val () = app_set_import_card_status_id(st, v) val () = app_state_store(st) in end
 
 (* ========== C-callable wrappers for library module ========== *)
 

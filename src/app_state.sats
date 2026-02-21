@@ -178,6 +178,14 @@ fun app_set_reset_overlay_id(st: !app_state, v: int): void
 fun app_get_err_banner_id(st: !app_state): int
 fun app_set_err_banner_id(st: !app_state, v: int): void
 
+(* Import card state *)
+fun app_get_import_card_id(st: !app_state): int
+fun app_set_import_card_id(st: !app_state, v: int): void
+fun app_get_import_card_bar_id(st: !app_state): int
+fun app_set_import_card_bar_id(st: !app_state, v: int): void
+fun app_get_import_card_status_id(st: !app_state): int
+fun app_set_import_card_status_id(st: !app_state, v: int): void
+
 (* ========== Convenience wrappers (load/store internally) ========== *)
 (* These load app_state from the callback registry, access the field,
  * then store it back. Prefer using app_get_*/app_set_* with !app_state
@@ -196,6 +204,14 @@ fun _app_set_reset_overlay_id(v: int): void
 (* Error banner *)
 fun _app_err_banner_id(): int
 fun _app_set_err_banner_id(v: int): void
+
+(* Import card *)
+fun _app_import_card_id(): int
+fun _app_set_import_card_id(v: int): void
+fun _app_import_card_bar_id(): int
+fun _app_set_import_card_bar_id(v: int): void
+fun _app_import_card_status_id(): int
+fun _app_set_import_card_status_id(v: int): void
 
 (* Library accessors *)
 fun _app_lib_count(): int
