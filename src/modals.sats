@@ -26,6 +26,27 @@ fun cls_err_close(): ward_safe_text(9)
 #define LISTENER_RESET_CONFIRM 37
 #define LISTENER_RESET_CANCEL 38
 #define LISTENER_ERR_DISMISS 39
+#define LISTENER_DEL_CONFIRM 40
+#define LISTENER_DEL_CANCEL 41
+
+(* ========== Delete book proofs ========== *)
+
+(* IDB_DATA_DELETED(sc): proves IDB data for a book with sc spine entries
+ * has been deleted. sc <= 256 bounds the spine count. *)
+dataprop IDB_DATA_DELETED(sc: int) =
+  | {sc:nat | sc <= 256} IDB_DELETED(sc)
+
+(* BOOK_REMOVED(idx): proves the book at library index idx has been
+ * removed from the library. idx < 32 bounds the library index. *)
+dataprop BOOK_REMOVED(idx: int) =
+  | {i:nat | i < 32} REMOVED_FROM_LIB(i)
+
+(* BOOK_DELETE_COMPLETE(): proves both IDB data deletion and library
+ * removal have occurred in the correct order. Construction requires
+ * both sub-proofs, enforcing the ordering at compile time. *)
+dataprop BOOK_DELETE_COMPLETE() =
+  | {sc:nat | sc <= 256}{i:nat | i < 32}
+    BOOK_DELETED() of (IDB_DATA_DELETED(sc), BOOK_REMOVED(i))
 
 (* ========== Helper functions ========== *)
 

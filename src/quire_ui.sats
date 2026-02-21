@@ -74,6 +74,12 @@ fun dismiss_reset_modal(): void
 (* Render factory reset modal — implemented in modals.dats *)
 fun render_reset_modal(root: int): void
 
+(* Dismiss delete modal — implemented in modals.dats *)
+fun dismiss_delete_modal(): void
+
+(* Render delete confirmation modal — implemented in modals.dats *)
+fun render_delete_modal(book_idx: int, root: int): void
+
 (* Detect MIME type from magic bytes — implemented in library_view.dats *)
 fun detect_mime_from_magic {lb:agz}{n:pos}
   (data: !ward_arr(byte, lb, n), data_len: int n): int
