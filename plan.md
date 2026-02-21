@@ -130,7 +130,7 @@ everything else depends on.
   delete annotations (with confirmation prompt). Currently only
   archive/restore exists.
 
-- [ ] **3.6 E2e: library view enhancements.** Verify cover thumbnails on
+- [x] **3.6 E2e: library view enhancements.** Verify cover thumbnails on
   book cards. Long-press / right-click book card, verify context menu appears
   with correct items for current shelf state. Open book info from context
   menu, verify cover, metadata (title, author, progress, dates, size), and
