@@ -86,6 +86,58 @@ extern void quire_factory_reset(void);
 #define TEXT_RESET 33
 #define TEXT_RESET_MSG 34
 #define TEXT_CANCEL 35
+#define TEXT_NOT_VALID_EPUB 36
+#define TEXT_DRM_MSG 37
+
+(* ========== Text constant type proof ========== *)
+(* VALID_TEXT(id, len) proves text_id maps to the correct byte length.
+ * Prevents: calling set_text_cstr with wrong length, or with an id
+ * that has no fill_text arm. *)
+dataprop VALID_TEXT(id: int, len: int) =
+  | VT_0(0, 12)   (* "No books yet" *)
+  | VT_1(1, 5)    (* ".epub" *)
+  | VT_2(2, 11)   (* "Not started" *)
+  | VT_3(3, 4)    (* "Read" *)
+  | VT_4(4, 9)    (* "Importing" *)
+  | VT_5(5, 12)   (* "Opening file" *)
+  | VT_6(6, 15)   (* "Parsing archive" *)
+  | VT_7(7, 16)   (* "Reading metadata" *)
+  | VT_8(8, 17)   (* "Adding to library" *)
+  | VT_9(9, 17)   (* "Chapter not found" *)
+  | VT_10(10, 19) (* "Cannot read chapter" *)
+  | VT_11(11, 18) (* "Unsupported format" *)
+  | VT_12(12, 20) (* "Decompression failed" *)
+  | VT_13(13, 21) (* "Chapter content empty" *)
+  | VT_14(14, 19) (* "No chapters in book" *)
+  | VT_15(15, 14) (* "Page too dense" *)
+  | VT_16(16, 8)  (* "Archived" *)
+  | VT_17(17, 7)  (* "Library" *)
+  | VT_18(18, 8)  (* "By title" *)
+  | VT_19(19, 9)  (* "By author" *)
+  | VT_20(20, 7)  (* "Archive" *)
+  | VT_21(21, 7)  (* "Restore" *)
+  | VT_22(22, 17) (* "No archived books" *)
+  | VT_23(23, 11) (* "Last opened" *)
+  | VT_24(24, 10) (* "Date added" *)
+  | VT_25(25, 6)  (* "Hidden" *)
+  | VT_26(26, 15) (* "No hidden books" *)
+  | VT_27(27, 4)  (* "Hide" *)
+  | VT_28(28, 6)  (* "Unhide" *)
+  | VT_29(29, 13) (* "Import failed" *)
+  | VT_30(30, 4)  (* "Skip" *)
+  | VT_31(31, 7)  (* "Replace" *)
+  | VT_32(32, 18) (* "Already in library" *)
+  | VT_33(33, 5)  (* "Reset" *)
+  | VT_34(34, 16) (* "Delete all data?" *)
+  | VT_35(35, 6)  (* "Cancel" *)
+  | VT_36(36, 26) (* " is not a valid ePub file." *)
+  | VT_37(37, 39) (* "Quire supports .epub files without DRM." *)
+
+(* ========== Position persistence proof ========== *)
+(* POSITION_PERSISTED proves library_update_position + library_save
+ * were called. Required by page_turn_forward/backward and chapter
+ * transitions — ensures position is saved on every navigation. *)
+dataprop POSITION_PERSISTED() = | POS_PERSISTED()
 
 (* ========== Listener ID constants ========== *)
 
@@ -119,6 +171,7 @@ dataprop READER_LISTENER(id: int) =
 #define LISTENER_RESET_BTN 36
 #define LISTENER_RESET_CONFIRM 37
 #define LISTENER_RESET_CANCEL 38
+#define LISTENER_ERR_DISMISS 39
 
 (* ========== Byte-level helpers (pure ATS2) ========== *)
 
@@ -615,6 +668,75 @@ fn fill_text {l:agz}{n:pos}
     val () = ward_arr_set_byte(arr, 3, alen, 99)   (* c *)
     val () = ward_arr_set_byte(arr, 4, alen, 101)  (* e *)
     val () = ward_arr_set_byte(arr, 5, alen, 108)  (* l *)
+  in end
+  else if text_id = 36 then let (* " is not a valid ePub file." *)
+    val () = ward_arr_set_byte(arr, 0, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 1, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 2, alen, 115)  (* s *)
+    val () = ward_arr_set_byte(arr, 3, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 4, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 5, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 6, alen, 116)  (* t *)
+    val () = ward_arr_set_byte(arr, 7, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 8, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 9, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 10, alen, 118) (* v *)
+    val () = ward_arr_set_byte(arr, 11, alen, 97)  (* a *)
+    val () = ward_arr_set_byte(arr, 12, alen, 108) (* l *)
+    val () = ward_arr_set_byte(arr, 13, alen, 105) (* i *)
+    val () = ward_arr_set_byte(arr, 14, alen, 100) (* d *)
+    val () = ward_arr_set_byte(arr, 15, alen, 32)  (*   *)
+    val () = ward_arr_set_byte(arr, 16, alen, 101) (* e *)
+    val () = ward_arr_set_byte(arr, 17, alen, 80)  (* P *)
+    val () = ward_arr_set_byte(arr, 18, alen, 117) (* u *)
+    val () = ward_arr_set_byte(arr, 19, alen, 98)  (* b *)
+    val () = ward_arr_set_byte(arr, 20, alen, 32)  (*   *)
+    val () = ward_arr_set_byte(arr, 21, alen, 102) (* f *)
+    val () = ward_arr_set_byte(arr, 22, alen, 105) (* i *)
+    val () = ward_arr_set_byte(arr, 23, alen, 108) (* l *)
+    val () = ward_arr_set_byte(arr, 24, alen, 101) (* e *)
+    val () = ward_arr_set_byte(arr, 25, alen, 46)  (* . *)
+  in end
+  else if text_id = 37 then let (* "Quire supports .epub files without DRM." *)
+    val () = ward_arr_set_byte(arr, 0, alen, 81)   (* Q *)
+    val () = ward_arr_set_byte(arr, 1, alen, 117)  (* u *)
+    val () = ward_arr_set_byte(arr, 2, alen, 105)  (* i *)
+    val () = ward_arr_set_byte(arr, 3, alen, 114)  (* r *)
+    val () = ward_arr_set_byte(arr, 4, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 5, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 6, alen, 115)  (* s *)
+    val () = ward_arr_set_byte(arr, 7, alen, 117)  (* u *)
+    val () = ward_arr_set_byte(arr, 8, alen, 112)  (* p *)
+    val () = ward_arr_set_byte(arr, 9, alen, 112)  (* p *)
+    val () = ward_arr_set_byte(arr, 10, alen, 111) (* o *)
+    val () = ward_arr_set_byte(arr, 11, alen, 114) (* r *)
+    val () = ward_arr_set_byte(arr, 12, alen, 116) (* t *)
+    val () = ward_arr_set_byte(arr, 13, alen, 115) (* s *)
+    val () = ward_arr_set_byte(arr, 14, alen, 32)  (*   *)
+    val () = ward_arr_set_byte(arr, 15, alen, 46)  (* . *)
+    val () = ward_arr_set_byte(arr, 16, alen, 101) (* e *)
+    val () = ward_arr_set_byte(arr, 17, alen, 112) (* p *)
+    val () = ward_arr_set_byte(arr, 18, alen, 117) (* u *)
+    val () = ward_arr_set_byte(arr, 19, alen, 98)  (* b *)
+    val () = ward_arr_set_byte(arr, 20, alen, 32)  (*   *)
+    val () = ward_arr_set_byte(arr, 21, alen, 102) (* f *)
+    val () = ward_arr_set_byte(arr, 22, alen, 105) (* i *)
+    val () = ward_arr_set_byte(arr, 23, alen, 108) (* l *)
+    val () = ward_arr_set_byte(arr, 24, alen, 101) (* e *)
+    val () = ward_arr_set_byte(arr, 25, alen, 115) (* s *)
+    val () = ward_arr_set_byte(arr, 26, alen, 32)  (*   *)
+    val () = ward_arr_set_byte(arr, 27, alen, 119) (* w *)
+    val () = ward_arr_set_byte(arr, 28, alen, 105) (* i *)
+    val () = ward_arr_set_byte(arr, 29, alen, 116) (* t *)
+    val () = ward_arr_set_byte(arr, 30, alen, 104) (* h *)
+    val () = ward_arr_set_byte(arr, 31, alen, 111) (* o *)
+    val () = ward_arr_set_byte(arr, 32, alen, 117) (* u *)
+    val () = ward_arr_set_byte(arr, 33, alen, 116) (* t *)
+    val () = ward_arr_set_byte(arr, 34, alen, 32)  (*   *)
+    val () = ward_arr_set_byte(arr, 35, alen, 68)  (* D *)
+    val () = ward_arr_set_byte(arr, 36, alen, 82)  (* R *)
+    val () = ward_arr_set_byte(arr, 37, alen, 77)  (* M *)
+    val () = ward_arr_set_byte(arr, 38, alen, 46)  (* . *)
   in end
   else () (* unused text_id *)
 
@@ -1206,6 +1328,37 @@ fn cls_dup_replace(): ward_safe_text(11) = let
   val b = ward_text_putc(b, 8, char2int1('a'))
   val b = ward_text_putc(b, 9, char2int1('c'))
   val b = ward_text_putc(b, 10, char2int1('e'))
+in ward_text_done(b) end
+
+(* ========== Error banner CSS class builders ========== *)
+
+(* "err-banner" = 10 chars *)
+fn cls_err_banner(): ward_safe_text(10) = let
+  val b = ward_text_build(10)
+  val b = ward_text_putc(b, 0, char2int1('e'))
+  val b = ward_text_putc(b, 1, char2int1('r'))
+  val b = ward_text_putc(b, 2, char2int1('r'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('b'))
+  val b = ward_text_putc(b, 5, char2int1('a'))
+  val b = ward_text_putc(b, 6, char2int1('n'))
+  val b = ward_text_putc(b, 7, char2int1('n'))
+  val b = ward_text_putc(b, 8, char2int1('e'))
+  val b = ward_text_putc(b, 9, char2int1('r'))
+in ward_text_done(b) end
+
+(* "err-close" = 9 chars *)
+fn cls_err_close(): ward_safe_text(9) = let
+  val b = ward_text_build(9)
+  val b = ward_text_putc(b, 0, char2int1('e'))
+  val b = ward_text_putc(b, 1, char2int1('r'))
+  val b = ward_text_putc(b, 2, char2int1('r'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('c'))
+  val b = ward_text_putc(b, 5, char2int1('l'))
+  val b = ward_text_putc(b, 6, char2int1('o'))
+  val b = ward_text_putc(b, 7, char2int1('s'))
+  val b = ward_text_putc(b, 8, char2int1('e'))
 in ward_text_done(b) end
 
 (* tabindex value "0" = 1 char *)
@@ -2518,24 +2671,19 @@ in s end
 
 (* ========== Helper: set text content from C string constant ========== *)
 
-fn set_text_cstr {l:agz}
-  (s: ward_dom_stream(l), nid: int, text_id: int, text_len: int)
+fn set_text_cstr {l:agz}{tid:nat}{tl:pos | tl < 65536}
+  (pf: VALID_TEXT(tid, tl) |
+   s: ward_dom_stream(l), nid: int, text_id: int(tid), text_len: int(tl))
   : ward_dom_stream(l) = let
-  val tl = g1ofg0(text_len)
-in
-  if tl > 0 then
-    if tl < 65536 then let
-      val arr = ward_arr_alloc<byte>(tl)
-      val () = fill_text(arr, tl, text_id)
-      val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
-      val s = ward_dom_stream_set_text(s, nid, borrow, tl)
-      val () = ward_arr_drop<byte>(frozen, borrow)
-      val arr = ward_arr_thaw<byte>(frozen)
-      val () = ward_arr_free<byte>(arr)
-    in s end
-    else s
-  else s
-end
+  prval _ = pf
+  val arr = ward_arr_alloc<byte>(text_len)
+  val () = fill_text(arr, text_len, _g0(text_id))
+  val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+  val s = ward_dom_stream_set_text(s, nid, borrow, text_len)
+  val () = ward_arr_drop<byte>(frozen, borrow)
+  val arr = ward_arr_thaw<byte>(frozen)
+  val () = ward_arr_free<byte>(arr)
+in s end
 
 (* ========== Helper: set attribute with C string value ========== *)
 
@@ -2587,20 +2735,14 @@ end
 
 (* Update a node's text content from a fill_text constant.
  * Opens/closes its own DOM stream — safe to call from promise callbacks. *)
-fn update_status_text(nid: int, text_id: int, text_len: int): void = let
-  val tl = g1ofg0(text_len)
-in
-  if tl > 0 then
-    if tl < 65536 then let
-      val dom = ward_dom_init()
-      val s = ward_dom_stream_begin(dom)
-      val s = set_text_cstr(s, nid, text_id, text_len)
-      val dom = ward_dom_stream_end(s)
-      val () = ward_dom_fini(dom)
-    in end
-    else ()
-  else ()
-end
+fn update_status_text {tid:nat}{tl:pos | tl < 65536}
+  (pf: VALID_TEXT(tid, tl) | nid: int, text_id: int(tid), text_len: int(tl)): void = let
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+  val s = set_text_cstr(pf | s, nid, text_id, text_len)
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
+in end
 
 (* Set CSS class on import label: 1=importing, 0=import-btn *)
 fn update_import_label_class(label_id: int, importing: int): void = let
@@ -2825,7 +2967,7 @@ fn render_dup_modal(dup_idx: int, root: int): void = let
   val s = ward_dom_stream_create_element(s, msg_id, modal_id, tag_div(), 3)
   val s = ward_dom_stream_set_attr_safe(s, msg_id, attr_class(), 5,
     cls_dup_msg(), 7)
-  val s = set_text_cstr(s, msg_id, TEXT_DUP_MSG, 18)
+  val s = set_text_cstr(VT_32() | s, msg_id, 32, 18)
 
   (* Actions container *)
   val actions_id = dom_next_id()
@@ -2838,14 +2980,14 @@ fn render_dup_modal(dup_idx: int, root: int): void = let
   val s = ward_dom_stream_create_element(s, skip_btn_id, actions_id, tag_button(), 6)
   val s = ward_dom_stream_set_attr_safe(s, skip_btn_id, attr_class(), 5,
     cls_dup_btn(), 7)
-  val s = set_text_cstr(s, skip_btn_id, TEXT_DUP_SKIP, 4)
+  val s = set_text_cstr(VT_30() | s, skip_btn_id, 30, 4)
 
   (* Replace button *)
   val replace_btn_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, replace_btn_id, actions_id, tag_button(), 6)
   val s = ward_dom_stream_set_attr_safe(s, replace_btn_id, attr_class(), 5,
     cls_dup_replace(), 11)
-  val s = set_text_cstr(s, replace_btn_id, TEXT_DUP_REPLACE, 7)
+  val s = set_text_cstr(VT_31() | s, replace_btn_id, 31, 7)
 
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
@@ -2918,7 +3060,7 @@ fn render_reset_modal(root: int): void = let
   val s = ward_dom_stream_create_element(s, msg_id, modal_id, tag_div(), 3)
   val s = ward_dom_stream_set_attr_safe(s, msg_id, attr_class(), 5,
     cls_dup_msg(), 7)
-  val s = set_text_cstr(s, msg_id, TEXT_RESET_MSG, 16)
+  val s = set_text_cstr(VT_34() | s, msg_id, 34, 16)
 
   (* Actions container *)
   val actions_id = dom_next_id()
@@ -2931,14 +3073,14 @@ fn render_reset_modal(root: int): void = let
   val s = ward_dom_stream_create_element(s, cancel_btn_id, actions_id, tag_button(), 6)
   val s = ward_dom_stream_set_attr_safe(s, cancel_btn_id, attr_class(), 5,
     cls_dup_btn(), 7)
-  val s = set_text_cstr(s, cancel_btn_id, TEXT_CANCEL, 6)
+  val s = set_text_cstr(VT_35() | s, cancel_btn_id, 35, 6)
 
   (* Reset button *)
   val reset_btn_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, reset_btn_id, actions_id, tag_button(), 6)
   val s = ward_dom_stream_set_attr_safe(s, reset_btn_id, attr_class(), 5,
     cls_dup_replace(), 11)
-  val s = set_text_cstr(s, reset_btn_id, TEXT_RESET, 5)
+  val s = set_text_cstr(VT_33() | s, reset_btn_id, 33, 5)
 
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
@@ -2957,6 +3099,338 @@ fn render_reset_modal(root: int): void = let
     in 0 end
   )
 in end
+
+(* ========== Error banner CSS + rendering ========== *)
+
+(* css_hex3: write "#rgb" to ward_arr at offset.
+ * Each nibble is [0,15] — constraint solver verifies valid hex.
+ * Hex digit: 0-9 → 48-57 ('0'-'9'), 10-15 → 97-102 ('a'-'f'). *)
+fn css_hex_digit {v:nat | v < 16} (v: int(v)): int =
+  if lt_int_int(_g0(v), 10) then _g0(v) + 48
+  else _g0(v) + 87
+
+fn css_hex3 {l:agz}{n:pos}{r,g,b:nat | r < 16; g < 16; b < 16}
+  (arr: !ward_arr(byte, l, n), off: int, cap: int n,
+   r: int(r), g: int(g), b: int(b)): int = let
+  val () = ward_arr_set_byte(arr, off, cap, 35)   (* '#' *)
+  val () = ward_arr_set_byte(arr, off + 1, cap, css_hex_digit(r))
+  val () = ward_arr_set_byte(arr, off + 2, cap, css_hex_digit(g))
+  val () = ward_arr_set_byte(arr, off + 3, cap, css_hex_digit(b))
+in off + 4 end
+
+(* css_dim: write "Npx" where N is a nat, 1-2 digits.
+ * Returns new offset. *)
+fn css_dim {l:agz}{n:pos}{v:nat | v < 100}
+  (arr: !ward_arr(byte, l, n), off: int, cap: int n,
+   value: int(v)): int =
+  if lt_int_int(_g0(value), 10) then let
+    val () = ward_arr_set_byte(arr, off, cap, _g0(value) + 48)
+    val () = ward_arr_set_byte(arr, off + 1, cap, 112) (* 'p' *)
+    val () = ward_arr_set_byte(arr, off + 2, cap, 120) (* 'x' *)
+  in off + 3 end
+  else let
+    val tens = div_int_int(_g0(value), 10)
+    val ones = mod_int_int(_g0(value), 10)
+    val () = ward_arr_set_byte(arr, off, cap, tens + 48)
+    val () = ward_arr_set_byte(arr, off + 1, cap, ones + 48)
+    val () = ward_arr_set_byte(arr, off + 2, cap, 112) (* 'p' *)
+    val () = ward_arr_set_byte(arr, off + 3, cap, 120) (* 'x' *)
+  in off + 4 end
+
+(* Error banner CSS — typed builder for provable colors + dimensions.
+ * .err-banner{background:#fee;color:#922;padding:12px 16px;position:relative;
+ *   border-bottom:1px solid #d99;margin-bottom:8px}
+ * .err-close{position:absolute;top:4px;right:4px;background:none;border:none;
+ *   font-size:20px;cursor:pointer;color:inherit;padding:4px 8px}
+ *)
+#define ERR_CSS_LEN 257
+
+fn fill_css_err {l:agz}{n:int | n >= ERR_CSS_LEN}
+  (arr: !ward_arr(byte, l, n), alen: int n): void = let
+  (* .err-banner{background:#fee;color:#922;padding:12px 16px;
+   * position:relative;border-bottom:1px solid #d99;margin-bottom:8px}
+   * .err-close{position:absolute;top:4px;right:4px;background:none;
+   * border:none;font-size:20px;cursor:pointer;color:inherit;padding:4px 8px} *)
+  val () = _w4(arr, alen, 0, 1920099630)       (* .err *)
+  val () = _w4(arr, alen, 4, 1851875885)       (* -ban *)
+  val () = _w4(arr, alen, 8, 2071094638)       (* ner{ *)
+  val () = _w4(arr, alen, 12, 1801675106)      (* back *)
+  val () = _w4(arr, alen, 16, 1970238055)      (* grou *)
+  val () = ward_arr_set_byte(arr, 20, alen, 110) (* n *)
+  val () = ward_arr_set_byte(arr, 21, alen, 100) (* d *)
+  val () = ward_arr_set_byte(arr, 22, alen, 58)  (* : *)
+  val o = css_hex3(arr, 23, alen, 15, 14, 14)  (* #fee *)
+  val () = _w4(arr, alen, o, 1819239227)        (* ;col *)
+  val o = o + 4
+  val () = ward_arr_set_byte(arr, o, alen, 111)  (* o *)
+  val () = ward_arr_set_byte(arr, o+1, alen, 114) (* r *)
+  val () = ward_arr_set_byte(arr, o+2, alen, 58)  (* : *)
+  val o = css_hex3(arr, o+3, alen, 9, 2, 2)    (* #922 *)
+  val () = _w4(arr, alen, o, 1684107323)        (* ;pad *)
+  val () = _w4(arr, alen, o+4, 1735289188)      (* ding *)
+  val () = ward_arr_set_byte(arr, o+8, alen, 58) (* : *)
+  val o = css_dim(arr, o+9, alen, 12)           (* 12px *)
+  val () = ward_arr_set_byte(arr, o, alen, 32)   (*   *)
+  val o = css_dim(arr, o+1, alen, 16)           (* 16px *)
+  val () = _w4(arr, alen, o, 1936683067)        (* ;pos *)
+  val () = _w4(arr, alen, o+4, 1869182057)      (* itio *)
+  val () = _w4(arr, alen, o+8, 1701984878)      (* n:re *)
+  val () = _w4(arr, alen, o+12, 1769234796)     (* lati *)
+  val () = _w4(arr, alen, o+16, 1648059766)     (* ve;b *)
+  val () = _w4(arr, alen, o+20, 1701081711)     (* orde *)
+  val () = _w4(arr, alen, o+24, 1868705138)     (* r-bo *)
+  val () = _w4(arr, alen, o+28, 1836020852)     (* ttom *)
+  val () = ward_arr_set_byte(arr, o+32, alen, 58) (* : *)
+  val o = css_dim(arr, o+33, alen, 1)           (* 1px *)
+  val () = _w4(arr, alen, o, 1819243296)        (*  sol *)
+  val () = ward_arr_set_byte(arr, o+4, alen, 105) (* i *)
+  val () = ward_arr_set_byte(arr, o+5, alen, 100) (* d *)
+  val () = ward_arr_set_byte(arr, o+6, alen, 32)  (*   *)
+  val o = css_hex3(arr, o+7, alen, 13, 9, 9)   (* #d99 *)
+  val () = _w4(arr, alen, o, 1918987579)        (* ;mar *)
+  val () = _w4(arr, alen, o+4, 762210663)       (* gin- *)
+  val () = _w4(arr, alen, o+8, 1953787746)      (* bott *)
+  val () = ward_arr_set_byte(arr, o+12, alen, 111) (* o *)
+  val () = ward_arr_set_byte(arr, o+13, alen, 109) (* m *)
+  val () = ward_arr_set_byte(arr, o+14, alen, 58)  (* : *)
+  val o = css_dim(arr, o+15, alen, 8)           (* 8px *)
+  val () = _w4(arr, alen, o, 1919233661)        (* }.er *)
+  val () = _w4(arr, alen, o+4, 1818439026)      (* r-cl *)
+  val () = _w4(arr, alen, o+8, 2070246255)      (* ose{ *)
+  val () = _w4(arr, alen, o+12, 1769172848)     (* posi *)
+  val () = _w4(arr, alen, o+16, 1852795252)     (* tion *)
+  val () = _w4(arr, alen, o+20, 1935827258)     (* :abs *)
+  val () = _w4(arr, alen, o+24, 1953852527)     (* olut *)
+  val () = _w4(arr, alen, o+28, 1869888357)     (* e;to *)
+  val () = ward_arr_set_byte(arr, o+32, alen, 112) (* p *)
+  val () = ward_arr_set_byte(arr, o+33, alen, 58)  (* : *)
+  val o = css_dim(arr, o+34, alen, 4)           (* 4px *)
+  val () = _w4(arr, alen, o, 1734963771)        (* ;rig *)
+  val () = ward_arr_set_byte(arr, o+4, alen, 104) (* h *)
+  val () = ward_arr_set_byte(arr, o+5, alen, 116) (* t *)
+  val () = ward_arr_set_byte(arr, o+6, alen, 58)  (* : *)
+  val o = css_dim(arr, o+7, alen, 4)            (* 4px *)
+  val () = _w4(arr, alen, o, 1667326523)        (* ;bac *)
+  val () = _w4(arr, alen, o+4, 1869768555)      (* kgro *)
+  val () = _w4(arr, alen, o+8, 979660405)       (* und: *)
+  val () = _w4(arr, alen, o+12, 1701736302)     (* none *)
+  val () = _w4(arr, alen, o+16, 1919902267)     (* ;bor *)
+  val () = _w4(arr, alen, o+20, 980575588)      (* der: *)
+  val () = _w4(arr, alen, o+24, 1701736302)     (* none *)
+  val () = _w4(arr, alen, o+28, 1852794427)     (* ;fon *)
+  val () = _w4(arr, alen, o+32, 1769155956)     (* t-si *)
+  val () = ward_arr_set_byte(arr, o+36, alen, 122) (* z *)
+  val () = ward_arr_set_byte(arr, o+37, alen, 101) (* e *)
+  val () = ward_arr_set_byte(arr, o+38, alen, 58)  (* : *)
+  val o = css_dim(arr, o+39, alen, 20)          (* 20px *)
+  val () = _w4(arr, alen, o, 1920295739)        (* ;cur *)
+  val () = _w4(arr, alen, o+4, 980578163)       (* sor: *)
+  val () = _w4(arr, alen, o+8, 1852403568)      (* poin *)
+  val () = _w4(arr, alen, o+12, 997352820)      (* ter; *)
+  val () = _w4(arr, alen, o+16, 1869377379)     (* colo *)
+  val () = _w4(arr, alen, o+20, 1852390002)     (* r:in *)
+  val () = _w4(arr, alen, o+24, 1769104744)     (* heri *)
+  val () = _w4(arr, alen, o+28, 1634745204)     (* t;pa *)
+  val () = _w4(arr, alen, o+32, 1852400740)     (* ddin *)
+  val () = ward_arr_set_byte(arr, o+36, alen, 103) (* g *)
+  val () = ward_arr_set_byte(arr, o+37, alen, 58)  (* : *)
+  val o = css_dim(arr, o+38, alen, 4)           (* 4px *)
+  val () = ward_arr_set_byte(arr, o, alen, 32)   (*   *)
+  val o = css_dim(arr, o+1, alen, 8)            (* 8px *)
+  val () = ward_arr_set_byte(arr, o, alen, 125)  (* } *)
+in end
+
+(* Inject error banner CSS into a new <style> element *)
+fn inject_err_css(parent: int): void = let
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+  val style_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, style_id, parent, tag_style(), 5)
+  val arr = ward_arr_alloc<byte>(ERR_CSS_LEN)
+  val () = fill_css_err(arr, ERR_CSS_LEN)
+  val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+  val s = ward_dom_stream_set_text(s, style_id, borrow, ERR_CSS_LEN)
+  val () = ward_arr_drop<byte>(frozen, borrow)
+  val arr = ward_arr_thaw<byte>(frozen)
+  val () = ward_arr_free<byte>(arr)
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
+in end
+
+(* Dismiss error banner *)
+fn dismiss_error_banner(): void = let
+  val banner_id = _app_err_banner_id()
+in
+  if gt_int_int(banner_id, 0) then let
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_remove_child(s, banner_id)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = _app_set_err_banner_id(0)
+  in end
+  else ()
+end
+
+(* Copy filename bytes to string buffer. Returns bytes copied.
+ * Uses ward_file_get_name_len / ward_file_get_name from ward.
+ * Dependent return [n:nat] bounds caller's use of length. *)
+fn copy_filename_to_sbuf(max_len: int): [n:nat] int(n) = let
+  val raw_len = ward_file_get_name_len()
+  val use_len: int = if lt_int_int(_g0(raw_len), max_len) then _g0(raw_len) else max_len
+  val name_len = _checked_nat(use_len)
+in
+  if lte_g1(name_len, 0) then 0
+  else let
+    val name_arr = ward_file_get_name(name_len)
+    fun _copy_name {la:agz}{nc:pos}{k:nat} .<k>.
+      (rem: int(k), narr: !ward_arr(byte, la, nc), nlen: int nc, i: int): void =
+      if lte_g1(rem, 0) then ()
+      else let
+        val b = byte2int0(ward_arr_get<byte>(narr, _ward_idx(i, nlen)))
+        val () = _app_sbuf_set_u8(i, b)
+      in _copy_name(sub_g1(rem, 1), narr, nlen, i + 1) end
+    val () = _copy_name(name_len, name_arr, name_len, 0)
+    val () = ward_arr_free<byte>(name_arr)
+  in name_len end
+end
+
+(* Render error banner with filename and DRM message.
+ * DOM structure:
+ *   <div class="err-banner">
+ *     <button class="err-close">X</button>
+ *     <div style="font-weight:bold">"Import failed"</div>
+ *     <div>"filename.ext" is not a valid ePub file.</div>
+ *     <div>Quire supports .epub files without DRM.</div>
+ *   </div> *)
+fn render_error_banner(root: int): void = let
+  (* Dismiss any existing banner first *)
+  val () = dismiss_error_banner()
+
+  (* Inject CSS if not already present — idempotent via separate <style> *)
+  val () = inject_err_css(root)
+
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+
+  (* Banner container *)
+  val banner_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, banner_id, root, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, banner_id, attr_class(), 5,
+    cls_err_banner(), 10)
+  val () = _app_set_err_banner_id(banner_id)
+
+  (* Close button: "X" *)
+  val close_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, close_id, banner_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, close_id, attr_class(), 5,
+    cls_err_close(), 9)
+  val x_st = let
+    val b = ward_text_build(1)
+    val b = ward_text_putc(b, 0, 88) (* 'X' *)
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, close_id, x_st, 1)
+
+  (* Line 1: "Import failed" (bold via inline style) *)
+  val line1_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, line1_id, banner_id, tag_div(), 3)
+  (* style: font-weight:bold — 16 bytes via ward_arr *)
+  val fw_arr = ward_arr_alloc<byte>(16)
+  val () = _w4(fw_arr, 16, 0, 1953394534)   (* font *)
+  val () = _w4(fw_arr, 16, 4, 1768257325)   (* -wei *)
+  val () = _w4(fw_arr, 16, 8, 980707431)    (* ght: *)
+  val () = _w4(fw_arr, 16, 12, 1684828002)  (* bold *)
+  val @(fw_frozen, fw_borrow) = ward_arr_freeze<byte>(fw_arr)
+  val s = ward_dom_stream_set_style(s, line1_id, fw_borrow, 16)
+  val () = ward_arr_drop<byte>(fw_frozen, fw_borrow)
+  val fw_arr = ward_arr_thaw<byte>(fw_frozen)
+  val () = ward_arr_free<byte>(fw_arr)
+  val s = set_text_cstr(VT_29() | s, line1_id, 29, 13)
+
+  (* Line 2: compose '"filename" is not a valid ePub file.' in ward_arr *)
+  val name_len = copy_filename_to_sbuf(80)
+  val line2_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, line2_id, banner_id, tag_div(), 3)
+in
+  if gt_g1(name_len, 0) then let
+    (* Total: 1 (") + name_len + 1 (") + 26 (suffix) = name_len + 28 *)
+    val total = _g0(name_len) + 28
+    val total_pos = g1ofg0(total)
+  in
+    if total_pos > 0 then
+      if total_pos < 65536 then let
+        val text_arr = ward_arr_alloc<byte>(total_pos)
+        (* Opening quote *)
+        val () = ward_arr_set_byte(text_arr, 0, total_pos, 34) (* '"' *)
+        (* Copy filename from sbuf *)
+        fun _copy_sb {ld:agz}{nd:pos}{k:nat} .<k>.
+          (rem: int(k), dst: !ward_arr(byte, ld, nd), dlen: int nd, i: int): void =
+          if lte_g1(rem, 0) then ()
+          else let
+            val b = _app_sbuf_get_u8(i)
+            val () = ward_arr_set_byte(dst, i + 1, dlen, b)
+          in _copy_sb(sub_g1(rem, 1), dst, dlen, i + 1) end
+        val () = _copy_sb(name_len, text_arr, total_pos, 0)
+        (* Closing quote *)
+        val () = ward_arr_set_byte(text_arr, _g0(name_len) + 1, total_pos, 34)
+        (* Suffix: " is not a valid ePub file." — 26 bytes from fill_text(36) *)
+        val suffix_off = _g0(name_len) + 2
+        val suffix_arr = ward_arr_alloc<byte>(26)
+        val () = fill_text(suffix_arr, 26, 36)
+        fun _copy_suffix {ld:agz}{nd:pos}{ls:agz}{ns:pos}{k:nat} .<k>.
+          (rem: int(k), dst: !ward_arr(byte, ld, nd), dlen: int nd,
+           src: !ward_arr(byte, ls, ns), slen: int ns, i: int): void =
+          if lte_g1(rem, 0) then ()
+          else let
+            val b = byte2int0(ward_arr_get<byte>(src, _ward_idx(i, slen)))
+            val () = ward_arr_set_byte(dst, suffix_off + i, dlen, b)
+          in _copy_suffix(sub_g1(rem, 1), dst, dlen, src, slen, i + 1) end
+        val () = _copy_suffix(_checked_nat(26), text_arr, total_pos, suffix_arr, 26, 0)
+        val () = ward_arr_free<byte>(suffix_arr)
+        val @(frozen2, borrow2) = ward_arr_freeze<byte>(text_arr)
+        val s = ward_dom_stream_set_text(s, line2_id, borrow2, total_pos)
+        val () = ward_arr_drop<byte>(frozen2, borrow2)
+        val text_arr = ward_arr_thaw<byte>(frozen2)
+        val () = ward_arr_free<byte>(text_arr)
+
+        (* Line 3: DRM message *)
+        val line3_id = dom_next_id()
+        val s = ward_dom_stream_create_element(s, line3_id, banner_id, tag_div(), 3)
+        val s = set_text_cstr(VT_37() | s, line3_id, 37, 39)
+
+        val dom = ward_dom_stream_end(s)
+        val () = ward_dom_fini(dom)
+        val () = ward_add_event_listener(
+          close_id, evt_click(), 5, LISTENER_ERR_DISMISS,
+          lam (_pl: int): int => let val () = dismiss_error_banner() in 0 end)
+      in end
+      else let
+        val dom = ward_dom_stream_end(s)
+        val () = ward_dom_fini(dom)
+        val () = ward_add_event_listener(
+          close_id, evt_click(), 5, LISTENER_ERR_DISMISS,
+          lam (_pl: int): int => let val () = dismiss_error_banner() in 0 end)
+      in end
+    else let
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+      val () = ward_add_event_listener(
+        close_id, evt_click(), 5, LISTENER_ERR_DISMISS,
+        lam (_pl: int): int => let val () = dismiss_error_banner() in 0 end)
+    in end
+  end
+  else let
+    (* No filename — just show DRM message *)
+    val line3_id = dom_next_id()
+    val s = ward_dom_stream_create_element(s, line3_id, banner_id, tag_div(), 3)
+    val s = set_text_cstr(VT_37() | s, line3_id, 37, 39)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = ward_add_event_listener(
+      close_id, evt_click(), 5, LISTENER_ERR_DISMISS,
+      lam (_pl: int): int => let val () = dismiss_error_banner() in 0 end)
+  in end
+end
 
 (* Clear text content of a node by removing its children *)
 fn clear_node(nid: int): void = let
@@ -3173,27 +3647,42 @@ end
  * forward page turns. Caller must destructure the proof.
  *
  * Precondition: caller has already verified pg < total - 1. *)
+(* save_reading_position: persist current reading position to IDB.
+ * Returns POSITION_PERSISTED proof — compile-time guarantee that
+ * library_update_position + library_save were called.
+ * Bug class prevented: adding a navigation path that skips save. *)
+fn save_reading_position(): (POSITION_PERSISTED() | void) = let
+  val () = library_update_position(
+    reader_get_book_index(),
+    reader_get_current_chapter(),
+    reader_get_current_page())
+  val () = library_save()
+  prval pf = POS_PERSISTED()
+in (pf | ()) end
+
 fn page_turn_forward(container_id: int)
-  : (PAGE_DISPLAY_UPDATED() | void) = let
+  : @(PAGE_DISPLAY_UPDATED(), POSITION_PERSISTED() | void) = let
   val () = reader_next_page()
   val () = apply_page_transform(container_id)
   val () = update_page_info()
-  prval pf = PAGE_TURNED_AND_SHOWN()
-in (pf | ()) end
+  val (pf_pos | ()) = save_reading_position()
+  prval pf_pg = PAGE_TURNED_AND_SHOWN()
+in @(pf_pg, pf_pos | ()) end
 
 (* page_turn_backward: go to previous page within chapter and update display.
  * Bundles reader_prev_page + apply_page_transform + update_page_info.
- * Returns PAGE_DISPLAY_UPDATED proof — the ONLY way to obtain it for
- * backward page turns. Caller must destructure the proof.
+ * Returns PAGE_DISPLAY_UPDATED + POSITION_PERSISTED proofs.
+ * Caller must destructure both proofs.
  *
  * Precondition: caller has already verified pg > 0. *)
 fn page_turn_backward(container_id: int)
-  : (PAGE_DISPLAY_UPDATED() | void) = let
+  : @(PAGE_DISPLAY_UPDATED(), POSITION_PERSISTED() | void) = let
   val () = reader_prev_page()
   val () = apply_page_transform(container_id)
   val () = update_page_info()
-  prval pf = PAGE_TURNED_AND_SHOWN()
-in (pf | ()) end
+  val (pf_pos | ()) = save_reading_position()
+  prval pf_pg = PAGE_TURNED_AND_SHOWN()
+in @(pf_pg, pf_pos | ()) end
 
 (* Save reading position and exit reader.
  * Constructs POSITION_SAVED proof required by reader_exit.
@@ -3370,7 +3859,7 @@ fn render_position_text {l:agz}
   : ward_dom_stream(l) =
   if eq_int_int(ch, 0) then
     if eq_int_int(pg, 0) then
-      set_text_cstr(s, nid, TEXT_NOT_STARTED, 11)
+      set_text_cstr(VT_2() | s, nid, 2, 11)
     else let
       (* Build "Ch 1 Pg Y" *)
       val arr = ward_arr_alloc<byte>(48)
@@ -3583,19 +4072,19 @@ fn render_library_with_books {l:agz}
           val () = reader_set_btn_id(i, btn_id)
           val s = ward_dom_stream_create_element(s, btn_id, actions_id, tag_button(), 6)
           val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5, cls_read_btn(), 8)
-          val s = set_text_cstr(s, btn_id, TEXT_READ, 4)
+          val s = set_text_cstr(VT_3() | s, btn_id, 3, 4)
 
           val hide_btn_id = dom_next_id()
           val () = reader_set_btn_id(i + 64, hide_btn_id)
           val s = ward_dom_stream_create_element(s, hide_btn_id, actions_id, tag_button(), 6)
           val s = ward_dom_stream_set_attr_safe(s, hide_btn_id, attr_class(), 5, cls_hide_btn(), 8)
-          val s = set_text_cstr(s, hide_btn_id, TEXT_HIDE, 4)
+          val s = set_text_cstr(VT_27() | s, hide_btn_id, 27, 4)
 
           val arch_btn_id = dom_next_id()
           val () = reader_set_btn_id(i + 32, arch_btn_id)
           val s = ward_dom_stream_create_element(s, arch_btn_id, actions_id, tag_button(), 6)
           val s = ward_dom_stream_set_attr_safe(s, arch_btn_id, attr_class(), 5, cls_archive_btn(), 11)
-          val s = set_text_cstr(s, arch_btn_id, TEXT_ARCHIVE, 7)
+          val s = set_text_cstr(VT_20() | s, arch_btn_id, 20, 7)
         in loop(sub_g1(rem, 1), s, i + 1, n, vm) end
         else if eq_int_int(vm, 2) then let
           (* Hidden view: Read + Unhide buttons *)
@@ -3603,13 +4092,13 @@ fn render_library_with_books {l:agz}
           val () = reader_set_btn_id(i, btn_id)
           val s = ward_dom_stream_create_element(s, btn_id, actions_id, tag_button(), 6)
           val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5, cls_read_btn(), 8)
-          val s = set_text_cstr(s, btn_id, TEXT_READ, 4)
+          val s = set_text_cstr(VT_3() | s, btn_id, 3, 4)
 
           val unhide_btn_id = dom_next_id()
           val () = reader_set_btn_id(i + 64, unhide_btn_id)
           val s = ward_dom_stream_create_element(s, unhide_btn_id, actions_id, tag_button(), 6)
           val s = ward_dom_stream_set_attr_safe(s, unhide_btn_id, attr_class(), 5, cls_hide_btn(), 8)
-          val s = set_text_cstr(s, unhide_btn_id, TEXT_UNHIDE, 6)
+          val s = set_text_cstr(VT_28() | s, unhide_btn_id, 28, 6)
         in loop(sub_g1(rem, 1), s, i + 1, n, vm) end
         else let
           (* Archived view: Restore only (no Read — IDB content deleted) *)
@@ -3619,7 +4108,7 @@ fn render_library_with_books {l:agz}
           val () = reader_set_btn_id(i + 32, restore_btn_id)
           val s = ward_dom_stream_create_element(s, restore_btn_id, actions_id, tag_button(), 6)
           val s = ward_dom_stream_set_attr_safe(s, restore_btn_id, attr_class(), 5, cls_archive_btn(), 11)
-          val s = set_text_cstr(s, restore_btn_id, TEXT_UNARCHIVE, 7)
+          val s = set_text_cstr(VT_21() | s, restore_btn_id, 21, 7)
         in loop(sub_g1(rem, 1), s, i + 1, n, vm) end
       end
       else loop(sub_g1(rem, 1), s, i + 1, n, vm)
@@ -3630,7 +4119,8 @@ in loop(_checked_nat(count), s, 0, count, vm_raw) end
 
 (* show_chapter_error: Display an error message in the chapter container.
  * Clears existing content and shows a styled <p class="chapter-error">. *)
-fn show_chapter_error(container_id: int, text_id: int, text_len: int): void = let
+fn show_chapter_error {tid:nat}{tl:pos | tl < 65536}
+  (pf: VALID_TEXT(tid, tl) | container_id: int, text_id: int(tid), text_len: int(tl)): void = let
   val dom = ward_dom_init()
   val s = ward_dom_stream_begin(dom)
   val s = ward_dom_stream_remove_children(s, container_id)
@@ -3638,7 +4128,7 @@ fn show_chapter_error(container_id: int, text_id: int, text_len: int): void = le
   val s = ward_dom_stream_create_element(s, error_id, container_id, tag_p(), 1)
   val s = ward_dom_stream_set_attr_safe(s, error_id, attr_class(), 5,
     cls_chapter_error(), 13)
-  val s = set_text_cstr(s, error_id, text_id, text_len)
+  val s = set_text_cstr(pf | s, error_id, text_id, text_len)
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
 in end
@@ -3668,7 +4158,7 @@ in
     else let
       (* ADVERSARIAL_PAGE: TOO_DENSE — single page exceeds budget *)
       val () = ward_log(3, mk_ch_err(char2int1('d'), char2int1('n'), char2int1('s')), 10)
-    in show_chapter_error(container_id, TEXT_ERR_TOO_DENSE, 14) end
+    in show_chapter_error(VT_15() | container_id, 15, 14) end
   end
   else () (* no pages — nothing to validate *)
 end
@@ -3951,7 +4441,7 @@ in
         if lte_int_int(data_len, 0) then let
           val () = ward_arr_free<byte>(dir_arr)
           val () = ward_log(3, mk_ch_err(char2int1('g'), char2int1('e'), char2int1('t')), 10)
-          val () = show_chapter_error(saved_cid, TEXT_ERR_NOT_FOUND, 17)
+          val () = show_chapter_error(VT_9() | saved_cid, 9, 17)
         in ward_promise_return<int>(0) end
         else let
           val dl = _checked_pos(data_len)
@@ -3987,7 +4477,7 @@ in
           in ward_promise_return<int>(1) end
           else let
             val () = ward_arr_free<byte>(dir_arr)
-            val () = show_chapter_error(saved_cid, TEXT_ERR_EMPTY, 21)
+            val () = show_chapter_error(VT_13() | saved_cid, 13, 21)
           in ward_promise_return<int>(0) end
         end)
     val () = ward_promise_discard<int>(p2)
@@ -3998,7 +4488,7 @@ in
       llam (data_len: int): ward_promise_chained(int) =>
         if lte_int_int(data_len, 0) then let
           val () = ward_log(3, mk_ch_err(char2int1('g'), char2int1('t'), char2int1('2')), 10)
-          val () = show_chapter_error(saved_cid, TEXT_ERR_NOT_FOUND, 17)
+          val () = show_chapter_error(VT_9() | saved_cid, 9, 17)
         in ward_promise_return<int>(0) end
         else let
           val dl = _checked_pos(data_len)
@@ -4022,7 +4512,7 @@ in
             prval MEASURED_AND_TRANSFORMED() = pf_disp
           in ward_promise_return<int>(1) end
           else let
-            val () = show_chapter_error(saved_cid, TEXT_ERR_EMPTY, 21)
+            val () = show_chapter_error(VT_13() | saved_cid, 13, 21)
           in ward_promise_return<int>(0) end
         end)
     val () = ward_promise_discard<int>(p2)
@@ -4040,8 +4530,9 @@ fn navigate_next(container_id: int): void = let
 in
   if lt_int_int(pg, total - 1) then let
     (* Within chapter — advance page *)
-    val (pf_pg | ()) = page_turn_forward(container_id)
+    val @(pf_pg, pf_pos | ()) = page_turn_forward(container_id)
     prval PAGE_TURNED_AND_SHOWN() = pf_pg
+    prval POS_PERSISTED() = pf_pos
   in end
   else let
     (* At last page — try advancing chapter *)
@@ -4057,6 +4548,8 @@ in
         prval pf = SPINE_ENTRY()
         val () = reader_go_to_chapter(next_g1, spine_g1)
         val () = reader_set_total_pages(1)
+        val (pf_pos | ()) = save_reading_position()
+        prval POS_PERSISTED() = pf_pos
         (* Clear container and load next chapter *)
         val dom = ward_dom_init()
         val s = ward_dom_stream_begin(dom)
@@ -4078,8 +4571,9 @@ fn navigate_prev(container_id: int): void = let
 in
   if gt_int_int(pg, 0) then let
     (* Within chapter — go back a page *)
-    val (pf_pg | ()) = page_turn_backward(container_id)
+    val @(pf_pg, pf_pos | ()) = page_turn_backward(container_id)
     prval PAGE_TURNED_AND_SHOWN() = pf_pg
+    prval POS_PERSISTED() = pf_pos
   in end
   else let
     (* At first page — try going to previous chapter *)
@@ -4095,6 +4589,8 @@ in
         prval pf = SPINE_ENTRY()
         val () = reader_go_to_chapter(prev_g1, spine_g1)
         val () = reader_set_total_pages(1)
+        val (pf_pos | ()) = save_reading_position()
+        prval POS_PERSISTED() = pf_pos
         (* Clear container and load previous chapter *)
         val dom = ward_dom_init()
         val s = ward_dom_stream_begin(dom)
@@ -4302,11 +4798,11 @@ fn set_empty_text {l:agz}
   (s: ward_dom_stream(l), node: int, view_mode: int)
   : [l2:agz] ward_dom_stream(l2) =
   if eq_int_int(view_mode, 0) then
-    set_text_cstr(s, node, TEXT_NO_BOOKS, 12)
+    set_text_cstr(VT_0() | s, node, 0, 12)
   else if eq_int_int(view_mode, 2) then
-    set_text_cstr(s, node, TEXT_NO_HIDDEN, 15)
+    set_text_cstr(VT_26() | s, node, 26, 15)
   else
-    set_text_cstr(s, node, TEXT_NO_ARCHIVED, 17)
+    set_text_cstr(VT_22() | s, node, 22, 17)
 
 (* Load cover images from IDB for queued img elements.
  * Sequential promise chain: for each entry, look up cover key → set img src. *)
@@ -4365,47 +4861,47 @@ implement render_library(root_id) = let
   val shelf_active_btn_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, shelf_active_btn_id, toolbar_id, tag_button(), 6)
   val s = set_sort_btn_class(s, shelf_active_btn_id, eq_int_int(view_mode, 0))
-  val s = set_text_cstr(s, shelf_active_btn_id, TEXT_SHOW_ACTIVE, 7)
+  val s = set_text_cstr(VT_17() | s, shelf_active_btn_id, 17, 7)
 
   val shelf_hidden_btn_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, shelf_hidden_btn_id, toolbar_id, tag_button(), 6)
   val s = set_sort_btn_class(s, shelf_hidden_btn_id, eq_int_int(view_mode, 2))
-  val s = set_text_cstr(s, shelf_hidden_btn_id, TEXT_HIDDEN, 6)
+  val s = set_text_cstr(VT_25() | s, shelf_hidden_btn_id, 25, 6)
 
   val shelf_archived_btn_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, shelf_archived_btn_id, toolbar_id, tag_button(), 6)
   val s = set_sort_btn_class(s, shelf_archived_btn_id, eq_int_int(view_mode, 1))
-  val s = set_text_cstr(s, shelf_archived_btn_id, TEXT_SHOW_ARCHIVED, 8)
+  val s = set_text_cstr(VT_16() | s, shelf_archived_btn_id, 16, 8)
 
   (* Sort by title button *)
   val sort_title_btn_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, sort_title_btn_id, toolbar_id, tag_button(), 6)
   val s = set_sort_btn_class(s, sort_title_btn_id, eq_int_int(sort_mode, 0))
-  val s = set_text_cstr(s, sort_title_btn_id, TEXT_SORT_TITLE, 8)
+  val s = set_text_cstr(VT_18() | s, sort_title_btn_id, 18, 8)
 
   (* Sort by author button *)
   val sort_author_btn_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, sort_author_btn_id, toolbar_id, tag_button(), 6)
   val s = set_sort_btn_class(s, sort_author_btn_id, eq_int_int(sort_mode, 1))
-  val s = set_text_cstr(s, sort_author_btn_id, TEXT_SORT_AUTHOR, 9)
+  val s = set_text_cstr(VT_19() | s, sort_author_btn_id, 19, 9)
 
   (* Sort by last opened button *)
   val sort_last_opened_btn_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, sort_last_opened_btn_id, toolbar_id, tag_button(), 6)
   val s = set_sort_btn_class(s, sort_last_opened_btn_id, eq_int_int(sort_mode, 2))
-  val s = set_text_cstr(s, sort_last_opened_btn_id, TEXT_SORT_LAST_OPENED, 11)
+  val s = set_text_cstr(VT_23() | s, sort_last_opened_btn_id, 23, 11)
 
   (* Sort by date added button *)
   val sort_date_added_btn_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, sort_date_added_btn_id, toolbar_id, tag_button(), 6)
   val s = set_sort_btn_class(s, sort_date_added_btn_id, eq_int_int(sort_mode, 3))
-  val s = set_text_cstr(s, sort_date_added_btn_id, TEXT_SORT_DATE_ADDED, 10)
+  val s = set_text_cstr(VT_24() | s, sort_date_added_btn_id, 24, 10)
 
   (* Reset button *)
   val reset_btn_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, reset_btn_id, toolbar_id, tag_button(), 6)
   val s = ward_dom_stream_set_attr_safe(s, reset_btn_id, attr_class(), 5, cls_sort_btn(), 8)
-  val s = set_text_cstr(s, reset_btn_id, TEXT_RESET, 5)
+  val s = set_text_cstr(VT_33() | s, reset_btn_id, 33, 5)
 
   (* Import button — only shown in active view *)
   val label_id = dom_next_id()
@@ -4530,11 +5026,12 @@ implement render_library(root_id) = let
     lam (_payload_len: int): int => let
       (* Phase 0 — visual setup *)
       prval pf0 = PHASE_OPEN()
+      val () = dismiss_error_banner()
       val () = ward_log(1, log_import_start(), 12)
       val () = quire_set_title(1)
       val () = update_import_label_class(saved_label_id, 1)
-      val () = update_status_text(saved_span_id, TEXT_IMPORTING, 9)
-      val () = update_status_text(saved_status_id, TEXT_OPENING_FILE, 12)
+      val () = update_status_text(VT_4() | saved_span_id, 4, 9)
+      val () = update_status_text(VT_5() | saved_status_id, 5, 12)
 
       val p = ward_file_open(saved_input_id)
       val p2 = ward_promise_then<int><int>(p,
@@ -4572,7 +5069,7 @@ implement render_library(root_id) = let
           llam (_: int): ward_promise_chained(int) => let
             (* Phase 2 — parse ZIP, consumes pf1 *)
             prval pf2 = PHASE_META(pf1)
-            val () = update_status_text(ssts, TEXT_PARSING_ZIP, 15)
+            val () = update_status_text(VT_6() | ssts, 6, 15)
             val nentries = zip_open(sh, sfs)
           in
             (* ZIP_OPEN_OK proof: zip_open must return > 0 entries.
@@ -4581,7 +5078,8 @@ implement render_library(root_id) = let
              * Prevention: check nentries here, fail fast with clear error. *)
             if lte_int_int(nentries, 0) then let
               prval _ = PHASE_ADD(pf2)
-              val () = update_status_text(ssts, TEXT_ADDING_BOOK, 17)
+              val () = update_status_text(VT_8() | ssts, 8, 17)
+              val () = render_error_banner(sr)
               val () = import_finish(
                 import_mark_failed(log_err_zip_parse(), 7),
                 slbl, sspn, ssts)
@@ -4596,7 +5094,7 @@ implement render_library(root_id) = let
               llam (_: int): ward_promise_chained(int) => let
                 (* Phase 3 — read metadata (async), consumes pf2 *)
                 prval _ = PHASE_ADD(pf2)
-                val () = update_status_text(ssts, TEXT_READING_META, 16)
+                val () = update_status_text(VT_7() | ssts, 7, 16)
                 val p_container = epub_read_container_async(pf_zip | sh)
 
                 (* Chain: container result → OPF read → add book *)
@@ -4609,7 +5107,8 @@ implement render_library(root_id) = let
                   in ward_promise_then<int><int>(p_opf,
                     llam (ok2: int): ward_promise_chained(int) =>
                       if lte_int_int(ok2, 0) then let
-                        val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
+                        val () = update_status_text(VT_8() | sssts, 8, 17)
+                        val () = render_error_banner(ssr)
                         val () = import_finish(
                           import_mark_failed(log_err_opf(), 7),
                           sslbl, ssspn, sssts)
@@ -4630,8 +5129,9 @@ implement render_library(root_id) = let
                         in ward_promise_then<int><int>(p_load,
                           llam (load_ok: int): ward_promise_chained(int) =>
                             if lte_int_int(load_ok, 0) then let
-                              val () = update_status_text(sssts, TEXT_ERR_MANIFEST, 13)
+                              val () = update_status_text(VT_29() | sssts, 29, 13)
                               val () = ward_file_close(ssh)
+                              val () = render_error_banner(ssr)
                               val () = import_finish(
                                 import_mark_failed(log_err_manifest(), 12),
                                 sslbl, ssspn, sssts)
@@ -4643,7 +5143,7 @@ implement render_library(root_id) = let
                                   val p_si = epub_store_search_index()
                                 in ward_promise_then<int><int>(p_si,
                                   llam (_: int): ward_promise_chained(int) => let
-                                    val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
+                                    val () = update_status_text(VT_8() | sssts, 8, 17)
                                   in
                                     if lte_int_int(ok2, 0) then
                                       ward_promise_return<int>(0)
@@ -4735,6 +5235,7 @@ implement render_library(root_id) = let
                                           val () = import_finish(h, sslbl, ssspn, sssts)
                                         in ward_promise_return<int>(0) end
                                         else let
+                                          val () = render_error_banner(ssr)
                                           val () = import_finish(
                                             import_mark_failed(log_err_lib_full(), 12),
                                             sslbl, ssspn, sssts)
@@ -4749,7 +5250,8 @@ implement render_library(root_id) = let
                 end)
                 end
                 else let
-                  val () = update_status_text(sssts, TEXT_ADDING_BOOK, 17)
+                  val () = update_status_text(VT_8() | sssts, 8, 17)
+                  val () = render_error_banner(ssr)
                   val () = import_finish(
                     import_mark_failed(log_err_container(), 13),
                     sslbl, ssspn, sssts)
@@ -4946,7 +5448,7 @@ implement enter_reader(root_id, book_index) = let
     llam (ok: int): ward_promise_chained(int) =>
       if lte_int_int(ok, 0) then let
         val () = ward_log(3, mk_ch_err(char2int1('m'), char2int1('a'), char2int1('n')), 10)
-        val () = show_chapter_error(saved_cid, TEXT_ERR_NOT_FOUND, 17)
+        val () = show_chapter_error(VT_9() | saved_cid, 9, 17)
       in ward_promise_return<int>(0) end
       else let
         val now = quire_time_now()
@@ -4968,7 +5470,7 @@ implement enter_reader(root_id, book_index) = let
         in ward_promise_return<int>(1) end
         else let
           val () = ward_log(3, mk_ch_err(char2int1('s'), char2int1('p'), char2int1('n')), 10)
-          val () = show_chapter_error(saved_cid, TEXT_ERR_NO_CHAPTERS, 19)
+          val () = show_chapter_error(VT_14() | saved_cid, 14, 19)
         in ward_promise_return<int>(0) end
       end)
   val () = ward_promise_discard<int>(p2)

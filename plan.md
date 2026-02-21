@@ -79,7 +79,7 @@ everything else depends on.
   position). Per spec wireframe, the existing book card is visible below the
   dialog. Add dataprop proving the user chose one of the two options.
 
-- [ ] **2.4 Error banner with filename and DRM message.** On malformed file
+- [x] **2.4 Error banner with filename and DRM message.** On malformed file
   rejection, show a dismissible banner (not inline status text). Per spec
   wireframe: `✕` close button, "Import failed", filename in quotes (e.g.,
   `"vacation-photos.zip"`), "is not a valid ePub file.", "Quire supports
