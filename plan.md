@@ -91,7 +91,7 @@ everything else depends on.
   "Importing...", title, a progress bar, and status text (e.g., "Extracting
   chapters..."). The rest of the library remains interactive below.
 
-- [ ] **2.6 E2e: import errors and duplicates.** Import an invalid file,
+- [x] **2.6 E2e: import errors and duplicates.** Import an invalid file,
   verify dismissible error banner appears with filename and DRM message.
   Import same EPUB twice, verify Skip/Replace dialog appears with book title;
   verify Skip cancels, Replace preserves annotations.
