@@ -88,6 +88,8 @@ extern void quire_factory_reset(void);
 #define TEXT_CANCEL 35
 #define TEXT_NOT_VALID_EPUB 36
 #define TEXT_DRM_MSG 37
+#define TEXT_NEW 38
+#define TEXT_DONE 39
 
 (* ========== Text constant type proof ========== *)
 (* VALID_TEXT(id, len) proves text_id maps to the correct byte length.
@@ -132,12 +134,26 @@ dataprop VALID_TEXT(id: int, len: int) =
   | VT_35(35, 6)  (* "Cancel" *)
   | VT_36(36, 26) (* " is not a valid ePub file." *)
   | VT_37(37, 39) (* "Quire supports .epub files without DRM." *)
+  | VT_38(38, 3)  (* "New" *)
+  | VT_39(39, 4)  (* "Done" *)
 
 (* ========== Position persistence proof ========== *)
 (* POSITION_PERSISTED proves library_update_position + library_save
  * were called. Required by page_turn_forward/backward and chapter
  * transitions — ensures position is saved on every navigation. *)
 dataprop POSITION_PERSISTED() = | POS_PERSISTED()
+
+(* ========== Reading progress display proof ========== *)
+(* PROGRESS_DISPLAY(ch, pg, sc, display) proves the display state is
+ * correct for the given reading position and spine count.
+ * display: 0=New, 1=Done, 2=InProgress
+ * Prevents: showing "New" for a started book, "Done" for an unfinished
+ * book, or a percentage bar for an unstarted book. *)
+dataprop PROGRESS_DISPLAY(ch: int, pg: int, sc: int, display: int) =
+  | {sc:nat} PROGRESS_NEW(0, 0, sc, 0)
+  | {ch,pg,sc:nat | ch >= sc; sc > 0} PROGRESS_DONE(ch, pg, sc, 1)
+  | {ch,pg,sc:nat | (ch > 0 || pg > 0); (ch < sc || sc == 0)}
+      PROGRESS_READING(ch, pg, sc, 2)
 
 (* ========== Listener ID constants ========== *)
 
@@ -738,6 +754,17 @@ fn fill_text {l:agz}{n:pos}
     val () = ward_arr_set_byte(arr, 37, alen, 77)  (* M *)
     val () = ward_arr_set_byte(arr, 38, alen, 46)  (* . *)
   in end
+  else if text_id = 38 then let (* "New" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 78)   (* N *)
+    val () = ward_arr_set_byte(arr, 1, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 2, alen, 119)  (* w *)
+  in end
+  else if text_id = 39 then let (* "Done" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 68)   (* D *)
+    val () = ward_arr_set_byte(arr, 1, alen, 111)  (* o *)
+    val () = ward_arr_set_byte(arr, 2, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 3, alen, 101)  (* e *)
+  in end
   else () (* unused text_id *)
 
 (* Copy len bytes from string_buffer to ward_arr *)
@@ -985,6 +1012,25 @@ fn cls_book_position(): ward_safe_text(13) = let
   val b = ward_text_putc(b, 10, char2int1('i'))
   val b = ward_text_putc(b, 11, char2int1('o'))
   val b = ward_text_putc(b, 12, char2int1('n'))
+in ward_text_done(b) end
+
+(* "pbar" = 4 chars — progress bar track *)
+fn cls_pbar(): ward_safe_text(4) = let
+  val b = ward_text_build(4)
+  val b = ward_text_putc(b, 0, char2int1('p'))
+  val b = ward_text_putc(b, 1, char2int1('b'))
+  val b = ward_text_putc(b, 2, char2int1('a'))
+  val b = ward_text_putc(b, 3, char2int1('r'))
+in ward_text_done(b) end
+
+(* "pfill" = 5 chars — progress bar fill *)
+fn cls_pfill(): ward_safe_text(5) = let
+  val b = ward_text_build(5)
+  val b = ward_text_putc(b, 0, char2int1('p'))
+  val b = ward_text_putc(b, 1, char2int1('f'))
+  val b = ward_text_putc(b, 2, char2int1('i'))
+  val b = ward_text_putc(b, 3, char2int1('l'))
+  val b = ward_text_putc(b, 4, char2int1('l'))
 in ward_text_done(b) end
 
 fn cls_read_btn(): ward_safe_text(8) = let
@@ -1638,8 +1684,8 @@ fn write_css_rem_pos {l:agz}{n:pos}{v:pos}
 
 (* ---- CSS length constants ---- *)
 (* #define: runtime values; stadef: type-level constraints *)
-#define APP_CSS_LEN 2332
-stadef APP_CSS_LEN = 2332
+#define APP_CSS_LEN 2498
+stadef APP_CSS_LEN = 2498
 #define NAV_CSS_LEN 552
 stadef NAV_CSS_LEN = 552
 
@@ -2353,6 +2399,57 @@ fn fill_css_wrap {l:agz}{n:int | n >= APP_CSS_LEN}
   val () = ward_arr_set_byte(arr, 2331, alen, 125)
 in end
 
+(* Progress bar CSS: .book-position flex override + .pbar + .pfill *)
+fn fill_css_progress {l:agz}{n:int | n >= APP_CSS_LEN}
+  (arr: !ward_arr(byte, l, n), alen: int n): void = let
+  (* .book-position{display:flex;align-items:center;gap:6px} *)
+  val () = _w4(arr, alen, 2332, 1869570606)
+  val () = _w4(arr, alen, 2336, 1869622635)
+  val () = _w4(arr, alen, 2340, 1769236851)
+  val () = _w4(arr, alen, 2344, 1685810799)
+  val () = _w4(arr, alen, 2348, 1819308905)
+  val () = _w4(arr, alen, 2352, 1715108193)
+  val () = _w4(arr, alen, 2356, 997746028)
+  val () = _w4(arr, alen, 2360, 1734962273)
+  val () = _w4(arr, alen, 2364, 1953049966)
+  val () = _w4(arr, alen, 2368, 980643173)
+  val () = _w4(arr, alen, 2372, 1953391971)
+  val () = _w4(arr, alen, 2376, 1731949157)
+  val () = _w4(arr, alen, 2380, 909799521)
+  (* .pbar{flex:1;height:4px;background:#ddd;border-radius:2px} *)
+  val () = _w4(arr, alen, 2384, 779974768)
+  val () = _w4(arr, alen, 2388, 1918984816)
+  val () = _w4(arr, alen, 2392, 1701602939)
+  val () = _w4(arr, alen, 2396, 993081976)
+  val () = _w4(arr, alen, 2400, 1734960488)
+  val () = _w4(arr, alen, 2404, 876246120)
+  val () = _w4(arr, alen, 2408, 1648064624)
+  val () = _w4(arr, alen, 2412, 1735091041)
+  val () = _w4(arr, alen, 2416, 1853190002)
+  val () = _w4(arr, alen, 2420, 1680030308)
+  val () = _w4(arr, alen, 2424, 1648059492)
+  val () = _w4(arr, alen, 2428, 1701081711)
+  val () = _w4(arr, alen, 2432, 1634872690)
+  val () = _w4(arr, alen, 2436, 1937074532)
+  val () = _w4(arr, alen, 2440, 2020618810)
+  (* .pfill{height:100%;background:#4a7;border-radius:2px} *)
+  val () = _w4(arr, alen, 2444, 1718627965)
+  val () = _w4(arr, alen, 2448, 2070703209)
+  val () = _w4(arr, alen, 2452, 1734960488)
+  val () = _w4(arr, alen, 2456, 825914472)
+  val () = _w4(arr, alen, 2460, 992292912)
+  val () = _w4(arr, alen, 2464, 1801675106)
+  val () = _w4(arr, alen, 2468, 1970238055)
+  val () = _w4(arr, alen, 2472, 591029358)
+  val () = _w4(arr, alen, 2476, 993485108)
+  val () = _w4(arr, alen, 2480, 1685221218)
+  val () = _w4(arr, alen, 2484, 1915581029)
+  val () = _w4(arr, alen, 2488, 1969841249)
+  val () = _w4(arr, alen, 2492, 1882339955)
+  val () = ward_arr_set_byte(arr, 2496, alen, 120) (* x *)
+  val () = ward_arr_set_byte(arr, 2497, alen, 125) (* } *)
+in end
+
 fn fill_css {l:agz}{n:int | n >= APP_CSS_LEN}
   (arr: !ward_arr(byte, l, n), alen: int n): (CSS_READER_WRITTEN | void) = let
   val () = fill_css_base(arr, alen)
@@ -2361,6 +2458,7 @@ fn fill_css {l:agz}{n:int | n >= APP_CSS_LEN}
   val () = fill_css_content(arr, alen)
   val () = fill_css_import(arr, alen)
   val () = fill_css_wrap(arr, alen)
+  val () = fill_css_progress(arr, alen)
 in (pf_reader | ()) end
 
 (* Create a <style> element under parent and fill it with app CSS.
@@ -4171,72 +4269,133 @@ end
 
 (* ========== Render book cards into library list ========== *)
 
-(* Render "Ch X Pg Y" into a ward_arr(48) and set as text on node.
- * Falls back to "Not started" if ch=0 and pg=0. *)
-fn render_position_text {l:agz}
-  (s: ward_dom_stream(l), nid: int, ch: int, pg: int)
-  : ward_dom_stream(l) =
-  if eq_int_int(ch, 0) then
-    if eq_int_int(pg, 0) then
-      set_text_cstr(VT_2() | s, nid, 2, 11)
-    else let
-      (* Build "Ch 1 Pg Y" *)
-      val arr = ward_arr_alloc<byte>(48)
-      val () = ward_arr_set<byte>(arr, 0, _byte(char2int1('C')))
-      val () = ward_arr_set<byte>(arr, 1, _byte(char2int1('h')))
-      val () = ward_arr_set<byte>(arr, 2, _byte(32))
-      val ch_digits = itoa_to_arr(arr, ch + 1, 3)
-      val p = 3 + ch_digits
-      val () = ward_arr_set<byte>(arr, _idx48(p), _byte(32))
-      val () = ward_arr_set<byte>(arr, _idx48(p + 1), _byte(char2int1('P')))
-      val () = ward_arr_set<byte>(arr, _idx48(p + 2), _byte(char2int1('g')))
-      val () = ward_arr_set<byte>(arr, _idx48(p + 3), _byte(32))
-      val pg_digits = itoa_to_arr(arr, pg + 1, p + 4)
-      val total_len = p + 4 + pg_digits
-      val tl = g1ofg0(total_len)
-    in
-      if tl > 0 then
-        if tl < 48 then let
-          val @(used, rest) = ward_arr_split<byte>(arr, tl)
-          val () = ward_arr_free<byte>(rest)
-          val @(frozen, borrow) = ward_arr_freeze<byte>(used)
-          val s = ward_dom_stream_set_text(s, nid, borrow, tl)
-          val () = ward_arr_drop<byte>(frozen, borrow)
-          val used = ward_arr_thaw<byte>(frozen)
-          val () = ward_arr_free<byte>(used)
-        in s end
-        else let val () = ward_arr_free<byte>(arr) in s end
-      else let val () = ward_arr_free<byte>(arr) in s end
-    end
-  else let
-    (* Build "Ch X Pg Y" *)
-    val arr = ward_arr_alloc<byte>(48)
-    val () = ward_arr_set<byte>(arr, 0, _byte(char2int1('C')))
-    val () = ward_arr_set<byte>(arr, 1, _byte(char2int1('h')))
-    val () = ward_arr_set<byte>(arr, 2, _byte(32))
-    val ch_digits = itoa_to_arr(arr, ch + 1, 3)
-    val p = 3 + ch_digits
-    val () = ward_arr_set<byte>(arr, _idx48(p), _byte(32))
-    val () = ward_arr_set<byte>(arr, _idx48(p + 1), _byte(char2int1('P')))
-    val () = ward_arr_set<byte>(arr, _idx48(p + 2), _byte(char2int1('g')))
-    val () = ward_arr_set<byte>(arr, _idx48(p + 3), _byte(32))
-    val pg_digits = itoa_to_arr(arr, pg + 1, p + 4)
-    val total_len = p + 4 + pg_digits
-    val tl = g1ofg0(total_len)
-  in
-    if tl > 0 then
-      if tl < 48 then let
-        val @(used, rest) = ward_arr_split<byte>(arr, tl)
-        val () = ward_arr_free<byte>(rest)
-        val @(frozen, borrow) = ward_arr_freeze<byte>(used)
-        val s = ward_dom_stream_set_text(s, nid, borrow, tl)
-        val () = ward_arr_drop<byte>(frozen, borrow)
-        val used = ward_arr_thaw<byte>(frozen)
-        val () = ward_arr_free<byte>(used)
-      in s end
-      else let val () = ward_arr_free<byte>(arr) in s end
+(* Set inline style "width:XX%" on a node via ward_dom_stream_set_style.
+ * pct must be 1-100. Builds "width:X%" (7-10 bytes) in a 48-byte arr. *)
+fn _set_width_pct {l:agz}
+  (s: ward_dom_stream(l), nid: int, pct: int)
+  : ward_dom_stream(l) = let
+  val arr = ward_arr_alloc<byte>(48)
+  (* "width:" = 6 bytes *)
+  val () = ward_arr_set<byte>(arr, 0, _byte(char2int1('w')))
+  val () = ward_arr_set<byte>(arr, 1, _byte(char2int1('i')))
+  val () = ward_arr_set<byte>(arr, 2, _byte(char2int1('d')))
+  val () = ward_arr_set<byte>(arr, 3, _byte(char2int1('t')))
+  val () = ward_arr_set<byte>(arr, 4, _byte(char2int1('h')))
+  val () = ward_arr_set<byte>(arr, 5, _byte(58)) (* ':' *)
+  val ndigits = itoa_to_arr(arr, pct, 6)
+  val pct_off = 6 + ndigits
+  val () = ward_arr_set<byte>(arr, _idx48(pct_off), _byte(37)) (* '%' *)
+  val total_len = pct_off + 1
+  val tl = g1ofg0(total_len)
+in
+  if tl > 0 then
+    if tl < 48 then let
+      val @(used, rest) = ward_arr_split<byte>(arr, tl)
+      val () = ward_arr_free<byte>(rest)
+      val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+      val s = ward_dom_stream_set_style(s, nid, borrow, tl)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val used = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(used)
+    in s end
     else let val () = ward_arr_free<byte>(arr) in s end
-  end
+  else let val () = ward_arr_free<byte>(arr) in s end
+end
+
+(* Build "XX%" text in a ward_arr(48) and set as text on node. *)
+fn _set_pct_text {l:agz}
+  (s: ward_dom_stream(l), nid: int, pct: int)
+  : ward_dom_stream(l) = let
+  val arr = ward_arr_alloc<byte>(48)
+  val ndigits = itoa_to_arr(arr, pct, 0)
+  val () = ward_arr_set<byte>(arr, _idx48(ndigits), _byte(37)) (* '%' *)
+  val total_len = ndigits + 1
+  val tl = g1ofg0(total_len)
+in
+  if tl > 0 then
+    if tl < 48 then let
+      val @(used, rest) = ward_arr_split<byte>(arr, tl)
+      val () = ward_arr_free<byte>(rest)
+      val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+      val s = ward_dom_stream_set_text(s, nid, borrow, tl)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val used = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(used)
+    in s end
+    else let val () = ward_arr_free<byte>(arr) in s end
+  else let val () = ward_arr_free<byte>(arr) in s end
+end
+
+(* Render progress bar with fill + percentage text as children of parent.
+ * Creates: <div class="pbar"><div class="pfill" style="width:X%"></div></div>
+ * and then a TEXT_RENDER_SAFE span with "X%" text. *)
+fn _render_progress_elements {l:agz}
+  (s: ward_dom_stream(l), parent_id: int, pct: int)
+  : ward_dom_stream(l) = let
+  val track_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, track_id, parent_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, track_id, attr_class(), 5, cls_pbar(), 4)
+  val fill_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, fill_id, track_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, fill_id, attr_class(), 5, cls_pfill(), 5)
+  val s = _set_width_pct(s, fill_id, pct)
+  (* Percentage text in a span — TEXT_RENDER_SAFE: parent has children *)
+  val pct_span_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, pct_span_id, parent_id, tag_span(), 4)
+  val s = _set_pct_text(s, pct_span_id, pct)
+in s end
+
+(* Render "Done" with full progress bar as children of parent.
+ * Creates: <div class="pbar"><div class="pfill" style="width:100%"></div></div>
+ * and then a TEXT_RENDER_SAFE span with "Done" text. *)
+fn _render_done_elements {l:agz}
+  (s: ward_dom_stream(l), parent_id: int)
+  : ward_dom_stream(l) = let
+  val track_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, track_id, parent_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, track_id, attr_class(), 5, cls_pbar(), 4)
+  val fill_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, fill_id, track_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, fill_id, attr_class(), 5, cls_pfill(), 5)
+  val s = _set_width_pct(s, fill_id, 100)
+  (* "Done" text in a span — TEXT_RENDER_SAFE: parent has children *)
+  val done_span_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, done_span_id, parent_id, tag_span(), 4)
+  val s = set_text_cstr(VT_39() | s, done_span_id, 39, 4)
+in s end
+
+(* Render book reading progress into the .book-position element.
+ * PROGRESS_DISPLAY dataprop ensures correct state classification:
+ * - New (ch=0, pg=0): text "New", no bar
+ * - Done (ch >= sc, sc > 0): full bar + "Done" text
+ * - In progress: partial bar + "X%" text *)
+fn render_book_progress {l:agz}{ch:nat}{pg:nat}{sc:nat}
+  (s: ward_dom_stream(l), nid: int, ch: int(ch), pg: int(pg), sc: int(sc))
+  : ward_dom_stream(l) =
+  if eq_g1(ch, 0) then
+    if eq_g1(pg, 0) then let
+      prval _ = PROGRESS_NEW() : PROGRESS_DISPLAY(0, 0, sc, 0)
+    in set_text_cstr(VT_38() | s, nid, 38, 3) end (* "New" *)
+    else let
+      prval _ = PROGRESS_READING() : PROGRESS_DISPLAY(0, pg, sc, 2)
+      (* ch=0, pg>0: very early in the book — show 1% *)
+    in _render_progress_elements(s, nid, 1) end
+  else if gt_g1(sc, 0) then
+    if gte_g1(ch, sc) then let
+      prval _ = PROGRESS_DONE() : PROGRESS_DISPLAY(ch, pg, sc, 1)
+    in _render_done_elements(s, nid) end
+    else let
+      prval _ = PROGRESS_READING() : PROGRESS_DISPLAY(ch, pg, sc, 2)
+      (* Calculate percentage: ch * 100 / sc, clamped to [1, 99] *)
+      val raw_pct = div_int_int(mul_int_int(ch, 100), sc)
+      val pct = if gt_int_int(raw_pct, 99) then 99
+                else if gt_int_int(1, raw_pct) then 1
+                else raw_pct
+    in _render_progress_elements(s, nid, pct) end
+  else let
+    (* sc=0 but ch>0 — defensive fallback, show as in-progress at 1% *)
+    prval _ = PROGRESS_READING() : PROGRESS_DISPLAY(ch, pg, 0, 2)
+  in _render_progress_elements(s, nid, 1) end
 
 (* BUG CLASS PREVENTED: VIEW_FILTER_MISMATCH
  * count_visible_books and render_library_with_books MUST agree on which
@@ -4378,7 +4537,7 @@ fn render_library_with_books {l:agz}
         val pos_id = dom_next_id()
         val s = ward_dom_stream_create_element(s, pos_id, card_id, tag_div(), 3)
         val s = ward_dom_stream_set_attr_safe(s, pos_id, attr_class(), 5, cls_book_position(), 13)
-        val s = render_position_text(s, pos_id, library_get_chapter(i), library_get_page(i))
+        val s = render_book_progress(s, pos_id, library_get_chapter(i), library_get_page(i), library_get_spine_count(i))
 
         (* Card actions: buttons depend on view mode *)
         val actions_id = dom_next_id()

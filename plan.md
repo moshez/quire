@@ -100,12 +100,12 @@ everything else depends on.
 
 ## Phase 3 — Library View Enhancements
 
-- [ ] **3.1 Cover thumbnails on book cards.** Load cover thumbnail blob from
+- [x] **3.1 Cover thumbnails on book cards.** Load cover thumbnail blob from
   IndexedDB, create blob URL, display as `<img>` in each book card (left
   side, per spec wireframe). Fallback to a placeholder icon when no cover
   exists. Ensure blob URLs are revoked when cards are removed from DOM.
 
-- [ ] **3.2 Progress bar on book cards.** Add a visual progress bar to each
+- [x] **3.2 Progress bar on book cards.** Add a visual progress bar to each
   card showing reading percentage (per spec wireframe: `━━━━━━━━━○── 68%`).
   Unstarted books show "New" (no progress bar). Finished books (100%) show
   "Done" (full bar). Calculate percentage from chapter/spine_count and
