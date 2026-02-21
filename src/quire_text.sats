@@ -53,6 +53,7 @@ staload "./../vendor/ward/lib/dom.sats"
 #define TEXT_SIZE 45
 #define TEXT_BACK 46
 #define TEXT_OF 47
+#define TEXT_DELETE_MSG 48
 
 (* ========== Text constant type proof ========== *)
 (* VALID_TEXT(id, len) proves text_id maps to the correct byte length.
@@ -107,6 +108,7 @@ dataprop VALID_TEXT(id: int, len: int) =
   | VT_45(45, 4)  (* "Size" *)
   | VT_46(46, 4)  (* "Back" *)
   | VT_47(47, 4)  (* " of " *)
+  | VT_48(48, 19) (* "Permanently delete?" *)
 
 (* ========== Function declarations ========== *)
 

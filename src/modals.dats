@@ -24,10 +24,16 @@ staload _ = "./../vendor/ward/lib/dom.dats"
 staload _ = "./../vendor/ward/lib/listener.dats"
 staload _ = "./../vendor/ward/lib/event.dats"
 staload _ = "./../vendor/ward/lib/file.dats"
+staload "./../vendor/ward/lib/promise.sats"
+staload _ = "./../vendor/ward/lib/promise.dats"
+staload "./epub.sats"
 
 %{
 extern void quire_factory_reset(void);
 %}
+
+extern castfn _mk_book_access(x: int): [i:nat | i < 32] (BOOK_ACCESS_SAFE(i) | int(i))
+extern castfn _checked_spine_count(x: int): [n:nat | n <= 256] int n
 
 (* ========== Duplicate modal CSS class builders ========== *)
 
@@ -830,3 +836,183 @@ implement clear_node(nid) = let
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
 in end
+
+(* ========== Delete book modal ========== *)
+
+(* Remove the delete modal overlay from the DOM *)
+implement dismiss_delete_modal() = let
+  val overlay_id = _app_del_overlay_id()
+in
+  if gt_int_int(overlay_id, 0) then let
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_remove_child(s, overlay_id)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = _app_set_del_overlay_id(0)
+  in end
+  else ()
+end
+
+(* Step 1: Delete IDB data for a book.
+ * Re-resolves book by stored book_id to prevent stale index.
+ * Returns resolved_idx (plain int), negative if book already gone. *)
+fn delete_book_idb
+  (): int = let
+  val resolved = library_find_book_by_id()
+in
+  if lt_g1(resolved, 0) then _g0(resolved) (* book already gone *)
+  else let
+    val bi0 = g1ofg0(_g0(resolved))
+    val cnt = library_get_count()
+    val ok = check_book_index(bi0, cnt)
+  in
+    if eq_g1(ok, 1) then let
+      val (pf_ba | biv) = _mk_book_access(_g0(resolved))
+      val _ = epub_set_book_id_from_library(pf_ba | biv)
+      val sc0 = library_get_spine_count(_g0(resolved))
+      val sc = (if lte_g1(sc0, 256) then sc0 else 256): int
+      val () = epub_delete_book_data(_checked_spine_count(sc))
+    in _g0(resolved) end
+    else 0 - 1 (* bounds check failed *)
+  end
+end
+
+(* Step 2: Remove book from library and save.
+ * REQUIRES IDB data to have been deleted first (enforced by call order
+ * in polling loop — compiler rejects constructing BOOK_DELETE_COMPLETE
+ * without both IDB_DATA_DELETED and BOOK_REMOVED). *)
+fn delete_book_from_lib
+  (resolved_idx: int, root: int): void = let
+  val () = library_remove_book(resolved_idx)
+  val () = library_save()
+  val () = render_library(root)
+in end
+
+(* Render delete confirmation modal and start polling loop *)
+implement render_delete_modal(book_idx, root) = let
+  (* Dismiss any existing delete modal *)
+  val () = dismiss_delete_modal()
+
+  (* Validate book_idx and store book_id for re-resolution at confirm time *)
+  val bi0 = g1ofg0(book_idx)
+  val cnt = library_get_count()
+  val ok = check_book_index(bi0, cnt)
+in
+  if eq_g1(ok, 1) then let
+    val (pf_ba | biv) = _mk_book_access(book_idx)
+    val _ = epub_set_book_id_from_library(pf_ba | biv)
+
+    (* Set choice to pending *)
+    val () = _app_set_del_choice(0)
+
+    (* Inject dup CSS — reuse same overlay/modal styling *)
+    val () = inject_dup_css(root)
+
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+
+    (* Overlay *)
+    val overlay_id = dom_next_id()
+    val s = ward_dom_stream_create_element(s, overlay_id, root, tag_div(), 3)
+    val s = ward_dom_stream_set_attr_safe(s, overlay_id, attr_class(), 5,
+      cls_dup_overlay(), 11)
+    val () = _app_set_del_overlay_id(overlay_id)
+
+    (* Modal container *)
+    val modal_id = dom_next_id()
+    val s = ward_dom_stream_create_element(s, modal_id, overlay_id, tag_div(), 3)
+    val s = ward_dom_stream_set_attr_safe(s, modal_id, attr_class(), 5,
+      cls_dup_modal(), 9)
+
+    (* Title: show book name *)
+    val title_div_id = dom_next_id()
+    val s = ward_dom_stream_create_element(s, title_div_id, modal_id, tag_div(), 3)
+    val s = ward_dom_stream_set_attr_safe(s, title_div_id, attr_class(), 5,
+      cls_dup_title(), 9)
+    val title_len = library_get_title(book_idx, 0)
+    val s = set_text_from_sbuf(s, title_div_id, title_len)
+
+    (* Message: "Permanently delete?" *)
+    val msg_id = dom_next_id()
+    val s = ward_dom_stream_create_element(s, msg_id, modal_id, tag_div(), 3)
+    val s = ward_dom_stream_set_attr_safe(s, msg_id, attr_class(), 5,
+      cls_dup_msg(), 7)
+    val s = set_text_cstr(VT_48() | s, msg_id, 48, 19)
+
+    (* Actions container *)
+    val actions_id = dom_next_id()
+    val s = ward_dom_stream_create_element(s, actions_id, modal_id, tag_div(), 3)
+    val s = ward_dom_stream_set_attr_safe(s, actions_id, attr_class(), 5,
+      cls_dup_actions(), 11)
+
+    (* Cancel button *)
+    val cancel_btn_id = dom_next_id()
+    val s = ward_dom_stream_create_element(s, cancel_btn_id, actions_id, tag_button(), 6)
+    val s = ward_dom_stream_set_attr_safe(s, cancel_btn_id, attr_class(), 5,
+      cls_dup_btn(), 7)
+    val s = set_text_cstr(VT_35() | s, cancel_btn_id, 35, 6)
+
+    (* Delete button — styled as danger/replace *)
+    val delete_btn_id = dom_next_id()
+    val s = ward_dom_stream_create_element(s, delete_btn_id, actions_id, tag_button(), 6)
+    val s = ward_dom_stream_set_attr_safe(s, delete_btn_id, attr_class(), 5,
+      cls_dup_replace(), 11)
+    val s = set_text_cstr(VT_41() | s, delete_btn_id, 41, 6)
+
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+
+    (* Register Cancel click → choice=1 *)
+    val () = ward_add_event_listener(
+      cancel_btn_id, evt_click(), 5, LISTENER_DEL_CANCEL,
+      lam (_pl: int): int => let
+        val () = _app_set_del_choice(1)
+      in 0 end
+    )
+
+    (* Register Delete click → choice=2 *)
+    val () = ward_add_event_listener(
+      delete_btn_id, evt_click(), 5, LISTENER_DEL_CONFIRM,
+      lam (_pl: int): int => let
+        val () = _app_set_del_choice(2)
+      in 0 end
+    )
+
+    (* Polling loop: checks choice flag, executes delete once.
+     * Termination metric .<k>. guarantees single execution and termination. *)
+    val saved_root = root
+    fun poll_del {k:nat} .<k>.
+      (rem: int(k), sr: int): ward_promise_chained(int) = let
+      val c = _app_del_choice()
+    in
+      if eq_int_int(c, 0) then
+        (* Still pending — wait and retry *)
+        if lte_g1(rem, 0) then let
+          (* Timeout — dismiss silently *)
+          val () = dismiss_delete_modal()
+        in ward_promise_return<int>(0) end
+        else
+          ward_promise_then<int><int>(ward_timer_set(50),
+            llam (_: int) => poll_del(sub_g1(rem, 1), sr))
+      else if eq_int_int(c, 1) then let
+        (* Cancel — dismiss *)
+        val () = dismiss_delete_modal()
+      in ward_promise_return<int>(0) end
+      else let
+        (* Confirm — delete *)
+        val () = dismiss_delete_modal()
+        val ri = delete_book_idb()
+      in
+        if gte_int_int(ri, 0) then let
+          val () = delete_book_from_lib(ri, sr)
+        in ward_promise_return<int>(0) end
+        else
+          (* Book already gone — nothing to do *)
+          ward_promise_return<int>(0)
+      end
+    end
+    val () = ward_promise_discard<int>(poll_del(_checked_nat(60000), saved_root))
+  in end
+  else () (* invalid book_idx — do nothing *)
+end

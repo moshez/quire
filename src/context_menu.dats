@@ -413,11 +413,12 @@ implement show_context_menu {vm,ss,sh,sa}
       )
     else ()
 
-  (* Register "Delete" handler — placeholder, just dismiss *)
+  (* Register "Delete" handler — opens delete confirmation modal *)
   val () = ward_add_event_listener(
     del_btn_id, evt_click(), 5, LISTENER_CTX_DELETE,
     lam (_pl: int): int => let
       val () = dismiss_context_menu()
+      val () = render_delete_modal(saved_bi, saved_root)
     in 0 end
   )
 in end

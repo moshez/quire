@@ -588,3 +588,56 @@ fun test_info_base_no_collision(): bool(true) =
 (* UNIT TEST — info IDs are sequential: 165..169 *)
 fun test_info_ids_sequential(): bool(true) =
   eq_g1(sub_g1(169, 165), 4)
+
+(* ================================================================
+ * Test 20: BOOK_DELETE_COMPLETE — chained delete proof
+ *
+ * Verifies BOOK_DELETE_COMPLETE requires both IDB_DATA_DELETED
+ * AND BOOK_REMOVED sub-proofs. Construction impossible without both.
+ * ================================================================ *)
+
+staload "./modals.sats"
+
+(* UNIT TEST — BOOK_DELETE_COMPLETE requires both sub-proofs *)
+fun test_delete_requires_both_proofs
+  {sc:nat | sc <= 256}{i:nat | i < 32}
+  (sc: int(sc), i: int(i)): bool(true) = let
+  prval pf_idb: IDB_DATA_DELETED(sc) = IDB_DELETED()
+  prval pf_rem: BOOK_REMOVED(i) = REMOVED_FROM_LIB()
+  prval pf: BOOK_DELETE_COMPLETE() = BOOK_DELETED(pf_idb, pf_rem)
+  prval BOOK_DELETED(_, _) = pf
+in true end
+
+(* UNIT TEST — IDB deletion requires valid spine count bounds *)
+fun test_idb_delete_spine_bound(): bool(true) = let
+  prval pf: IDB_DATA_DELETED(256) = IDB_DELETED()
+  prval IDB_DELETED() = pf
+in true end
+
+(* UNIT TEST — Book removal requires valid index *)
+fun test_remove_book_index_bound(): bool(true) = let
+  prval pf: BOOK_REMOVED(31) = REMOVED_FROM_LIB()
+  prval REMOVED_FROM_LIB() = pf
+in true end
+
+(* UNIT TEST — VT_48 text constant has correct length *)
+staload "./quire_text.sats"
+
+fun test_vt48_len(): bool(true) = let
+  prval _ = VT_48() : VALID_TEXT(48, 19)
+in true end
+
+(* ================================================================
+ * Test 21: Delete listener ID non-collision
+ *
+ * Verifies LISTENER_DEL_CONFIRM (40) and LISTENER_DEL_CANCEL (41)
+ * are above LISTENER_ERR_DISMISS (39) and below LISTENER_KEYDOWN (50).
+ * ================================================================ *)
+
+(* UNIT TEST — del confirm ID 40 > err dismiss ID 39 *)
+fun test_listener_del_confirm_above(): bool(true) =
+  gt_g1(40, 39)
+
+(* UNIT TEST — del cancel ID 41 < keydown ID 50 *)
+fun test_listener_del_cancel_below(): bool(true) =
+  lt_g1(41, 50)

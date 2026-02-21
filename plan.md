@@ -125,7 +125,7 @@ everything else depends on.
   Last read (date), Size (MB). Three action buttons at bottom: Hide, Archive,
   Delete (contextual per shelf). Accessed from context menu "Book info" item.
 
-- [ ] **3.5 Delete book.** Implement full book deletion: remove from library
+- [x] **3.5 Delete book.** Implement full book deletion: remove from library
   index, delete all resources from IndexedDB, delete search index entries,
   delete annotations (with confirmation prompt). Currently only
   archive/restore exists.

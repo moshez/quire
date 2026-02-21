@@ -1154,11 +1154,12 @@ implement show_book_info {vm,ss,sh,sa}
       )
     else ()
 
-  (* Register delete handler -- placeholder, just dismiss *)
+  (* Register delete handler — opens delete confirmation modal *)
   val () = ward_add_event_listener(
     overlay_id, evt_click(), 5, LISTENER_INFO_DELETE,
     lam (_pl: int): int => let
       val () = dismiss_book_info()
+      val () = render_delete_modal(saved_bi, saved_root)
     in 0 end
   )
 in end
