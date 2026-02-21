@@ -2186,8 +2186,12 @@ test.describe('EPUB Reader E2E', () => {
     await fileInput.setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
+    // Wait for event listeners to be fully registered
+    await page.waitForTimeout(500);
+
     // --- Active shelf: right-click opens context menu ---
-    await page.locator('.book-card').click({ button: 'right' });
+    // Use dispatchEvent for reliable contextmenu firing in headless Chromium
+    await page.locator('.book-card').dispatchEvent('contextmenu');
     await page.waitForSelector('.ctx-overlay', { timeout: 10000 });
 
     // Verify 4 buttons: Book info, Hide, Archive, Delete
@@ -2212,7 +2216,7 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 10000 });
 
     // Right-click archived book
-    await page.locator('.book-card').click({ button: 'right' });
+    await page.locator('.book-card').dispatchEvent('contextmenu');
     await page.waitForSelector('.ctx-overlay', { timeout: 10000 });
 
     // Archived shelf: 3 buttons — Book info, Restore, Delete (no Hide)
@@ -2241,7 +2245,7 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 10000 });
 
     // Right-click hidden book
-    await page.locator('.book-card').click({ button: 'right' });
+    await page.locator('.book-card').dispatchEvent('contextmenu');
     await page.waitForSelector('.ctx-overlay', { timeout: 10000 });
 
     // Hidden shelf: 3 buttons — Book info, Unhide, Delete (no Archive)
@@ -2286,8 +2290,11 @@ test.describe('EPUB Reader E2E', () => {
     await fileInput.setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
+    // Wait for event listeners to be fully registered
+    await page.waitForTimeout(500);
+
     // Right-click to open context menu
-    await page.locator('.book-card').click({ button: 'right' });
+    await page.locator('.book-card').dispatchEvent('contextmenu');
     await page.waitForSelector('.ctx-overlay', { timeout: 10000 });
 
     // Click "Book info" in context menu
@@ -2349,8 +2356,11 @@ test.describe('EPUB Reader E2E', () => {
     await fileInput.setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
+    // Wait for event listeners to be fully registered
+    await page.waitForTimeout(500);
+
     // Right-click to open context menu
-    await page.locator('.book-card').click({ button: 'right' });
+    await page.locator('.book-card').dispatchEvent('contextmenu');
     await page.waitForSelector('.ctx-overlay', { timeout: 10000 });
 
     // Click "Delete" in context menu
@@ -2377,7 +2387,7 @@ test.describe('EPUB Reader E2E', () => {
     await screenshot(page, 'del-02-after-cancel');
 
     // Right-click again, click Delete in context menu
-    await page.locator('.book-card').click({ button: 'right' });
+    await page.locator('.book-card').dispatchEvent('contextmenu');
     await page.waitForSelector('.ctx-overlay', { timeout: 10000 });
     await page.locator('.ctx-menu button', { hasText: 'Delete' }).click();
     await page.waitForSelector('.dup-overlay', { timeout: 10000 });
