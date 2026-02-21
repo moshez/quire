@@ -74,6 +74,14 @@ QUIRE_DATS := \
   src/settings.dats \
   src/library.dats \
   src/reader.dats \
+  src/quire_text.dats \
+  src/ui_classes.dats \
+  src/quire_css.dats \
+  src/book_info.dats \
+  src/context_menu.dats \
+  src/modals.dats \
+  src/import_ui.dats \
+  src/library_view.dats \
   src/quire.dats
 
 ALL_DATS := $(WARD_DATS) $(QUIRE_DATS)
