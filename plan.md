@@ -91,7 +91,7 @@ everything else depends on.
   "Importing...", title, a progress bar, and status text (e.g., "Extracting
   chapters..."). The rest of the library remains interactive below.
 
-- [ ] **2.6 E2e: import errors and duplicates.** Import an invalid file,
+- [x] **2.6 E2e: import errors and duplicates.** Import an invalid file,
   verify dismissible error banner appears with filename and DRM message.
   Import same EPUB twice, verify Skip/Replace dialog appears with book title;
   verify Skip cancels, Replace preserves annotations.
@@ -100,12 +100,12 @@ everything else depends on.
 
 ## Phase 3 — Library View Enhancements
 
-- [ ] **3.1 Cover thumbnails on book cards.** Load cover thumbnail blob from
+- [x] **3.1 Cover thumbnails on book cards.** Load cover thumbnail blob from
   IndexedDB, create blob URL, display as `<img>` in each book card (left
   side, per spec wireframe). Fallback to a placeholder icon when no cover
   exists. Ensure blob URLs are revoked when cards are removed from DOM.
 
-- [ ] **3.2 Progress bar on book cards.** Add a visual progress bar to each
+- [x] **3.2 Progress bar on book cards.** Add a visual progress bar to each
   card showing reading percentage (per spec wireframe: `━━━━━━━━━○── 68%`).
   Unstarted books show "New" (no progress bar). Finished books (100%) show
   "Done" (full bar). Calculate percentage from chapter/spine_count and
