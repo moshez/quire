@@ -116,7 +116,8 @@ datavtype app_state_impl =
       err_banner_id = int,
       import_card_id = int,
       import_card_bar_id = int,
-      import_card_status_id = int
+      import_card_status_id = int,
+      ctx_overlay_id = int
     }
 
 assume app_state = app_state_impl
@@ -271,7 +272,8 @@ implement app_state_init() =
     err_banner_id = 0,
     import_card_id = 0,
     import_card_bar_id = 0,
-    import_card_status_id = 0
+    import_card_status_id = 0,
+    ctx_overlay_id = 0
   }
 
 implement app_state_fini(st) = let
@@ -592,6 +594,13 @@ implement app_set_import_card_status_id(st, v) = let
   val @APP_STATE(r) = st val () = r.import_card_status_id := v
   prval () = fold@(st) in end
 
+implement app_get_ctx_overlay_id(st) = let
+  val @APP_STATE(r) = st val v = r.ctx_overlay_id
+  prval () = fold@(st) in v end
+implement app_set_ctx_overlay_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.ctx_overlay_id := v
+  prval () = fold@(st) in end
+
 implement _app_import_card_id() = let val st = app_state_load()
   val v = app_get_import_card_id(st) val () = app_state_store(st) in v end
 implement _app_set_import_card_id(v) = let val st = app_state_load()
@@ -604,6 +613,10 @@ implement _app_import_card_status_id() = let val st = app_state_load()
   val v = app_get_import_card_status_id(st) val () = app_state_store(st) in v end
 implement _app_set_import_card_status_id(v) = let val st = app_state_load()
   val () = app_set_import_card_status_id(st, v) val () = app_state_store(st) in end
+implement _app_ctx_overlay_id() = let val st = app_state_load()
+  val v = app_get_ctx_overlay_id(st) val () = app_state_store(st) in v end
+implement _app_set_ctx_overlay_id(v) = let val st = app_state_load()
+  val () = app_set_ctx_overlay_id(st, v) val () = app_state_store(st) in end
 
 (* ========== C-callable wrappers for library module ========== *)
 
@@ -909,7 +922,7 @@ implement app_set_rdr_resume_page(st, v) = let
 implement app_get_rdr_btn_id(st, idx) = let
   val @APP_STATE(r) = st
   val v = if gte_int_int(idx, 0) then
-            if lt_int_int(idx, 96) then _arr_get_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE)
+            if lt_int_int(idx, 128) then _arr_get_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE)
             else 0 - 1
           else 0 - 1
   prval () = fold@(st)
@@ -917,7 +930,7 @@ in v end
 implement app_set_rdr_btn_id(st, idx, v) = let
   val @APP_STATE(r) = st
   val () = if gte_int_int(idx, 0) then
-             if lt_int_int(idx, 96) then _arr_set_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE, v)
+             if lt_int_int(idx, 128) then _arr_set_i32(r.rdr_btn_ids, idx, RDR_BTNS_SIZE, v)
   prval () = fold@(st)
 in end
 
