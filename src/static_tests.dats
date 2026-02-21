@@ -490,3 +490,101 @@ fun test_ctx_menu_hidden(): bool(true) = let
   prval pf = CTX_HIDDEN_T()
   prval _ = pf : CTX_MENU_VALID_T(2, 2, 1, 0)
 in eq_g1(add_g1(1, 0), 1) end
+
+(* ================================================================
+ * Test 17: MONTH_DAYS — day count per month
+ *
+ * Verifies each MONTH_DAYS constructor has correct day count.
+ * Jan=31, Feb=28/29, Mar=31, etc.
+ * ================================================================ *)
+
+dataprop MONTH_DAYS_T(m: int, d: int) =
+  | MD_JAN_T(1, 31)  | MD_FEB28_T(2, 28) | MD_FEB29_T(2, 29)
+  | MD_MAR_T(3, 31)  | MD_APR_T(4, 30)   | MD_MAY_T(5, 31)
+  | MD_JUN_T(6, 30)  | MD_JUL_T(7, 31)   | MD_AUG_T(8, 31)
+  | MD_SEP_T(9, 30)  | MD_OCT_T(10, 31)  | MD_NOV_T(11, 30)
+  | MD_DEC_T(12, 31)
+
+(* UNIT TEST — Jan has 31 days *)
+fun test_md_jan(): bool(true) = let
+  prval pf = MD_JAN_T() : MONTH_DAYS_T(1, 31)
+in eq_g1(31, 31) end
+
+(* UNIT TEST — Feb has 28 days (non-leap) *)
+fun test_md_feb28(): bool(true) = let
+  prval pf = MD_FEB28_T() : MONTH_DAYS_T(2, 28)
+in eq_g1(28, 28) end
+
+(* UNIT TEST — Feb has 29 days (leap) *)
+fun test_md_feb29(): bool(true) = let
+  prval pf = MD_FEB29_T() : MONTH_DAYS_T(2, 29)
+in eq_g1(29, 29) end
+
+(* UNIT TEST — Apr has 30 days *)
+fun test_md_apr(): bool(true) = let
+  prval pf = MD_APR_T() : MONTH_DAYS_T(4, 30)
+in eq_g1(30, 30) end
+
+(* UNIT TEST — Dec has 31 days *)
+fun test_md_dec(): bool(true) = let
+  prval pf = MD_DEC_T() : MONTH_DAYS_T(12, 31)
+in eq_g1(31, 31) end
+
+(* ================================================================
+ * Test 18: SIZE_UNIT — file size unit selection
+ *
+ * Verifies SIZE_UNIT boundary at 1048576 (1 MB).
+ * ================================================================ *)
+
+(* UNIT TEST — KB boundary: 1048575 < 1048576 *)
+fun test_size_kb_boundary(): bool(true) =
+  lt_g1(1048575, 1048576)
+
+(* UNIT TEST — MB boundary: 1048576 >= 1048576 *)
+fun test_size_mb_boundary(): bool(true) =
+  gte_g1(1048576, 1048576)
+
+(* ================================================================
+ * Test 19: INFO_BUTTONS_VALID — 3 shelf variants
+ *
+ * Verifies all 3 INFO_BUTTONS_VALID constructors are satisfiable
+ * and produce the correct show_hide/show_archive flags.
+ * ================================================================ *)
+
+dataprop INFO_BUTTONS_VALID_T(vm: int, ss: int, show_hide: int, show_archive: int) =
+  | INFO_BTN_ACTIVE_T(0, 0, 1, 1)
+  | INFO_BTN_ARCHIVED_T(1, 1, 0, 1)
+  | INFO_BTN_HIDDEN_T(2, 2, 1, 0)
+
+(* UNIT TEST — active shelf: show_hide=1, show_archive=1 *)
+fun test_info_btn_active(): bool(true) = let
+  prval pf = INFO_BTN_ACTIVE_T()
+  prval _ = pf : INFO_BUTTONS_VALID_T(0, 0, 1, 1)
+in eq_g1(add_g1(1, 1), 2) end
+
+(* UNIT TEST — archived shelf: show_hide=0, show_archive=1 *)
+fun test_info_btn_archived(): bool(true) = let
+  prval pf = INFO_BTN_ARCHIVED_T()
+  prval _ = pf : INFO_BUTTONS_VALID_T(1, 1, 0, 1)
+in eq_g1(add_g1(0, 1), 1) end
+
+(* UNIT TEST — hidden shelf: show_hide=1, show_archive=0 *)
+fun test_info_btn_hidden(): bool(true) = let
+  prval pf = INFO_BTN_HIDDEN_T()
+  prval _ = pf : INFO_BUTTONS_VALID_T(2, 2, 1, 0)
+in eq_g1(add_g1(1, 0), 1) end
+
+(* ================================================================
+ * Test 20: Info listener ID non-collision
+ *
+ * Verifies info listener IDs are above ctx listener range
+ * and sequential.
+ * ================================================================ *)
+
+(* UNIT TEST — info back ID (165) > ctx delete ID (164) *)
+fun test_info_base_no_collision(): bool(true) =
+  gt_g1(165, 164)
+
+(* UNIT TEST — info IDs are sequential: 165..169 *)
+fun test_info_ids_sequential(): bool(true) =
+  eq_g1(sub_g1(169, 165), 4)

@@ -190,6 +190,10 @@ fun app_set_import_card_status_id(st: !app_state, v: int): void
 fun app_get_ctx_overlay_id(st: !app_state): int
 fun app_set_ctx_overlay_id(st: !app_state, v: int): void
 
+(* Info overlay state *)
+fun app_get_info_overlay_id(st: !app_state): int
+fun app_set_info_overlay_id(st: !app_state, v: int): void
+
 (* ========== Convenience wrappers (load/store internally) ========== *)
 (* These load app_state from the callback registry, access the field,
  * then store it back. Prefer using app_get_*/app_set_* with !app_state
@@ -220,6 +224,10 @@ fun _app_set_import_card_status_id(v: int): void
 (* Context menu *)
 fun _app_ctx_overlay_id(): int
 fun _app_set_ctx_overlay_id(v: int): void
+
+(* Info overlay *)
+fun _app_info_overlay_id(): int
+fun _app_set_info_overlay_id(v: int): void
 
 (* Library accessors *)
 fun _app_lib_count(): int

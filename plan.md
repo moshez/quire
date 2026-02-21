@@ -119,7 +119,7 @@ everything else depends on.
   on archived shelf). Requires bridge event for contextmenu/long-press,
   WASM-driven menu rendering, and dismiss on outside tap.
 
-- [ ] **3.4 Book info view.** Full-screen overlay (mobile) or modal (desktop)
+- [x] **3.4 Book info view.** Full-screen overlay (mobile) or modal (desktop)
   per spec wireframe: ← Back header, large cover image centered, title,
   author, then metadata rows: Progress (% + chapter of total), Added (date),
   Last read (date), Size (MB). Three action buttons at bottom: Hide, Archive,

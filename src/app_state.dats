@@ -117,7 +117,8 @@ datavtype app_state_impl =
       import_card_id = int,
       import_card_bar_id = int,
       import_card_status_id = int,
-      ctx_overlay_id = int
+      ctx_overlay_id = int,
+      info_overlay_id = int
     }
 
 assume app_state = app_state_impl
@@ -273,7 +274,8 @@ implement app_state_init() =
     import_card_id = 0,
     import_card_bar_id = 0,
     import_card_status_id = 0,
-    ctx_overlay_id = 0
+    ctx_overlay_id = 0,
+    info_overlay_id = 0
   }
 
 implement app_state_fini(st) = let
@@ -601,6 +603,13 @@ implement app_set_ctx_overlay_id(st, v) = let
   val @APP_STATE(r) = st val () = r.ctx_overlay_id := v
   prval () = fold@(st) in end
 
+implement app_get_info_overlay_id(st) = let
+  val @APP_STATE(r) = st val v = r.info_overlay_id
+  prval () = fold@(st) in v end
+implement app_set_info_overlay_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.info_overlay_id := v
+  prval () = fold@(st) in end
+
 implement _app_import_card_id() = let val st = app_state_load()
   val v = app_get_import_card_id(st) val () = app_state_store(st) in v end
 implement _app_set_import_card_id(v) = let val st = app_state_load()
@@ -617,6 +626,10 @@ implement _app_ctx_overlay_id() = let val st = app_state_load()
   val v = app_get_ctx_overlay_id(st) val () = app_state_store(st) in v end
 implement _app_set_ctx_overlay_id(v) = let val st = app_state_load()
   val () = app_set_ctx_overlay_id(st, v) val () = app_state_store(st) in end
+implement _app_info_overlay_id() = let val st = app_state_load()
+  val v = app_get_info_overlay_id(st) val () = app_state_store(st) in v end
+implement _app_set_info_overlay_id(v) = let val st = app_state_load()
+  val () = app_set_info_overlay_id(st, v) val () = app_state_store(st) in end
 
 (* ========== C-callable wrappers for library module ========== *)
 
