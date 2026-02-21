@@ -10,6 +10,12 @@ fun ward_file_open
 
 fun ward_file_get_size(): int
 
+(* Get filename length (stashed at file-open time). *)
+fun ward_file_get_name_len(): [n:nat] int(n)
+
+(* Get filename bytes into a new ward_arr. *)
+fun ward_file_get_name {n:pos} (len: int(n)): [l:agz] ward_arr(byte, l, n)
+
 (* Synchronous read from cached ArrayBuffer. Returns bytes_read. *)
 fun ward_file_read
   {l:agz}{n:pos}

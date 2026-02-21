@@ -112,7 +112,8 @@ datavtype app_state_impl =
       epub_cover_href_len = int,
       dup_choice = int,
       dup_overlay_id = int,
-      reset_overlay_id = int
+      reset_overlay_id = int,
+      err_banner_id = int
     }
 
 assume app_state = app_state_impl
@@ -263,7 +264,8 @@ implement app_state_init() =
     epub_cover_href_len = 0,
     dup_choice = 0,
     dup_overlay_id = 0,
-    reset_overlay_id = 0
+    reset_overlay_id = 0,
+    err_banner_id = 0
   }
 
 implement app_state_fini(st) = let
@@ -546,6 +548,20 @@ implement _app_reset_overlay_id() = let val st = app_state_load()
   val v = app_get_reset_overlay_id(st) val () = app_state_store(st) in v end
 implement _app_set_reset_overlay_id(v) = let val st = app_state_load()
   val () = app_set_reset_overlay_id(st, v) val () = app_state_store(st) in end
+
+(* ========== Error banner state ========== *)
+
+implement app_get_err_banner_id(st) = let
+  val @APP_STATE(r) = st val v = r.err_banner_id
+  prval () = fold@(st) in v end
+implement app_set_err_banner_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.err_banner_id := v
+  prval () = fold@(st) in end
+
+implement _app_err_banner_id() = let val st = app_state_load()
+  val v = app_get_err_banner_id(st) val () = app_state_store(st) in v end
+implement _app_set_err_banner_id(v) = let val st = app_state_load()
+  val () = app_set_err_banner_id(st, v) val () = app_state_store(st) in end
 
 (* ========== C-callable wrappers for library module ========== *)
 

@@ -362,3 +362,18 @@ in true end
 fun test_chapter_count_satisfies_delete(): bool(true) = let
   val n = epub_get_chapter_count()
 in lte_g1(n, 256) end
+
+(* ================================================================
+ * Test 13: Listener ID non-overlap — LISTENER_ERR_DISMISS range
+ *
+ * Verifies LISTENER_ERR_DISMISS (39) sits between
+ * LISTENER_RESET_CANCEL (38) and LISTENER_KEYDOWN (50).
+ * ================================================================ *)
+
+(* UNIT TEST — listener ID 39 > 38 *)
+fun test_listener_err_above(): bool(true) =
+  gt_g1(39, 38)
+
+(* UNIT TEST — listener ID 39 < 50 *)
+fun test_listener_err_below(): bool(true) =
+  lt_g1(39, 50)

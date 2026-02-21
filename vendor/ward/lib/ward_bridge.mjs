@@ -491,6 +491,11 @@ export async function loadWard(wasmBytes, root, opts) {
       const handle = nextFileHandle++;
       const data = new Uint8Array(reader.result);
       fileCache.set(handle, data);
+      // Stash filename for WASM: slot 2 = name length, slot 3 = name stash ID
+      const nameBytes = new TextEncoder().encode(file.name);
+      const nameStashId = stashData(nameBytes);
+      instance.exports.ward_bridge_stash_set_int(2, nameBytes.length);
+      instance.exports.ward_bridge_stash_set_int(3, nameStashId);
       instance.exports.ward_on_file_open(resolverId, handle, data.length);
     };
     reader.onerror = () => {

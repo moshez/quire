@@ -1951,4 +1951,208 @@ test.describe('EPUB Reader E2E', () => {
     expect(problems).toEqual([]);
   });
 
+  test('invalid file import shows error banner with filename and DRM message', async ({ page }) => {
+    // Import a non-EPUB file (plain text disguised as .zip) and verify
+    // the error banner appears with filename, "is not a valid ePub file.",
+    // and "Quire supports .epub files without DRM." message.
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED during error banner test. Errors:', errors);
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    await screenshot(page, 'errbanner-00-library');
+
+    // Create a non-EPUB file (plain text bytes — will fail ZIP parsing)
+    const fileInput = page.locator('input[type="file"]');
+    const invalidContent = Buffer.from('This is not a valid EPUB file at all.');
+    await fileInput.setInputFiles({
+      name: 'vacation-photos.zip',
+      mimeType: 'application/zip',
+      buffer: invalidContent,
+    });
+
+    // Wait for import to finish and error banner to appear
+    // The banner has class .err-banner
+    const banner = page.locator('.err-banner');
+    await expect(banner).toBeVisible({ timeout: 30000 });
+    await screenshot(page, 'errbanner-01-banner-visible');
+
+    // Verify banner contains "Import failed" (bold heading)
+    await expect(banner).toContainText('Import failed');
+
+    // Verify banner contains the filename in quotes
+    await expect(banner).toContainText('vacation-photos.zip');
+
+    // Verify banner contains "is not a valid ePub file."
+    await expect(banner).toContainText('is not a valid ePub file.');
+
+    // Verify banner contains DRM message
+    await expect(banner).toContainText('Quire supports .epub files without DRM.');
+
+    // Verify close button exists
+    const closeBtn = page.locator('.err-close');
+    await expect(closeBtn).toBeVisible();
+
+    // Verify import UI is cleaned up (label reverts to "import-btn")
+    const importBtn = page.locator('label.import-btn');
+    await expect(importBtn).toBeVisible({ timeout: 10000 });
+
+    // Dismiss the banner by clicking close
+    await closeBtn.click();
+
+    // Banner should disappear
+    await expect(banner).not.toBeVisible({ timeout: 5000 });
+    await screenshot(page, 'errbanner-02-dismissed');
+
+    // No crashes
+    expect(errors).toEqual([]);
+  });
+
+  test('error banner is dismissed when starting new import', async ({ page }) => {
+    // Import an invalid file to trigger the error banner,
+    // then import a valid EPUB and verify the banner is dismissed.
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import invalid file to trigger error banner
+    const fileInput = page.locator('input[type="file"]');
+    const invalidContent = Buffer.from('not a zip');
+    await fileInput.setInputFiles({
+      name: 'bad-file.txt',
+      mimeType: 'application/octet-stream',
+      buffer: invalidContent,
+    });
+
+    // Wait for error banner
+    const banner = page.locator('.err-banner');
+    await expect(banner).toBeVisible({ timeout: 30000 });
+    await screenshot(page, 'errbanner-dismiss-01-banner');
+
+    // Now import a valid EPUB — banner should be dismissed
+    const epubBuffer = createEpub({
+      title: 'Valid Book After Error',
+      author: 'Recovery Bot',
+      chapters: 1,
+      paragraphsPerChapter: 2,
+    });
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `errbanner-valid-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+
+    // Banner should be dismissed as new import starts
+    await expect(banner).not.toBeVisible({ timeout: 10000 });
+
+    // Valid book should import successfully
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await screenshot(page, 'errbanner-dismiss-02-valid-imported');
+
+    const bookTitle = page.locator('.book-title');
+    await expect(bookTitle).toContainText('Valid Book After Error');
+
+    expect(errors).toEqual([]);
+  });
+
+  test('reading position persists across page turns within a chapter', async ({ page }) => {
+    // Import a book with enough text for multiple pages in one chapter,
+    // flip forward several pages, go back to library, re-enter the book,
+    // and verify the page (not just chapter) is restored.
+    const epubBuffer = createEpub({
+      title: 'Page Position Test',
+      author: 'Page Bot',
+      chapters: 2,
+      paragraphsPerChapter: 30,  // Plenty of text for multi-page
+    });
+
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `page-pos-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open book
+    const readBtn = page.locator('.read-btn');
+    await readBtn.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    // Should start at Ch 1, page 1
+    const pageInfo = page.locator('.page-info');
+    const initialText = await pageInfo.textContent();
+    expect(initialText).toMatch(/^Ch 1\//);
+    expect(initialText).toMatch(/\s+1\/\d+$/);
+
+    // Get total pages to know how many to flip
+    const totalPages = parseInt(initialText.match(/\s+\d+\/(\d+)$/)[1]);
+
+    // Flip forward at least 2 pages (or as many as available)
+    const flips = Math.min(3, totalPages - 1);
+    const nextBtn = page.locator('.next-btn');
+    for (let i = 0; i < flips; i++) {
+      await nextBtn.click();
+      await page.waitForTimeout(300);
+    }
+
+    // Record the page we ended up on
+    const afterFlipText = await pageInfo.textContent();
+    const afterFlipPage = afterFlipText.match(/\s+(\d+)\/\d+$/)[1];
+    const afterFlipPageNum = parseInt(afterFlipPage);
+    expect(afterFlipPageNum).toBeGreaterThan(1);
+    await screenshot(page, 'page-pos-01-after-flips');
+
+    // Go back to library
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+
+    // Verify library shows the position (not "Not started")
+    const posText = await page.locator('.book-position').textContent();
+    expect(posText).not.toBe('Not started');
+    await screenshot(page, 'page-pos-02-library');
+
+    // Re-enter the book
+    const readBtn2 = page.locator('.read-btn');
+    await readBtn2.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    // Verify restored page is the same page we were on (or close — within 1
+    // due to viewport size differences between render passes)
+    const restoredText = await pageInfo.textContent();
+    expect(restoredText).toMatch(/^Ch 1\//);
+    const restoredPage = parseInt(restoredText.match(/\s+(\d+)\/\d+$/)[1]);
+    // Allow ±1 tolerance since total pages can shift between render passes
+    expect(Math.abs(restoredPage - afterFlipPageNum)).toBeLessThanOrEqual(1);
+    await screenshot(page, 'page-pos-03-restored');
+
+    // Navigate back
+    const backBtn2 = page.locator('.back-btn');
+    await backBtn2.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+
+    expect(errors).toEqual([]);
+  });
+
 });
