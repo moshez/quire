@@ -29,6 +29,13 @@ stadef MAX_BOOKS_S = 32
 stadef REC_INTS_S = 155
 stadef REC_BYTES_S = 620           (* REC_INTS_S * 4 *)
 
+(* Single source of truth for record layout — eliminates all hardcoded
+ * constants in consumer modules. If the record grows, change REC_INTS_S
+ * and REC_BYTES_S above; library_rec_ints/bytes will fail to compile
+ * unless the implementation matches. *)
+stadef LIB_REC_INTS = 155
+stadef LIB_REC_BYTES = 620
+
 (* Byte offsets within a book record *)
 stadef TITLE_BYTE_OFF_S = 0
 stadef TITLE_FIELD_LEN_S = 256
@@ -182,6 +189,30 @@ stadef SER_VERSION_4 = 4
 dataprop SER_VERSION_DETECTED(marker: int, version: int) =
   | {m:int | m == 65535} IS_V2_OR_V3(m, 2)
   | {m:nat | m <= 32} IS_V1(m, 1)
+
+(* ========== Book access safety proof ========== *)
+
+(* BOOK_ACCESS_SAFE(i): proves that accessing book record at index i
+ * is within bounds for both i32 slot access and byte-level access.
+ * Constraints:
+ *   i * LIB_REC_INTS + 154 < 4960   (max i32 slot fits in lib_books)
+ *   i * LIB_REC_BYTES + 520 + 64 <= 19840  (max byte copy fits in lib_books)
+ * 4960 = 32 * 155  (total i32 slots), 19840 = 32 * 620 (total bytes) *)
+dataprop BOOK_ACCESS_SAFE(i: int) =
+  | {i:nat | i < 32;
+     i * LIB_REC_INTS + 154 < 4960;
+     i * LIB_REC_BYTES + 520 + 64 <= 19840}
+    BOOK_ACCESS_OK(i)
+
+(* Record layout accessor functions — single source of truth.
+ * If REC_INTS changes to != 155, library_rec_ints won't compile. *)
+fun library_rec_ints(): int(LIB_REC_INTS)
+fun library_rec_bytes(): int(LIB_REC_BYTES)
+
+(* Bounds check: returns 1 if index is valid, 0 otherwise.
+ * Return type uses sif so the solver can evaluate for concrete inputs.
+ * e.g. check_book_index(0,1) returns int(1), check_book_index(32,32) returns int(0). *)
+fun check_book_index {b,c:int} (bidx: int(b), count: int(c)): [v:nat | v <= 1] int(v)
 
 (* ========== Duplicate choice proof ========== *)
 

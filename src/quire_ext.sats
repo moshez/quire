@@ -13,3 +13,6 @@ fun quire_set_title(mode: int): void = "mac#quireSetTitle"
 
 (* Get current Unix timestamp in seconds *)
 fun quire_time_now(): int = "mac#quire_time_now"
+
+(* Factory reset: delete IndexedDB database and reload page *)
+fun quire_factory_reset(): void = "mac#quire_factory_reset"

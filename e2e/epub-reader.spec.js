@@ -1845,4 +1845,110 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('corrupt library data survives reload without crash', async ({ page }) => {
+    // Import a valid book, then overwrite the IDB library key with garbage,
+    // reload, and verify no crash (pageerror) and the page renders.
+    const epubBuffer = createEpub({
+      title: 'Corrupt Test Book',
+      author: 'Corrupt Bot',
+      chapters: 1,
+      paragraphsPerChapter: 2,
+    });
+
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `corrupt-test-${vpTag}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Wait for IDB save
+    await page.waitForTimeout(2000);
+
+    // Overwrite IDB 'lib' key with garbage bytes
+    await page.evaluate(async () => {
+      const db = await new Promise((resolve, reject) => {
+        const req = indexedDB.open('ward', 1);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      const tx = db.transaction('kv', 'readwrite');
+      const store = tx.objectStore('kv');
+      // Write 512 bytes of random garbage
+      const garbage = new Uint8Array(512);
+      for (let i = 0; i < garbage.length; i++) {
+        garbage[i] = Math.floor(Math.random() * 256);
+      }
+      await new Promise((resolve, reject) => {
+        const req = store.put(garbage, 'lib');
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+    });
+
+    // Reload — the app should NOT crash
+    await page.reload();
+
+    // Wait for the app to initialize (library view or empty state)
+    await page.waitForSelector('.library-list, label.import-btn', { timeout: 15000 });
+    await screenshot(page, 'corrupt-01-after-reload');
+
+    // No page errors should have occurred
+    expect(errors).toEqual([]);
+
+    // The page should be interactive (not crashed/frozen)
+    const body = page.locator('body');
+    await expect(body).toBeVisible();
+  });
+
+  test('library view has no viewport overflow on interactive elements', async ({ page }) => {
+    // Import a book with a long title to stress-test layout,
+    // then verify no interactive elements extend past the viewport.
+    const epubBuffer = createEpub({
+      title: 'A Very Long Book Title That Should Wrap Properly Without Overflowing The Viewport Edge',
+      author: 'An Author With A Reasonably Long Name That Tests Wrapping',
+      chapters: 1,
+      paragraphsPerChapter: 2,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `overflow-test-${vpTag}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await screenshot(page, 'overflow-01-library');
+
+    // Check no interactive elements overflow the viewport
+    const problems = await page.evaluate(() => {
+      const vw = document.documentElement.clientWidth;
+      const issues = [];
+      for (const el of document.querySelectorAll(
+        'button, label, a, input, [role="button"]'
+      )) {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.right > vw + 1) {
+          issues.push(
+            `"${el.textContent.trim().slice(0, 20)}" right=${Math.round(r.right)} > viewport=${vw}`
+          );
+        }
+      }
+      return issues;
+    });
+    expect(problems).toEqual([]);
+  });
+
 });

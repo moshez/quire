@@ -113,6 +113,42 @@ See `TEXT_RENDER_SAFE` dataprop in dom.sats.
 3. **Single pending flag invariant**: At most one async pending flag may be active
    at any time. See `SINGLE_PENDING` dataprop in library.sats.
 
+## Visual Check Protocol
+
+After any UI change, perform a visual check on CI screenshots across ALL
+viewport sizes. This is mandatory before declaring work complete.
+
+### How to do a visual check
+
+1. **Wait for CI to pass** (or at least for e2e artifacts to be uploaded)
+2. **Download artifacts**: `GIT_DIR=/opt/homedir/src/quire/.git gh run download <run_id> -D /tmp/e2e-artifacts`
+3. **Find ALL screenshots**: `find /tmp/e2e-artifacts -name "*.png" | sort`
+4. **Review EVERY viewport size** for EVERY screenshot — not just the feature
+   you changed. The viewport sizes are: 375x667 (mobile portrait), 667x375
+   (mobile landscape), 768x1024 (tablet), 1024x768 (desktop), 1440x900 (wide).
+5. **Check the FULL PAGE on each viewport**, not just the element you modified.
+   Look for:
+   - Text truncation (e.g., "Archi..." instead of "Archive")
+   - Elements clipped by the viewport edge
+   - Buttons or interactive elements that are unreachable or too small to tap
+   - Content overflowing its container
+   - Broken flex/grid layouts (items not wrapping, overlapping)
+   - Unreadable text (too small, too compressed, line-wrapping into gibberish)
+6. **If anything looks wrong on ANY viewport, flag it** — do not say "looks
+   fine" unless every viewport has been individually examined and every element
+   on the page is properly laid out.
+
+### Common mistakes to avoid
+
+- **Tunnel vision**: Only checking the feature you just built, ignoring the
+  rest of the page. If you added a modal, also check that the library cards,
+  toolbar, and buttons behind it still look correct on every viewport.
+- **Assuming functional = visual**: A test passing (element is visible, text
+  matches) does NOT mean it looks right. A button can be "visible" but clipped
+  to 3 characters.
+- **Skipping viewports**: "Desktop looks fine" is not a visual check. Mobile
+  portrait (375px wide) is where most layout breaks happen.
+
 ## Bridge Policy
 
 **Be extremely careful about changes to bridge.js.** Most PRs should not touch it.

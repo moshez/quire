@@ -45,6 +45,7 @@ staload "./quire_ext.sats"
 %{
 extern void quireSetTitle(int mode);
 extern int quire_time_now(void);
+extern void quire_factory_reset(void);
 %}
 
 (* ========== Text constant IDs ========== *)
@@ -82,6 +83,9 @@ extern int quire_time_now(void);
 #define TEXT_DUP_SKIP 30
 #define TEXT_DUP_REPLACE 31
 #define TEXT_DUP_MSG 32
+#define TEXT_RESET 33
+#define TEXT_RESET_MSG 34
+#define TEXT_CANCEL 35
 
 (* ========== Listener ID constants ========== *)
 
@@ -112,6 +116,9 @@ dataprop READER_LISTENER(id: int) =
 #define LISTENER_HIDE_BTN_BASE 95
 #define LISTENER_DUP_SKIP 34
 #define LISTENER_DUP_REPLACE 35
+#define LISTENER_RESET_BTN 36
+#define LISTENER_RESET_CONFIRM 37
+#define LISTENER_RESET_CANCEL 38
 
 (* ========== Byte-level helpers (pure ATS2) ========== *)
 
@@ -576,6 +583,39 @@ fn fill_text {l:agz}{n:pos}
     val () = ward_arr_set_byte(arr, 16, alen, 114) (* r *)
     val () = ward_arr_set_byte(arr, 17, alen, 121) (* y *)
   in end
+  else if text_id = 33 then let (* "Reset" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 82)   (* R *)
+    val () = ward_arr_set_byte(arr, 1, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 2, alen, 115)  (* s *)
+    val () = ward_arr_set_byte(arr, 3, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 4, alen, 116)  (* t *)
+  in end
+  else if text_id = 34 then let (* "Delete all data?" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 68)   (* D *)
+    val () = ward_arr_set_byte(arr, 1, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 2, alen, 108)  (* l *)
+    val () = ward_arr_set_byte(arr, 3, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 4, alen, 116)  (* t *)
+    val () = ward_arr_set_byte(arr, 5, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 6, alen, 32)   (*   *)
+    val () = ward_arr_set_byte(arr, 7, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 8, alen, 108)  (* l *)
+    val () = ward_arr_set_byte(arr, 9, alen, 108)  (* l *)
+    val () = ward_arr_set_byte(arr, 10, alen, 32)  (*   *)
+    val () = ward_arr_set_byte(arr, 11, alen, 100) (* d *)
+    val () = ward_arr_set_byte(arr, 12, alen, 97)  (* a *)
+    val () = ward_arr_set_byte(arr, 13, alen, 116) (* t *)
+    val () = ward_arr_set_byte(arr, 14, alen, 97)  (* a *)
+    val () = ward_arr_set_byte(arr, 15, alen, 63)  (* ? *)
+  in end
+  else if text_id = 35 then let (* "Cancel" *)
+    val () = ward_arr_set_byte(arr, 0, alen, 67)   (* C *)
+    val () = ward_arr_set_byte(arr, 1, alen, 97)   (* a *)
+    val () = ward_arr_set_byte(arr, 2, alen, 110)  (* n *)
+    val () = ward_arr_set_byte(arr, 3, alen, 99)   (* c *)
+    val () = ward_arr_set_byte(arr, 4, alen, 101)  (* e *)
+    val () = ward_arr_set_byte(arr, 5, alen, 108)  (* l *)
+  in end
   else () (* unused text_id *)
 
 (* Copy len bytes from string_buffer to ward_arr *)
@@ -624,6 +664,15 @@ end
 (* Castfn for indices proven in-bounds at runtime but not by solver.
  * Used for ward_arr(byte, l, 48) where max write index is 35. *)
 extern castfn _idx48(x: int): [i:nat | i < 48] int i
+
+(* Proof construction after runtime validation via check_book_index.
+ * The caller MUST verify check_book_index(idx, count) == 1 before calling.
+ * Dataprop erased at runtime — cast is identity on int. *)
+extern castfn _mk_book_access(x: int): [i:nat | i < 32] (BOOK_ACCESS_SAFE(i) | int(i))
+
+(* Clamp spine count to [0, 256] for epub_delete_book_data.
+ * Caller MUST verify value <= 256 before calling. *)
+extern castfn _checked_spine_count(x: int): [n:nat | n <= 256] int n
 
 (* Safe byte conversion: value must be 0-255.
  * For static chars: use char2int1('x') which carries the static value.
@@ -1436,8 +1485,8 @@ fn write_css_rem_pos {l:agz}{n:pos}{v:pos}
 
 (* ---- CSS length constants ---- *)
 (* #define: runtime values; stadef: type-level constraints *)
-#define APP_CSS_LEN 2306
-stadef APP_CSS_LEN = 2306
+#define APP_CSS_LEN 2332
+stadef APP_CSS_LEN = 2332
 #define NAV_CSS_LEN 552
 stadef NAV_CSS_LEN = 552
 
@@ -2138,6 +2187,19 @@ fn fill_css_import {l:agz}{n:pos}
   val () = _w4(arr, alen, 2302, 2104321330)
 in end
 
+(* .book-card{flex-wrap:wrap} — appended at end to avoid re-encoding all CSS *)
+fn fill_css_wrap {l:agz}{n:int | n >= APP_CSS_LEN}
+  (arr: !ward_arr(byte, l, n), alen: int n): void = let
+  val () = _w4(arr, alen, 2306, 1869570606)
+  val () = _w4(arr, alen, 2310, 1633889643)
+  val () = _w4(arr, alen, 2314, 1719362674)
+  val () = _w4(arr, alen, 2318, 762865004)
+  val () = _w4(arr, alen, 2322, 1885434487)
+  val () = _w4(arr, alen, 2326, 1634891578)
+  val () = ward_arr_set_byte(arr, 2330, alen, 112)
+  val () = ward_arr_set_byte(arr, 2331, alen, 125)
+in end
+
 fn fill_css {l:agz}{n:int | n >= APP_CSS_LEN}
   (arr: !ward_arr(byte, l, n), alen: int n): (CSS_READER_WRITTEN | void) = let
   val () = fill_css_base(arr, alen)
@@ -2145,6 +2207,7 @@ fn fill_css {l:agz}{n:int | n >= APP_CSS_LEN}
   val (pf_reader | ()) = fill_css_reader(arr, alen)
   val () = fill_css_content(arr, alen)
   val () = fill_css_import(arr, alen)
+  val () = fill_css_wrap(arr, alen)
 in (pf_reader | ()) end
 
 (* Create a <style> element under parent and fill it with app CSS.
@@ -2176,9 +2239,9 @@ in s end
  * The constraint MGMT_CSS_LEN == MGMT_CSS_WRITES * 4 proves alignment.
  * If someone changes the CSS content length, they must also update
  * MGMT_CSS_WRITES to match, or the solver rejects. *)
-stadef MGMT_CSS_WRITES = 68
+stadef MGMT_CSS_WRITES = 76
 stadef MGMT_CSS_LEN = MGMT_CSS_WRITES * 4
-#define MGMT_CSS_LEN 272
+#define MGMT_CSS_LEN 304
 
 fn fill_css_mgmt {l:agz}{n:int | n >= MGMT_CSS_LEN}
   (arr: !ward_arr(byte, l, n), alen: int n): void = let
@@ -2254,6 +2317,15 @@ fn fill_css_mgmt {l:agz}{n:int | n >= MGMT_CSS_LEN}
   val () = _w4(arr, alen, 260, 1869377379)
   val () = _w4(arr, alen, 264, 1713584754)
   val () = _w4(arr, alen, 268, 545089126)
+  (* .lib-toolbar{flex-wrap:wrap} — prevents button overflow on narrow viewports *)
+  val () = _w4(arr, alen, 272, 1651076142)
+  val () = _w4(arr, alen, 276, 1869575213)
+  val () = _w4(arr, alen, 280, 1918984812)
+  val () = _w4(arr, alen, 284, 1701602939)
+  val () = _w4(arr, alen, 288, 1920413048)
+  val () = _w4(arr, alen, 292, 2000318561)
+  val () = _w4(arr, alen, 296, 2104516978)
+  val () = _w4(arr, alen, 300, 538976288)
 in end
 
 fn inject_mgmt_css {l:agz}
@@ -2807,6 +2879,84 @@ in
   in end
   else ()
 end
+
+(* Remove the factory reset modal overlay from the DOM *)
+fn dismiss_reset_modal(): void = let
+  val overlay_id = _app_reset_overlay_id()
+in
+  if gt_int_int(overlay_id, 0) then let
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_remove_child(s, overlay_id)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = _app_set_reset_overlay_id(0)
+  in end
+  else ()
+end
+
+(* Render factory reset confirmation modal *)
+fn render_reset_modal(root: int): void = let
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+
+  (* Overlay *)
+  val overlay_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, overlay_id, root, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, overlay_id, attr_class(), 5,
+    cls_dup_overlay(), 11)
+  val () = _app_set_reset_overlay_id(overlay_id)
+
+  (* Modal container *)
+  val modal_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, modal_id, overlay_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, modal_id, attr_class(), 5,
+    cls_dup_modal(), 9)
+
+  (* Message: "Delete all data?" *)
+  val msg_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, msg_id, modal_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, msg_id, attr_class(), 5,
+    cls_dup_msg(), 7)
+  val s = set_text_cstr(s, msg_id, TEXT_RESET_MSG, 16)
+
+  (* Actions container *)
+  val actions_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, actions_id, modal_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, actions_id, attr_class(), 5,
+    cls_dup_actions(), 11)
+
+  (* Cancel button *)
+  val cancel_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, cancel_btn_id, actions_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, cancel_btn_id, attr_class(), 5,
+    cls_dup_btn(), 7)
+  val s = set_text_cstr(s, cancel_btn_id, TEXT_CANCEL, 6)
+
+  (* Reset button *)
+  val reset_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, reset_btn_id, actions_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, reset_btn_id, attr_class(), 5,
+    cls_dup_replace(), 11)
+  val s = set_text_cstr(s, reset_btn_id, TEXT_RESET, 5)
+
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
+
+  (* Register click listeners *)
+  val () = ward_add_event_listener(
+    cancel_btn_id, evt_click(), 5, LISTENER_RESET_CANCEL,
+    lam (_pl: int): int => let
+      val () = dismiss_reset_modal()
+    in 0 end
+  )
+  val () = ward_add_event_listener(
+    reset_btn_id, evt_click(), 5, LISTENER_RESET_CONFIRM,
+    lam (_pl: int): int => let
+      val () = quire_factory_reset()
+    in 0 end
+  )
+in end
 
 (* Clear text content of a node by removing its children *)
 fn clear_node(nid: int): void = let
@@ -3462,12 +3612,8 @@ fn render_library_with_books {l:agz}
           val s = set_text_cstr(s, unhide_btn_id, TEXT_UNHIDE, 6)
         in loop(sub_g1(rem, 1), s, i + 1, n, vm) end
         else let
-          (* Archived view: Read + Restore buttons *)
-          val btn_id = dom_next_id()
-          val () = reader_set_btn_id(i, btn_id)
-          val s = ward_dom_stream_create_element(s, btn_id, actions_id, tag_button(), 6)
-          val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5, cls_read_btn(), 8)
-          val s = set_text_cstr(s, btn_id, TEXT_READ, 4)
+          (* Archived view: Restore only (no Read — IDB content deleted) *)
+          val () = reader_set_btn_id(i, 0)
 
           val restore_btn_id = dom_next_id()
           val () = reader_set_btn_id(i + 32, restore_btn_id)
@@ -4040,8 +4186,19 @@ fun register_card_btns {k:nat} .<k>.
           lam (_pl: int): int => let
           in
             if eq_int_int(saved_vm, 0) then let
-              (* Archive: set shelf_state=1 *)
+              (* Archive: set shelf_state=1 and delete IDB content *)
               val () = library_set_shelf_state(SHELF_ARCHIVED() | book_idx, 1)
+              (* Copy book_id from library to epub module for key building *)
+              val bi0 = g1ofg0(book_idx)
+              val cnt = library_get_count()
+              val ok = check_book_index(bi0, cnt)
+              val () = if eq_g1(ok, 1) then let
+                val (pf_ba | biv) = _mk_book_access(book_idx)
+                val _ = epub_set_book_id_from_library(pf_ba | biv)
+                val sc0 = library_get_spine_count(book_idx)
+                val sc = (if lte_g1(sc0, 256) then sc0 else 256): int
+                val () = epub_delete_book_data(_checked_spine_count(sc))
+              in end
               val () = library_save()
               val () = render_library(saved_r)
             in 0 end
@@ -4159,27 +4316,35 @@ fun load_library_covers {k:nat} .<k>.
   else if gte_int_int(idx, total) then ()
   else let
     val nid = _cover_queue_get_nid(idx)
-    val bidx = _cover_queue_get_bidx(idx)
-    val () = epub_set_book_id_from_library(bidx)
-    val key = epub_build_cover_key()
-    val p = ward_idb_get(key, 20)
-    val saved_nid = nid
-    val saved_rem = sub_g1(rem, 1)
-    val saved_next = idx + 1
-    val saved_total = total
-    val p2 = ward_promise_then<int><int>(p,
-      llam (data_len: int): ward_promise_chained(int) =>
-        if lte_int_int(data_len, 0) then let
-          val () = load_library_covers(saved_rem, saved_next, saved_total)
-        in ward_promise_return<int>(0) end
-        else let
-          val dl = _checked_pos(data_len)
-          val arr = ward_idb_get_result(dl)
-          val () = set_image_src_idb(saved_nid, arr, dl)
-          val () = load_library_covers(saved_rem, saved_next, saved_total)
-        in ward_promise_return<int>(1) end)
-    val () = ward_promise_discard<int>(p2)
-  in end
+    val bidx0 = _cover_queue_get_bidx(idx)
+    val bidx = g1ofg0(bidx0)
+    val cnt = library_get_count()
+    val ok = check_book_index(bidx, cnt)
+  in
+    if eq_g1(ok, 1) then let
+      val (pf_ba | bi) = _mk_book_access(bidx0)
+      val _ = epub_set_book_id_from_library(pf_ba | bi)
+      val key = epub_build_cover_key()
+      val p = ward_idb_get(key, 20)
+      val saved_nid = nid
+      val saved_rem = sub_g1(rem, 1)
+      val saved_next = idx + 1
+      val saved_total = total
+      val p2 = ward_promise_then<int><int>(p,
+        llam (data_len: int): ward_promise_chained(int) =>
+          if lte_int_int(data_len, 0) then let
+            val () = load_library_covers(saved_rem, saved_next, saved_total)
+          in ward_promise_return<int>(0) end
+          else let
+            val dl = _checked_pos(data_len)
+            val arr = ward_idb_get_result(dl)
+            val () = set_image_src_idb(saved_nid, arr, dl)
+            val () = load_library_covers(saved_rem, saved_next, saved_total)
+          in ward_promise_return<int>(1) end)
+      val () = ward_promise_discard<int>(p2)
+    in end
+    else load_library_covers(sub_g1(rem, 1), idx + 1, total)
+  end
 
 implement render_library(root_id) = let
   val dom = ward_dom_init()
@@ -4235,6 +4400,12 @@ implement render_library(root_id) = let
   val s = ward_dom_stream_create_element(s, sort_date_added_btn_id, toolbar_id, tag_button(), 6)
   val s = set_sort_btn_class(s, sort_date_added_btn_id, eq_int_int(sort_mode, 3))
   val s = set_text_cstr(s, sort_date_added_btn_id, TEXT_SORT_DATE_ADDED, 10)
+
+  (* Reset button *)
+  val reset_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, reset_btn_id, toolbar_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, reset_btn_id, attr_class(), 5, cls_sort_btn(), 8)
+  val s = set_text_cstr(s, reset_btn_id, TEXT_RESET, 5)
 
   (* Import button — only shown in active view *)
   val label_id = dom_next_id()
@@ -4336,6 +4507,12 @@ implement render_library(root_id) = let
       val () = _app_set_lib_sort_mode(3)
       val () = library_save()
       val () = render_library(saved_root)
+    in 0 end
+  )
+  val () = ward_add_event_listener(
+    reset_btn_id, evt_click(), 5, LISTENER_RESET_BTN,
+    lam (_pl: int): int => let
+      val () = render_reset_modal(saved_root)
     in 0 end
   )
 
@@ -4592,7 +4769,13 @@ in end
 implement enter_reader(root_id, book_index) = let
   val () = reader_enter(root_id, 0)
   val () = reader_set_book_index(book_index)
-  val () = epub_set_book_id_from_library(book_index)
+  val bi = g1ofg0(book_index)
+  val cnt = library_get_count()
+  val ok = check_book_index(bi, cnt)
+  val () = if eq_g1(ok, 1) then let
+    val (pf_ba | biv) = _mk_book_access(book_index)
+    val _ = epub_set_book_id_from_library(pf_ba | biv)
+  in end
 
   val dom = ward_dom_init()
   val s = ward_dom_stream_begin(dom)

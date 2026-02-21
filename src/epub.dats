@@ -11,6 +11,7 @@ staload "./../vendor/ward/lib/memory.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
 staload "./epub.sats"
 staload "./app_state.sats"
+staload "./library.sats"
 
 staload "./arith.sats"
 staload "./buf.sats"
@@ -1312,19 +1313,23 @@ in scan(_checked_nat(count), 0, count, path_len) end
 
 (* ========== epub_set_book_id_from_library ========== *)
 
-#define LIB_REC_BYTES 608
-#define LIB_BOOKID_OFF 520
-#define LIB_BOOKID_MAX 64
-#define LIB_BOOKID_LEN_SLOT 146
+(* Constants eliminated: uses library_rec_ints/bytes as single source of truth.
+ * Previously: #define LIB_REC_BYTES 608 (WRONG, was 620), hardcoded 152 (WRONG, was 155). *)
 
-implement epub_set_book_id_from_library(book_index) = let
-  val base_bytes = book_index * LIB_REC_BYTES
-  val base_ints = book_index * 152
-  val bid_len0 = _app_lib_books_get_i32(base_ints + LIB_BOOKID_LEN_SLOT)
-  val bid_len = if gt_int_int(bid_len0, LIB_BOOKID_MAX) then LIB_BOOKID_MAX else bid_len0
-  val () = _app_copy_lib_book_id_to_epub(base_bytes + LIB_BOOKID_OFF, bid_len)
+extern castfn _clamp_bid_len(x: int): [n:nat | n <= 64] int n
+
+implement epub_set_book_id_from_library {i} (pf | book_index) = let
+  prval _ = pf
+  val rec_ints = library_rec_ints()
+  val rec_bytes = library_rec_bytes()
+  val base_bytes = mul_g1(book_index, rec_bytes)
+  val base_ints = mul_g1(book_index, rec_ints)
+  val bid_len0 = _app_lib_books_get_i32(_g0(add_g1(base_ints, 146)))
+  val bid_len = if gt_int_int(bid_len0, 64) then 64 else bid_len0
+  val bid_len = if lt_int_int(bid_len, 0) then 0 else bid_len
+  val () = _app_copy_lib_book_id_to_epub(_g0(add_g1(base_bytes, 520)), bid_len)
   val () = _app_set_epub_book_id_len(bid_len)
-in end
+in _clamp_bid_len(bid_len) end
 
 (* ========== Search Index (2.2) ========== *)
 
@@ -1831,3 +1836,25 @@ implement epub_store_search_index() = let
           loop(saved_rem, saved_idx, saved_total))
     end
 in loop(count0, 0, count0) end
+
+(* Delete all IDB content for current book: manifest, cover, search keys.
+ * Fire-and-forget: each ward_idb_delete returns a promise which we discard.
+ * Termination: _delete_search_keys loop bounded by sc-idx via dependent int. *)
+implement epub_delete_book_data {sc} (spine_count) = let
+  (* sc <= 256 from signature, needed for epub_build_search_key's t <= 256 *)
+  (* Delete manifest key *)
+  val manifest_key = epub_build_manifest_key()
+  val () = ward_promise_discard<int>(ward_idb_delete(manifest_key, 20))
+  (* Delete cover key *)
+  val cover_key = epub_build_cover_key()
+  val () = ward_promise_discard<int>(ward_idb_delete(cover_key, 20))
+  (* Delete search index keys for each spine entry *)
+  fun _delete_search_keys {idx:nat}{t:nat | idx <= t; t <= 256}{k:nat} .<k>.
+    (rem: int(k), idx: int(idx), total: int(t)): void =
+    if lte_g1(rem, 0) then ()
+    else if gte_g1(idx, total) then ()
+    else let
+      val search_key = epub_build_search_key(SPINE_ENTRY() | idx, total)
+      val () = ward_promise_discard<int>(ward_idb_delete(search_key, 20))
+    in _delete_search_keys(sub_g1(rem, 1), add_g1(idx, 1), total) end
+in _delete_search_keys(spine_count, 0, spine_count) end
