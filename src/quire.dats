@@ -4702,10 +4702,8 @@ in end
 
 (* ========== show_book_info ========== *)
 
-fn show_book_info {vm,ss,sh,sa:int}
-  (pf_btn: INFO_BUTTONS_VALID(vm, ss, sh, sa) |
-   book_idx: int, root_id: int, vm: int(vm),
-   show_hide: int(sh), show_archive: int(sa)): void = let
+implement show_book_info {vm,ss,sh,sa}
+  (pf_btn | book_idx, root_id, vm, show_hide, show_archive) = let
   (* Dismiss existing overlays *)
   val () = dismiss_book_info()
   val () = dismiss_context_menu()
