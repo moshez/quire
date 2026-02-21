@@ -2187,11 +2187,19 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
     // Wait for event listeners to be fully registered
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
 
     // --- Active shelf: right-click opens context menu ---
-    // Use dispatchEvent for reliable contextmenu firing in headless Chromium
-    await page.locator('.book-card').dispatchEvent('contextmenu');
+    // Dispatch contextmenu event directly via page.evaluate for maximum reliability
+    const ctxResult = await page.evaluate(() => {
+      const card = document.querySelector('.book-card');
+      if (!card) return { error: 'no .book-card found' };
+      const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+      card.dispatchEvent(event);
+      const overlay = document.querySelector('.ctx-overlay');
+      return { overlayCreated: !!overlay };
+    });
+    console.log('Context menu dispatch result:', JSON.stringify(ctxResult));
     await page.waitForSelector('.ctx-overlay', { timeout: 10000 });
 
     // Verify 4 buttons: Book info, Hide, Archive, Delete
