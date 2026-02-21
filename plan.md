@@ -86,7 +86,7 @@ everything else depends on.
   .epub files without DRM." Banner persists until user dismisses it. Requires
   bridge support for filename pass-through to WASM.
 
-- [ ] **2.5 Import progress on card.** Per spec wireframe, the importing book
+- [x] **2.5 Import progress on card.** Per spec wireframe, the importing book
   appears at the top of the library list with its own card showing
   "Importing...", title, a progress bar, and status text (e.g., "Extracting
   chapters..."). The rest of the library remains interactive below.

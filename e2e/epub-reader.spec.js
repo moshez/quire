@@ -77,11 +77,11 @@ test.describe('EPUB Reader E2E', () => {
     await fileInput.setInputFiles(epubPath);
 
     // Verify import progress UI appears during import.
-    // The label class changes from "import-btn" to "importing" and the status div
-    // shows progress messages. The import may complete very fast in CI, so we race
-    // the progress check against the final book-card appearing.
+    // The import card appears at the top of the library list with a progress bar.
+    // The import may complete very fast in CI, so we race the progress card
+    // against the final book-card appearing.
     const sawProgress = await Promise.race([
-      page.waitForSelector('label.importing', { timeout: 30000 })
+      page.waitForSelector('.import-card', { timeout: 30000 })
         .then(() => true)
         .catch(() => false),
       page.waitForSelector('.book-card', { timeout: 30000 })
@@ -90,19 +90,27 @@ test.describe('EPUB Reader E2E', () => {
 
     if (sawProgress) {
       await screenshot(page, '02a-import-progress');
-      // If we caught the importing state, verify status div has content —
-      // but only if import is still in progress (it may have completed
-      // between the race resolution and this assertion).
-      const stillImporting = await page.locator('label.importing').isVisible();
+      // If we caught the import card, verify its structure
+      const stillImporting = await page.locator('.import-card').isVisible();
       if (stillImporting) {
-        const importStatus = page.locator('.import-status');
-        await expect(importStatus).not.toBeEmpty({ timeout: 10000 });
+        // Progress bar elements should exist
+        const importBar = page.locator('.import-bar');
+        await expect(importBar).toBeVisible({ timeout: 5000 });
+        const importFill = page.locator('.import-fill');
+        await expect(importFill).toBeVisible({ timeout: 5000 });
+        // Card should contain "Importing" text
+        const importCard = page.locator('.import-card');
+        await expect(importCard).toContainText('Importing', { timeout: 5000 });
       }
     }
 
     // Wait for import to finish and library to rebuild with a book card
     await page.waitForSelector('.book-card', { timeout: 30000 });
     await screenshot(page, '02-library-with-book');
+
+    // Verify import card is removed after import completes
+    const importCardGone = page.locator('.import-card');
+    await expect(importCardGone).toHaveCount(0, { timeout: 5000 });
 
     // Verify import UI is cleaned up: "importing" class gone, "import-btn" restored
     const importBtn = page.locator('label.import-btn');
