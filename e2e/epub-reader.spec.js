@@ -2163,4 +2163,259 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('context menu appears with correct items per shelf state', async ({ page }) => {
+    // Import a book with cover, right-click to open context menu,
+    // verify items per shelf state (active, archived, hidden).
+    const epubBuffer = createEpub({
+      title: 'Context Menu Test',
+      author: 'Ctx Bot',
+      chapters: 1,
+      paragraphsPerChapter: 3,
+      coverImage: true,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `ctx-menu-test-${vpTag}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Wait for event listeners to be fully registered
+    await page.waitForTimeout(1000);
+
+    // --- Active shelf: right-click opens context menu ---
+    // Dispatch contextmenu event directly via page.evaluate for maximum reliability
+    const ctxResult = await page.evaluate(() => {
+      const card = document.querySelector('.book-card');
+      if (!card) return { error: 'no .book-card found' };
+      const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+      card.dispatchEvent(event);
+      const overlay = document.querySelector('.ctx-overlay');
+      return { overlayCreated: !!overlay };
+    });
+    console.log('Context menu dispatch result:', JSON.stringify(ctxResult));
+    await page.waitForSelector('.ctx-overlay', { timeout: 10000 });
+
+    // Verify 4 buttons: Book info, Hide, Archive, Delete
+    await expect(page.locator('.ctx-menu button')).toHaveCount(4);
+    await expect(page.locator('.ctx-menu button', { hasText: 'Book info' })).toBeVisible();
+    await expect(page.locator('.ctx-menu button', { hasText: 'Hide' })).toBeVisible();
+    await expect(page.locator('.ctx-menu button', { hasText: 'Archive' })).toBeVisible();
+    await expect(page.locator('.ctx-menu button', { hasText: 'Delete' })).toBeVisible();
+    await screenshot(page, 'ctx-01-active-menu');
+
+    // Dismiss by clicking overlay
+    await page.locator('.ctx-overlay').click({ position: { x: 5, y: 5 } });
+    await expect(page.locator('.ctx-overlay')).toHaveCount(0, { timeout: 10000 });
+
+    // --- Archive the book, switch to archived view ---
+    const archiveBtn = page.locator('.archive-btn');
+    await archiveBtn.click();
+    await page.waitForSelector('.empty-lib', { timeout: 10000 });
+
+    const shelfArchivedBtn = page.locator('.lib-toolbar button', { hasText: 'Archived' });
+    await shelfArchivedBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+
+    // Right-click archived book
+    await page.locator('.book-card').dispatchEvent('contextmenu');
+    await page.waitForSelector('.ctx-overlay', { timeout: 10000 });
+
+    // Archived shelf: 3 buttons — Book info, Restore, Delete (no Hide)
+    await expect(page.locator('.ctx-menu button')).toHaveCount(3);
+    await expect(page.locator('.ctx-menu button', { hasText: 'Hide' })).toHaveCount(0);
+    await expect(page.locator('.ctx-menu button', { hasText: 'Restore' })).toBeVisible();
+    await screenshot(page, 'ctx-02-archived-menu');
+
+    // Dismiss, restore, switch to active
+    await page.locator('.ctx-overlay').click({ position: { x: 5, y: 5 } });
+    await expect(page.locator('.ctx-overlay')).toHaveCount(0, { timeout: 10000 });
+    const restoreBtn = page.locator('.archive-btn');
+    await restoreBtn.click();
+    await page.waitForSelector('.empty-lib', { timeout: 10000 });
+    const shelfActiveBtn = page.locator('.lib-toolbar button', { hasText: 'Library' });
+    await shelfActiveBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+
+    // --- Hide the book, switch to hidden view ---
+    const hideBtn = page.locator('.hide-btn');
+    await hideBtn.click();
+    await page.waitForSelector('.empty-lib', { timeout: 10000 });
+
+    const shelfHiddenBtn = page.locator('.lib-toolbar button', { hasText: 'Hidden' });
+    await shelfHiddenBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+
+    // Right-click hidden book
+    await page.locator('.book-card').dispatchEvent('contextmenu');
+    await page.waitForSelector('.ctx-overlay', { timeout: 10000 });
+
+    // Hidden shelf: 3 buttons — Book info, Unhide, Delete (no Archive)
+    await expect(page.locator('.ctx-menu button')).toHaveCount(3);
+    await expect(page.locator('.ctx-menu button', { hasText: 'Archive' })).toHaveCount(0);
+    await expect(page.locator('.ctx-menu button', { hasText: 'Unhide' })).toBeVisible();
+    await screenshot(page, 'ctx-03-hidden-menu');
+
+    // Dismiss, unhide, switch to active
+    await page.locator('.ctx-overlay').click({ position: { x: 5, y: 5 } });
+    await expect(page.locator('.ctx-overlay')).toHaveCount(0, { timeout: 10000 });
+    const unhideBtn = page.locator('.hide-btn');
+    await unhideBtn.click();
+    await page.waitForSelector('.empty-lib', { timeout: 10000 });
+    const shelfActiveBtn2 = page.locator('.lib-toolbar button', { hasText: 'Library' });
+    await shelfActiveBtn2.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+  });
+
+  test('book info overlay shows metadata and action buttons', async ({ page }) => {
+    // Import a book with cover, open book info via context menu,
+    // verify metadata fields and action buttons.
+    const bookTitle = 'Info Overlay Test';
+    const author = 'Info Bot';
+    const epubBuffer = createEpub({
+      title: bookTitle,
+      author: author,
+      chapters: 1,
+      paragraphsPerChapter: 3,
+      coverImage: true,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `info-test-${vpTag}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Wait for event listeners to be fully registered
+    await page.waitForTimeout(500);
+
+    // Right-click to open context menu
+    await page.locator('.book-card').dispatchEvent('contextmenu');
+    await page.waitForSelector('.ctx-overlay', { timeout: 10000 });
+
+    // Click "Book info" in context menu
+    await page.locator('.ctx-menu button', { hasText: 'Book info' }).click();
+
+    // Wait for info overlay
+    await page.waitForSelector('.info-overlay', { timeout: 10000 });
+
+    // Verify title and author
+    await expect(page.locator('.info-title')).toContainText(bookTitle);
+    await expect(page.locator('.info-author')).toContainText(author);
+
+    // Verify metadata row labels
+    const rowLabels = page.locator('.info-row-label');
+    const labelTexts = await rowLabels.allTextContents();
+    expect(labelTexts).toContain('Progress');
+    expect(labelTexts).toContain('Added');
+    expect(labelTexts).toContain('Last read');
+    expect(labelTexts).toContain('Size');
+
+    // Verify cover container exists (image loading from IDB is async)
+    await expect(page.locator('.info-cover')).toBeVisible();
+
+    // Verify action buttons
+    await expect(page.locator('.info-btn', { hasText: 'Hide' })).toBeVisible();
+    await expect(page.locator('.info-btn', { hasText: 'Archive' })).toBeVisible();
+    await expect(page.locator('.info-btn-danger')).toContainText('Delete');
+
+    // Verify action buttons are in viewport
+    await expect(page.locator('.info-actions')).toBeInViewport();
+    await screenshot(page, 'info-01-overlay');
+
+    // Dismiss via back button
+    await page.locator('.info-back').click();
+    await expect(page.locator('.info-overlay')).toHaveCount(0, { timeout: 10000 });
+    await screenshot(page, 'info-02-dismissed');
+  });
+
+  test('delete book via confirmation modal', async ({ page }) => {
+    // Import a book, delete via context menu, verify confirmation modal,
+    // cancel, then delete for real, verify book is gone and stays gone after reload.
+    const epubBuffer = createEpub({
+      title: 'Delete Test Book',
+      author: 'Delete Bot',
+      chapters: 1,
+      paragraphsPerChapter: 3,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `del-test-${vpTag}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Wait for event listeners to be fully registered
+    await page.waitForTimeout(500);
+
+    // Right-click to open context menu
+    await page.locator('.book-card').dispatchEvent('contextmenu');
+    await page.waitForSelector('.ctx-overlay', { timeout: 10000 });
+
+    // Click "Delete" in context menu
+    await page.locator('.ctx-menu button', { hasText: 'Delete' }).click();
+
+    // Wait for delete confirmation modal (reuses dup-overlay CSS)
+    await page.waitForSelector('.dup-overlay', { timeout: 10000 });
+
+    // Verify modal shows book title and confirmation message
+    await expect(page.locator('.dup-title')).toContainText('Delete Test Book');
+    await expect(page.locator('.dup-msg')).toContainText('Permanently delete?');
+
+    // Verify Cancel and Delete buttons
+    await expect(page.locator('.dup-btn')).toBeVisible();
+    await expect(page.locator('.dup-replace')).toBeVisible();
+    await screenshot(page, 'del-01-confirm-modal');
+
+    // Click Cancel
+    await page.locator('.dup-btn').click();
+    await expect(page.locator('.dup-overlay')).toHaveCount(0, { timeout: 5000 });
+
+    // Book should still be in library
+    await expect(page.locator('.book-card')).toHaveCount(1);
+    await screenshot(page, 'del-02-after-cancel');
+
+    // Right-click again, click Delete in context menu
+    await page.locator('.book-card').dispatchEvent('contextmenu');
+    await page.waitForSelector('.ctx-overlay', { timeout: 10000 });
+    await page.locator('.ctx-menu button', { hasText: 'Delete' }).click();
+    await page.waitForSelector('.dup-overlay', { timeout: 10000 });
+
+    // Click Delete button (confirm)
+    await page.locator('.dup-replace').click();
+    await expect(page.locator('.dup-overlay')).toHaveCount(0, { timeout: 10000 });
+
+    // Book card should be gone
+    await expect(page.locator('.book-card')).toHaveCount(0, { timeout: 10000 });
+
+    // Empty library message should appear
+    await expect(page.locator('.empty-lib')).toContainText('No books yet');
+    await screenshot(page, 'del-03-after-delete');
+
+    // Reload page — verify book stays deleted (IDB cleaned up)
+    await page.reload();
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    await expect(page.locator('.book-card')).toHaveCount(0);
+    await expect(page.locator('.empty-lib')).toContainText('No books yet');
+    await screenshot(page, 'del-04-after-reload');
+  });
+
 });

@@ -673,7 +673,7 @@ end
  * Dependent return [n:nat] bounds caller's use of length. *)
 implement copy_filename_to_sbuf(max_len) = let
   val raw_len = ward_file_get_name_len()
-  val use_len: int = if lt_int_int(_g0(raw_len), max_len) then _g0(raw_len) else max_len
+  val use_len: int = if lt_int_int(raw_len, max_len) then raw_len else max_len
   val name_len = _checked_nat(use_len)
 in
   if lte_g1(name_len, 0) then 0

@@ -424,6 +424,8 @@ fun ward_on_clipboard_complete
 ```ats
 fun ward_file_open (input_node_id: int): ward_promise_pending(int)
 fun ward_file_get_size (): int
+fun ward_file_get_name_len (): int
+fun ward_file_get_name {n:pos} (len: int n): [l:agz] ward_arr(byte, l, n)
 fun ward_file_read {l:agz}{n:pos}
   (handle: int, file_offset: int, out: !ward_arr(byte, l, n), len: int n): int
 fun ward_file_close (handle: int): void

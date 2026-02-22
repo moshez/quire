@@ -332,7 +332,7 @@ export async function loadWard(wasmBytes, root, opts) {
   // Encode event payload as binary (little-endian).
   // Returns Uint8Array or null for no payload.
   function encodeEventPayload(event, eventType) {
-    if (eventType === 'click' || eventType === 'pointerdown' ||
+    if (eventType === 'click' || eventType === 'contextmenu' || eventType === 'pointerdown' ||
         eventType === 'pointerup' || eventType === 'pointermove') {
       // [f64:clientX] [f64:clientY] [i32:target_node_id]
       const buf = new ArrayBuffer(20);
@@ -482,6 +482,7 @@ export async function loadWard(wasmBytes, root, opts) {
   function wardJsFileOpen(inputNodeId, resolverId) {
     const el = nodes.get(inputNodeId);
     if (!el || !el.files || !el.files[0]) {
+      instance.exports.ward_bridge_stash_set_int(2, 0);
       instance.exports.ward_on_file_open(resolverId, 0, 0);
       return;
     }
@@ -491,14 +492,14 @@ export async function loadWard(wasmBytes, root, opts) {
       const handle = nextFileHandle++;
       const data = new Uint8Array(reader.result);
       fileCache.set(handle, data);
-      // Stash filename for WASM: slot 2 = name length, slot 3 = name stash ID
       const nameBytes = new TextEncoder().encode(file.name);
       const nameStashId = stashData(nameBytes);
+      instance.exports.ward_bridge_stash_set_int(1, nameStashId);
       instance.exports.ward_bridge_stash_set_int(2, nameBytes.length);
-      instance.exports.ward_bridge_stash_set_int(3, nameStashId);
       instance.exports.ward_on_file_open(resolverId, handle, data.length);
     };
     reader.onerror = () => {
+      instance.exports.ward_bridge_stash_set_int(2, 0);
       instance.exports.ward_on_file_open(resolverId, 0, 0);
     };
     reader.readAsArrayBuffer(file);

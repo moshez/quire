@@ -39,6 +39,21 @@ implement ward_parse_html_stash_impl(p) = ward_listener_set(PARSE_STASH_SLOT, p)
  *   result = top13 >> (12 - exp)
  *)
 
+(* ========== read_payload_target_id ========== *)
+(* Read i32 little-endian from bytes 16-19 of click/contextmenu payload.
+ * Layout: [f64:clientX(0-7)][f64:clientY(8-15)][i32:target(16-19)] *)
+implement read_payload_target_id(arr) = let
+  val b16 = byte2int0(ward_arr_get<byte>(arr, 16))
+  val b17 = byte2int0(ward_arr_get<byte>(arr, 17))
+  val b18 = byte2int0(ward_arr_get<byte>(arr, 18))
+  val b19 = byte2int0(ward_arr_get<byte>(arr, 19))
+in
+  bor_int_int(bor_int_int(b16, bsl_int_int(b17, 8)),
+              bor_int_int(bsl_int_int(b18, 16), bsl_int_int(b19, 24)))
+end
+
+(* ========== IEEE 754 f64 → int extraction ========== *)
+
 implement read_payload_click_x(arr) = let
   val b5 = byte2int0(ward_arr_get<byte>(arr, 5))
   val b6 = byte2int0(ward_arr_get<byte>(arr, 6))

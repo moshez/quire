@@ -1,8 +1,12 @@
 (* library_view.dats — Library view rendering implementation
  *
  * Extracted from quire.dats: render_library, render_library_with_books,
- * register_card_btns, register_ctx_listeners, load_library_covers,
+ * register_library_delegated_listeners, load_library_covers,
  * count_visible_books, and supporting helpers.
+ *
+ * Delegated event handling: 2 listeners on the library list element
+ * handle all book card interactions (click + contextmenu) instead of
+ * per-button listeners. This keeps total listener count well under 128.
  *)
 
 #define ATS_DYNLOADFLAG 0
@@ -411,120 +415,186 @@ implement render_library_with_books(s, list_id, view_mode) = let
     end
 in loop(_checked_nat(count), s, 0, count, vm_raw) end
 
-(* ========== register_card_btns ========== *)
+(* ========== Delegated click/contextmenu handlers ========== *)
 
-implement register_card_btns(rem, i, n, root, vm) =
-  if lte_g1(rem, 0) then ()
-  else if gte_int_int(i, n) then ()
+(* match_click: iterate through visible books, check target_id against
+ * stored btn_ids for read/archive/hide buttons.
+ * Returns 1 if matched, 0 if no match. *)
+fun match_click {k:nat} .<k>.
+  (rem: int(k), i: int, n: int, target_id: int, root: int, vm: int): int =
+  if lte_g1(rem, 0) then 0
+  else if gte_int_int(i, n) then 0
   else let
-    val saved_r = root
-    val book_idx = i
-    (* Read button listener — available in all views *)
-    val read_btn_id = reader_get_btn_id(i)
-    val () =
-      if gt_int_int(read_btn_id, 0) then
-        ward_add_event_listener(
-          read_btn_id, evt_click(), 5, LISTENER_READ_BTN_BASE + i,
-          lam (_pl: int): int => let
-            val () = enter_reader(saved_r, book_idx)
-          in 0 end
-        )
-      else ()
-    (* Archive/restore button listener — active view: archive, archived view: restore *)
-    val arch_btn_id = reader_get_btn_id(i + 32)
-    val () =
-      if gt_int_int(arch_btn_id, 0) then let
-        val saved_vm = vm
+    val read_id = reader_get_btn_id(i)
+    val arch_id = reader_get_btn_id(i + 32)
+    val hide_id = reader_get_btn_id(i + 64)
+  in
+    if eq_int_int(target_id, read_id) then
+      if gt_int_int(read_id, 0) then let
+        val () = enter_reader(root, i)
+      in 1 end
+      else match_click(sub_g1(rem, 1), i + 1, n, target_id, root, vm)
+    else if eq_int_int(target_id, arch_id) then
+      if gt_int_int(arch_id, 0) then let
+        val book_idx = i
       in
-        ward_add_event_listener(
-          arch_btn_id, evt_click(), 5, LISTENER_ARCHIVE_BTN_BASE + i,
-          lam (_pl: int): int => let
-          in
-            if eq_int_int(saved_vm, 0) then let
-              (* Archive: set shelf_state=1 and delete IDB content *)
-              val () = library_set_shelf_state(SHELF_ARCHIVED() | book_idx, 1)
-              (* Copy book_id from library to epub module for key building *)
-              val bi0 = g1ofg0(book_idx)
-              val cnt = library_get_count()
-              val ok = check_book_index(bi0, cnt)
-              val () = if eq_g1(ok, 1) then let
-                val (pf_ba | biv) = _mk_book_access(book_idx)
-                val _ = epub_set_book_id_from_library(pf_ba | biv)
-                val sc0 = library_get_spine_count(book_idx)
-                val sc = (if lte_g1(sc0, 256) then sc0 else 256): int
-                val () = epub_delete_book_data(_checked_spine_count(sc))
-              in end
-              val () = library_save()
-              val () = render_library(saved_r)
-            in 0 end
-            else let
-              (* Restore: set shelf_state=0 *)
-              val () = library_set_shelf_state(SHELF_ACTIVE() | book_idx, 0)
-              val () = library_save()
-              val () = render_library(saved_r)
-            in 0 end
-          end
-        )
+        if eq_int_int(vm, 0) then let
+          (* Archive: set shelf_state=1 and delete IDB content *)
+          val () = library_set_shelf_state(SHELF_ARCHIVED() | book_idx, 1)
+          val bi0 = g1ofg0(book_idx)
+          val cnt = library_get_count()
+          val ok = check_book_index(bi0, cnt)
+          val () = if eq_g1(ok, 1) then let
+            val (pf_ba | biv) = _mk_book_access(book_idx)
+            val _ = epub_set_book_id_from_library(pf_ba | biv)
+            val sc0 = library_get_spine_count(book_idx)
+            val sc = (if lte_g1(sc0, 256) then sc0 else 256): int
+            val () = epub_delete_book_data(_checked_spine_count(sc))
+          in end
+          val () = library_save()
+          val () = render_library(root)
+        in 1 end
+        else let
+          (* Restore: set shelf_state=0 *)
+          val () = library_set_shelf_state(SHELF_ACTIVE() | book_idx, 0)
+          val () = library_save()
+          val () = render_library(root)
+        in 1 end
       end
-      else ()
-    (* Hide/unhide button listener — active view: hide, hidden view: unhide *)
-    val hide_btn_id = reader_get_btn_id(i + 64)
-    val () =
-      if gt_int_int(hide_btn_id, 0) then let
-        val saved_vm = vm
+      else match_click(sub_g1(rem, 1), i + 1, n, target_id, root, vm)
+    else if eq_int_int(target_id, hide_id) then
+      if gt_int_int(hide_id, 0) then let
+        val book_idx = i
       in
-        ward_add_event_listener(
-          hide_btn_id, evt_click(), 5, LISTENER_HIDE_BTN_BASE + i,
-          lam (_pl: int): int => let
-          in
-            if eq_int_int(saved_vm, 0) then let
-              (* Hide: set shelf_state=2 *)
-              val () = library_set_shelf_state(SHELF_HIDDEN() | book_idx, 2)
-              val () = library_save()
-              val () = render_library(saved_r)
-            in 0 end
-            else let
-              (* Unhide: set shelf_state=0 *)
-              val () = library_set_shelf_state(SHELF_ACTIVE() | book_idx, 0)
-              val () = library_save()
-              val () = render_library(saved_r)
-            in 0 end
-          end
-        )
+        if eq_int_int(vm, 0) then let
+          (* Hide: set shelf_state=2 *)
+          val () = library_set_shelf_state(SHELF_HIDDEN() | book_idx, 2)
+          val () = library_save()
+          val () = render_library(root)
+        in 1 end
+        else let
+          (* Unhide: set shelf_state=0 *)
+          val () = library_set_shelf_state(SHELF_ACTIVE() | book_idx, 0)
+          val () = library_save()
+          val () = render_library(root)
+        in 1 end
       end
-      else ()
-  in register_card_btns(sub_g1(rem, 1), i + 1, n, root, vm) end
+      else match_click(sub_g1(rem, 1), i + 1, n, target_id, root, vm)
+    else match_click(sub_g1(rem, 1), i + 1, n, target_id, root, vm)
+  end
 
-(* ========== register_ctx_listeners ========== *)
-
-implement register_ctx_listeners(rem, i, n, root, vm) =
-  if lte_g1(rem, 0) then ()
-  else if gte_int_int(i, n) then ()
+(* match_ctx: iterate through visible books, check if target_id falls
+ * within the contiguous node ID range of a book card.
+ * card_id[i] stored at reader_get_btn_id(i + 96).
+ * All child nodes of card i have IDs in [card_id[i], card_id[i+1]).
+ * Returns 1 if matched, 0 if no match. *)
+fun match_ctx {k:nat} .<k>.
+  (rem: int(k), i: int, n: int, target_id: int, root: int, vm: int): int =
+  if lte_g1(rem, 0) then 0
+  else if gte_int_int(i, n) then 0
   else let
     val card_id = reader_get_btn_id(i + 96)
-    val saved_r = root
-    val saved_bi = i
-    val saved_vm = vm
-    val () =
-      if gt_int_int(card_id, 0) then
-        ward_add_event_listener(
-          card_id, evt_contextmenu(), 11, LISTENER_CTX_BASE + i,
-          lam (_pl: int): int => let
+  in
+    if lte_int_int(card_id, 0) then
+      match_ctx(sub_g1(rem, 1), i + 1, n, target_id, root, vm)
+    else if gte_int_int(target_id, card_id) then let
+      (* Check if target is before the next card *)
+      val next_i = i + 1
+      val is_last = gte_int_int(next_i, n)
+    in
+      if is_last then let
+        (* Last card: target >= card_id means it's in this card *)
+        val () = ward_prevent_default()
+      in
+        if eq_int_int(vm, 0) then let
+          val () = show_context_menu(CTX_ACTIVE() | i, root, 0, 1, 1)
+        in 1 end
+        else if eq_int_int(vm, 1) then let
+          val () = show_context_menu(CTX_ARCHIVED() | i, root, 1, 0, 1)
+        in 1 end
+        else let
+          val () = show_context_menu(CTX_HIDDEN() | i, root, 2, 1, 0)
+        in 1 end
+      end
+      else let
+        val next_card_id = reader_get_btn_id(next_i + 96)
+      in
+        if gt_int_int(next_card_id, 0) then
+          if lt_int_int(target_id, next_card_id) then let
             val () = ward_prevent_default()
           in
-            if eq_int_int(saved_vm, 0) then let
-              val () = show_context_menu(CTX_ACTIVE() | saved_bi, saved_r, 0, 1, 1)
-            in 0 end
-            else if eq_int_int(saved_vm, 1) then let
-              val () = show_context_menu(CTX_ARCHIVED() | saved_bi, saved_r, 1, 0, 1)
-            in 0 end
+            if eq_int_int(vm, 0) then let
+              val () = show_context_menu(CTX_ACTIVE() | i, root, 0, 1, 1)
+            in 1 end
+            else if eq_int_int(vm, 1) then let
+              val () = show_context_menu(CTX_ARCHIVED() | i, root, 1, 0, 1)
+            in 1 end
             else let
-              val () = show_context_menu(CTX_HIDDEN() | saved_bi, saved_r, 2, 1, 0)
-            in 0 end
+              val () = show_context_menu(CTX_HIDDEN() | i, root, 2, 1, 0)
+            in 1 end
           end
-        )
-      else ()
-  in register_ctx_listeners(sub_g1(rem, 1), i + 1, n, root, vm) end
+          else match_ctx(sub_g1(rem, 1), i + 1, n, target_id, root, vm)
+        else let
+          (* Next card has no ID — treat current as last *)
+          val () = ward_prevent_default()
+        in
+          if eq_int_int(vm, 0) then let
+            val () = show_context_menu(CTX_ACTIVE() | i, root, 0, 1, 1)
+          in 1 end
+          else if eq_int_int(vm, 1) then let
+            val () = show_context_menu(CTX_ARCHIVED() | i, root, 1, 0, 1)
+          in 1 end
+          else let
+            val () = show_context_menu(CTX_HIDDEN() | i, root, 2, 1, 0)
+          in 1 end
+        end
+      end
+    end
+    else match_ctx(sub_g1(rem, 1), i + 1, n, target_id, root, vm)
+  end
+
+(* ========== register_library_delegated_listeners ========== *)
+
+implement register_library_delegated_listeners(list_id, root, vm) = let
+  val count = library_get_count()
+  val saved_root = root
+  val saved_vm = vm
+  val saved_list_id = list_id
+
+  (* Delegated click listener on list_id *)
+  val () = ward_add_event_listener(
+    list_id, evt_click(), 5, LISTENER_LIB_CLICK,
+    lam (payload_len: int): int => let
+      val pl = g1ofg0(payload_len)
+    in
+      if gte_g1(pl, 20) then let
+        val arr = ward_event_get_payload(pl)
+        val target_id = read_payload_target_id(arr)
+        val () = ward_arr_free<byte>(arr)
+        val cnt = library_get_count()
+        val _ = match_click(_checked_nat(cnt), 0, cnt, target_id, saved_root, saved_vm)
+      in 0 end
+      else 0
+    end
+  )
+
+  (* Delegated contextmenu listener on list_id *)
+  val () = ward_add_event_listener(
+    list_id, evt_contextmenu(), 11, LISTENER_LIB_CONTEXTMENU,
+    lam (payload_len: int): int => let
+      val pl = g1ofg0(payload_len)
+    in
+      if gte_g1(pl, 20) then let
+        val arr = ward_event_get_payload(pl)
+        val target_id = read_payload_target_id(arr)
+        val () = ward_arr_free<byte>(arr)
+        val cnt = library_get_count()
+        val _ = match_ctx(_checked_nat(cnt), 0, cnt, target_id, saved_root, saved_vm)
+      in 0 end
+      else 0
+    end
+  )
+in end
 
 (* ========== Helpers for render_library ========== *)
 
@@ -992,9 +1062,8 @@ implement render_library(root_id) = let
       val () = ward_dom_fini(dom)
     in end
 
-  (* Register click listeners on read and archive/restore buttons *)
-  val () = register_card_btns(_checked_nat(count), 0, count, root_id, view_mode)
-  val () = register_ctx_listeners(_checked_nat(count), 0, count, root_id, view_mode)
+  (* Register delegated click and contextmenu listeners on list *)
+  val () = register_library_delegated_listeners(list_id, root_id, view_mode)
 
   (* Load cover images from IDB *)
   val cvr_count = _cover_queue_count()
@@ -1227,9 +1296,7 @@ implement render_library(root_id) = let
                                           val s = render_library_with_books(s, ssli, 0)
                                           val dom = ward_dom_stream_end(s)
                                           val () = ward_dom_fini(dom)
-                                          val btn_count = library_get_count()
-                                          val () = register_card_btns(_checked_nat(btn_count), 0, btn_count, ssr, 0)
-                                          val () = register_ctx_listeners(_checked_nat(btn_count), 0, btn_count, ssr, 0)
+                                          val () = register_library_delegated_listeners(ssli, ssr, 0)
                                           val cvr_count = _cover_queue_count()
                                           val () = if gt_int_int(cvr_count, 0) then
                                             load_library_covers(_checked_nat(cvr_count), 0, cvr_count)
@@ -1272,9 +1339,7 @@ implement render_library(root_id) = let
                                               val s = render_library_with_books(s, ssli, 0)
                                               val dom = ward_dom_stream_end(s)
                                               val () = ward_dom_fini(dom)
-                                              val btn_count = library_get_count()
-                                              val () = register_card_btns(_checked_nat(btn_count), 0, btn_count, ssr, 0)
-                                              val () = register_ctx_listeners(_checked_nat(btn_count), 0, btn_count, ssr, 0)
+                                              val () = register_library_delegated_listeners(ssli, ssr, 0)
                                               val cvr_count = _cover_queue_count()
                                               val () = if gt_int_int(cvr_count, 0) then
                                                 load_library_covers(_checked_nat(cvr_count), 0, cvr_count)
@@ -1297,9 +1362,7 @@ implement render_library(root_id) = let
                                           val s = render_library_with_books(s, ssli, 0)
                                           val dom = ward_dom_stream_end(s)
                                           val () = ward_dom_fini(dom)
-                                          val btn_count = library_get_count()
-                                          val () = register_card_btns(_checked_nat(btn_count), 0, btn_count, ssr, 0)
-                                          val () = register_ctx_listeners(_checked_nat(btn_count), 0, btn_count, ssr, 0)
+                                          val () = register_library_delegated_listeners(ssli, ssr, 0)
                                           val cvr_count = _cover_queue_count()
                                           val () = if gt_int_int(cvr_count, 0) then
                                             load_library_covers(_checked_nat(cvr_count), 0, cvr_count)
