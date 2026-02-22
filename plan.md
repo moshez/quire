@@ -157,7 +157,7 @@ everything else depends on.
   the current reading position. Store bookmarks as `{chapter, page,
   textSnippet, timestamp}`.
 
-- [ ] **4.4 Scrubber with chapter boundary ticks.** Make the bottom progress
+- [x] **4.4 Scrubber with chapter boundary ticks.** Make the bottom progress
   bar interactive — dragging scrubs through the book. Per spec wireframe:
   `●━━━━━━━━━━━━━━○──────────────` with chapter tick marks, percentage
   display, and synthetic page number (`Ch 4  42%  p.127`). Dragging shows a

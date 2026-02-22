@@ -2,8 +2,12 @@
   "hooks": {
     "Stop": [
       {
-        "type": "prompt",
-        "prompt": "Review whether this conversation involved producing a plan, proposal, or implementation approach — meaning any proposal for how code will be structured, what guarantees will hold, or how correctness will be maintained.\n\nSimple code edits that don't involve architectural or correctness decisions (e.g., fixing a typo, adding a log line, renaming a variable) do NOT count as plans.\n\nIf a plan or implementation approach was produced:\n- Check whether the fanatic subagent (from .claude/agents/fanatic.md) was invoked during this conversation\n- Check whether the fanatic returned an APPROVED verdict\n- If the fanatic was NOT invoked, or was invoked but did NOT return APPROVED, return: {\"decision\": \"block\", \"reason\": \"Plan must be reviewed and approved by the fanatic subagent before completing\"}\n- If the fanatic was invoked AND returned APPROVED, return: {\"decision\": \"approve\"}\n\nIf NO plan or implementation approach was produced (just a question/answer, a simple code edit, research, etc.), return: {\"decision\": \"approve\"}"
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Review whether this conversation involved producing a plan, proposal, or implementation approach — meaning any proposal for how code will be structured, what guarantees will hold, or how correctness will be maintained.\n\nSimple code edits that don't involve architectural or correctness decisions (e.g., fixing a typo, adding a log line, renaming a variable) do NOT count as plans.\n\nIf a plan or implementation approach was produced:\n- Check whether the fanatic subagent (from .claude/agents/fanatic.md) was invoked during this conversation\n- Check whether the fanatic returned an APPROVED verdict\n- If the fanatic was NOT invoked, or was invoked but did NOT return APPROVED, return: {\"decision\": \"block\", \"reason\": \"Plan must be reviewed and approved by the fanatic subagent before completing\"}\n- If the fanatic was invoked AND returned APPROVED, return: {\"decision\": \"approve\"}\n\nIf NO plan or implementation approach was produced (just a question/answer, a simple code edit, research, etc.), return: {\"decision\": \"approve\"}"
+          }
+        ]
       }
     ]
   }

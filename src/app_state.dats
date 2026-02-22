@@ -13,6 +13,7 @@
 
 #include "share/atspre_staload.hats"
 staload "./app_state.sats"
+staload "./drag_state.sats"
 staload "./buf.sats"
 staload "./arith.sats"
 
@@ -88,6 +89,14 @@ datavtype app_state_impl =
       rdr_bm_count = int,
       rdr_bm_btn_id = int,
       rdr_bm_save_pending = int,
+      rdr_scrub_bar_id = int,
+      rdr_scrub_track_id = int,
+      rdr_scrub_fill_id = int,
+      rdr_scrub_handle_id = int,
+      rdr_scrub_tooltip_id = int,
+      rdr_scrub_text_id = int,
+      rdr_scrub_dragging = int,
+      rdr_scrub_drag_ch = int,
       rdr_bm_buf = ptr,
       rdr_btn_ids = ptr,
       epub_spine_count = int,
@@ -254,6 +263,14 @@ implement app_state_init() =
     rdr_bm_count = 0,
     rdr_bm_btn_id = 0,
     rdr_bm_save_pending = 0,
+    rdr_scrub_bar_id = 0,
+    rdr_scrub_track_id = 0,
+    rdr_scrub_fill_id = 0,
+    rdr_scrub_handle_id = 0,
+    rdr_scrub_tooltip_id = 0,
+    rdr_scrub_text_id = 0,
+    rdr_scrub_dragging = 0,
+    rdr_scrub_drag_ch = 0,
     rdr_bm_buf = _alloc_buf(BOOKMARK_BUF_SIZE),
     rdr_btn_ids = _alloc_buf(RDR_BTNS_SIZE),
     epub_spine_count = 0,
@@ -1010,6 +1027,132 @@ implement app_get_rdr_bm_save_pending(st) = let
 implement app_set_rdr_bm_save_pending(st, v) = let
   val @APP_STATE(r) = st val () = r.rdr_bm_save_pending := v
   prval () = fold@(st) in end
+
+implement app_get_rdr_scrub_bar_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_scrub_bar_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_scrub_bar_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_scrub_bar_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_scrub_track_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_scrub_track_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_scrub_track_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_scrub_track_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_scrub_fill_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_scrub_fill_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_scrub_fill_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_scrub_fill_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_scrub_handle_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_scrub_handle_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_scrub_handle_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_scrub_handle_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_scrub_tooltip_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_scrub_tooltip_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_scrub_tooltip_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_scrub_tooltip_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_scrub_text_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_scrub_text_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_scrub_text_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_scrub_text_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_scrub_dragging(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_scrub_dragging
+  prval () = fold@(st) in v end
+implement app_set_rdr_scrub_dragging{d}(pf | st, v) = let
+  prval _ = pf
+  val @APP_STATE(r) = st val () = r.rdr_scrub_dragging := v
+  prval () = fold@(st) in end
+implement app_get_rdr_scrub_drag_ch(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_scrub_drag_ch
+  prval () = fold@(st) in v end
+implement app_set_rdr_scrub_drag_ch(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_scrub_drag_ch := v
+  prval () = fold@(st) in end
+
+implement _app_rdr_scrub_bar_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_scrub_bar_id(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_scrub_bar_id(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_scrub_bar_id(st, v)
+  val () = app_state_store(st)
+in end
+implement _app_rdr_scrub_track_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_scrub_track_id(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_scrub_track_id(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_scrub_track_id(st, v)
+  val () = app_state_store(st)
+in end
+implement _app_rdr_scrub_fill_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_scrub_fill_id(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_scrub_fill_id(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_scrub_fill_id(st, v)
+  val () = app_state_store(st)
+in end
+implement _app_rdr_scrub_handle_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_scrub_handle_id(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_scrub_handle_id(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_scrub_handle_id(st, v)
+  val () = app_state_store(st)
+in end
+implement _app_rdr_scrub_tooltip_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_scrub_tooltip_id(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_scrub_tooltip_id(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_scrub_tooltip_id(st, v)
+  val () = app_state_store(st)
+in end
+implement _app_rdr_scrub_text_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_scrub_text_id(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_scrub_text_id(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_scrub_text_id(st, v)
+  val () = app_state_store(st)
+in end
+implement _app_rdr_scrub_dragging() = let
+  val st = app_state_load()
+  val v = app_get_rdr_scrub_dragging(st)
+  val () = app_state_store(st)
+in v end
+implement _app_rdr_scrub_drag_ch() = let
+  val st = app_state_load()
+  val v = app_get_rdr_scrub_drag_ch(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_scrub_drag_ch(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_scrub_drag_ch(st, v)
+  val () = app_state_store(st)
+in end
 
 implement _app_bm_buf_get_i32(idx) = let
   val st = app_state_load()

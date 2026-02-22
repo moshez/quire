@@ -14,6 +14,8 @@
 #define SLOT_LOADING  1
 #define SLOT_READY    2
 
+staload "./drag_state.sats"
+
 (* ========== M13: Functional Correctness Dataprops ========== *)
 
 (* Option proof - carries proof P when b=true, nothing when b=false.
@@ -121,6 +123,19 @@ dataprop NAV_DIRECTION(d: int) =
  * causing library to show "Not started" after reading. *)
 dataprop POSITION_SAVED() = | SAVED()
 
+(* Named listener IDs — single source of truth.
+ * Dataprop enum prevents arbitrary IDs in reader event listeners. *)
+dataprop READER_LISTENER(id: int) =
+  | READER_LISTEN_KEYDOWN(29)
+  | READER_LISTEN_VIEWPORT_CLICK(30)
+  | READER_LISTEN_BACK(31)
+  | READER_LISTEN_PREV(32)
+  | READER_LISTEN_NEXT(33)
+  | READER_LISTEN_BOOKMARK(34)
+  | READER_LISTEN_SCRUB_DOWN(35)
+  | READER_LISTEN_SCRUB_MOVE(36)
+  | READER_LISTEN_SCRUB_UP(37)
+
 (* ========== Module Functions ========== *)
 
 (* Initialize reader module *)
@@ -217,3 +232,22 @@ fun reader_get_bm_btn_id(): int
 fun reader_set_bm_btn_id(id: int): void
 fun reader_get_bm_save_pending(): int
 fun reader_set_bm_save_pending(v: int): void
+
+(* ========== Scrubber state ========== *)
+
+fun reader_set_scrub_bar_id(id: int): void
+fun reader_get_scrub_bar_id(): int
+fun reader_set_scrub_track_id(id: int): void
+fun reader_get_scrub_track_id(): int
+fun reader_set_scrub_fill_id(id: int): void
+fun reader_get_scrub_fill_id(): int
+fun reader_set_scrub_handle_id(id: int): void
+fun reader_get_scrub_handle_id(): int
+fun reader_set_scrub_tooltip_id(id: int): void
+fun reader_get_scrub_tooltip_id(): int
+fun reader_set_scrub_text_id(id: int): void
+fun reader_get_scrub_text_id(): int
+fun reader_set_scrub_dragging{d:int}(pf: DRAG_STATE_VALID(d) | v: int(d)): void
+fun reader_get_scrub_dragging(): [d:nat | d <= 1] int(d)
+fun reader_set_scrub_drag_ch(v: int): void
+fun reader_get_scrub_drag_ch(): int
