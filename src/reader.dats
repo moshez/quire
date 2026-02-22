@@ -85,6 +85,8 @@ implement reader_exit(pf) = let
   val () = app_set_rdr_toc_first_entry_id(st, 0)
   val () = app_set_rdr_toc_entry_count(st, 0)
   val () = app_set_rdr_bm_first_entry_id(st, 0)
+  val () = app_set_rdr_nav_back_btn_id(st, 0)
+  val () = app_set_rdr_pos_stack_count(st, 0)
   val () = app_state_store(st)
 in end
 
@@ -597,3 +599,41 @@ implement reader_get_bm_first_entry_id() = let
   val v = app_get_rdr_bm_first_entry_id(st)
   val () = app_state_store(st)
 in v end
+
+(* ========== Position stack state ========== *)
+
+implement reader_get_nav_back_btn_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_nav_back_btn_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_nav_back_btn_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_nav_back_btn_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_pos_stack_count() = let
+  val v = _app_rdr_pos_stack_count()
+in
+  if v >= 0 then _checked_nat(v)
+  else _checked_nat(0)
+end
+
+implement reader_set_pos_stack_count(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_pos_stack_count(st, v)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_pos_stack_ch(i) =
+  _app_rdr_pos_stack_get_i32(i * 2)
+
+implement reader_get_pos_stack_pg(i) =
+  _app_rdr_pos_stack_get_i32(i * 2 + 1)
+
+implement reader_set_pos_stack_entry(i, ch, pg) = let
+  val () = _app_rdr_pos_stack_set_i32(i * 2, ch)
+  val () = _app_rdr_pos_stack_set_i32(i * 2 + 1, pg)
+in end

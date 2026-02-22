@@ -52,8 +52,14 @@ dataprop NAV_BTN_VISIBLE(font_size_10: int, padding_h_10: int) =
 (* #define: runtime values; stadef: type-level constraints *)
 #define APP_CSS_LEN 2505
 stadef APP_CSS_LEN = 2505
-#define NAV_CSS_LEN 788
-stadef NAV_CSS_LEN = 788
+(* NAV CSS alignment — distinct stadef/define names prevent #define override.
+ * NAV_CSS_WRITES (type-level): number of _w4 calls.
+ * NAV_CSS_LEN_S (type-level): NAV_CSS_WRITES * 4 = byte count.
+ * NAV_CSS_LEN (dynamic-level): literal byte count for allocation.
+ * Solver unifies: if #define \!= stadef product, build fails. *)
+stadef NAV_CSS_WRITES = 204
+stadef NAV_CSS_LEN_S = NAV_CSS_WRITES * 4
+#define NAV_CSS_LEN 816
 
 (* BUG CLASS PREVENTED: CSS_NULL_BYTE_CORRUPTION
  * The CSS fill writes 4 bytes per _w4 call. If MGMT_CSS_LEN is not
@@ -83,7 +89,7 @@ fun stamp_reader_css {l:agz}{n:int | n >= APP_CSS_LEN}
 
 (* ONLY function that produces CSS_NAV_WRITTEN.
  * Stamps button font-size and padding bytes from proven values. *)
-fun stamp_nav_css {l:agz}{n:int | n >= NAV_CSS_LEN}
+fun stamp_nav_css {l:agz}{n:int | n >= NAV_CSS_LEN_S}
     {fs,ph:pos}
   (pf_btn: NAV_BTN_VISIBLE(fs, ph) |
    arr: !ward_arr(byte, l, n), alen: int n,

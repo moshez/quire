@@ -170,7 +170,7 @@ everything else depends on.
   to switch back). Each bookmark shows chapter name, page number, and text
   snippet. Tap navigates to bookmark location.
 
-- [ ] **4.6 Position stack.** Every navigation action (TOC jump, search
+- [x] **4.6 Position stack.** Every navigation action (TOC jump, search
   result, annotation link, footnote) pushes current position onto a stack. A
   persistent "back" affordance pops the stack, returning to the exact prior
   position. Stack stored in reader state (not persisted across sessions).

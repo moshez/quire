@@ -140,6 +140,9 @@ dataprop READER_LISTENER(id: int) =
   | READER_LISTEN_TOC_BM_VIEW(40)
   | READER_LISTEN_TOC_SWITCH(41)
   | READER_LISTEN_TOC_LIST_CLICK(42)
+  | READER_LISTEN_NAV_BACK(43)
+
+#define POS_STACK_MAX 16
 
 (* ========== Module Functions ========== *)
 
@@ -277,3 +280,13 @@ fun reader_set_toc_entry_count(n: int): void
 fun reader_get_toc_entry_count(): int
 fun reader_set_bm_first_entry_id(id: int): void
 fun reader_get_bm_first_entry_id(): int
+
+(* ========== Position stack state ========== *)
+
+fun reader_get_nav_back_btn_id(): int
+fun reader_set_nav_back_btn_id(id: int): void
+fun reader_get_pos_stack_count(): [n:nat] int(n)
+fun reader_set_pos_stack_count(v: int): void
+fun reader_get_pos_stack_ch(i: int): int
+fun reader_get_pos_stack_pg(i: int): int
+fun reader_set_pos_stack_entry(i: int, ch: int, pg: int): void

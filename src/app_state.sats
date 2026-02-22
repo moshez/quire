@@ -156,6 +156,10 @@ fun app_get_rdr_bm_btn_id(st: !app_state): int
 fun app_set_rdr_bm_btn_id(st: !app_state, v: int): void
 fun app_get_rdr_bm_save_pending(st: !app_state): int
 fun app_set_rdr_bm_save_pending(st: !app_state, v: int): void
+fun app_get_rdr_nav_back_btn_id(st: !app_state): int
+fun app_set_rdr_nav_back_btn_id(st: !app_state, v: int): void
+fun app_get_rdr_pos_stack_count(st: !app_state): int
+fun app_set_rdr_pos_stack_count(st: !app_state, v: int): void
 
 (* TOC panel state *)
 fun app_get_rdr_toc_panel_id(st: !app_state): int
@@ -533,6 +537,13 @@ fun _zip_name_buf_put(off: int, byte_val: int): int
 (* Bookmark buffer — i32 access (chapter, page, timestamp per entry) *)
 fun _app_bm_buf_get_i32(idx: int): int
 fun _app_bm_buf_set_i32(idx: int, v: int): void
+
+(* Position stack *)
+fun _app_rdr_nav_back_btn_id(): int
+fun _app_set_rdr_nav_back_btn_id(v: int): void
+fun _app_rdr_pos_stack_count(): int
+fun _app_rdr_pos_stack_get_i32(idx: int): int
+fun _app_rdr_pos_stack_set_i32(idx: int, v: int): void
 
 fun _zip_store_entry_at(idx: int, fh: int, no: int, nl: int,
   comp: int, cs: int, us: int, lo: int): int

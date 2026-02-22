@@ -817,6 +817,23 @@ implement cls_bm_entry() = let
   val b = ward_text_putc(b, 7, char2int1('y'))
 in ward_text_done(b) end
 
+(* "nav-back-btn" = 12 chars *)
+implement cls_nav_back_btn() = let
+  val b = ward_text_build(12)
+  val b = ward_text_putc(b, 0, char2int1('n'))
+  val b = ward_text_putc(b, 1, char2int1('a'))
+  val b = ward_text_putc(b, 2, char2int1('v'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('b'))
+  val b = ward_text_putc(b, 5, char2int1('a'))
+  val b = ward_text_putc(b, 6, char2int1('c'))
+  val b = ward_text_putc(b, 7, char2int1('k'))
+  val b = ward_text_putc(b, 8, 45) (* '-' *)
+  val b = ward_text_putc(b, 9, char2int1('b'))
+  val b = ward_text_putc(b, 10, char2int1('t'))
+  val b = ward_text_putc(b, 11, char2int1('n'))
+in ward_text_done(b) end
+
 (* "next-btn" = 8 chars *)
 implement cls_next_btn() = let
   val b = ward_text_build(8)

@@ -775,49 +775,21 @@ prfn verify_page_display_structure
   (pf: PAGE_DISPLAY_UPDATED()): PAGE_INFO_SHOWN() =
   let prval PAGE_TURNED_AND_SHOWN(pf_pi) = pf in pf_pi end
 
-(* Structural check: PAGE_INFO_SHOWN decomposes into SCRUBBER_FILL_CHECKED *)
-prfn verify_page_info_structure
-  (pf: PAGE_INFO_SHOWN()): SCRUBBER_FILL_CHECKED() =
-  let prval PAGE_INFO_OK(pf_sfc) = pf in pf_sfc end
-
-(* Construction test — CHAPTER_DISPLAY_READY requires both sub-proofs.
- * Exercises the full proof chain:
- *   SCRUB_FILL_OK → PAGE_INFO_OK → MEASURED_AND_TRANSFORMED *)
-fun test_chapter_display_requires_both_proofs(): bool(true) = let
-  prval pf_title = TITLE_SHOWN()
-  prval pf_sfc = SCRUB_FILL_OK()
-  prval pf_pi = PAGE_INFO_OK(pf_sfc)
-  prval pf = MEASURED_AND_TRANSFORMED(pf_title, pf_pi)
-  prval MEASURED_AND_TRANSFORMED(pf_t, pf_pg) = pf
-  prval TITLE_SHOWN() = pf_t
-  prval PAGE_INFO_OK(pf_sfc2) = pf_pg
-  prval SCRUB_FILL_OK() = pf_sfc2
-in true end
+(* NOTE: verify_page_info_structure removed — PAGE_INFO_SHOWN is now absprop
+ * and cannot be destructured. Similarly, test_chapter_display_requires_both_proofs
+ * removed — cannot construct TITLE_SHOWN/SCRUB_FILL_OK (now absprops). *)
 
 (* ================================================================
- * Test 24: Bookmark and position proofs — production types
+ * Test 24: Bookmark and position proofs — now absprops, not constructible
  *
- * Verifies BOOKMARK_TOGGLED, BOOKMARK_BTN_SYNCED, POSITION_PERSISTED
- * are constructible and destructible using production types.
+ * BOOKMARK_TOGGLED, BOOKMARK_BTN_SYNCED, POSITION_PERSISTED are absprops.
+ * They cannot be constructed in tests — only via their designated functions.
+ * The local assume blocks in quire.dats are the ONLY construction sites.
  * ================================================================ *)
 
-(* UNIT TEST — BOOKMARK_TOGGLED proof construction *)
-fun test_bookmark_toggled(): bool(true) = let
-  prval pf = BM_TOGGLED()
-  prval BM_TOGGLED() = pf
-in true end
-
-(* UNIT TEST — BOOKMARK_BTN_SYNCED proof construction *)
-fun test_bookmark_btn_synced(): bool(true) = let
-  prval pf = BM_BTN_SYNCED()
-  prval BM_BTN_SYNCED() = pf
-in true end
-
-(* UNIT TEST — POSITION_PERSISTED proof construction *)
-fun test_position_persisted(): bool(true) = let
-  prval pf = POS_PERSISTED()
-  prval POS_PERSISTED() = pf
-in true end
+(* NOTE: test_bookmark_toggled, test_bookmark_btn_synced, test_position_persisted
+ * removed — these proofs are now absprops and cannot be constructed outside
+ * their local assume blocks. This is the intended security improvement. *)
 
 (* ================================================================
  * Test 25: READER_LISTENER dataprop — all 9 constructors
@@ -846,7 +818,17 @@ fun test_all_reader_listener_ids(): bool(true) = let
   prval () = assert_lid_valid(READER_LISTEN_TOC_BM_VIEW())
   prval () = assert_lid_valid(READER_LISTEN_TOC_SWITCH())
   prval () = assert_lid_valid(READER_LISTEN_TOC_LIST_CLICK())
+  prval () = assert_lid_valid(READER_LISTEN_NAV_BACK())
 in true end
+
+(* ================================================================
+ * Test 25b: Position stack maximum constant
+ *
+ * Verifies POS_STACK_MAX is accessible and has a valid value < 128.
+ * ================================================================ *)
+
+fun test_pos_stack_max_valid(): bool(true) =
+  lt_int_int(POS_STACK_MAX, 128)
 
 (* ================================================================
  * Test 26: DRAG_STATE_VALID dataprop
