@@ -204,3 +204,8 @@ fun reader_set_nav_id(id: int): void
 fun reader_get_nav_id(): int
 fun reader_set_resume_page(page: int): void
 fun reader_get_resume_page(): int
+fun reader_get_chrome_visible(): int
+fun reader_set_chrome_visible(v: int): void
+fun reader_get_chrome_timer_gen(): int
+fun reader_set_chrome_timer_gen(v: int): void
+fun reader_incr_chrome_timer_gen(): int

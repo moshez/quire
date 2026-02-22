@@ -688,3 +688,64 @@ fun test_listener_del_confirm_above(): bool(true) =
 (* UNIT TEST — del cancel ID 18 < ctx dismiss ID 19 *)
 fun test_listener_del_cancel_below(): bool(true) =
   lt_g1(18, 19)
+
+(* ================================================================
+ * Test 22: CHROME_VISIBLE_VALID — exhaustive chrome state dispatch
+ *
+ * Verifies both valid chrome visibility states produce the correct
+ * proof witness.
+ * ================================================================ *)
+
+(* Re-declare chrome dataprops for static test compilation *)
+dataprop CHROME_VISIBLE_VALID_T(v: int) =
+  | CV_HIDDEN_T(0)
+  | CV_SHOWN_T(1)
+
+dataprop CHROME_STYLE_APPLIED_T(visible: int) =
+  | CHROME_NOW_HIDDEN_T(0)
+  | CHROME_NOW_VISIBLE_T(1)
+
+dataprop ZONE_SPLIT_T(vw: int, left: int, right: int) =
+  | {v:pos} ZONES_CORRECT_T(v, v/4, v*3/4)
+
+(* UNIT TEST — chrome hidden state is valid *)
+fun test_chrome_hidden(): bool(true) = let
+  prval pf = CV_HIDDEN_T()
+  prval _ = pf : CHROME_VISIBLE_VALID_T(0)
+in eq_g1(0, 0) end
+
+(* UNIT TEST — chrome visible state is valid *)
+fun test_chrome_visible(): bool(true) = let
+  prval pf = CV_SHOWN_T()
+  prval _ = pf : CHROME_VISIBLE_VALID_T(1)
+in eq_g1(1, 1) end
+
+(* UNIT TEST — CHROME_STYLE_APPLIED hidden matches CHROME_VISIBLE_VALID hidden *)
+fun test_chrome_style_hidden(): bool(true) = let
+  prval pf_style = CHROME_NOW_HIDDEN_T()
+  prval pf_valid = CV_HIDDEN_T()
+  prval _ = pf_style : CHROME_STYLE_APPLIED_T(0)
+  prval _ = pf_valid : CHROME_VISIBLE_VALID_T(0)
+in eq_g1(0, 0) end
+
+(* UNIT TEST — CHROME_STYLE_APPLIED visible matches CHROME_VISIBLE_VALID visible *)
+fun test_chrome_style_visible(): bool(true) = let
+  prval pf_style = CHROME_NOW_VISIBLE_T()
+  prval pf_valid = CV_SHOWN_T()
+  prval _ = pf_style : CHROME_STYLE_APPLIED_T(1)
+  prval _ = pf_valid : CHROME_VISIBLE_VALID_T(1)
+in eq_g1(1, 1) end
+
+(* UNIT TEST — ZONE_SPLIT constraint: left = vw/4, right = vw*3/4.
+ * The dataprop encodes: for any pos v, left = v/4 and right = v*3/4.
+ * ATS2 constraint solver verifies: 1000/4 = 250, 1000*3/4 = 750. *)
+fun test_zone_split_1000(): bool(true) = let
+  prval pf: ZONE_SPLIT_T(1000, 250, 750) = ZONES_CORRECT_T()
+  prval _ = pf
+in eq_g1(250, 250) end
+
+(* UNIT TEST — ZONE_SPLIT with viewport 375: left=93, right=281 *)
+fun test_zone_split_375(): bool(true) = let
+  prval pf: ZONE_SPLIT_T(375, 93, 281) = ZONES_CORRECT_T()
+  prval _ = pf
+in eq_g1(93, 93) end

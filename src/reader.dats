@@ -20,6 +20,8 @@ implement reader_init() = let
   val () = app_set_rdr_current_chapter(st, 0)
   val () = app_set_rdr_current_page(st, 0)
   val () = app_set_rdr_total_pages(st, 1)
+  val () = app_set_rdr_chrome_visible(st, 0)
+  val () = app_set_rdr_chrome_timer_gen(st, 0)
   val () = app_state_store(st)
 in end
 
@@ -38,6 +40,8 @@ implement reader_exit(pf) = let
   val () = app_set_rdr_current_chapter(st, 0)
   val () = app_set_rdr_current_page(st, 0)
   val () = app_set_rdr_total_pages(st, 1)
+  val () = app_set_rdr_chrome_visible(st, 0)
+  val () = app_set_rdr_chrome_timer_gen(st, 0)
   val () = app_state_store(st)
 in end
 
@@ -260,3 +264,35 @@ implement reader_get_resume_page() = let
   val v = app_get_rdr_resume_page(st)
   val () = app_state_store(st)
 in v end
+
+implement reader_get_chrome_visible() = let
+  val st = app_state_load()
+  val v = app_get_rdr_chrome_visible(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_chrome_visible(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_chrome_visible(st, v)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_chrome_timer_gen() = let
+  val st = app_state_load()
+  val v = app_get_rdr_chrome_timer_gen(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_chrome_timer_gen(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_chrome_timer_gen(st, v)
+  val () = app_state_store(st)
+in end
+
+implement reader_incr_chrome_timer_gen() = let
+  val st = app_state_load()
+  val v = app_get_rdr_chrome_timer_gen(st)
+  val nv = v + 1
+  val () = app_set_rdr_chrome_timer_gen(st, nv)
+  val () = app_state_store(st)
+in nv end

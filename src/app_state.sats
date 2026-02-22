@@ -143,6 +143,10 @@ fun app_get_rdr_btn_id(st: !app_state, idx: int): int
 fun app_set_rdr_btn_id(st: !app_state, idx: int, v: int): void
 fun app_get_rdr_resume_page(st: !app_state): int
 fun app_set_rdr_resume_page(st: !app_state, v: int): void
+fun app_get_rdr_chrome_visible(st: !app_state): int
+fun app_set_rdr_chrome_visible(st: !app_state, v: int): void
+fun app_get_rdr_chrome_timer_gen(st: !app_state): int
+fun app_set_rdr_chrome_timer_gen(st: !app_state, v: int): void
 
 (* EPUB state *)
 fun app_get_epub_spine_count(st: !app_state): int
