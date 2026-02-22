@@ -2923,37 +2923,42 @@ test.describe('EPUB Reader E2E', () => {
       return el && el.textContent && el.textContent.length > 50;
     }, { timeout: 15000 });
 
-    // Ensure chrome is visible
-    await page.locator('.reader-viewport').focus();
-    await page.keyboard.press('t');
-    await page.waitForTimeout(300);
+    // Wait for auto-hide timer to expire, then toggle chrome on via center tap
+    await page.waitForTimeout(6000);
+    await expect(page.locator('.reader-nav')).toBeHidden();
+
+    const viewport = page.viewportSize();
+    const centerX = viewport.width / 2;
+    const centerY = viewport.height / 2;
+    await page.mouse.click(centerX, centerY);
+    await page.waitForTimeout(500);
     await expect(page.locator('.reader-nav')).toBeVisible();
     await screenshot(page, 'escape-01-chrome-visible');
 
     // Open TOC panel
     await page.locator('.toc-btn').click();
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
     await expect(page.locator('.toc-panel')).toBeVisible();
     await screenshot(page, 'escape-02-toc-open');
 
     // Escape 1: closes TOC, still in reader with chrome visible
     await page.locator('.reader-viewport').focus();
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
     await expect(page.locator('.toc-panel')).toBeHidden();
     await expect(page.locator('.reader-nav')).toBeVisible();
     await screenshot(page, 'escape-03-toc-closed');
 
     // Escape 2: hides chrome, still in reader
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
     await expect(page.locator('.reader-nav')).toBeHidden();
     await expect(page.locator('.reader-viewport')).toBeAttached();
     await screenshot(page, 'escape-04-chrome-hidden');
 
     // Escape 3: exits to library
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
     await expect(page.locator('.book-card')).toBeVisible();
     await screenshot(page, 'escape-05-library');
 
