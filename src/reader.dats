@@ -23,6 +23,9 @@ implement reader_init() = let
   val () = app_set_rdr_chrome_visible(st, 0)
   val () = app_set_rdr_chrome_timer_gen(st, 0)
   val () = app_set_rdr_chapter_title_id(st, 0)
+  val () = app_set_rdr_bm_count(st, 0)
+  val () = app_set_rdr_bm_btn_id(st, 0)
+  val () = app_set_rdr_bm_save_pending(st, 0)
   val () = app_state_store(st)
 in end
 
@@ -44,6 +47,9 @@ implement reader_exit(pf) = let
   val () = app_set_rdr_chrome_visible(st, 0)
   val () = app_set_rdr_chrome_timer_gen(st, 0)
   val () = app_set_rdr_chapter_title_id(st, 0)
+  val () = app_set_rdr_bm_count(st, 0)
+  val () = app_set_rdr_bm_btn_id(st, 0)
+  val () = app_set_rdr_bm_save_pending(st, 0)
   val () = app_state_store(st)
 in end
 
@@ -310,3 +316,39 @@ implement reader_get_chapter_title_id() = let
   val v = app_get_rdr_chapter_title_id(st)
   val () = app_state_store(st)
 in v end
+
+implement reader_get_bm_count() = let
+  val st = app_state_load()
+  val v = app_get_rdr_bm_count(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_bm_count(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_bm_count(st, v)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_bm_btn_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_bm_btn_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_bm_btn_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_bm_btn_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_bm_save_pending() = let
+  val st = app_state_load()
+  val v = app_get_rdr_bm_save_pending(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_bm_save_pending(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_bm_save_pending(st, v)
+  val () = app_state_store(st)
+in end

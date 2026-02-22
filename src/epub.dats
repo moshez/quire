@@ -1007,6 +1007,40 @@ implement epub_build_cover_key() = let
   val bld = ward_text_putc(bld, 19, 114)
 in ward_text_done(bld) end
 
+(* Build 20-char IDB bookmark key: {16 hex book_id}-bmk *)
+implement epub_build_bookmark_key() = let
+  val b0 = _app_epub_book_id_get_u8(0)
+  val b1 = _app_epub_book_id_get_u8(1)
+  val b2 = _app_epub_book_id_get_u8(2)
+  val b3 = _app_epub_book_id_get_u8(3)
+  val b4 = _app_epub_book_id_get_u8(4)
+  val b5 = _app_epub_book_id_get_u8(5)
+  val b6 = _app_epub_book_id_get_u8(6)
+  val b7 = _app_epub_book_id_get_u8(7)
+  val bld = ward_text_build(20)
+  val bld = ward_text_putc(bld, 0, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b0, 255), 16))))
+  val bld = ward_text_putc(bld, 1, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b0, 255), 16))))
+  val bld = ward_text_putc(bld, 2, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b1, 255), 16))))
+  val bld = ward_text_putc(bld, 3, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b1, 255), 16))))
+  val bld = ward_text_putc(bld, 4, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b2, 255), 16))))
+  val bld = ward_text_putc(bld, 5, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b2, 255), 16))))
+  val bld = ward_text_putc(bld, 6, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b3, 255), 16))))
+  val bld = ward_text_putc(bld, 7, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b3, 255), 16))))
+  val bld = ward_text_putc(bld, 8, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b4, 255), 16))))
+  val bld = ward_text_putc(bld, 9, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b4, 255), 16))))
+  val bld = ward_text_putc(bld, 10, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b5, 255), 16))))
+  val bld = ward_text_putc(bld, 11, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b5, 255), 16))))
+  val bld = ward_text_putc(bld, 12, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b6, 255), 16))))
+  val bld = ward_text_putc(bld, 13, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b6, 255), 16))))
+  val bld = ward_text_putc(bld, 14, _safe_hex_char(_hex_nibble(div_int_int(band_int_int(b7, 255), 16))))
+  val bld = ward_text_putc(bld, 15, _safe_hex_char(_hex_nibble(mod_int_int(band_int_int(b7, 255), 16))))
+  (* "-bmk" suffix: '-'=45, 'b'=98, 'm'=109, 'k'=107 — all SAFE_CHAR *)
+  val bld = ward_text_putc(bld, 16, 45)
+  val bld = ward_text_putc(bld, 17, 98)
+  val bld = ward_text_putc(bld, 18, 109)
+  val bld = ward_text_putc(bld, 19, 107)
+in ward_text_done(bld) end
+
 (* ========== epub_store_cover ========== *)
 
 (* Store cover image: copy resource blob from its resource key to the cover key.

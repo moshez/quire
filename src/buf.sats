@@ -44,6 +44,10 @@ stadef EPUB_COVER_HREF_CAP = 256
 stadef DEFERRED_IMG_NID_CAP = 256        (* 64 entries x 4 bytes *)
 stadef DEFERRED_IMG_EID_CAP = 256        (* 64 entries x 4 bytes *)
 
+(* Bookmark storage: 256 entries x 3 ints (chapter, page, timestamp) x 4 bytes *)
+stadef BOOKMARK_BUF_CAP = 3072
+stadef BOOKMARK_MAX_COUNT = 256
+
 (* ========== Buffer Size Constants (dynamic-level) ========== *)
 #define STRING_BUFFER_SIZE 4096
 #define FETCH_BUFFER_SIZE  16384
@@ -66,3 +70,5 @@ stadef DEFERRED_IMG_EID_CAP = 256        (* 64 entries x 4 bytes *)
 #define EPUB_COVER_HREF_SIZE 256
 #define DEFERRED_IMG_NID_SIZE 256
 #define DEFERRED_IMG_EID_SIZE 256
+#define BOOKMARK_BUF_SIZE 3072
+#define BOOKMARK_MAX_COUNT 256

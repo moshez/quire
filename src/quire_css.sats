@@ -52,8 +52,8 @@ dataprop NAV_BTN_VISIBLE(font_size_10: int, padding_h_10: int) =
 (* #define: runtime values; stadef: type-level constraints *)
 #define APP_CSS_LEN 2505
 stadef APP_CSS_LEN = 2505
-#define NAV_CSS_LEN 672
-stadef NAV_CSS_LEN = 672
+#define NAV_CSS_LEN 788
+stadef NAV_CSS_LEN = 788
 
 (* BUG CLASS PREVENTED: CSS_NULL_BYTE_CORRUPTION
  * The CSS fill writes 4 bytes per _w4 call. If MGMT_CSS_LEN is not

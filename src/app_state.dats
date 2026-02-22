@@ -85,6 +85,10 @@ datavtype app_state_impl =
       rdr_chrome_visible = int,
       rdr_chrome_timer_gen = int,
       rdr_chapter_title_id = int,
+      rdr_bm_count = int,
+      rdr_bm_btn_id = int,
+      rdr_bm_save_pending = int,
+      rdr_bm_buf = ptr,
       rdr_btn_ids = ptr,
       epub_spine_count = int,
       epub_title = ptr,
@@ -247,6 +251,10 @@ implement app_state_init() =
     rdr_chrome_visible = 0,
     rdr_chrome_timer_gen = 0,
     rdr_chapter_title_id = 0,
+    rdr_bm_count = 0,
+    rdr_bm_btn_id = 0,
+    rdr_bm_save_pending = 0,
+    rdr_bm_buf = _alloc_buf(BOOKMARK_BUF_SIZE),
     rdr_btn_ids = _alloc_buf(RDR_BTNS_SIZE),
     epub_spine_count = 0,
     epub_title = _alloc_buf(EPUB_TITLE_SIZE),
@@ -296,6 +304,7 @@ implement app_state_fini(st) = let
   val () = _free_buf(r.string_buffer, STRING_BUFFER_SIZE)
   val () = _free_buf(r.fetch_buffer, FETCH_BUFFER_SIZE)
   val () = _free_buf(r.diff_buffer, DIFF_BUFFER_SIZE)
+  val () = _free_buf(r.rdr_bm_buf, BOOKMARK_BUF_SIZE)
   val () = _free_buf(r.rdr_btn_ids, RDR_BTNS_SIZE)
   val () = _free_buf(r.epub_title, EPUB_TITLE_SIZE)
   val () = _free_buf(r.epub_author, EPUB_AUTHOR_SIZE)
@@ -982,6 +991,41 @@ implement app_get_rdr_chapter_title_id(st) = let
 implement app_set_rdr_chapter_title_id(st, v) = let
   val @APP_STATE(r) = st val () = r.rdr_chapter_title_id := v
   prval () = fold@(st) in end
+
+implement app_get_rdr_bm_count(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_bm_count
+  prval () = fold@(st) in v end
+implement app_set_rdr_bm_count(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_bm_count := v
+  prval () = fold@(st) in end
+implement app_get_rdr_bm_btn_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_bm_btn_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_bm_btn_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_bm_btn_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_bm_save_pending(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_bm_save_pending
+  prval () = fold@(st) in v end
+implement app_set_rdr_bm_save_pending(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_bm_save_pending := v
+  prval () = fold@(st) in end
+
+implement _app_bm_buf_get_i32(idx) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val v = _arr_get_i32(r.rdr_bm_buf, idx, BOOKMARK_BUF_SIZE)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in v end
+
+implement _app_bm_buf_set_i32(idx, v) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val () = _arr_set_i32(r.rdr_bm_buf, idx, BOOKMARK_BUF_SIZE, v)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in end
 
 implement app_get_rdr_btn_id(st, idx) = let
   val @APP_STATE(r) = st

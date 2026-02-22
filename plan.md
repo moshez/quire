@@ -150,7 +150,7 @@ everything else depends on.
   wireframe: `✕  Chapter 4: The Garden    🔖`). Look up title from TOC data
   using current spine index. Update on chapter transitions.
 
-- [ ] **4.3 Bookmark toggle and `B` shortcut.** Add bookmark button
+- [x] **4.3 Bookmark toggle and `B` shortcut.** Add bookmark button
   (filled/unfilled 🔖) to top chrome. Also wire `B` keyboard shortcut and
   double-tap (when chrome visible) to toggle bookmark. Bookmarks are per-page
   markers stored in IndexedDB per book. Toggling adds/removes a bookmark at

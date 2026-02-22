@@ -418,9 +418,10 @@ fun test_lid_viewport_click(): bool(true) = lt_g1(30, 128)
 fun test_lid_back(): bool(true) = lt_g1(31, 128)
 fun test_lid_prev(): bool(true) = lt_g1(32, 128)
 fun test_lid_next(): bool(true) = lt_g1(33, 128)
+fun test_lid_bookmark(): bool(true) = lt_g1(34, 128)
 
-(* UNIT TEST — IDs are contiguous: max ID = 33, all sequential from 1 *)
-fun test_lid_max_is_33(): bool(true) = eq_g1(33, 33)
+(* UNIT TEST — IDs are contiguous: max ID = 34, all sequential from 1 *)
+fun test_lid_max_is_34(): bool(true) = eq_g1(34, 34)
 
 (* UNIT TEST — no ID overlap: each range is strictly above the previous *)
 fun test_lid_modals_above_lib(): bool(true) = gt_g1(11, 10)
@@ -771,3 +772,40 @@ fun test_chapter_display_requires_title(): bool(true) = let
   prval MEASURED_AND_TRANSFORMED_T(pf_t) = pf
   prval TITLE_SHOWN_T() = pf_t
 in true end
+
+(* ================================================================
+ * Test 24: BOOKMARK_TOGGLED + BOOKMARK_BTN_SYNCED dataprops
+ *
+ * Verifies bookmark proofs are constructible and destructible.
+ * BOOKMARK_TOGGLED proves toggle + save occurred.
+ * BOOKMARK_BTN_SYNCED proves visual state matches data.
+ * ================================================================ *)
+
+dataprop BOOKMARK_TOGGLED_T() = | BM_TOGGLED_T()
+dataprop BOOKMARK_BTN_SYNCED_T() = | BM_BTN_SYNCED_T()
+
+(* UNIT TEST — BOOKMARK_TOGGLED proof construction *)
+fun test_bookmark_toggled(): bool(true) = let
+  prval pf = BM_TOGGLED_T()
+  prval BM_TOGGLED_T() = pf
+in true end
+
+(* UNIT TEST — BOOKMARK_BTN_SYNCED proof construction *)
+fun test_bookmark_btn_synced(): bool(true) = let
+  prval pf = BM_BTN_SYNCED_T()
+  prval BM_BTN_SYNCED_T() = pf
+in true end
+
+(* UNIT TEST — READER_LISTEN_BOOKMARK(34) is a valid reader listener *)
+dataprop READER_LISTENER_T(id: int) =
+  | READER_LISTEN_KEYDOWN_T(29)
+  | READER_LISTEN_VIEWPORT_CLICK_T(30)
+  | READER_LISTEN_BACK_T(31)
+  | READER_LISTEN_PREV_T(32)
+  | READER_LISTEN_NEXT_T(33)
+  | READER_LISTEN_BOOKMARK_T(34)
+
+fun test_bookmark_listener_valid(): bool(true) = let
+  prval pf = READER_LISTEN_BOOKMARK_T()
+  prval _ = pf : READER_LISTENER_T(34)
+in lt_g1(34, 128) end

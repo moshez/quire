@@ -2533,4 +2533,90 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('bookmark toggle via button click and B key', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    page.on('crash', () => console.error('PAGE CRASHED'));
+
+    const epubBuffer = createEpub({
+      title: 'Bookmark Test',
+      author: 'Quire Bot',
+      chapters: 2,
+      paragraphsPerChapter: 20,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `bookmark-test-${vpTag}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open the book
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    // Verify BM button exists with class bm-btn
+    const bmBtn = page.locator('.bm-btn');
+    await expect(bmBtn).toBeVisible();
+    await expect(bmBtn).toHaveText('BM');
+    await screenshot(page, 'bookmark-01-initial');
+
+    // Click BM button to toggle bookmark on
+    await bmBtn.click();
+    await page.waitForTimeout(500);
+    const bmActive = page.locator('.bm-active');
+    await expect(bmActive).toBeVisible();
+    await screenshot(page, 'bookmark-02-after-click-on');
+
+    // Click again to toggle off
+    await bmActive.click();
+    await page.waitForTimeout(500);
+    await expect(page.locator('.bm-btn')).toBeVisible();
+    await expect(page.locator('.bm-active')).toHaveCount(0);
+    await screenshot(page, 'bookmark-03-after-click-off');
+
+    // Toggle via B key
+    await page.locator('.reader-viewport').focus();
+    await page.keyboard.press('b');
+    await page.waitForTimeout(500);
+    await expect(page.locator('.bm-active')).toBeVisible();
+    await screenshot(page, 'bookmark-04-after-b-key-on');
+
+    // Toggle off via B key
+    await page.keyboard.press('b');
+    await page.waitForTimeout(500);
+    await expect(page.locator('.bm-btn')).toBeVisible();
+    await expect(page.locator('.bm-active')).toHaveCount(0);
+    await screenshot(page, 'bookmark-05-after-b-key-off');
+
+    // Bookmark a page, turn page, verify state resets
+    await page.keyboard.press('b');
+    await page.waitForTimeout(500);
+    await expect(page.locator('.bm-active')).toBeVisible();
+    // Navigate to next page
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(500);
+    // Should be bm-btn (unbookmarked) on new page
+    await expect(page.locator('.bm-btn')).toBeVisible();
+    await expect(page.locator('.bm-active')).toHaveCount(0);
+    await screenshot(page, 'bookmark-06-after-page-turn');
+
+    // Navigate back to bookmarked page
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForTimeout(500);
+    // Should be bm-active (bookmarked)
+    await expect(page.locator('.bm-active')).toBeVisible();
+    await screenshot(page, 'bookmark-07-navigate-back');
+
+    // Verify no page crashes
+    expect(errors).toEqual([]);
+  });
+
 });

@@ -34,6 +34,8 @@ fun cls_nav_controls(): ward_safe_text(12)
 fun cls_prev_btn(): ward_safe_text(8)
 fun cls_next_btn(): ward_safe_text(8)
 fun cls_ch_title(): ward_safe_text(8)
+fun cls_bm_btn(): ward_safe_text(6)
+fun cls_bm_active(): ward_safe_text(9)
 
 (* ========== Event/type builders ========== *)
 

@@ -215,6 +215,9 @@ fun epub_build_resource_key(entry_idx: int): ward_safe_text(20)
 (* Build 20-char IDB manifest key: {16 hex book_id}-man *)
 fun epub_build_manifest_key(): ward_safe_text(20)
 
+(* Build 20-char IDB bookmark key: {16 hex book_id}-bmk *)
+fun epub_build_bookmark_key(): ward_safe_text(20)
+
 (* Store all ZIP entries to IDB as decompressed blobs.
  * Sequential async promise chain. Returns promise resolving to 1 on success. *)
 fun epub_store_all_resources(file_handle: int): ward_promise_chained(int)
