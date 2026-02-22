@@ -13,6 +13,12 @@ staload "./arith.sats"
 staload "./library.sats"
 staload "./epub.sats"
 staload "./../vendor/ward/lib/memory.sats"
+staload "./drag_state.sats"
+staload "./reader.sats"
+
+(* Shared proof declarations — production types, not shadows.
+ * Tests use these directly to verify proof structure. *)
+#include "quire_proofs.hats"
 
 (* ================================================================
  * Test 1: should_render_book — 3×3 exhaustive dispatch
@@ -752,60 +758,101 @@ fun test_zone_split_375(): bool(true) = let
 in eq_g1(93, 93) end
 
 (* ================================================================
- * Test 23: CHAPTER_TITLE_DISPLAYED + CHAPTER_DISPLAY_READY chain
+ * Test 23: CHAPTER_DISPLAY_READY proof chain — production types
  *
- * Verifies CHAPTER_DISPLAY_READY requires CHAPTER_TITLE_DISPLAYED
- * as a sub-proof. Construction impossible without TITLE_SHOWN().
+ * Verifies CHAPTER_DISPLAY_READY requires BOTH CHAPTER_TITLE_DISPLAYED
+ * and PAGE_INFO_SHOWN sub-proofs. PAGE_INFO_SHOWN in turn requires
+ * SCRUBBER_FILL_CHECKED. Uses production types from quire_proofs.hats.
  * ================================================================ *)
 
-(* Re-declare dataprops for static test compilation *)
-dataprop CHAPTER_TITLE_DISPLAYED_T() =
-  | TITLE_SHOWN_T()
+(* Structural check: CHAPTER_DISPLAY_READY decomposes into both sub-proofs *)
+prfn verify_chapter_display_structure
+  (pf: CHAPTER_DISPLAY_READY()): @(CHAPTER_TITLE_DISPLAYED(), PAGE_INFO_SHOWN()) =
+  let prval MEASURED_AND_TRANSFORMED(pf_t, pf_pi) = pf in @(pf_t, pf_pi) end
 
-dataprop CHAPTER_DISPLAY_READY_T() =
-  | MEASURED_AND_TRANSFORMED_T() of CHAPTER_TITLE_DISPLAYED_T()
+(* Structural check: PAGE_DISPLAY_UPDATED decomposes into PAGE_INFO_SHOWN *)
+prfn verify_page_display_structure
+  (pf: PAGE_DISPLAY_UPDATED()): PAGE_INFO_SHOWN() =
+  let prval PAGE_TURNED_AND_SHOWN(pf_pi) = pf in pf_pi end
 
-(* UNIT TEST — CHAPTER_DISPLAY_READY requires CHAPTER_TITLE_DISPLAYED sub-proof *)
-fun test_chapter_display_requires_title(): bool(true) = let
-  prval pf_title = TITLE_SHOWN_T()
-  prval pf = MEASURED_AND_TRANSFORMED_T(pf_title)
-  prval MEASURED_AND_TRANSFORMED_T(pf_t) = pf
-  prval TITLE_SHOWN_T() = pf_t
+(* Structural check: PAGE_INFO_SHOWN decomposes into SCRUBBER_FILL_CHECKED *)
+prfn verify_page_info_structure
+  (pf: PAGE_INFO_SHOWN()): SCRUBBER_FILL_CHECKED() =
+  let prval PAGE_INFO_OK(pf_sfc) = pf in pf_sfc end
+
+(* Construction test — CHAPTER_DISPLAY_READY requires both sub-proofs.
+ * Exercises the full proof chain:
+ *   SCRUB_FILL_OK → PAGE_INFO_OK → MEASURED_AND_TRANSFORMED *)
+fun test_chapter_display_requires_both_proofs(): bool(true) = let
+  prval pf_title = TITLE_SHOWN()
+  prval pf_sfc = SCRUB_FILL_OK()
+  prval pf_pi = PAGE_INFO_OK(pf_sfc)
+  prval pf = MEASURED_AND_TRANSFORMED(pf_title, pf_pi)
+  prval MEASURED_AND_TRANSFORMED(pf_t, pf_pg) = pf
+  prval TITLE_SHOWN() = pf_t
+  prval PAGE_INFO_OK(pf_sfc2) = pf_pg
+  prval SCRUB_FILL_OK() = pf_sfc2
 in true end
 
 (* ================================================================
- * Test 24: BOOKMARK_TOGGLED + BOOKMARK_BTN_SYNCED dataprops
+ * Test 24: Bookmark and position proofs — production types
  *
- * Verifies bookmark proofs are constructible and destructible.
- * BOOKMARK_TOGGLED proves toggle + save occurred.
- * BOOKMARK_BTN_SYNCED proves visual state matches data.
+ * Verifies BOOKMARK_TOGGLED, BOOKMARK_BTN_SYNCED, POSITION_PERSISTED
+ * are constructible and destructible using production types.
  * ================================================================ *)
-
-dataprop BOOKMARK_TOGGLED_T() = | BM_TOGGLED_T()
-dataprop BOOKMARK_BTN_SYNCED_T() = | BM_BTN_SYNCED_T()
 
 (* UNIT TEST — BOOKMARK_TOGGLED proof construction *)
 fun test_bookmark_toggled(): bool(true) = let
-  prval pf = BM_TOGGLED_T()
-  prval BM_TOGGLED_T() = pf
+  prval pf = BM_TOGGLED()
+  prval BM_TOGGLED() = pf
 in true end
 
 (* UNIT TEST — BOOKMARK_BTN_SYNCED proof construction *)
 fun test_bookmark_btn_synced(): bool(true) = let
-  prval pf = BM_BTN_SYNCED_T()
-  prval BM_BTN_SYNCED_T() = pf
+  prval pf = BM_BTN_SYNCED()
+  prval BM_BTN_SYNCED() = pf
 in true end
 
-(* UNIT TEST — READER_LISTEN_BOOKMARK(34) is a valid reader listener *)
-dataprop READER_LISTENER_T(id: int) =
-  | READER_LISTEN_KEYDOWN_T(29)
-  | READER_LISTEN_VIEWPORT_CLICK_T(30)
-  | READER_LISTEN_BACK_T(31)
-  | READER_LISTEN_PREV_T(32)
-  | READER_LISTEN_NEXT_T(33)
-  | READER_LISTEN_BOOKMARK_T(34)
+(* UNIT TEST — POSITION_PERSISTED proof construction *)
+fun test_position_persisted(): bool(true) = let
+  prval pf = POS_PERSISTED()
+  prval POS_PERSISTED() = pf
+in true end
 
-fun test_bookmark_listener_valid(): bool(true) = let
-  prval pf = READER_LISTEN_BOOKMARK_T()
-  prval _ = pf : READER_LISTENER_T(34)
-in lt_g1(34, 128) end
+(* ================================================================
+ * Test 25: READER_LISTENER dataprop — all 9 constructors
+ *
+ * Verifies all reader listener IDs are < 128 (fits in a byte).
+ * Uses PRODUCTION READER_LISTENER from reader.sats via staload.
+ * Non-tautological: if READER_LISTEN_FOO(200) is added,
+ * assert_lid_valid(READER_LISTEN_FOO()) fails because 200 < 128 is false.
+ * ================================================================ *)
+
+prfn assert_lid_valid {id:nat | id < 128}
+  (pf: READER_LISTENER(id)): void = ()
+
+fun test_all_reader_listener_ids(): bool(true) = let
+  prval () = assert_lid_valid(READER_LISTEN_KEYDOWN())
+  prval () = assert_lid_valid(READER_LISTEN_VIEWPORT_CLICK())
+  prval () = assert_lid_valid(READER_LISTEN_BACK())
+  prval () = assert_lid_valid(READER_LISTEN_PREV())
+  prval () = assert_lid_valid(READER_LISTEN_NEXT())
+  prval () = assert_lid_valid(READER_LISTEN_BOOKMARK())
+  prval () = assert_lid_valid(READER_LISTEN_SCRUB_DOWN())
+  prval () = assert_lid_valid(READER_LISTEN_SCRUB_MOVE())
+  prval () = assert_lid_valid(READER_LISTEN_SCRUB_UP())
+in true end
+
+(* ================================================================
+ * Test 26: DRAG_STATE_VALID dataprop
+ *
+ * Verifies DRAG_IDLE(0) and DRAG_ACTIVE(1) are constructible.
+ * Uses PRODUCTION DRAG_STATE_VALID from drag_state.sats via staload.
+ * ================================================================ *)
+
+fun test_drag_state_valid(): bool(true) = let
+  prval pf0 = DRAG_IDLE()
+  prval _ = pf0 : DRAG_STATE_VALID(0)
+  prval pf1 = DRAG_ACTIVE()
+  prval _ = pf1 : DRAG_STATE_VALID(1)
+in true end

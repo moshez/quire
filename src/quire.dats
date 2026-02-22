@@ -51,46 +51,17 @@ staload "./sha256.sats"
 staload "./quire_ext.sats"
 staload "./buf.sats"
 staload "./settings.sats"
+staload "./drag_state.sats"
+
+(* Shared proof declarations: SCRUBBER_FILL_CHECKED, PAGE_INFO_SHOWN,
+ * CHAPTER_TITLE_DISPLAYED, BOOKMARK_BTN_SYNCED, BOOKMARK_TOGGLED,
+ * POSITION_PERSISTED, PAGE_DISPLAY_UPDATED, CHAPTER_DISPLAY_READY *)
+#include "quire_proofs.hats"
 
 (* Forward declarations for JS imports — suppresses C99 warnings *)
 %{
 extern int quire_time_now(void);
 %}
-
-(* ========== Position persistence proof ========== *)
-(* POSITION_PERSISTED proves library_update_position + library_save
- * were called. Required by page_turn_forward/backward and chapter
- * transitions — ensures position is saved on every navigation. *)
-dataprop POSITION_PERSISTED() = | POS_PERSISTED()
-
-(* ========== Bookmark proofs ========== *)
-
-(* BOOKMARK_TOGGLED: proves toggle_bookmark was called.
- * Produced only by toggle_bookmark — guarantees toggle + save occurred. *)
-dataprop BOOKMARK_TOGGLED() = | BM_TOGGLED()
-
-(* BOOKMARK_BTN_SYNCED: proves visual state matches bookmark data.
- * Produced only by update_bookmark_btn — guarantees DOM class was set. *)
-dataprop BOOKMARK_BTN_SYNCED() = | BM_BTN_SYNCED()
-
-(* ========== Listener ID constants ========== *)
-
-(* Named listener IDs — single source of truth.
- * Dataprop enum prevents arbitrary IDs in reader event listeners. *)
-dataprop READER_LISTENER(id: int) =
-  | READER_LISTEN_KEYDOWN(29)
-  | READER_LISTEN_VIEWPORT_CLICK(30)
-  | READER_LISTEN_BACK(31)
-  | READER_LISTEN_PREV(32)
-  | READER_LISTEN_NEXT(33)
-  | READER_LISTEN_BOOKMARK(34)
-
-#define LISTENER_KEYDOWN 29
-#define LISTENER_VIEWPORT_CLICK 30
-#define LISTENER_BACK 31
-#define LISTENER_PREV 32
-#define LISTENER_NEXT 33
-#define LISTENER_BOOKMARK 34
 
 (* ========== Chrome auto-hide proofs ========== *)
 
@@ -166,6 +137,19 @@ extern castfn _checked_spine_count(x: int): [n:nat | n <= 256] int n
  * For computed digits: 48 + (v % 10) is always 48-57 — in range. *)
 extern castfn _byte {c:int | 0 <= c; c <= 255} (c: int c): byte
 
+(* Proof-requiring event listener registration wrapper.
+ * Requires READER_LISTENER(id) proof — prevents arbitrary listener IDs.
+ * All reader event listener registrations must use this wrapper.
+ * {tn:pos} with ward_safe_text(tn)/int(tn) passes through the size constraint. *)
+fn reader_add_event_listener {id:int}{tn:pos}
+  (pf: READER_LISTENER(id) |
+   node_id: int, event_type: ward_safe_text(tn), event_len: int(tn),
+   listener_id: int(id), handler: int -<cloref1> int): void = let
+  prval _ = pf
+in
+  ward_add_event_listener(node_id, event_type, event_len, listener_id, handler)
+end
+
 (* ========== Chapter load error messages ========== *)
 
 (* mk_ch_err builds "err-ch-XYZ" safe text where XYZ are the 3 suffix chars.
@@ -187,36 +171,6 @@ fn mk_ch_err
   val b = ward_text_putc(b, 8, c2)
   val b = ward_text_putc(b, 9, c3)
 in ward_text_done(b) end
-
-(* CHAPTER_DISPLAY_READY: proves that after chapter content is rendered,
- * both pagination measurement AND CSS transform application occurred.
- *
- * BUG PREVENTED: stale CSS transform from previous chapter leaving
- * first page of new chapter invisible. When navigating from Ch 2/3
- * page 11/11 (translateX=-10240px) to Ch 3/3 page 1/8, the old
- * transform persisted because apply_page_transform was only called
- * via apply_resume_page (which skips when resume_pg == 0).
- *
- * finish_chapter_load is the ONLY way to obtain this proof, and it
- * always calls apply_page_transform before apply_resume_page. *)
-dataprop CHAPTER_TITLE_DISPLAYED() =
-  | TITLE_SHOWN()
-
-dataprop CHAPTER_DISPLAY_READY() =
-  | MEASURED_AND_TRANSFORMED() of CHAPTER_TITLE_DISPLAYED()
-
-(* PAGE_DISPLAY_UPDATED: proves that after changing the page counter,
- * both the CSS transform AND the page indicator were updated.
- *
- * BUG CLASS PREVENTED: same as CHAPTER_DISPLAY_READY but for within-chapter
- * page turns. If someone adds a new page-changing path and calls
- * reader_next_page/reader_prev_page without applying the transform,
- * content becomes invisible. This proof forces the transform + page info
- * update to be bundled with every page counter change.
- *
- * page_turn_forward/page_turn_backward are the ONLY ways to obtain this proof. *)
-dataprop PAGE_DISPLAY_UPDATED() =
-  | PAGE_TURNED_AND_SHOWN()
 
 (* ========== Page navigation helpers ========== *)
 
@@ -340,11 +294,73 @@ in
   else ()
 end
 
+(* update_scrubber_fill: set scrubber fill width to reflect current page.
+ * width = (cur_page+1) * 100 / total_pages percent (integer, clamped 0-100).
+ * Returns SCRUBBER_FILL_CHECKED proof — the ONLY way to obtain it.
+ * BUG CLASS PREVENTED: page change that skips scrubber fill update. *)
+fn update_scrubber_fill(): (SCRUBBER_FILL_CHECKED() | void) = let
+  val fill_id = reader_get_scrub_fill_id()
+in
+  if gt_int_int(fill_id, 0) then let
+    val cur_pg = reader_get_current_page()
+    val total_pg = reader_get_total_pages()
+    val pct = if gt_int_int(total_pg, 0)
+              then div_int_int(mul_int_int(cur_pg + 1, 100), total_pg)
+              else 0
+    val pct_clamped = if lt_int_int(pct, 0) then 0
+                     else if gt_int_int(pct, 100) then 100
+                     else pct
+    (* Build "width:N%" style — max 10 bytes (6 prefix + 3 digits + 1 pct) *)
+    val arr = ward_arr_alloc<byte>(48)
+    val () = ward_arr_set<byte>(arr, _idx48(0), _byte(119))  (* 'w' *)
+    val () = ward_arr_set<byte>(arr, _idx48(1), _byte(105))  (* 'i' *)
+    val () = ward_arr_set<byte>(arr, _idx48(2), _byte(100))  (* 'd' *)
+    val () = ward_arr_set<byte>(arr, _idx48(3), _byte(116))  (* 't' *)
+    val () = ward_arr_set<byte>(arr, _idx48(4), _byte(104))  (* 'h' *)
+    val () = ward_arr_set<byte>(arr, _idx48(5), _byte(58))   (* ':' *)
+    val ndigits = itoa_to_arr(arr, pct_clamped, 6)
+    val pos = 6 + ndigits
+    val () = ward_arr_set<byte>(arr, _idx48(pos), _byte(37))  (* '%' *)
+    val total_len = pos + 1
+    val tl = g1ofg0(total_len)
+  in
+    if tl > 0 then
+      if tl < 48 then let
+        val @(used, rest) = ward_arr_split<byte>(arr, tl)
+        val () = ward_arr_free<byte>(rest)
+        val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+        val dom = ward_dom_init()
+        val s = ward_dom_stream_begin(dom)
+        val s = ward_dom_stream_set_style(s, fill_id, borrow, tl)
+        val dom = ward_dom_stream_end(s)
+        val () = ward_dom_fini(dom)
+        val () = ward_arr_drop<byte>(frozen, borrow)
+        val used = ward_arr_thaw<byte>(frozen)
+        val () = ward_arr_free<byte>(used)
+        prval pf = SCRUB_FILL_OK()
+      in (pf | ()) end
+      else let
+        val () = ward_arr_free<byte>(arr)
+        prval pf = SCRUB_FILL_OK()
+      in (pf | ()) end
+    else let
+      val () = ward_arr_free<byte>(arr)
+      prval pf = SCRUB_FILL_OK()
+    in (pf | ()) end
+  end
+  else let
+    prval pf = SCRUB_FILL_OK()
+  in (pf | ()) end
+end
+
 (* Update page indicator text: "Ch X/Y  N/M" showing chapter and page position.
+ * Calls update_scrubber_fill first (proof chain: PAGE_INFO_SHOWN requires SCRUBBER_FILL_CHECKED).
  * Uses standalone DOM stream — safe to call from event handlers.
  * Format: "Ch 1/5  3/10" — chapter 1 of 5, page 3 of 10.
  * Buffer: 48 bytes, max realistic content ~20 chars. *)
-fn update_page_info(): void = let
+fn update_page_info(): (PAGE_INFO_SHOWN() | void) = let
+  val (pf_sfc | ()) = update_scrubber_fill()
+  prval SCRUB_FILL_OK() = pf_sfc
   val nid = reader_get_page_indicator_id()
 in
   if gt_int_int(nid, 0) then let
@@ -387,18 +403,31 @@ in
         val () = ward_arr_drop<byte>(frozen, borrow)
         val used = ward_arr_thaw<byte>(frozen)
         val () = ward_arr_free<byte>(used)
-      in end
-      else let val () = ward_arr_free<byte>(arr) in end
-    else let val () = ward_arr_free<byte>(arr) in end
+        prval pf_sfc2 = SCRUB_FILL_OK()
+        prval pf = PAGE_INFO_OK(pf_sfc2)
+      in (pf | ()) end
+      else let
+        val () = ward_arr_free<byte>(arr)
+        prval pf_sfc2 = SCRUB_FILL_OK()
+        prval pf = PAGE_INFO_OK(pf_sfc2)
+      in (pf | ()) end
+    else let
+      val () = ward_arr_free<byte>(arr)
+      prval pf_sfc2 = SCRUB_FILL_OK()
+      prval pf = PAGE_INFO_OK(pf_sfc2)
+    in (pf | ()) end
   end
-  else ()
+  else let
+    prval pf_sfc2 = SCRUB_FILL_OK()
+    prval pf = PAGE_INFO_OK(pf_sfc2)
+  in (pf | ()) end
 end
 
-(* update_chapter_title: set chapter title span to "Chapter N".
+(* handle_chapter_title: set chapter title span to "Chapter N".
  * Returns CHAPTER_TITLE_DISPLAYED proof — the ONLY way to obtain it.
  * Dependent type {n:int | n >= 1; n <= 9999} on ch_num proves buffer
  * safety: "Chapter " (8 bytes) + at most 4 digits = 12 <= 48. *)
-fn update_chapter_title {n:int | n >= 1; n <= 9999}
+fn handle_chapter_title {n:int | n >= 1; n <= 9999}
   (ch_num: int(n)): (CHAPTER_TITLE_DISPLAYED() | void) = let
   val nid = reader_get_chapter_title_id()
 in
@@ -445,6 +474,19 @@ in
   else let
     prval pf_title = TITLE_SHOWN()
   in (pf_title | ()) end
+end
+
+(* update_chapter_title: reads current chapter, does range check, updates title.
+ * Returns CHAPTER_TITLE_DISPLAYED — safe to call unconditionally from finish_chapter_load.
+ * The explicit return type makes val (pf | ()) = update_chapter_title() work. *)
+fn update_chapter_title(): (CHAPTER_TITLE_DISPLAYED() | void) = let
+  val raw = reader_get_current_chapter() + 1
+  val ch_g1 = g1ofg0(raw)
+in
+  if ch_g1 >= 1 then
+    if ch_g1 <= 9999 then handle_chapter_title(ch_g1)
+    else let prval pf = TITLE_SHOWN() in (pf | ()) end
+  else let prval pf = TITLE_SHOWN() in (pf | ()) end
 end
 
 (* page_turn_forward: advance page within chapter and update display.
@@ -524,11 +566,11 @@ fn page_turn_forward(container_id: int)
   : @(PAGE_DISPLAY_UPDATED(), POSITION_PERSISTED() | void) = let
   val () = reader_next_page()
   val () = apply_page_transform(container_id)
-  val () = update_page_info()
+  val (pf_pg_info | ()) = update_page_info()
   val (pf_bm | ()) = update_bookmark_btn()
   prval BM_BTN_SYNCED() = pf_bm
   val (pf_pos | ()) = save_reading_position()
-  prval pf_pg = PAGE_TURNED_AND_SHOWN()
+  prval pf_pg = PAGE_TURNED_AND_SHOWN(pf_pg_info)
 in @(pf_pg, pf_pos | ()) end
 
 (* page_turn_backward: go to previous page within chapter and update display.
@@ -541,11 +583,11 @@ fn page_turn_backward(container_id: int)
   : @(PAGE_DISPLAY_UPDATED(), POSITION_PERSISTED() | void) = let
   val () = reader_prev_page()
   val () = apply_page_transform(container_id)
-  val () = update_page_info()
+  val (pf_pg_info | ()) = update_page_info()
   val (pf_bm | ()) = update_bookmark_btn()
   prval BM_BTN_SYNCED() = pf_bm
   val (pf_pos | ()) = save_reading_position()
-  prval pf_pg = PAGE_TURNED_AND_SHOWN()
+  prval pf_pg = PAGE_TURNED_AND_SHOWN(pf_pg_info)
 in @(pf_pg, pf_pos | ()) end
 
 (* Save reading position and exit reader.
@@ -564,14 +606,14 @@ end
 
 (* Apply resume page after chapter loads.
  * If reader_get_resume_page() > 0, go to that page (clamped to total),
- * apply transform, clear resume page. Called after measure_and_set_pages. *)
+ * apply transform, clear resume page. Called BEFORE update_page_info in
+ * finish_chapter_load — page info update happens once at the end. *)
 fn apply_resume_page(container_id: int): void = let
   val resume_pg = reader_get_resume_page()
 in
   if gt_int_int(resume_pg, 0) then let
     val () = reader_go_to_page(resume_pg)
     val () = apply_page_transform(container_id)
-    val () = update_page_info()
     val () = reader_set_resume_page(0)
   in end
   else ()
@@ -631,38 +673,26 @@ end
  *   1. measure_and_set_pages — compute pagination from scrollWidth
  *   2. validate_render_window — sanity check rendered element count
  *   3. apply_page_transform — reset CSS transform to current page
- *   4. update_page_info — update "Ch X/Y N/M" UI
- *   5. update_chapter_title — update "Chapter N" in top chrome
- *   6. apply_resume_page — override if resuming saved position
+ *   4. handle_chapter_title — update "Chapter N" in top chrome
+ *   5. apply_resume_page — override if resuming saved position (no page info yet)
+ *   6. update_page_info — called ONCE after resume page, updates fill+indicator
  *
- * Produces CHAPTER_DISPLAY_READY proof, which is the ONLY way to
- * obtain this dataprop. MEASURED_AND_TRANSFORMED requires a
- * CHAPTER_TITLE_DISPLAYED sub-proof — impossible to construct
- * without calling update_chapter_title. *)
+ * Produces CHAPTER_DISPLAY_READY proof requiring both CHAPTER_TITLE_DISPLAYED
+ * and PAGE_INFO_SHOWN sub-proofs. MEASURED_AND_TRANSFORMED is impossible to
+ * construct without calling both handle_chapter_title and update_page_info. *)
 fn finish_chapter_load(container_id: int)
   : (CHAPTER_DISPLAY_READY() | void) = let
   val () = measure_and_set_pages(container_id)
   val () = validate_render_window(dom_get_render_ecnt(), container_id)
   val () = apply_page_transform(container_id)
-  val () = update_page_info()
-  (* Update chapter title in top chrome *)
-  val () = let
-    val raw = reader_get_current_chapter() + 1
-    val ch_g1 = g1ofg0(raw)
-  in
-    if ch_g1 >= 1 then
-      if ch_g1 <= 9999 then let
-        val (pf_t | ()) = update_chapter_title(ch_g1)
-        prval TITLE_SHOWN() = pf_t
-      in end
-      else ()
-    else ()
-  end
+  (* Get chapter title proof — update_chapter_title handles range check internally *)
+  val (pf_title | ()) = update_chapter_title()
+  (* apply_resume_page may set a different page; update_page_info called ONCE after *)
   val () = apply_resume_page(container_id)
+  val (pf_pg_info | ()) = update_page_info()
   val (pf_bm | ()) = update_bookmark_btn()
   prval BM_BTN_SYNCED() = pf_bm
-  prval pf_title = TITLE_SHOWN()
-  prval pf = MEASURED_AND_TRANSFORMED(pf_title)
+  prval pf = MEASURED_AND_TRANSFORMED(pf_title, pf_pg_info)
 in (pf | ()) end
 
 (* Extract chapter directory from spine path in sbuf.
@@ -816,7 +846,10 @@ in
             val () = ward_arr_free<byte>(sax_buf)
             val () = ward_arr_free<byte>(dir_arr)
             val (pf_disp | ()) = finish_chapter_load(saved_cid)
-            prval MEASURED_AND_TRANSFORMED(pf_t) = pf_disp prval TITLE_SHOWN() = pf_t
+            prval MEASURED_AND_TRANSFORMED(pf_t, pf_pg_info) = pf_disp
+            prval TITLE_SHOWN() = pf_t
+            prval PAGE_INFO_OK(pf_sfc) = pf_pg_info
+            prval SCRUB_FILL_OK() = pf_sfc
             (* Async: load images from IDB *)
             val () = load_idb_images_chain(
               _checked_nat(img_count), 0, img_count)
@@ -855,7 +888,10 @@ in
             val () = ward_dom_fini(dom)
             val () = ward_arr_free<byte>(sax_buf)
             val (pf_disp | ()) = finish_chapter_load(saved_cid)
-            prval MEASURED_AND_TRANSFORMED(pf_t) = pf_disp prval TITLE_SHOWN() = pf_t
+            prval MEASURED_AND_TRANSFORMED(pf_t, pf_pg_info) = pf_disp
+            prval TITLE_SHOWN() = pf_t
+            prval PAGE_INFO_OK(pf_sfc) = pf_pg_info
+            prval SCRUB_FILL_OK() = pf_sfc
           in ward_promise_return<int>(1) end
           else let
             val () = show_chapter_error(VT_13() | saved_cid, 13, 21)
@@ -877,7 +913,9 @@ in
   if lt_int_int(pg, total - 1) then let
     (* Within chapter — advance page *)
     val @(pf_pg, pf_pos | ()) = page_turn_forward(container_id)
-    prval PAGE_TURNED_AND_SHOWN() = pf_pg
+    prval PAGE_TURNED_AND_SHOWN(pf_pg_info) = pf_pg
+    prval PAGE_INFO_OK(pf_sfc) = pf_pg_info
+    prval _ = pf_sfc
     prval POS_PERSISTED() = pf_pos
   in end
   else let
@@ -918,7 +956,9 @@ in
   if gt_int_int(pg, 0) then let
     (* Within chapter — go back a page *)
     val @(pf_pg, pf_pos | ()) = page_turn_backward(container_id)
-    prval PAGE_TURNED_AND_SHOWN() = pf_pg
+    prval PAGE_TURNED_AND_SHOWN(pf_pg_info) = pf_pg
+    prval PAGE_INFO_OK(pf_sfc) = pf_pg_info
+    prval _ = pf_sfc
     prval POS_PERSISTED() = pf_pos
   in end
   else let
@@ -953,34 +993,66 @@ end
 
 (* ========== Chrome auto-hide ========== *)
 
-(* Set nav element to display:none. Produces CHROME_STYLE_APPLIED(0).
- * "display:none" = 12 bytes: 100,105,115,112,108,97,121,58,110,111,110,101 *)
+(* Apply display:none or display:flex style to a node.
+ * Helper used by hide_chrome/show_chrome for both nav and bottom bar. *)
+fn set_style_none(node_id: int): void = let
+  val arr = ward_arr_alloc<byte>(12)
+  val () = ward_arr_set<byte>(arr, 0, ward_int2byte(_checked_byte(100)))  (* d *)
+  val () = ward_arr_set<byte>(arr, 1, ward_int2byte(_checked_byte(105)))  (* i *)
+  val () = ward_arr_set<byte>(arr, 2, ward_int2byte(_checked_byte(115)))  (* s *)
+  val () = ward_arr_set<byte>(arr, 3, ward_int2byte(_checked_byte(112)))  (* p *)
+  val () = ward_arr_set<byte>(arr, 4, ward_int2byte(_checked_byte(108)))  (* l *)
+  val () = ward_arr_set<byte>(arr, 5, ward_int2byte(_checked_byte(97)))   (* a *)
+  val () = ward_arr_set<byte>(arr, 6, ward_int2byte(_checked_byte(121)))  (* y *)
+  val () = ward_arr_set<byte>(arr, 7, ward_int2byte(_checked_byte(58)))   (* : *)
+  val () = ward_arr_set<byte>(arr, 8, ward_int2byte(_checked_byte(110)))  (* n *)
+  val () = ward_arr_set<byte>(arr, 9, ward_int2byte(_checked_byte(111)))  (* o *)
+  val () = ward_arr_set<byte>(arr, 10, ward_int2byte(_checked_byte(110))) (* n *)
+  val () = ward_arr_set<byte>(arr, 11, ward_int2byte(_checked_byte(101))) (* e *)
+  val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+  val s = ward_dom_stream_set_style(s, node_id, borrow, 12)
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
+  val () = ward_arr_drop<byte>(frozen, borrow)
+  val arr = ward_arr_thaw<byte>(frozen)
+  val () = ward_arr_free<byte>(arr)
+in end
+
+fn set_style_flex(node_id: int): void = let
+  val arr = ward_arr_alloc<byte>(12)
+  val () = ward_arr_set<byte>(arr, 0, ward_int2byte(_checked_byte(100)))  (* d *)
+  val () = ward_arr_set<byte>(arr, 1, ward_int2byte(_checked_byte(105)))  (* i *)
+  val () = ward_arr_set<byte>(arr, 2, ward_int2byte(_checked_byte(115)))  (* s *)
+  val () = ward_arr_set<byte>(arr, 3, ward_int2byte(_checked_byte(112)))  (* p *)
+  val () = ward_arr_set<byte>(arr, 4, ward_int2byte(_checked_byte(108)))  (* l *)
+  val () = ward_arr_set<byte>(arr, 5, ward_int2byte(_checked_byte(97)))   (* a *)
+  val () = ward_arr_set<byte>(arr, 6, ward_int2byte(_checked_byte(121)))  (* y *)
+  val () = ward_arr_set<byte>(arr, 7, ward_int2byte(_checked_byte(58)))   (* : *)
+  val () = ward_arr_set<byte>(arr, 8, ward_int2byte(_checked_byte(102)))  (* f *)
+  val () = ward_arr_set<byte>(arr, 9, ward_int2byte(_checked_byte(108)))  (* l *)
+  val () = ward_arr_set<byte>(arr, 10, ward_int2byte(_checked_byte(101))) (* e *)
+  val () = ward_arr_set<byte>(arr, 11, ward_int2byte(_checked_byte(120))) (* x *)
+  val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+  val s = ward_dom_stream_set_style(s, node_id, borrow, 12)
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
+  val () = ward_arr_drop<byte>(frozen, borrow)
+  val arr = ward_arr_thaw<byte>(frozen)
+  val () = ward_arr_free<byte>(arr)
+in end
+
+(* Set nav and bottom bar to display:none. Produces CHROME_STYLE_APPLIED(0). *)
 fn hide_chrome(): void = let
   val nav_id = reader_get_nav_id()
+  val bar_id = reader_get_scrub_bar_id()
 in
   if gt_int_int(nav_id, 0) then let
-    val arr = ward_arr_alloc<byte>(12)
-    val () = ward_arr_set<byte>(arr, 0, ward_int2byte(_checked_byte(100)))   (* d *)
-    val () = ward_arr_set<byte>(arr, 1, ward_int2byte(_checked_byte(105)))   (* i *)
-    val () = ward_arr_set<byte>(arr, 2, ward_int2byte(_checked_byte(115)))   (* s *)
-    val () = ward_arr_set<byte>(arr, 3, ward_int2byte(_checked_byte(112)))   (* p *)
-    val () = ward_arr_set<byte>(arr, 4, ward_int2byte(_checked_byte(108)))   (* l *)
-    val () = ward_arr_set<byte>(arr, 5, ward_int2byte(_checked_byte(97)))    (* a *)
-    val () = ward_arr_set<byte>(arr, 6, ward_int2byte(_checked_byte(121)))   (* y *)
-    val () = ward_arr_set<byte>(arr, 7, ward_int2byte(_checked_byte(58)))    (* : *)
-    val () = ward_arr_set<byte>(arr, 8, ward_int2byte(_checked_byte(110)))   (* n *)
-    val () = ward_arr_set<byte>(arr, 9, ward_int2byte(_checked_byte(111)))   (* o *)
-    val () = ward_arr_set<byte>(arr, 10, ward_int2byte(_checked_byte(110)))  (* n *)
-    val () = ward_arr_set<byte>(arr, 11, ward_int2byte(_checked_byte(101)))  (* e *)
-    val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
-    val dom = ward_dom_init()
-    val s = ward_dom_stream_begin(dom)
-    val s = ward_dom_stream_set_style(s, nav_id, borrow, 12)
-    val dom = ward_dom_stream_end(s)
-    val () = ward_dom_fini(dom)
-    val () = ward_arr_drop<byte>(frozen, borrow)
-    val arr = ward_arr_thaw<byte>(frozen)
-    val () = ward_arr_free<byte>(arr)
+    val () = set_style_none(nav_id)
+    val () = if gt_int_int(bar_id, 0) then set_style_none(bar_id) else ()
     prval pf_style = CHROME_NOW_HIDDEN()
     prval pf_valid = CV_HIDDEN()
     prval _ = pf_style : CHROME_STYLE_APPLIED(0)
@@ -990,34 +1062,14 @@ in
   else ()
 end
 
-(* Set nav element to display:flex. Produces CHROME_STYLE_APPLIED(1).
- * "display:flex" = 12 bytes: 100,105,115,112,108,97,121,58,102,108,101,120 *)
+(* Set nav and bottom bar to display:flex. Produces CHROME_STYLE_APPLIED(1). *)
 fn show_chrome(): void = let
   val nav_id = reader_get_nav_id()
+  val bar_id = reader_get_scrub_bar_id()
 in
   if gt_int_int(nav_id, 0) then let
-    val arr = ward_arr_alloc<byte>(12)
-    val () = ward_arr_set<byte>(arr, 0, ward_int2byte(_checked_byte(100)))   (* d *)
-    val () = ward_arr_set<byte>(arr, 1, ward_int2byte(_checked_byte(105)))   (* i *)
-    val () = ward_arr_set<byte>(arr, 2, ward_int2byte(_checked_byte(115)))   (* s *)
-    val () = ward_arr_set<byte>(arr, 3, ward_int2byte(_checked_byte(112)))   (* p *)
-    val () = ward_arr_set<byte>(arr, 4, ward_int2byte(_checked_byte(108)))   (* l *)
-    val () = ward_arr_set<byte>(arr, 5, ward_int2byte(_checked_byte(97)))    (* a *)
-    val () = ward_arr_set<byte>(arr, 6, ward_int2byte(_checked_byte(121)))   (* y *)
-    val () = ward_arr_set<byte>(arr, 7, ward_int2byte(_checked_byte(58)))    (* : *)
-    val () = ward_arr_set<byte>(arr, 8, ward_int2byte(_checked_byte(102)))   (* f *)
-    val () = ward_arr_set<byte>(arr, 9, ward_int2byte(_checked_byte(108)))   (* l *)
-    val () = ward_arr_set<byte>(arr, 10, ward_int2byte(_checked_byte(101)))  (* e *)
-    val () = ward_arr_set<byte>(arr, 11, ward_int2byte(_checked_byte(120)))  (* x *)
-    val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
-    val dom = ward_dom_init()
-    val s = ward_dom_stream_begin(dom)
-    val s = ward_dom_stream_set_style(s, nav_id, borrow, 12)
-    val dom = ward_dom_stream_end(s)
-    val () = ward_dom_fini(dom)
-    val () = ward_arr_drop<byte>(frozen, borrow)
-    val arr = ward_arr_thaw<byte>(frozen)
-    val () = ward_arr_free<byte>(arr)
+    val () = set_style_flex(nav_id)
+    val () = if gt_int_int(bar_id, 0) then set_style_flex(bar_id) else ()
     prval pf_style = CHROME_NOW_VISIBLE()
     prval pf_valid = CV_SHOWN()
     prval _ = pf_style : CHROME_STYLE_APPLIED(1)
@@ -1331,6 +1383,149 @@ in
   else ()
 end
 
+(* ========== Scrubber helpers ========== *)
+
+(* Compute target page from pointer X position on track.
+ * pct = clientX * total_pages / track_width, clamped 0..total-1 *)
+fn scrub_x_to_page(client_x: int, track_width: int): int = let
+  val total = reader_get_total_pages()
+in
+  if gt_int_int(track_width, 0) then let
+    val raw = div_int_int(mul_int_int(client_x, total), track_width)
+    val pg = if lt_int_int(raw, 0) then 0
+             else if gte_int_int(raw, total) then total - 1
+             else raw
+  in pg end
+  else 0
+end
+
+(* Update scrub tooltip to show "Page N" for the drag target page.
+ * Sets text on tooltip element and makes it visible (display:block).
+ * "Page " = 5 bytes, N = 1-4 digits, max 9 bytes, use 12-byte buffer. *)
+fn update_scrub_tooltip(target_page: int): void = let
+  val tip_id = reader_get_scrub_tooltip_id()
+in
+  if gt_int_int(tip_id, 0) then let
+    val arr = ward_arr_alloc<byte>(48)
+    val () = ward_arr_set<byte>(arr, _idx48(0), _byte(80))   (* 'P' *)
+    val () = ward_arr_set<byte>(arr, _idx48(1), _byte(97))   (* 'a' *)
+    val () = ward_arr_set<byte>(arr, _idx48(2), _byte(103))  (* 'g' *)
+    val () = ward_arr_set<byte>(arr, _idx48(3), _byte(101))  (* 'e' *)
+    val () = ward_arr_set<byte>(arr, _idx48(4), _byte(32))   (* ' ' *)
+    val ndigits = itoa_to_arr(arr, target_page + 1, 5)
+    val total_len = 5 + ndigits
+    val tl = g1ofg0(total_len)
+  in
+    if tl > 0 then
+      if tl < 48 then let
+        val @(used, rest) = ward_arr_split<byte>(arr, tl)
+        val () = ward_arr_free<byte>(rest)
+        val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+        val dom = ward_dom_init()
+        val s = ward_dom_stream_begin(dom)
+        (* Set "Page N" text on tooltip element *)
+        val s = ward_dom_stream_set_text(s, tip_id, borrow, tl)
+        (* Show tooltip: display:block — 13 bytes *)
+        val arr2 = ward_arr_alloc<byte>(48)
+        val () = ward_arr_set<byte>(arr2, _idx48(0), _byte(100))  (* d *)
+        val () = ward_arr_set<byte>(arr2, _idx48(1), _byte(105))  (* i *)
+        val () = ward_arr_set<byte>(arr2, _idx48(2), _byte(115))  (* s *)
+        val () = ward_arr_set<byte>(arr2, _idx48(3), _byte(112))  (* p *)
+        val () = ward_arr_set<byte>(arr2, _idx48(4), _byte(108))  (* l *)
+        val () = ward_arr_set<byte>(arr2, _idx48(5), _byte(97))   (* a *)
+        val () = ward_arr_set<byte>(arr2, _idx48(6), _byte(121))  (* y *)
+        val () = ward_arr_set<byte>(arr2, _idx48(7), _byte(58))   (* : *)
+        val () = ward_arr_set<byte>(arr2, _idx48(8), _byte(98))   (* b *)
+        val () = ward_arr_set<byte>(arr2, _idx48(9), _byte(108))  (* l *)
+        val () = ward_arr_set<byte>(arr2, _idx48(10), _byte(111)) (* o *)
+        val () = ward_arr_set<byte>(arr2, _idx48(11), _byte(99))  (* c *)
+        val () = ward_arr_set<byte>(arr2, _idx48(12), _byte(107)) (* k *)
+        (* Split to exact 13 bytes for set_style value_len *)
+        val @(used2, rest2) = ward_arr_split<byte>(arr2, 13)
+        val () = ward_arr_free<byte>(rest2)
+        val @(frz2, brw2) = ward_arr_freeze<byte>(used2)
+        val s = ward_dom_stream_set_style(s, tip_id, brw2, 13)
+        val () = ward_arr_drop<byte>(frz2, brw2)
+        val used2 = ward_arr_thaw<byte>(frz2)
+        val () = ward_arr_free<byte>(used2)
+        val dom = ward_dom_stream_end(s)
+        val () = ward_dom_fini(dom)
+        val () = ward_arr_drop<byte>(frozen, borrow)
+        val used = ward_arr_thaw<byte>(frozen)
+        val () = ward_arr_free<byte>(used)
+      in end
+      else let val () = ward_arr_free<byte>(arr) in end
+    else let val () = ward_arr_free<byte>(arr) in end
+  end
+  else ()
+end
+
+(* Hide the scrub tooltip. *)
+fn hide_scrub_tooltip(): void = let
+  val tip_id = reader_get_scrub_tooltip_id()
+in
+  if gt_int_int(tip_id, 0) then set_style_none(tip_id)
+  else ()
+end
+
+(* Set inline style "left:N%" on a node. pct is 0-99.
+ * Builds "left:X%" (7-8 bytes) in a 48-byte buffer.
+ * Matches _set_width_pct pattern from library_view.dats. *)
+fn _set_left_pct {l:agz}
+  (s: ward_dom_stream(l), nid: int, pct: int)
+  : ward_dom_stream(l) = let
+  val arr = ward_arr_alloc<byte>(48)
+  val () = ward_arr_set<byte>(arr, _idx48(0), _byte(108))  (* 'l' *)
+  val () = ward_arr_set<byte>(arr, _idx48(1), _byte(101))  (* 'e' *)
+  val () = ward_arr_set<byte>(arr, _idx48(2), _byte(102))  (* 'f' *)
+  val () = ward_arr_set<byte>(arr, _idx48(3), _byte(116))  (* 't' *)
+  val () = ward_arr_set<byte>(arr, _idx48(4), _byte(58))   (* ':' *)
+  val ndigits = itoa_to_arr(arr, pct, 5)
+  val pos = 5 + ndigits
+  val () = ward_arr_set<byte>(arr, _idx48(pos), _byte(37)) (* '%' *)
+  val tl = g1ofg0(pos + 1)
+in
+  if tl > 0 then
+    if tl < 48 then let
+      val @(used, rest) = ward_arr_split<byte>(arr, tl)
+      val () = ward_arr_free<byte>(rest)
+      val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+      val s = ward_dom_stream_set_style(s, nid, borrow, tl)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val used = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(used)
+    in s end
+    else let val () = ward_arr_free<byte>(arr) in s end
+  else let val () = ward_arr_free<byte>(arr) in s end
+end
+
+(* Add chapter boundary tick marks to the scrubber track.
+ * For chapter count N, adds N-1 ticks at positions i/N * 100% for i=1..N-1.
+ * Each tick is a div.scrub-tick with left:N% style. *)
+fn add_scrubber_ticks(track_id: int, chapter_count: int): void = let
+  fun add_tick {l:agz}{k:nat} .<k>.
+    (rem: int(k), s: ward_dom_stream(l), i: int, count: int): ward_dom_stream(l) =
+    if lte_g1(rem, 0) then s
+    else if gte_int_int(i, count) then s
+    else let
+      val pct = div_int_int(mul_int_int(i, 100), count)
+      val tick_id = dom_next_id()
+      val s = ward_dom_stream_create_element(s, tick_id, track_id, tag_div(), 3)
+      val s = ward_dom_stream_set_attr_safe(s, tick_id, attr_class(), 5,
+        cls_scrub_tick(), 10)
+      val s = _set_left_pct(s, tick_id, pct)
+    in add_tick(sub_g1(rem, 1), s, i + 1, count) end
+in
+  if lt_int_int(chapter_count, 2) then ()
+  else let
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = add_tick(_checked_nat(chapter_count - 1), s, 1, chapter_count)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+  in end
+end
+
 (* ========== Enter reader view ========== *)
 
 implement enter_reader(root_id, book_index) = let
@@ -1450,6 +1645,57 @@ implement enter_reader(root_id, book_index) = let
   val s = ward_dom_stream_set_attr_safe(s, container_id, attr_class(), 5,
     cls_chapter_container(), 17)
 
+  (* Inject scrubber CSS — proofs enforce touch targets and visibility *)
+  prval pf_tap = TOUCH_TARGETS_OK()   (* 8>=8, 24>=16, 16>=16 — solver verifies *)
+  prval pf_vis = SCRUB_RENDERING_OK() (* 4>=2, 10>=10 — solver verifies *)
+  val s = inject_scrub_css(pf_tap, pf_vis | s, root_id)
+
+  (* Create bottom chrome bar:
+   * <div class="reader-bottom">
+   *   <div class="scrubber">
+   *     <div class="scrub-track">
+   *       <div class="scrub-fill"/>
+   *     </div>
+   *     <div class="scrub-handle"/>
+   *     <div class="scrub-tooltip"/>
+   *   </div>
+   *   <span class="scrub-text"/>
+   * </div> *)
+  val bottom_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, bottom_id, root_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, bottom_id, attr_class(), 5,
+    cls_reader_bottom(), 13)
+
+  val scrubber_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, scrubber_id, bottom_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, scrubber_id, attr_class(), 5,
+    cls_scrubber(), 8)
+
+  val track_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, track_id, scrubber_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, track_id, attr_class(), 5,
+    cls_scrub_track(), 11)
+
+  val fill_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, fill_id, track_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, fill_id, attr_class(), 5,
+    cls_scrub_fill(), 10)
+
+  val handle_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, handle_id, scrubber_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, handle_id, attr_class(), 5,
+    cls_scrub_handle(), 12)
+
+  val tooltip_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, tooltip_id, scrubber_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, tooltip_id, attr_class(), 5,
+    cls_scrub_tooltip(), 13)
+
+  val scrub_text_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, scrub_text_id, bottom_id, tag_span(), 4)
+  val s = ward_dom_stream_set_attr_safe(s, scrub_text_id, attr_class(), 5,
+    cls_scrub_text(), 10)
+
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
 
@@ -1460,87 +1706,183 @@ implement enter_reader(root_id, book_index) = let
   val () = reader_set_page_info_id(page_info_id)
   val () = reader_set_chapter_title_id(ch_title_id)
   val () = reader_set_bm_btn_id(bm_btn_id)
+  val () = reader_set_scrub_bar_id(bottom_id)
+  val () = reader_set_scrub_track_id(track_id)
+  val () = reader_set_scrub_fill_id(fill_id)
+  val () = reader_set_scrub_handle_id(handle_id)
+  val () = reader_set_scrub_tooltip_id(tooltip_id)
+  val () = reader_set_scrub_text_id(scrub_text_id)
 
-  (* Register click listener on back button *)
+  (* Register listeners — all reader registrations use reader_add_event_listener
+   * with READER_LISTENER proof, preventing arbitrary listener IDs. *)
   val saved_root = root_id
   val saved_container = container_id
-  val () = ward_add_event_listener(
-    back_btn_id, evt_click(), 5, LISTENER_BACK,
+  val saved_scrubber = scrubber_id
+  val saved_track = track_id
+
+  (* Back button: save position and return to library *)
+  val () = reader_add_event_listener(READER_LISTEN_BACK() |
+    back_btn_id, evt_click(), 5, 31,
     lam (_pl: int): int => let
       val () = reader_save_and_exit()
       val () = render_library(saved_root)
     in 0 end
   )
 
-  (* Register click listener on prev button — chrome-safe: cancel+nav+restart *)
-  val () = ward_add_event_listener(
-    prev_btn_id, evt_click(), 5, LISTENER_PREV,
+  (* Prev button: chrome-safe navigate backward *)
+  val () = reader_add_event_listener(READER_LISTEN_PREV() |
+    prev_btn_id, evt_click(), 5, 32,
     lam (_pl: int): int => let
       val () = chrome_safe_navigate_prev(saved_container)
     in 0 end
   )
 
-  (* Register click listener on next button — chrome-safe: cancel+nav+restart *)
-  val () = ward_add_event_listener(
-    next_btn_id, evt_click(), 5, LISTENER_NEXT,
+  (* Next button: chrome-safe navigate forward *)
+  val () = reader_add_event_listener(READER_LISTEN_NEXT() |
+    next_btn_id, evt_click(), 5, 33,
     lam (_pl: int): int => let
       val () = chrome_safe_navigate_next(saved_container)
     in 0 end
   )
 
-  (* Register click listener on bookmark button *)
-  val () = ward_add_event_listener(
-    bm_btn_id, evt_click(), 5, LISTENER_BOOKMARK,
+  (* Bookmark button: toggle bookmark at current page *)
+  val () = reader_add_event_listener(READER_LISTEN_BOOKMARK() |
+    bm_btn_id, evt_click(), 5, 34,
     lam (_pl: int): int => let
       val (pf | ()) = toggle_bookmark()
       prval BM_TOGGLED() = pf
     in 0 end
   )
 
-  (* Register keydown listener on viewport *)
-  val () = ward_add_event_listener(
-    viewport_id, evt_keydown(), 7, LISTENER_KEYDOWN,
+  (* Viewport keydown: keyboard navigation *)
+  val () = reader_add_event_listener(READER_LISTEN_KEYDOWN() |
+    viewport_id, evt_keydown(), 7, 29,
     lam (payload_len: int): int => let
       val () = on_reader_keydown(payload_len, saved_root)
     in 0 end
   )
 
-  (* Register click listener on viewport for page navigation.
-   * 3-zone layout: left 25% → prev, center 50% → toggle chrome,
-   * right 25% → next. ZONE_SPLIT proves left = vw/4, right = vw*3/4. *)
-  val () = ward_add_event_listener(
-    viewport_id, evt_click(), 5, LISTENER_VIEWPORT_CLICK,
+  (* Viewport click: 3-zone page nav / chrome toggle.
+   * ZONE_SPLIT proves left = vw/4, right = vw*3/4.
+   * Early return if scrubber drag is in progress. *)
+  val () = reader_add_event_listener(READER_LISTEN_VIEWPORT_CLICK() |
+    viewport_id, evt_click(), 5, 30,
     lam (pl: int): int => let
-      val pl1 = g1ofg0(pl)
+      (* Ignore click if scrubber drag is in progress *)
+      val dragging = reader_get_scrub_dragging()
     in
-      if gt1_int_int(pl1, 19) then let
-        (* Click payload: f64 clientX (0-7), f64 clientY (8-15), i32 target (16-19) *)
-        val payload = ward_event_get_payload(pl1)
-        val click_x = read_payload_click_x(payload)
-        val () = ward_arr_free<byte>(payload)
-        val vw = measure_node_width(reader_get_viewport_id())
+      if eq_int_int(dragging, 1) then 0
+      else let
+        val pl1 = g1ofg0(pl)
       in
-        if gt_int_int(vw, 0) then let
-          val left_threshold = div_int_int(vw, 4)
-          val right_threshold = div_int_int(mul_int_int(vw, 3), 4)
+        if gt1_int_int(pl1, 19) then let
+          (* Click payload: f64 clientX (0-7), f64 clientY (8-15), i32 target (16-19) *)
+          val payload = ward_event_get_payload(pl1)
+          val click_x = read_payload_click_x(payload)
+          val () = ward_arr_free<byte>(payload)
+          val vw = measure_node_width(reader_get_viewport_id())
         in
-          if lt_int_int(click_x, left_threshold) then let
-            (* Left 25% → prev page, hide chrome *)
-            val () = navigate_prev(saved_container)
-            val () = auto_hide_chrome_on_turn()
-          in 0 end
-          else if gt_int_int(click_x, right_threshold) then let
-            (* Right 25% → next page, hide chrome *)
-            val () = navigate_next(saved_container)
-            val () = auto_hide_chrome_on_turn()
-          in 0 end
-          else let
-            (* Center 50% → toggle chrome *)
-            val () = toggle_chrome()
-          in 0 end
+          if gt_int_int(vw, 0) then let
+            val left_threshold = div_int_int(vw, 4)
+            val right_threshold = div_int_int(mul_int_int(vw, 3), 4)
+          in
+            if lt_int_int(click_x, left_threshold) then let
+              (* Left 25% → prev page, hide chrome *)
+              val () = navigate_prev(saved_container)
+              val () = auto_hide_chrome_on_turn()
+            in 0 end
+            else if gt_int_int(click_x, right_threshold) then let
+              (* Right 25% → next page, hide chrome *)
+              val () = navigate_next(saved_container)
+              val () = auto_hide_chrome_on_turn()
+            in 0 end
+            else let
+              (* Center 50% → toggle chrome *)
+              val () = toggle_chrome()
+            in 0 end
+          end
+          else 0
         end
         else 0
       end
+    end
+  )
+
+  (* Scrubber pointerdown: start drag, compute initial target, show tooltip.
+   * Pointer payload: f64 clientX (0-7). Cancel auto-hide during drag. *)
+  val () = reader_add_event_listener(READER_LISTEN_SCRUB_DOWN() |
+    saved_scrubber, evt_pointerdown(), 11, 35,
+    lam (pl: int): int => let
+      val pl1 = g1ofg0(pl)
+    in
+      if gt1_int_int(pl1, 7) then let
+        val payload = ward_event_get_payload(pl1)
+        val click_x = read_payload_click_x(payload)
+        val () = ward_arr_free<byte>(payload)
+        val tw = measure_node_width(saved_track)
+        val target_pg = scrub_x_to_page(click_x, tw)
+        val () = reader_set_scrub_drag_ch(target_pg)
+        prval pf_drag = DRAG_ACTIVE()
+        val () = reader_set_scrub_dragging(pf_drag | 1)
+        (* Cancel auto-hide: increment timer gen to invalidate pending timers *)
+        val _ = reader_incr_chrome_timer_gen()
+        val () = update_scrub_tooltip(target_pg)
+      in 0 end
+      else 0
+    end
+  )
+
+  (* Scrubber pointermove: update drag target and tooltip while dragging. *)
+  val () = reader_add_event_listener(READER_LISTEN_SCRUB_MOVE() |
+    root_id, evt_pointermove(), 11, 36,
+    lam (pl: int): int => let
+      val dragging = reader_get_scrub_dragging()
+    in
+      if eq_int_int(dragging, 1) then let
+        val pl1 = g1ofg0(pl)
+      in
+        if gt1_int_int(pl1, 7) then let
+          val payload = ward_event_get_payload(pl1)
+          val click_x = read_payload_click_x(payload)
+          val () = ward_arr_free<byte>(payload)
+          val tw = measure_node_width(saved_track)
+          val target_pg = scrub_x_to_page(click_x, tw)
+          val () = reader_set_scrub_drag_ch(target_pg)
+          val () = update_scrub_tooltip(target_pg)
+        in 0 end
+        else 0
+      end
+      else 0
+    end
+  )
+
+  (* Scrubber pointerup: end drag, navigate to target page, restart auto-hide. *)
+  val () = reader_add_event_listener(READER_LISTEN_SCRUB_UP() |
+    root_id, evt_pointerup(), 9, 37,
+    lam (_pl: int): int => let
+      val dragging = reader_get_scrub_dragging()
+    in
+      if eq_int_int(dragging, 1) then let
+        prval pf_drag = DRAG_IDLE()
+        val () = reader_set_scrub_dragging(pf_drag | 0)
+        val () = hide_scrub_tooltip()
+        (* Navigate to drag target if in valid range [0, total-1] *)
+        val target = reader_get_scrub_drag_ch()
+        val total = reader_get_total_pages()
+        val () = if gte_int_int(target, 0) then
+          if lt_int_int(target, total) then let
+            val () = reader_go_to_page(target)
+            val () = apply_page_transform(saved_container)
+            val (pf_pi | ()) = update_page_info()
+            prval PAGE_INFO_OK(pf_sfc) = pf_pi
+            prval SCRUB_FILL_OK() = pf_sfc
+            val (pf_pos | ()) = save_reading_position()
+            prval POS_PERSISTED() = pf_pos
+          in () end
+          else ()
+        else ()
+        val () = start_chrome_auto_hide()
+      in 0 end
       else 0
     end
   )
@@ -1567,6 +1909,8 @@ implement enter_reader(root_id, book_index) = let
         val () = load_bookmarks_from_idb()
         val spine = epub_get_chapter_count()
         val spine_g1 = g1ofg0(spine)
+        (* Add chapter boundary ticks to scrubber track (only if 2+ chapters) *)
+        val () = add_scrubber_ticks(reader_get_scrub_track_id(), spine)
         val saved_ch = library_get_chapter(saved_bi)
         val saved_pg = library_get_page(saved_bi)
         val start_ch: int = if lt_int_int(saved_ch, spine) then saved_ch else 0

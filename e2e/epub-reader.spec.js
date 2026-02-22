@@ -2619,4 +2619,79 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('scrubber bottom bar visible with chrome', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    page.on('crash', () => console.error('PAGE CRASHED'));
+
+    const epubBuffer = createEpub({
+      title: 'Scrubber Test',
+      author: 'Quire Bot',
+      chapters: 3,
+      paragraphsPerChapter: 15,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `scrubber-test-${vpTag}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open the book
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    // Verify reader-bottom exists
+    const readerBottom = page.locator('.reader-bottom');
+    await expect(readerBottom).toBeAttached();
+    await screenshot(page, 'scrubber-01-initial');
+
+    // Verify scrubber DOM structure exists
+    await expect(page.locator('.scrubber')).toBeAttached();
+    await expect(page.locator('.scrub-track')).toBeAttached();
+    await expect(page.locator('.scrub-fill')).toBeAttached();
+    await expect(page.locator('.scrub-handle')).toBeAttached();
+    await expect(page.locator('.scrub-tooltip')).toBeAttached();
+    await expect(page.locator('.scrub-text')).toBeAttached();
+
+    // Chrome is shown on reader entry — bottom bar should be visible
+    await expect(readerBottom).toBeVisible();
+
+    // After chrome auto-hides (wait 6s), bottom bar should hide too
+    await page.waitForTimeout(6000);
+    await expect(readerBottom).toBeHidden();
+    await screenshot(page, 'scrubber-02-chrome-hidden');
+
+    // Show chrome with center tap — bottom bar visible again
+    const vp2 = page.viewportSize();
+    const centerX = Math.floor(vp2.width / 2);
+    const centerY = Math.floor(vp2.height / 2);
+    await page.mouse.click(centerX, centerY);
+    await page.waitForTimeout(500);
+    await expect(readerBottom).toBeVisible();
+    await screenshot(page, 'scrubber-03-chrome-shown');
+
+    // Scrub-fill should have a width style (from update_scrubber_fill)
+    const fillStyle = await page.locator('.scrub-fill').getAttribute('style');
+    expect(fillStyle).toMatch(/width:/);
+    await screenshot(page, 'scrubber-04-fill-has-width');
+
+    // Navigate to next page and verify fill style is still present
+    await page.locator('.next-btn').click();
+    await page.waitForTimeout(500);
+    const fillStyle2 = await page.locator('.scrub-fill').getAttribute('style');
+    expect(fillStyle2).toMatch(/width:/);
+    await screenshot(page, 'scrubber-05-fill-after-page-turn');
+
+    // Verify no page crashes
+    expect(errors).toEqual([]);
+  });
+
 });

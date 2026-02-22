@@ -12,6 +12,7 @@ staload "./app_state.sats"
 staload "./dom.sats"
 
 staload "./arith.sats"
+staload "./drag_state.sats"
 
 implement reader_init() = let
   val st = app_state_load()
@@ -26,6 +27,14 @@ implement reader_init() = let
   val () = app_set_rdr_bm_count(st, 0)
   val () = app_set_rdr_bm_btn_id(st, 0)
   val () = app_set_rdr_bm_save_pending(st, 0)
+  val () = app_set_rdr_scrub_bar_id(st, 0)
+  val () = app_set_rdr_scrub_track_id(st, 0)
+  val () = app_set_rdr_scrub_fill_id(st, 0)
+  val () = app_set_rdr_scrub_handle_id(st, 0)
+  val () = app_set_rdr_scrub_tooltip_id(st, 0)
+  val () = app_set_rdr_scrub_text_id(st, 0)
+  val () = app_set_rdr_scrub_dragging(DRAG_IDLE() | st, 0)
+  val () = app_set_rdr_scrub_drag_ch(st, 0)
   val () = app_state_store(st)
 in end
 
@@ -50,6 +59,14 @@ implement reader_exit(pf) = let
   val () = app_set_rdr_bm_count(st, 0)
   val () = app_set_rdr_bm_btn_id(st, 0)
   val () = app_set_rdr_bm_save_pending(st, 0)
+  val () = app_set_rdr_scrub_bar_id(st, 0)
+  val () = app_set_rdr_scrub_track_id(st, 0)
+  val () = app_set_rdr_scrub_fill_id(st, 0)
+  val () = app_set_rdr_scrub_handle_id(st, 0)
+  val () = app_set_rdr_scrub_tooltip_id(st, 0)
+  val () = app_set_rdr_scrub_text_id(st, 0)
+  val () = app_set_rdr_scrub_dragging(DRAG_IDLE() | st, 0)
+  val () = app_set_rdr_scrub_drag_ch(st, 0)
   val () = app_state_store(st)
 in end
 
@@ -352,3 +369,103 @@ implement reader_set_bm_save_pending(v) = let
   val () = app_set_rdr_bm_save_pending(st, v)
   val () = app_state_store(st)
 in end
+
+(* ========== Scrubber state ========== *)
+
+implement reader_set_scrub_bar_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_scrub_bar_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_scrub_bar_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_scrub_bar_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_scrub_track_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_scrub_track_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_scrub_track_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_scrub_track_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_scrub_fill_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_scrub_fill_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_scrub_fill_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_scrub_fill_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_scrub_handle_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_scrub_handle_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_scrub_handle_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_scrub_handle_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_scrub_tooltip_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_scrub_tooltip_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_scrub_tooltip_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_scrub_tooltip_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_scrub_text_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_scrub_text_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_scrub_text_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_scrub_text_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_scrub_dragging{d}(pf | v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_scrub_dragging(pf | st, v)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_scrub_dragging() = let
+  val st = app_state_load()
+  val d = app_get_rdr_scrub_dragging(st)
+  val () = app_state_store(st)
+in
+  if d = 1 then 1 else 0
+end
+
+implement reader_set_scrub_drag_ch(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_scrub_drag_ch(st, v)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_scrub_drag_ch() = let
+  val st = app_state_load()
+  val v = app_get_rdr_scrub_drag_ch(st)
+  val () = app_state_store(st)
+in v end

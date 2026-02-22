@@ -9,6 +9,7 @@
  *)
 
 staload "./buf.sats"
+staload "./drag_state.sats"
 
 absvtype app_state = ptr
 
@@ -155,6 +156,24 @@ fun app_get_rdr_bm_btn_id(st: !app_state): int
 fun app_set_rdr_bm_btn_id(st: !app_state, v: int): void
 fun app_get_rdr_bm_save_pending(st: !app_state): int
 fun app_set_rdr_bm_save_pending(st: !app_state, v: int): void
+
+(* Scrubber state *)
+fun app_get_rdr_scrub_bar_id(st: !app_state): int
+fun app_set_rdr_scrub_bar_id(st: !app_state, v: int): void
+fun app_get_rdr_scrub_track_id(st: !app_state): int
+fun app_set_rdr_scrub_track_id(st: !app_state, v: int): void
+fun app_get_rdr_scrub_fill_id(st: !app_state): int
+fun app_set_rdr_scrub_fill_id(st: !app_state, v: int): void
+fun app_get_rdr_scrub_handle_id(st: !app_state): int
+fun app_set_rdr_scrub_handle_id(st: !app_state, v: int): void
+fun app_get_rdr_scrub_tooltip_id(st: !app_state): int
+fun app_set_rdr_scrub_tooltip_id(st: !app_state, v: int): void
+fun app_get_rdr_scrub_text_id(st: !app_state): int
+fun app_set_rdr_scrub_text_id(st: !app_state, v: int): void
+fun app_get_rdr_scrub_dragging(st: !app_state): int
+fun app_set_rdr_scrub_dragging{d:int}(pf: DRAG_STATE_VALID(d) | st: !app_state, v: int(d)): void
+fun app_get_rdr_scrub_drag_ch(st: !app_state): int
+fun app_set_rdr_scrub_drag_ch(st: !app_state, v: int): void
 
 (* EPUB state *)
 fun app_get_epub_spine_count(st: !app_state): int
@@ -328,6 +347,23 @@ fun _app_stg_save_pend(): int
 fun _app_set_stg_save_pend(v: int): void
 fun _app_stg_load_pend(): int
 fun _app_set_stg_load_pend(v: int): void
+
+(* Scrubber accessors *)
+fun _app_rdr_scrub_bar_id(): int
+fun _app_set_rdr_scrub_bar_id(v: int): void
+fun _app_rdr_scrub_track_id(): int
+fun _app_set_rdr_scrub_track_id(v: int): void
+fun _app_rdr_scrub_fill_id(): int
+fun _app_set_rdr_scrub_fill_id(v: int): void
+fun _app_rdr_scrub_handle_id(): int
+fun _app_set_rdr_scrub_handle_id(v: int): void
+fun _app_rdr_scrub_tooltip_id(): int
+fun _app_set_rdr_scrub_tooltip_id(v: int): void
+fun _app_rdr_scrub_text_id(): int
+fun _app_set_rdr_scrub_text_id(v: int): void
+fun _app_rdr_scrub_dragging(): int
+fun _app_rdr_scrub_drag_ch(): int
+fun _app_set_rdr_scrub_drag_ch(v: int): void
 
 (* EPUB accessors — per-buffer byte/i32 access (bounds-checked) *)
 fun _app_epub_spine_count(): int

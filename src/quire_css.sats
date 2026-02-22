@@ -90,6 +90,39 @@ fun stamp_nav_css {l:agz}{n:int | n >= NAV_CSS_LEN}
    btn_font: int(fs), btn_pad: int(ph))
   : (CSS_NAV_WRITTEN | void)
 
+(* ========== Scrubber CSS dataprops ========== *)
+
+(* Scrubber CSS property constants *)
+#define SCRUB_PAD_V 8          (* bottom bar vertical padding, px *)
+#define SCRUB_PAD_H 16         (* bottom bar horizontal padding, px *)
+#define SCRUB_BAR_H 24         (* scrubber container height, px *)
+#define SCRUB_TRACK_H 4        (* track line height, px *)
+#define SCRUB_HANDLE_SZ 16     (* handle diameter, px *)
+#define SCRUB_BOTTOM_Z 10      (* bottom bar z-index *)
+
+(* SCRUB_TAPPABLE: interactive elements meet minimum touch target sizes.
+ * BUG CLASS PREVENTED: untappable scrubber on mobile — if pad < 8,
+ * bar height < 16, or handle < 16, fingers can't reliably hit targets. *)
+dataprop SCRUB_TAPPABLE(pad_v: int, bar_h: int, handle_sz: int) =
+  | {pv:int | pv >= 8}{bh:int | bh >= 16}{hs:int | hs >= 16}
+    TOUCH_TARGETS_OK(pv, bh, hs)
+
+(* SCRUB_VISIBLE: visual elements are perceivable.
+ * BUG CLASS PREVENTED: invisible scrubber — if track height < 2
+ * or z-index < 10, scrubber hidden behind content. *)
+dataprop SCRUB_VISIBLE(track_h: int, z_idx: int) =
+  | {th:int | th >= 2}{zi:int | zi >= 10}
+    SCRUB_RENDERING_OK(th, zi)
+
+(* Scrubber CSS length — distinct stadef/define names prevent #define override.
+ * SCRUB_CSS_WRITES (type-level): number of _w4 calls.
+ * SCRUB_CSS_LEN_S (type-level): SCRUB_CSS_WRITES * 4 = byte count.
+ * SCRUB_CSS_LEN (dynamic-level): literal byte count for allocation.
+ * Solver unifies: if #define != stadef product, build fails. *)
+stadef SCRUB_CSS_WRITES = 234
+stadef SCRUB_CSS_LEN_S = SCRUB_CSS_WRITES * 4
+#define SCRUB_CSS_LEN 936
+
 (* ========== CSS injection functions ========== *)
 
 (* Create a <style> element under parent and fill it with app CSS. *)
@@ -103,3 +136,11 @@ fun inject_mgmt_css {l:agz}
 (* Inject reader-specific nav CSS as a separate <style> element. *)
 fun inject_nav_css {l:agz}
   (s: ward_dom_stream(l), parent: int): ward_dom_stream(l)
+
+(* Inject scrubber CSS — proofs on signature enforce CSS correctness.
+ * SCRUB_TAPPABLE proves touch targets are large enough.
+ * SCRUB_VISIBLE proves track height and z-index are sufficient. *)
+fun inject_scrub_css {l:agz}
+  (pf_tap: SCRUB_TAPPABLE(SCRUB_PAD_V, SCRUB_BAR_H, SCRUB_HANDLE_SZ),
+   pf_vis: SCRUB_VISIBLE(SCRUB_TRACK_H, SCRUB_BOTTOM_Z) |
+   s: ward_dom_stream(l), parent: int): ward_dom_stream(l)
