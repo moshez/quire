@@ -35,6 +35,15 @@ implement reader_init() = let
   val () = app_set_rdr_scrub_text_id(st, 0)
   val () = app_set_rdr_scrub_dragging(DRAG_IDLE() | st, 0)
   val () = app_set_rdr_scrub_drag_ch(st, 0)
+  val () = app_set_rdr_toc_panel_id(st, 0)
+  val () = app_set_rdr_toc_list_id(st, 0)
+  val () = app_set_rdr_toc_close_btn_id(st, 0)
+  val () = app_set_rdr_toc_bm_count_btn_id(st, 0)
+  val () = app_set_rdr_toc_switch_btn_id(st, 0)
+  val () = app_set_rdr_toc_view_mode(st, 0)
+  val () = app_set_rdr_toc_first_entry_id(st, 0)
+  val () = app_set_rdr_toc_entry_count(st, 0)
+  val () = app_set_rdr_bm_first_entry_id(st, 0)
   val () = app_state_store(st)
 in end
 
@@ -67,6 +76,15 @@ implement reader_exit(pf) = let
   val () = app_set_rdr_scrub_text_id(st, 0)
   val () = app_set_rdr_scrub_dragging(DRAG_IDLE() | st, 0)
   val () = app_set_rdr_scrub_drag_ch(st, 0)
+  val () = app_set_rdr_toc_panel_id(st, 0)
+  val () = app_set_rdr_toc_list_id(st, 0)
+  val () = app_set_rdr_toc_close_btn_id(st, 0)
+  val () = app_set_rdr_toc_bm_count_btn_id(st, 0)
+  val () = app_set_rdr_toc_switch_btn_id(st, 0)
+  val () = app_set_rdr_toc_view_mode(st, 0)
+  val () = app_set_rdr_toc_first_entry_id(st, 0)
+  val () = app_set_rdr_toc_entry_count(st, 0)
+  val () = app_set_rdr_bm_first_entry_id(st, 0)
   val () = app_state_store(st)
 in end
 
@@ -174,7 +192,7 @@ implement reader_remeasure_all() = ()
 implement reader_show_toc() = ()
 implement reader_hide_toc() = ()
 implement reader_toggle_toc() = ()
-implement reader_is_toc_visible() = false
+implement reader_is_toc_visible() = gt_int_int(reader_get_toc_view_mode(), 0)
 implement reader_get_toc_id() = 0
 implement reader_get_progress_bar_id() = 0
 implement reader_get_toc_index_for_node(node_id) = 0 - 1
@@ -467,5 +485,115 @@ in end
 implement reader_get_scrub_drag_ch() = let
   val st = app_state_load()
   val v = app_get_rdr_scrub_drag_ch(st)
+  val () = app_state_store(st)
+in v end
+
+(* ========== TOC panel state ========== *)
+
+implement reader_set_toc_panel_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_panel_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_toc_panel_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_panel_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_toc_list_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_list_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_toc_list_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_list_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_toc_close_btn_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_close_btn_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_toc_close_btn_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_close_btn_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_toc_bm_count_btn_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_bm_count_btn_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_toc_bm_count_btn_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_bm_count_btn_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_toc_switch_btn_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_switch_btn_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_toc_switch_btn_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_switch_btn_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_toc_view_mode(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_view_mode(st, v)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_toc_view_mode() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_view_mode(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_toc_first_entry_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_first_entry_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_toc_first_entry_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_first_entry_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_toc_entry_count(n) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_entry_count(st, n)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_toc_entry_count() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_entry_count(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_bm_first_entry_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_bm_first_entry_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_bm_first_entry_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_bm_first_entry_id(st)
   val () = app_state_store(st)
 in v end
