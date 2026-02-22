@@ -2820,34 +2820,23 @@ test.describe('EPUB Reader E2E', () => {
     // 2. After TOC chapter navigation, nav-back button appears
     // 3. Clicking nav-back restores the previous position
 
-    const { join } = await import('path');
-    const { generateTestEpub } = await import('./helpers/epub-gen.js');
-
-    const SCREENSHOT_DIR = '/tmp/e2e-screenshots';
-    const screenshot = async (page, name) => {
-      const vpTag = `${page.viewportSize().width}x${page.viewportSize().height}`;
-      await page.screenshot({ path: join(SCREENSHOT_DIR, `${name}-${vpTag}.png`) });
-    };
-
     const errors = [];
     page.on('pageerror', err => errors.push(err.message));
 
     // Create a 3-chapter EPUB with enough text for stable page counts
-    const epubData = await generateTestEpub({
+    const epubBuffer = createEpub({
       title: 'Position Stack Test',
       chapters: 3,
       paragraphsPerChapter: 6,
     });
 
     await page.goto('/');
-    await page.waitForSelector('#app', { timeout: 10000 });
+    await page.waitForSelector('.library-list', { timeout: 15000 });
 
-    const vpTag = `${page.viewportSize().width}x${page.viewportSize().height}`;
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
     const epubPath = join(SCREENSHOT_DIR, `pos-stack-test-${vpTag}.epub`);
-
-    const { writeFile, mkdir } = await import('fs/promises');
-    await mkdir(SCREENSHOT_DIR, { recursive: true });
-    await writeFile(epubPath, Buffer.from(epubData));
+    writeFileSync(epubPath, epubBuffer);
 
     const fileInput = page.locator('input[type="file"]');
     await fileInput.setInputFiles(epubPath);
