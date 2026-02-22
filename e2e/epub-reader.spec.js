@@ -145,6 +145,13 @@ test.describe('EPUB Reader E2E', () => {
     await expect(backBtn).toBeVisible();
     await expect(backBtn).toContainText('Back');
 
+    // --- Verify chapter title in top chrome ---
+    const chTitle = page.locator('.ch-title');
+    await expect(chTitle).toBeVisible();
+    const chTitleText = await chTitle.textContent();
+    expect(chTitleText).toMatch(/^Chapter \d+$/);
+    expect(chTitleText).toBe('Chapter 1');
+
     // --- Verify prev/next buttons visible ---
     const prevBtn = page.locator('.prev-btn');
     const nextBtn = page.locator('.next-btn');
@@ -591,6 +598,10 @@ test.describe('EPUB Reader E2E', () => {
     // Page info should show chapter 2: "Ch 2/..."
     const ch2Text = await pageInfo.textContent();
     expect(ch2Text).toMatch(/^Ch 2\//);
+
+    // Chapter title should update to "Chapter 2"
+    const ch2Title = await page.locator('.ch-title').textContent();
+    expect(ch2Title).toBe('Chapter 2');
 
     // Verify content actually changed (different chapter heading)
     const newContent = await container.textContent();

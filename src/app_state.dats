@@ -84,6 +84,7 @@ datavtype app_state_impl =
       rdr_resume_page = int,
       rdr_chrome_visible = int,
       rdr_chrome_timer_gen = int,
+      rdr_chapter_title_id = int,
       rdr_btn_ids = ptr,
       epub_spine_count = int,
       epub_title = ptr,
@@ -245,6 +246,7 @@ implement app_state_init() =
     rdr_resume_page = 0,
     rdr_chrome_visible = 0,
     rdr_chrome_timer_gen = 0,
+    rdr_chapter_title_id = 0,
     rdr_btn_ids = _alloc_buf(RDR_BTNS_SIZE),
     epub_spine_count = 0,
     epub_title = _alloc_buf(EPUB_TITLE_SIZE),
@@ -973,6 +975,12 @@ implement app_get_rdr_chrome_timer_gen(st) = let
   prval () = fold@(st) in v end
 implement app_set_rdr_chrome_timer_gen(st, v) = let
   val @APP_STATE(r) = st val () = r.rdr_chrome_timer_gen := v
+  prval () = fold@(st) in end
+implement app_get_rdr_chapter_title_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_chapter_title_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_chapter_title_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_chapter_title_id := v
   prval () = fold@(st) in end
 
 implement app_get_rdr_btn_id(st, idx) = let

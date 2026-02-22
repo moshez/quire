@@ -209,3 +209,5 @@ fun reader_set_chrome_visible(v: int): void
 fun reader_get_chrome_timer_gen(): int
 fun reader_set_chrome_timer_gen(v: int): void
 fun reader_incr_chrome_timer_gen(): int
+fun reader_set_chapter_title_id(id: int): void
+fun reader_get_chapter_title_id(): int

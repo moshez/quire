@@ -749,3 +749,25 @@ fun test_zone_split_375(): bool(true) = let
   prval pf: ZONE_SPLIT_T(375, 93, 281) = ZONES_CORRECT_T()
   prval _ = pf
 in eq_g1(93, 93) end
+
+(* ================================================================
+ * Test 23: CHAPTER_TITLE_DISPLAYED + CHAPTER_DISPLAY_READY chain
+ *
+ * Verifies CHAPTER_DISPLAY_READY requires CHAPTER_TITLE_DISPLAYED
+ * as a sub-proof. Construction impossible without TITLE_SHOWN().
+ * ================================================================ *)
+
+(* Re-declare dataprops for static test compilation *)
+dataprop CHAPTER_TITLE_DISPLAYED_T() =
+  | TITLE_SHOWN_T()
+
+dataprop CHAPTER_DISPLAY_READY_T() =
+  | MEASURED_AND_TRANSFORMED_T() of CHAPTER_TITLE_DISPLAYED_T()
+
+(* UNIT TEST — CHAPTER_DISPLAY_READY requires CHAPTER_TITLE_DISPLAYED sub-proof *)
+fun test_chapter_display_requires_title(): bool(true) = let
+  prval pf_title = TITLE_SHOWN_T()
+  prval pf = MEASURED_AND_TRANSFORMED_T(pf_title)
+  prval MEASURED_AND_TRANSFORMED_T(pf_t) = pf
+  prval TITLE_SHOWN_T() = pf_t
+in true end
