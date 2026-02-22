@@ -1054,15 +1054,15 @@ implement show_book_info {vm,ss,sh,sa}
   val () = dismiss_book_info()
   val () = dismiss_context_menu()
 
-  (* Inject CSS *)
-  val () = inject_info_css(1)
+  (* Inject CSS — use root_id (node 0) as parent, not stale node 1 *)
+  val () = inject_info_css(root_id)
 
   (* Build info overlay DOM *)
   val dom = ward_dom_init()
   val s = ward_dom_stream_begin(dom)
 
   val overlay_id = dom_next_id()
-  val s = ward_dom_stream_create_element(s, overlay_id, 1, tag_div(), 3)
+  val s = ward_dom_stream_create_element(s, overlay_id, root_id, tag_div(), 3)
   val s = ward_dom_stream_set_attr_safe(s, overlay_id, attr_class(), 5, cls_info_overlay(), 12)
   val () = _app_set_info_overlay_id(overlay_id)
 
