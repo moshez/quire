@@ -939,8 +939,8 @@ in s end
 
 (* ========== Reader navigation CSS ========== *)
 
-fn fill_css_nav {l:agz}{n:int | n >= NAV_CSS_LEN}
-  (arr: !ward_arr(byte, l, n), alen: int n): (CSS_NAV_WRITTEN | void) = let
+fn fill_css_nav {l:agz}
+  (arr: !ward_arr(byte, l, NAV_CSS_LEN_S), alen: int(NAV_CSS_LEN_S)): (CSS_NAV_WRITTEN | void) = let
   (* .reader-nav *)
   val () = _w4(arr, alen, 0, 1634038318)
   val () = _w4(arr, alen, 4, 762471780)
@@ -1144,6 +1144,14 @@ fn fill_css_nav {l:agz}{n:int | n >= NAV_CSS_LEN}
   val () = _w4(arr, alen, 776, 1734960503)
   val () = _w4(arr, alen, 780, 1647998056)
   val () = _w4(arr, alen, 784, 2103733359)
+  (* .nav-back-btn{display:none} — hidden initially, shown when stack non-empty *)
+  val () = _w4(arr, alen, 788, 1986096686)
+  val () = _w4(arr, alen, 792, 1667326509)
+  val () = _w4(arr, alen, 796, 1952591211)
+  val () = _w4(arr, alen, 800, 1768192878)
+  val () = _w4(arr, alen, 804, 1634496627)
+  val () = _w4(arr, alen, 808, 1869494905)
+  val () = _w4(arr, alen, 812, 8217966)
 
   (* Construct proof — solver verifies constraints *)
   prval pf_btn = BTNS_HAVE_SIZE{CSS_BTN_FONT_10, CSS_BTN_PAD_H_10}()

@@ -2814,4 +2814,105 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('position stack: TOC navigation shows nav-back button, pop restores position', async ({ page }) => {
+    // This test verifies the position stack feature:
+    // 1. Nav-back button is hidden on reader load
+    // 2. After TOC chapter navigation, nav-back button appears
+    // 3. Clicking nav-back restores the previous position
+
+    const { join } = await import('path');
+    const { generateTestEpub } = await import('./helpers/epub-gen.js');
+
+    const SCREENSHOT_DIR = '/tmp/e2e-screenshots';
+    const screenshot = async (page, name) => {
+      const vpTag = `${page.viewportSize().width}x${page.viewportSize().height}`;
+      await page.screenshot({ path: join(SCREENSHOT_DIR, `${name}-${vpTag}.png`) });
+    };
+
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+
+    // Create a 3-chapter EPUB with enough text for stable page counts
+    const epubData = await generateTestEpub({
+      title: 'Position Stack Test',
+      chapters: 3,
+      paragraphsPerChapter: 6,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('#app', { timeout: 10000 });
+
+    const vpTag = `${page.viewportSize().width}x${page.viewportSize().height}`;
+    const epubPath = join(SCREENSHOT_DIR, `pos-stack-test-${vpTag}.epub`);
+
+    const { writeFile, mkdir } = await import('fs/promises');
+    await mkdir(SCREENSHOT_DIR, { recursive: true });
+    await writeFile(epubPath, Buffer.from(epubData));
+
+    const fileInput = page.locator('input[type="file"]');
+    await fileInput.setInputFiles(epubPath);
+
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+
+    // Wait for chapter content to load
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.textContent && el.textContent.length > 50;
+    }, { timeout: 15000 });
+
+    await screenshot(page, 'posstack-01-reader-loaded');
+
+    // Nav-back button should exist but be hidden initially
+    const navBackBtn = page.locator('.nav-back-btn');
+    await expect(navBackBtn).toBeAttached();
+    await expect(navBackBtn).toBeHidden();
+
+    await screenshot(page, 'posstack-02-navback-hidden');
+
+    // Open TOC panel
+    const tocBtn = page.locator('.toc-btn');
+    await tocBtn.click();
+    await page.waitForTimeout(300);
+    await expect(page.locator('.toc-panel')).toBeVisible();
+
+    // Click second chapter entry
+    const tocEntries = page.locator('.toc-entry');
+    await tocEntries.nth(1).click();
+    await page.waitForTimeout(500);
+
+    // Panel should close after navigation
+    await expect(page.locator('.toc-panel')).toBeHidden();
+
+    // Nav-back button should now be visible (position stack has 1 entry)
+    await expect(navBackBtn).toBeVisible();
+
+    await screenshot(page, 'posstack-03-navback-visible');
+
+    // The page indicator should show chapter 2
+    const pageInfo = page.locator('.page-info');
+    const pageText = await pageInfo.textContent();
+    expect(pageText).toMatch(/Ch 2\//);
+
+    // Click nav-back button to restore previous position
+    await navBackBtn.click();
+    await page.waitForTimeout(500);
+
+    await screenshot(page, 'posstack-04-after-back');
+
+    // Should now be back at chapter 1
+    const pageTextAfter = await pageInfo.textContent();
+    expect(pageTextAfter).toMatch(/Ch 1\//);
+
+    // Nav-back button should be hidden again (stack is now empty)
+    await expect(navBackBtn).toBeHidden();
+
+    await screenshot(page, 'posstack-05-navback-hidden-again');
+
+    // Verify no page crashes
+    expect(errors).toEqual([]);
+  });
+
+
 });

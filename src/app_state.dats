@@ -89,6 +89,9 @@ datavtype app_state_impl =
       rdr_bm_count = int,
       rdr_bm_btn_id = int,
       rdr_bm_save_pending = int,
+      rdr_nav_back_btn_id = int,
+      rdr_pos_stack_count = int,
+      rdr_pos_stack = ptr,
       rdr_toc_panel_id = int,
       rdr_toc_list_id = int,
       rdr_toc_close_btn_id = int,
@@ -272,6 +275,9 @@ implement app_state_init() =
     rdr_bm_count = 0,
     rdr_bm_btn_id = 0,
     rdr_bm_save_pending = 0,
+    rdr_nav_back_btn_id = 0,
+    rdr_pos_stack_count = 0,
+    rdr_pos_stack = _alloc_buf(POS_STACK_BUF_SIZE),
     rdr_toc_panel_id = 0,
     rdr_toc_list_id = 0,
     rdr_toc_close_btn_id = 0,
@@ -341,6 +347,7 @@ implement app_state_fini(st) = let
   val () = _free_buf(r.diff_buffer, DIFF_BUFFER_SIZE)
   val () = _free_buf(r.rdr_bm_buf, BOOKMARK_BUF_SIZE)
   val () = _free_buf(r.rdr_btn_ids, RDR_BTNS_SIZE)
+  val () = _free_buf(r.rdr_pos_stack, POS_STACK_BUF_SIZE)
   val () = _free_buf(r.epub_title, EPUB_TITLE_SIZE)
   val () = _free_buf(r.epub_author, EPUB_AUTHOR_SIZE)
   val () = _free_buf(r.epub_book_id, EPUB_BOOKID_SIZE)
@@ -1044,6 +1051,18 @@ implement app_get_rdr_bm_save_pending(st) = let
   prval () = fold@(st) in v end
 implement app_set_rdr_bm_save_pending(st, v) = let
   val @APP_STATE(r) = st val () = r.rdr_bm_save_pending := v
+  prval () = fold@(st) in end
+implement app_get_rdr_nav_back_btn_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_nav_back_btn_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_nav_back_btn_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_nav_back_btn_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_pos_stack_count(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_pos_stack_count
+  prval () = fold@(st) in v end
+implement app_set_rdr_pos_stack_count(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_pos_stack_count := v
   prval () = fold@(st) in end
 
 implement app_get_rdr_toc_panel_id(st) = let
@@ -2176,3 +2195,39 @@ implement app_state_store(st) =
 
 implement app_state_load() =
   _app_stash_get(APP_STATE_SLOT)
+
+(* ========== Position stack convenience wrappers ========== *)
+
+implement _app_rdr_nav_back_btn_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_nav_back_btn_id(st)
+  val () = app_state_store(st)
+in v end
+
+implement _app_set_rdr_nav_back_btn_id(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_nav_back_btn_id(st, v)
+  val () = app_state_store(st)
+in end
+
+implement _app_rdr_pos_stack_count() = let
+  val st = app_state_load()
+  val v = app_get_rdr_pos_stack_count(st)
+  val () = app_state_store(st)
+in v end
+
+implement _app_rdr_pos_stack_get_i32(idx) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val v = _arr_get_i32(r.rdr_pos_stack, idx, POS_STACK_BUF_SIZE)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in v end
+
+implement _app_rdr_pos_stack_set_i32(idx, v) = let
+  val st = app_state_load()
+  val @APP_STATE(r) = st
+  val () = _arr_set_i32(r.rdr_pos_stack, idx, POS_STACK_BUF_SIZE, v)
+  prval () = fold@(st)
+  val () = app_state_store(st)
+in end

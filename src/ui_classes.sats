@@ -53,6 +53,7 @@ fun cls_toc_switch_btn(): ward_safe_text(14)
 fun cls_toc_list(): ward_safe_text(8)
 fun cls_toc_entry(): ward_safe_text(9)
 fun cls_bm_entry(): ward_safe_text(8)
+fun cls_nav_back_btn(): ward_safe_text(12)
 
 (* ========== Event/type builders ========== *)
 

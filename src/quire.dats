@@ -294,6 +294,10 @@ in
   else ()
 end
 
+local
+  assume SCRUBBER_FILL_CHECKED() = unit_p
+in
+
 (* update_scrubber_fill: set scrubber fill width to reflect current page.
  * width = (cur_page+1) * 100 / total_pages percent (integer, clamped 0-100).
  * Returns SCRUBBER_FILL_CHECKED proof — the ONLY way to obtain it.
@@ -337,30 +341,36 @@ in
         val () = ward_arr_drop<byte>(frozen, borrow)
         val used = ward_arr_thaw<byte>(frozen)
         val () = ward_arr_free<byte>(used)
-        prval pf = SCRUB_FILL_OK()
+        prval pf = unit_p()
       in (pf | ()) end
       else let
         val () = ward_arr_free<byte>(arr)
-        prval pf = SCRUB_FILL_OK()
+        prval pf = unit_p()
       in (pf | ()) end
     else let
       val () = ward_arr_free<byte>(arr)
-      prval pf = SCRUB_FILL_OK()
+      prval pf = unit_p()
     in (pf | ()) end
   end
   else let
-    prval pf = SCRUB_FILL_OK()
+    prval pf = unit_p()
   in (pf | ()) end
 end
+
+end (* local SCRUBBER_FILL_CHECKED *)
+
+local
+  assume PAGE_INFO_SHOWN() = SCRUBBER_FILL_CHECKED()
+in
 
 (* Update page indicator text: "Ch X/Y  N/M" showing chapter and page position.
  * Calls update_scrubber_fill first (proof chain: PAGE_INFO_SHOWN requires SCRUBBER_FILL_CHECKED).
  * Uses standalone DOM stream — safe to call from event handlers.
  * Format: "Ch 1/5  3/10" — chapter 1 of 5, page 3 of 10.
  * Buffer: 48 bytes, max realistic content ~20 chars. *)
+
 fn update_page_info(): (PAGE_INFO_SHOWN() | void) = let
   val (pf_sfc | ()) = update_scrubber_fill()
-  prval SCRUB_FILL_OK() = pf_sfc
   val nid = reader_get_page_indicator_id()
 in
   if gt_int_int(nid, 0) then let
@@ -403,25 +413,24 @@ in
         val () = ward_arr_drop<byte>(frozen, borrow)
         val used = ward_arr_thaw<byte>(frozen)
         val () = ward_arr_free<byte>(used)
-        prval pf_sfc2 = SCRUB_FILL_OK()
-        prval pf = PAGE_INFO_OK(pf_sfc2)
-      in (pf | ()) end
+      in (pf_sfc | ()) end
       else let
         val () = ward_arr_free<byte>(arr)
-        prval pf_sfc2 = SCRUB_FILL_OK()
-        prval pf = PAGE_INFO_OK(pf_sfc2)
-      in (pf | ()) end
+      in (pf_sfc | ()) end
     else let
       val () = ward_arr_free<byte>(arr)
-      prval pf_sfc2 = SCRUB_FILL_OK()
-      prval pf = PAGE_INFO_OK(pf_sfc2)
-    in (pf | ()) end
+    in (pf_sfc | ()) end
   end
   else let
-    prval pf_sfc2 = SCRUB_FILL_OK()
-    prval pf = PAGE_INFO_OK(pf_sfc2)
-  in (pf | ()) end
+  in (pf_sfc | ()) end
 end
+
+
+end (* local PAGE_INFO_SHOWN *)
+
+local
+  assume CHAPTER_TITLE_DISPLAYED() = unit_p
+in
 
 (* handle_chapter_title: set chapter title span to "Chapter N".
  * Returns CHAPTER_TITLE_DISPLAYED proof — the ONLY way to obtain it.
@@ -460,19 +469,19 @@ in
         val () = ward_arr_drop<byte>(frozen, borrow)
         val used = ward_arr_thaw<byte>(frozen)
         val () = ward_arr_free<byte>(used)
-        prval pf_title = TITLE_SHOWN()
+        prval pf_title = unit_p()
       in (pf_title | ()) end
       else let
         val () = ward_arr_free<byte>(arr)
-        prval pf_title = TITLE_SHOWN()
+        prval pf_title = unit_p()
       in (pf_title | ()) end
     else let
       val () = ward_arr_free<byte>(arr)
-      prval pf_title = TITLE_SHOWN()
+      prval pf_title = unit_p()
     in (pf_title | ()) end
   end
   else let
-    prval pf_title = TITLE_SHOWN()
+    prval pf_title = unit_p()
   in (pf_title | ()) end
 end
 
@@ -485,9 +494,12 @@ fn update_chapter_title(): (CHAPTER_TITLE_DISPLAYED() | void) = let
 in
   if ch_g1 >= 1 then
     if ch_g1 <= 9999 then handle_chapter_title(ch_g1)
-    else let prval pf = TITLE_SHOWN() in (pf | ()) end
-  else let prval pf = TITLE_SHOWN() in (pf | ()) end
+    else let prval pf = unit_p() in (pf | ()) end
+  else let prval pf = unit_p() in (pf | ()) end
 end
+
+
+end (* local CHAPTER_TITLE_DISPLAYED *)
 
 (* page_turn_forward: advance page within chapter and update display.
  * Bundles reader_next_page + apply_page_transform + update_page_info.
@@ -515,6 +527,10 @@ fun is_page_bookmarked {k:nat} .<k>.
     else is_page_bookmarked(sub_g1(rem, 1), chapter, page, idx + 1, count)
   end
 
+local
+  assume BOOKMARK_BTN_SYNCED() = unit_p
+in
+
 (* update_bookmark_btn: sync button class to bookmark state.
  * Sets class to "bm-active" if current page is bookmarked, "bm-btn" otherwise.
  * Returns BOOKMARK_BTN_SYNCED proof — the ONLY way to obtain it. *)
@@ -534,20 +550,27 @@ in
         cls_bm_active(), 9)
       val dom = ward_dom_stream_end(s)
       val () = ward_dom_fini(dom)
-      prval pf = BM_BTN_SYNCED()
+      prval pf = unit_p()
     in (pf | ()) end
     else let
       val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5,
         cls_bm_btn(), 6)
       val dom = ward_dom_stream_end(s)
       val () = ward_dom_fini(dom)
-      prval pf = BM_BTN_SYNCED()
+      prval pf = unit_p()
     in (pf | ()) end
   end
   else let
-    prval pf = BM_BTN_SYNCED()
+    prval pf = unit_p()
   in (pf | ()) end
 end
+
+
+end (* local BOOKMARK_BTN_SYNCED *)
+
+local
+  assume POSITION_PERSISTED() = unit_p
+in
 
 (* save_reading_position: persist current reading position to IDB.
  * Returns POSITION_PERSISTED proof — compile-time guarantee that
@@ -559,8 +582,11 @@ fn save_reading_position(): (POSITION_PERSISTED() | void) = let
     reader_get_current_chapter(),
     reader_get_current_page())
   val () = library_save()
-  prval pf = POS_PERSISTED()
+  prval pf = unit_p()
 in (pf | ()) end
+
+
+end (* local POSITION_PERSISTED *)
 
 fn page_turn_forward(container_id: int)
   : @(PAGE_DISPLAY_UPDATED(), POSITION_PERSISTED() | void) = let
@@ -568,7 +594,7 @@ fn page_turn_forward(container_id: int)
   val () = apply_page_transform(container_id)
   val (pf_pg_info | ()) = update_page_info()
   val (pf_bm | ()) = update_bookmark_btn()
-  prval BM_BTN_SYNCED() = pf_bm
+  prval _ = pf_bm
   val (pf_pos | ()) = save_reading_position()
   prval pf_pg = PAGE_TURNED_AND_SHOWN(pf_pg_info)
 in @(pf_pg, pf_pos | ()) end
@@ -585,7 +611,7 @@ fn page_turn_backward(container_id: int)
   val () = apply_page_transform(container_id)
   val (pf_pg_info | ()) = update_page_info()
   val (pf_bm | ()) = update_bookmark_btn()
-  prval BM_BTN_SYNCED() = pf_bm
+  prval _ = pf_bm
   val (pf_pos | ()) = save_reading_position()
   prval pf_pg = PAGE_TURNED_AND_SHOWN(pf_pg_info)
 in @(pf_pg, pf_pos | ()) end
@@ -691,7 +717,7 @@ fn finish_chapter_load(container_id: int)
   val () = apply_resume_page(container_id)
   val (pf_pg_info | ()) = update_page_info()
   val (pf_bm | ()) = update_bookmark_btn()
-  prval BM_BTN_SYNCED() = pf_bm
+  prval _ = pf_bm
   prval pf = MEASURED_AND_TRANSFORMED(pf_title, pf_pg_info)
 in (pf | ()) end
 
@@ -846,10 +872,7 @@ in
             val () = ward_arr_free<byte>(sax_buf)
             val () = ward_arr_free<byte>(dir_arr)
             val (pf_disp | ()) = finish_chapter_load(saved_cid)
-            prval MEASURED_AND_TRANSFORMED(pf_t, pf_pg_info) = pf_disp
-            prval TITLE_SHOWN() = pf_t
-            prval PAGE_INFO_OK(pf_sfc) = pf_pg_info
-            prval SCRUB_FILL_OK() = pf_sfc
+            prval _ = pf_disp
             (* Async: load images from IDB *)
             val () = load_idb_images_chain(
               _checked_nat(img_count), 0, img_count)
@@ -888,10 +911,7 @@ in
             val () = ward_dom_fini(dom)
             val () = ward_arr_free<byte>(sax_buf)
             val (pf_disp | ()) = finish_chapter_load(saved_cid)
-            prval MEASURED_AND_TRANSFORMED(pf_t, pf_pg_info) = pf_disp
-            prval TITLE_SHOWN() = pf_t
-            prval PAGE_INFO_OK(pf_sfc) = pf_pg_info
-            prval SCRUB_FILL_OK() = pf_sfc
+            prval _ = pf_disp
           in ward_promise_return<int>(1) end
           else let
             val () = show_chapter_error(VT_13() | saved_cid, 13, 21)
@@ -913,10 +933,8 @@ in
   if lt_int_int(pg, total - 1) then let
     (* Within chapter — advance page *)
     val @(pf_pg, pf_pos | ()) = page_turn_forward(container_id)
-    prval PAGE_TURNED_AND_SHOWN(pf_pg_info) = pf_pg
-    prval PAGE_INFO_OK(pf_sfc) = pf_pg_info
-    prval _ = pf_sfc
-    prval POS_PERSISTED() = pf_pos
+    prval _ = pf_pg
+    prval _ = pf_pos
   in end
   else let
     (* At last page — try advancing chapter *)
@@ -933,7 +951,7 @@ in
         val () = reader_go_to_chapter(next_g1, spine_g1)
         val () = reader_set_total_pages(1)
         val (pf_pos | ()) = save_reading_position()
-        prval POS_PERSISTED() = pf_pos
+        prval _ = pf_pos
         (* Clear container and load next chapter *)
         val dom = ward_dom_init()
         val s = ward_dom_stream_begin(dom)
@@ -956,10 +974,8 @@ in
   if gt_int_int(pg, 0) then let
     (* Within chapter — go back a page *)
     val @(pf_pg, pf_pos | ()) = page_turn_backward(container_id)
-    prval PAGE_TURNED_AND_SHOWN(pf_pg_info) = pf_pg
-    prval PAGE_INFO_OK(pf_sfc) = pf_pg_info
-    prval _ = pf_sfc
-    prval POS_PERSISTED() = pf_pos
+    prval _ = pf_pg
+    prval _ = pf_pos
   in end
   else let
     (* At first page — try going to previous chapter *)
@@ -976,7 +992,7 @@ in
         val () = reader_go_to_chapter(prev_g1, spine_g1)
         val () = reader_set_total_pages(1)
         val (pf_pos | ()) = save_reading_position()
-        prval POS_PERSISTED() = pf_pos
+        prval _ = pf_pos
         (* Clear container and load previous chapter *)
         val dom = ward_dom_init()
         val s = ward_dom_stream_begin(dom)
@@ -1130,6 +1146,73 @@ in
   else ()
 end
 
+
+(* push_position: push current chapter+page to position stack.
+ * Returns POS_STACK_PUSHED proof — the ONLY way to obtain it.
+ * BUG CLASS PREVENTED: TOC navigation that skips pushing the prior position,
+ * making the nav-back button non-functional. *)
+local
+  assume POS_STACK_PUSHED() = unit_p
+in
+fn push_position(): (POS_STACK_PUSHED() | void) = let
+  val count = reader_get_pos_stack_count()
+  val ch = reader_get_current_chapter()
+  val pg = reader_get_current_page()
+  val new_count = count + 1
+in
+  if lte_int_int(count, POS_STACK_MAX - 1) then let
+    (* count < POS_STACK_MAX, so count+1 <= POS_STACK_MAX *)
+    val () = reader_set_pos_stack_entry(count, ch, pg)
+    val () = reader_set_pos_stack_count(new_count)
+    val back_id = reader_get_nav_back_btn_id()
+    val () = if gt_int_int(back_id, 0) then set_style_flex(back_id)
+             else ()
+    prval pf = unit_p()
+  in (pf | ()) end
+  else let
+    prval pf = unit_p()
+  in (pf | ()) end
+end
+end (* local POS_STACK_PUSHED *)
+
+(* pop_position: pop position stack and restore chapter+page.
+ * Hides nav-back button when stack becomes empty. *)
+fn pop_position(): void = let
+  val count = reader_get_pos_stack_count()
+in
+  if gt_int_int(count, 0) then let
+    val new_count = count - 1
+    val () = reader_set_pos_stack_count(new_count)
+    val entry_idx = count - 1
+    val ch = reader_get_pos_stack_ch(entry_idx)
+    val pg = reader_get_pos_stack_pg(entry_idx)
+    val spine = epub_get_chapter_count()
+    val ch_plus1 = ch + 1
+  in
+    if lt_int_int(ch_plus1, spine) then let
+      val ch_nat = _checked_nat(ch)
+    in
+      if lt1_int_int(ch_nat, spine) then let
+        val () = reader_go_to_chapter(ch_nat, spine)
+        val () = reader_go_to_page(pg)
+        val () = apply_page_transform(reader_get_container_id())
+        val (pf_pg_info | ()) = update_page_info()
+        prval _ = pf_pg_info
+        (* Hide back button if stack is now empty *)
+        val new_cnt = reader_get_pos_stack_count()
+        val back_id = reader_get_nav_back_btn_id()
+        val () = if gt_int_int(back_id, 0) then
+          if eq_int_int(new_cnt, 0) then set_style_none(back_id)
+          else ()
+        else ()
+      in end
+      else ()
+    end
+    else ()
+  end
+  else ()
+end
+
 (* Chrome-safe navigate: cancel timer, navigate, show chrome, restart timer.
  * Used by Prev/Next button handlers. *)
 fn chrome_safe_navigate_prev(container_id: int): void = let
@@ -1240,6 +1323,10 @@ in
   else ()
 end
 
+local
+  assume BOOKMARK_TOGGLED() = unit_p
+in
+
 (* toggle_bookmark: add or remove bookmark at current page.
  * Returns BOOKMARK_TOGGLED proof — the ONLY way to obtain it. *)
 fn toggle_bookmark(): (BOOKMARK_TOGGLED() | void) = let
@@ -1280,9 +1367,9 @@ in
     val () = reader_set_bm_count(cnt - 1)
     val () = update_toc_bm_count_btn()
     val (pf_btn | ()) = update_bookmark_btn()
-    prval BM_BTN_SYNCED() = pf_btn
+    prval _ = pf_btn
     val () = save_bookmarks_to_idb()
-    prval pf = BM_TOGGLED()
+    prval pf = unit_p()
   in (pf | ()) end
   else let
     (* Add: append if under max *)
@@ -1295,12 +1382,12 @@ in
       val () = reader_set_bm_count(cnt + 1)
       val () = update_toc_bm_count_btn()
       val (pf_btn | ()) = update_bookmark_btn()
-      prval BM_BTN_SYNCED() = pf_btn
+      prval _ = pf_btn
       val () = save_bookmarks_to_idb()
-      prval pf = BM_TOGGLED()
+      prval pf = unit_p()
     in (pf | ()) end
     else let
-      prval pf = BM_TOGGLED()
+      prval pf = unit_p()
     in (pf | ()) end
   end
 end
@@ -1316,7 +1403,7 @@ fn load_bookmarks_from_idb(): void = let
         val () = reader_set_bm_count(0)
         val () = update_toc_bm_count_btn()
         val (pf_btn | ()) = update_bookmark_btn()
-        prval BM_BTN_SYNCED() = pf_btn
+        prval _ = pf_btn
       in ward_promise_return<int>(0) end
       else let
         val dl = _checked_pos(data_len)
@@ -1363,7 +1450,7 @@ fn load_bookmarks_from_idb(): void = let
         val () = reader_set_bm_count(max_entries)
         val () = update_toc_bm_count_btn()
         val (pf_btn | ()) = update_bookmark_btn()
-        prval BM_BTN_SYNCED() = pf_btn
+        prval _ = pf_btn
       in ward_promise_return<int>(1) end)
   val () = ward_promise_discard<int>(p2)
 in end
@@ -1415,11 +1502,11 @@ in
       (* 'b' (98) or 'B' (66): toggle bookmark *)
       else if eq_int_int(k0, 98) then let
         val (pf | ()) = toggle_bookmark()
-        prval BM_TOGGLED() = pf
+        prval _ = pf
       in end
       else if eq_int_int(k0, 66) then let
         val (pf | ()) = toggle_bookmark()
-        prval BM_TOGGLED() = pf
+        prval _ = pf
       in end
       else ()
     else ()
@@ -1642,6 +1729,9 @@ in
   in s end
 end
 
+
+end (* local BOOKMARK_TOGGLED *)
+
 (* Clear all children of the toc-list container. *)
 fn clear_toc_list(): void = let
   val list_id = reader_get_toc_list_id()
@@ -1825,6 +1915,8 @@ in
     val idx_g1 = g1ofg0(idx)
     val () = if idx_g1 >= 0 then
       if lt1_int_int(idx_g1, total_g1) then let
+        val (pf_pushed | ()) = push_position()
+        prval _ = pf_pushed
         val () = reader_go_to_chapter(idx_g1, total_g1)
         val () = hide_toc_panel()
       in () end
@@ -1937,6 +2029,21 @@ implement enter_reader(root_id, book_index) = let
     val b = ward_text_putc(b, 2, char2int1('C'))
   in ward_text_done(b) end
   val s = ward_dom_stream_set_safe_text(s, toc_btn_id, toc_btn_st, 3)
+
+  (* Nav back button — hidden initially via CSS .nav-back-btn{display:none},
+   * shown when position stack is non-empty *)
+  val nav_back_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, nav_back_btn_id, nav_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, nav_back_btn_id, attr_class(), 5,
+    cls_nav_back_btn(), 12)
+  val nb_st = let
+    val b = ward_text_build(4)
+    val b = ward_text_putc(b, 0, char2int1('B'))
+    val b = ward_text_putc(b, 1, char2int1('a'))
+    val b = ward_text_putc(b, 2, char2int1('c'))
+    val b = ward_text_putc(b, 3, char2int1('k'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, nav_back_btn_id, nb_st, 4)
 
   (* Nav controls wrapper *)
   val controls_id = dom_next_id()
@@ -2126,6 +2233,7 @@ implement enter_reader(root_id, book_index) = let
   val () = reader_set_toc_close_btn_id(toc_close_btn_id)
   val () = reader_set_toc_bm_count_btn_id(toc_bm_count_btn_id)
   val () = reader_set_toc_switch_btn_id(toc_switch_btn_id)
+  val () = reader_set_nav_back_btn_id(nav_back_btn_id)
 
   (* Register listeners — all reader registrations use reader_add_event_listener
    * with READER_LISTENER proof, preventing arbitrary listener IDs. *)
@@ -2164,7 +2272,7 @@ implement enter_reader(root_id, book_index) = let
     bm_btn_id, evt_click(), 5, 34,
     lam (_pl: int): int => let
       val (pf | ()) = toggle_bookmark()
-      prval BM_TOGGLED() = pf
+      prval _ = pf
     in 0 end
   )
 
@@ -2288,10 +2396,9 @@ implement enter_reader(root_id, book_index) = let
             val () = reader_go_to_page(target)
             val () = apply_page_transform(saved_container)
             val (pf_pi | ()) = update_page_info()
-            prval PAGE_INFO_OK(pf_sfc) = pf_pi
-            prval SCRUB_FILL_OK() = pf_sfc
+            prval _ = pf_pi
             val (pf_pos | ()) = save_reading_position()
-            prval POS_PERSISTED() = pf_pos
+            prval _ = pf_pos
           in () end
           else ()
         else ()
@@ -2350,6 +2457,14 @@ implement enter_reader(root_id, book_index) = let
       in 0 end
       else 0
     end
+  )
+
+  (* Nav back button: pop position stack and restore previous location *)
+  val () = reader_add_event_listener(READER_LISTEN_NAV_BACK() |
+    nav_back_btn_id, evt_click(), 5, 43,
+    lam (_pl: int): int => let
+      val () = pop_position()
+    in 0 end
   )
 
   (* Show chrome and start auto-hide timer on reader entry *)
