@@ -241,6 +241,10 @@ test.describe('EPUB Reader E2E', () => {
     expect(transformPx).toBe(-vpWidth);
 
     // --- Test prev button navigation ---
+    // Show chrome first (hidden after right-zone click)
+    const centerX = viewport.width / 2;
+    await page.mouse.click(centerX, centerY);
+    await page.waitForTimeout(300);
     await prevBtn.click();
     await page.waitForTimeout(500);
     await screenshot(page, '04a-reader-prev-btn');
@@ -314,6 +318,9 @@ test.describe('EPUB Reader E2E', () => {
     await screenshot(page, '09-reader-space-forward');
 
     // --- Navigate back to library via back button ---
+    // Show chrome first (hidden after keyboard navigation)
+    await page.keyboard.press('t');
+    await page.waitForTimeout(300);
     const backBtnNav = page.locator('.back-btn');
     await backBtnNav.click();
     await page.waitForTimeout(500);
