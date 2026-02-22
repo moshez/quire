@@ -2596,20 +2596,20 @@ test.describe('EPUB Reader E2E', () => {
     await expect(page.locator('.bm-active')).toHaveCount(0);
     await screenshot(page, 'bookmark-05-after-b-key-off');
 
-    // Bookmark a page, turn page, verify state resets
+    // Bookmark a page, then navigate forward via Next button (chrome-safe)
     await page.keyboard.press('b');
     await page.waitForTimeout(500);
     await expect(page.locator('.bm-active')).toBeVisible();
-    // Navigate to next page
-    await page.keyboard.press('ArrowRight');
+    // Use Next button to keep chrome visible during page turn
+    await page.locator('.next-btn').click();
     await page.waitForTimeout(500);
     // Should be bm-btn (unbookmarked) on new page
     await expect(page.locator('.bm-btn')).toBeVisible();
     await expect(page.locator('.bm-active')).toHaveCount(0);
     await screenshot(page, 'bookmark-06-after-page-turn');
 
-    // Navigate back to bookmarked page
-    await page.keyboard.press('ArrowLeft');
+    // Navigate back via Prev button to bookmarked page
+    await page.locator('.prev-btn').click();
     await page.waitForTimeout(500);
     // Should be bm-active (bookmarked)
     await expect(page.locator('.bm-active')).toBeVisible();
