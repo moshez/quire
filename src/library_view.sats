@@ -21,16 +21,15 @@ dataprop PROGRESS_DISPLAY(ch: int, pg: int, sc: int, display: int) =
 (* ========== Listener ID constants ========== *)
 
 #define LISTENER_FILE_INPUT 1
-#define LISTENER_READ_BTN_BASE 2
-#define LISTENER_SORT_TITLE 56
-#define LISTENER_SORT_AUTHOR 57
-#define LISTENER_SORT_LAST_OPENED 58
-#define LISTENER_SORT_DATE_ADDED 59
-#define LISTENER_ARCHIVE_BTN_BASE 60
-#define LISTENER_VIEW_HIDDEN 92
-#define LISTENER_VIEW_ARCHIVED 93
-#define LISTENER_VIEW_ACTIVE 94
-#define LISTENER_HIDE_BTN_BASE 95
+#define LISTENER_LIB_CLICK 2
+#define LISTENER_LIB_CONTEXTMENU 3
+#define LISTENER_SORT_TITLE 4
+#define LISTENER_SORT_AUTHOR 5
+#define LISTENER_SORT_LAST_OPENED 6
+#define LISTENER_SORT_DATE_ADDED 7
+#define LISTENER_VIEW_ACTIVE 8
+#define LISTENER_VIEW_HIDDEN 9
+#define LISTENER_VIEW_ARCHIVED 10
 
 (* ========== Function declarations ========== *)
 
@@ -40,11 +39,8 @@ fun render_library_with_books {l:agz}
   (s: ward_dom_stream(l), list_id: int, view_mode: int)
   : ward_dom_stream(l)
 
-fun register_card_btns {k:nat}
-  (rem: int(k), i: int, n: int, root: int, vm: int): void
-
-fun register_ctx_listeners {k:nat}
-  (rem: int(k), i: int, n: int, root: int, vm: int): void
+fun register_library_delegated_listeners
+  (list_id: int, root: int, vm: int): void
 
 fun load_library_covers {k:nat}
   (rem: int(k), idx: int, total: int): void

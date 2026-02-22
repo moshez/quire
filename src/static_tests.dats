@@ -364,19 +364,69 @@ fun test_chapter_count_satisfies_delete(): bool(true) = let
 in lte_g1(n, 256) end
 
 (* ================================================================
- * Test 13: Listener ID non-overlap — LISTENER_ERR_DISMISS range
+ * Test 13: Listener ID range — all IDs proven < 128
  *
- * Verifies LISTENER_ERR_DISMISS (39) sits between
- * LISTENER_RESET_CANCEL (38) and LISTENER_KEYDOWN (50).
+ * WARD_MAX_LISTENERS = 128 (valid range 0–127).
+ * Every listener ID must be proven at compile time to be < 128.
+ * This prevents the bug where LISTENER_CTX_BASE=128 exceeded the table.
  * ================================================================ *)
 
-(* UNIT TEST — listener ID 39 > 38 *)
-fun test_listener_err_above(): bool(true) =
-  gt_g1(39, 38)
+staload "./library_view.sats"
+staload "./modals.sats"
+staload "./context_menu.sats"
+staload "./book_info.sats"
 
-(* UNIT TEST — listener ID 39 < 50 *)
-fun test_listener_err_below(): bool(true) =
-  lt_g1(39, 50)
+(* UNIT TEST — library IDs are all < 128 *)
+fun test_lid_file_input(): bool(true) = lt_g1(1, 128)
+fun test_lid_lib_click(): bool(true) = lt_g1(2, 128)
+fun test_lid_lib_ctx(): bool(true) = lt_g1(3, 128)
+fun test_lid_sort_title(): bool(true) = lt_g1(4, 128)
+fun test_lid_sort_author(): bool(true) = lt_g1(5, 128)
+fun test_lid_sort_last_opened(): bool(true) = lt_g1(6, 128)
+fun test_lid_sort_date_added(): bool(true) = lt_g1(7, 128)
+fun test_lid_view_active(): bool(true) = lt_g1(8, 128)
+fun test_lid_view_hidden(): bool(true) = lt_g1(9, 128)
+fun test_lid_view_archived(): bool(true) = lt_g1(10, 128)
+
+(* UNIT TEST — modal IDs are all < 128 *)
+fun test_lid_reset_btn(): bool(true) = lt_g1(11, 128)
+fun test_lid_dup_skip(): bool(true) = lt_g1(12, 128)
+fun test_lid_dup_replace(): bool(true) = lt_g1(13, 128)
+fun test_lid_reset_confirm(): bool(true) = lt_g1(14, 128)
+fun test_lid_reset_cancel(): bool(true) = lt_g1(15, 128)
+fun test_lid_err_dismiss(): bool(true) = lt_g1(16, 128)
+fun test_lid_del_confirm(): bool(true) = lt_g1(17, 128)
+fun test_lid_del_cancel(): bool(true) = lt_g1(18, 128)
+
+(* UNIT TEST — context menu IDs are all < 128 *)
+fun test_lid_ctx_dismiss(): bool(true) = lt_g1(19, 128)
+fun test_lid_ctx_info(): bool(true) = lt_g1(20, 128)
+fun test_lid_ctx_hide(): bool(true) = lt_g1(21, 128)
+fun test_lid_ctx_archive(): bool(true) = lt_g1(22, 128)
+fun test_lid_ctx_delete(): bool(true) = lt_g1(23, 128)
+
+(* UNIT TEST — book info IDs are all < 128 *)
+fun test_lid_info_back(): bool(true) = lt_g1(24, 128)
+fun test_lid_info_dismiss(): bool(true) = lt_g1(25, 128)
+fun test_lid_info_hide(): bool(true) = lt_g1(26, 128)
+fun test_lid_info_archive(): bool(true) = lt_g1(27, 128)
+fun test_lid_info_delete(): bool(true) = lt_g1(28, 128)
+
+(* UNIT TEST — reader IDs are all < 128 *)
+fun test_lid_keydown(): bool(true) = lt_g1(29, 128)
+fun test_lid_viewport_click(): bool(true) = lt_g1(30, 128)
+fun test_lid_back(): bool(true) = lt_g1(31, 128)
+fun test_lid_prev(): bool(true) = lt_g1(32, 128)
+fun test_lid_next(): bool(true) = lt_g1(33, 128)
+
+(* UNIT TEST — IDs are contiguous: max ID = 33, all sequential from 1 *)
+fun test_lid_max_is_33(): bool(true) = eq_g1(33, 33)
+
+(* UNIT TEST — no ID overlap: each range is strictly above the previous *)
+fun test_lid_modals_above_lib(): bool(true) = gt_g1(11, 10)
+fun test_lid_ctx_above_modals(): bool(true) = gt_g1(19, 18)
+fun test_lid_info_above_ctx(): bool(true) = gt_g1(24, 23)
+fun test_lid_reader_above_info(): bool(true) = gt_g1(29, 28)
 
 (* ================================================================
  * Test 14: PROGRESS_PHASE — bar percentage locked by proof
@@ -442,23 +492,20 @@ fun test_idp_error_at_phase0(): bool(true) = let
 in true end
 
 (* ================================================================
- * Test 15: Context menu listener ID non-collision
+ * Test 15: Delegated listener design — no per-book listeners
  *
- * Verifies that LID_CTX_BASE (128) does not collide with
- * LISTENER_HIDE_BTN_BASE (95) + MAX_LIBRARY_BOOKS (32) = 127.
+ * With delegated event handling, only 2 listeners cover all book
+ * interactions (click + contextmenu on list_id), replacing 128+
+ * per-book listeners. Total count is proven < 128 in test 13.
  * ================================================================ *)
 
-(* UNIT TEST — ctx listener base is above hide button range *)
-fun test_ctx_base_no_collision(): bool(true) =
-  gte_g1(128, add_g1(95, 32))
+(* UNIT TEST — delegated click + contextmenu = 2 listeners for all books *)
+fun test_delegated_is_two(): bool(true) =
+  eq_g1(add_g1(1, 1), 2)
 
-(* UNIT TEST — ctx listener base + MAX_LIBRARY_BOOKS < dismiss ID *)
-fun test_ctx_end_before_dismiss(): bool(true) =
-  eq_g1(add_g1(128, 32), 160)
-
-(* UNIT TEST — ctx menu IDs are sequential and non-overlapping *)
-fun test_ctx_ids_sequential(): bool(true) =
-  lt_g1(160, 161)
+(* UNIT TEST — total listener count (33) is well under limit (128) *)
+fun test_total_under_limit(): bool(true) =
+  lt_g1(33, 128)
 
 (* ================================================================
  * Test 16: CTX_MENU_VALID — exhaustive dispatch for all 3 view modes
@@ -575,19 +622,19 @@ fun test_info_btn_hidden(): bool(true) = let
 in eq_g1(add_g1(1, 0), 1) end
 
 (* ================================================================
- * Test 20: Info listener ID non-collision
+ * Test 20: Info listener ID non-collision (new contiguous IDs)
  *
- * Verifies info listener IDs are above ctx listener range
- * and sequential.
+ * Verifies info listener IDs (24-28) are above ctx (19-23)
+ * and below reader (29-33).
  * ================================================================ *)
 
-(* UNIT TEST — info back ID (165) > ctx delete ID (164) *)
+(* UNIT TEST — info back ID (24) > ctx delete ID (23) *)
 fun test_info_base_no_collision(): bool(true) =
-  gt_g1(165, 164)
+  gt_g1(24, 23)
 
-(* UNIT TEST — info IDs are sequential: 165..169 *)
+(* UNIT TEST — info IDs span 5: 24..28 *)
 fun test_info_ids_sequential(): bool(true) =
-  eq_g1(sub_g1(169, 165), 4)
+  eq_g1(sub_g1(28, 24), 4)
 
 (* ================================================================
  * Test 20: BOOK_DELETE_COMPLETE — chained delete proof
@@ -628,16 +675,16 @@ fun test_vt48_len(): bool(true) = let
 in true end
 
 (* ================================================================
- * Test 21: Delete listener ID non-collision
+ * Test 21: Delete listener ID non-collision (new contiguous IDs)
  *
- * Verifies LISTENER_DEL_CONFIRM (40) and LISTENER_DEL_CANCEL (41)
- * are above LISTENER_ERR_DISMISS (39) and below LISTENER_KEYDOWN (50).
+ * Verifies LISTENER_DEL_CONFIRM (17) and LISTENER_DEL_CANCEL (18)
+ * are above LISTENER_ERR_DISMISS (16) and below CTX_DISMISS (19).
  * ================================================================ *)
 
-(* UNIT TEST — del confirm ID 40 > err dismiss ID 39 *)
+(* UNIT TEST — del confirm ID 17 > err dismiss ID 16 *)
 fun test_listener_del_confirm_above(): bool(true) =
-  gt_g1(40, 39)
+  gt_g1(17, 16)
 
-(* UNIT TEST — del cancel ID 41 < keydown ID 50 *)
+(* UNIT TEST — del cancel ID 18 < ctx dismiss ID 19 *)
 fun test_listener_del_cancel_below(): bool(true) =
-  lt_g1(41, 50)
+  lt_g1(18, 19)

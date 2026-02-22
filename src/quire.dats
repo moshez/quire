@@ -68,17 +68,17 @@ dataprop POSITION_PERSISTED() = | POS_PERSISTED()
 (* Named listener IDs — single source of truth.
  * Dataprop enum prevents arbitrary IDs in reader event listeners. *)
 dataprop READER_LISTENER(id: int) =
-  | READER_LISTEN_KEYDOWN(50)
-  | READER_LISTEN_VIEWPORT_CLICK(51)
-  | READER_LISTEN_BACK(52)
-  | READER_LISTEN_PREV(53)
-  | READER_LISTEN_NEXT(54)
+  | READER_LISTEN_KEYDOWN(29)
+  | READER_LISTEN_VIEWPORT_CLICK(30)
+  | READER_LISTEN_BACK(31)
+  | READER_LISTEN_PREV(32)
+  | READER_LISTEN_NEXT(33)
 
-#define LISTENER_KEYDOWN 50
-#define LISTENER_VIEWPORT_CLICK 51
-#define LISTENER_BACK 52
-#define LISTENER_PREV 53
-#define LISTENER_NEXT 54
+#define LISTENER_KEYDOWN 29
+#define LISTENER_VIEWPORT_CLICK 30
+#define LISTENER_BACK 31
+#define LISTENER_PREV 32
+#define LISTENER_NEXT 33
 
 (* ========== Measurement correctness ========== *)
 

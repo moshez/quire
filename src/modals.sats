@@ -20,14 +20,14 @@ fun cls_err_close(): ward_safe_text(9)
 
 (* ========== Listener ID defines ========== *)
 
-#define LISTENER_DUP_SKIP 34
-#define LISTENER_DUP_REPLACE 35
-#define LISTENER_RESET_BTN 36
-#define LISTENER_RESET_CONFIRM 37
-#define LISTENER_RESET_CANCEL 38
-#define LISTENER_ERR_DISMISS 39
-#define LISTENER_DEL_CONFIRM 40
-#define LISTENER_DEL_CANCEL 41
+#define LISTENER_RESET_BTN 11
+#define LISTENER_DUP_SKIP 12
+#define LISTENER_DUP_REPLACE 13
+#define LISTENER_RESET_CONFIRM 14
+#define LISTENER_RESET_CANCEL 15
+#define LISTENER_ERR_DISMISS 16
+#define LISTENER_DEL_CONFIRM 17
+#define LISTENER_DEL_CANCEL 18
 
 (* ========== Delete book proofs ========== *)
 

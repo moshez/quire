@@ -8,19 +8,11 @@ staload "./library.sats"
 
 (* ========== Book info listener IDs ========== *)
 
-(* Book info overlay listener IDs -- stadef chain for collision safety.
- * LID_CTX_DELETE = 164, so info starts at 165. *)
-stadef LID_INFO_BASE = 165
-stadef LID_INFO_BACK = LID_INFO_BASE
-stadef LID_INFO_DISMISS = LID_INFO_BASE + 1
-stadef LID_INFO_HIDE = LID_INFO_BASE + 2
-stadef LID_INFO_ARCHIVE = LID_INFO_BASE + 3
-stadef LID_INFO_DELETE = LID_INFO_BASE + 4
-#define LISTENER_INFO_BACK 165
-#define LISTENER_INFO_DISMISS 166
-#define LISTENER_INFO_HIDE 167
-#define LISTENER_INFO_ARCHIVE 168
-#define LISTENER_INFO_DELETE 169
+#define LISTENER_INFO_BACK 24
+#define LISTENER_INFO_DISMISS 25
+#define LISTENER_INFO_HIDE 26
+#define LISTENER_INFO_ARCHIVE 27
+#define LISTENER_INFO_DELETE 28
 
 (* ========== Size display proof ========== *)
 

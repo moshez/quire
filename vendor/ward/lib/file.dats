@@ -38,20 +38,12 @@ in p end
 implement
 ward_file_get_size() = _ward_bridge_stash_get_int(0)
 
-extern fun _ward_file_gt_int
-  (a: int, b: int): bool = "mac#atspre_g0int_gt_int"
-
 implement
-ward_file_get_name_len() = let
-  val raw = _ward_bridge_stash_get_int(2)
-in
-  if _ward_file_gt_int(raw, 0) then $UNSAFE.cast{[n:nat] int(n)}(raw)
-  else 0
-end
+ward_file_get_name_len() = _ward_bridge_stash_get_int(2)
 
 implement
 ward_file_get_name{n}(len) =
-  ward_bridge_recv(_ward_bridge_stash_get_int(3), len)
+  ward_bridge_recv(_ward_bridge_stash_get_int(1), len)
 
 implement
 ward_file_read{l}{n}(handle, file_offset, out, len) = let
