@@ -63,6 +63,16 @@ extern int quire_time_now(void);
  * transitions — ensures position is saved on every navigation. *)
 dataprop POSITION_PERSISTED() = | POS_PERSISTED()
 
+(* ========== Bookmark proofs ========== *)
+
+(* BOOKMARK_TOGGLED: proves toggle_bookmark was called.
+ * Produced only by toggle_bookmark — guarantees toggle + save occurred. *)
+dataprop BOOKMARK_TOGGLED() = | BM_TOGGLED()
+
+(* BOOKMARK_BTN_SYNCED: proves visual state matches bookmark data.
+ * Produced only by update_bookmark_btn — guarantees DOM class was set. *)
+dataprop BOOKMARK_BTN_SYNCED() = | BM_BTN_SYNCED()
+
 (* ========== Listener ID constants ========== *)
 
 (* Named listener IDs — single source of truth.
@@ -73,12 +83,14 @@ dataprop READER_LISTENER(id: int) =
   | READER_LISTEN_BACK(31)
   | READER_LISTEN_PREV(32)
   | READER_LISTEN_NEXT(33)
+  | READER_LISTEN_BOOKMARK(34)
 
 #define LISTENER_KEYDOWN 29
 #define LISTENER_VIEWPORT_CLICK 30
 #define LISTENER_BACK 31
 #define LISTENER_PREV 32
 #define LISTENER_NEXT 33
+#define LISTENER_BOOKMARK 34
 
 (* ========== Chrome auto-hide proofs ========== *)
 
@@ -441,6 +453,60 @@ end
  * forward page turns. Caller must destructure the proof.
  *
  * Precondition: caller has already verified pg < total - 1. *)
+(* ========== Bookmark functions ========== *)
+
+(* is_page_bookmarked: linear scan of bookmark buffer.
+ * Each entry is 3 i32s: [chapter, page, timestamp].
+ * Returns 1 if (chapter, page) found, 0 if not. *)
+fun is_page_bookmarked {k:nat} .<k>.
+  (rem: int(k), chapter: int, page: int, idx: int, count: int): int =
+  if lte_g1(rem, 0) then 0
+  else if gte_int_int(idx, count) then 0
+  else let
+    val base = idx * 3
+    val ch = _app_bm_buf_get_i32(base)
+    val pg = _app_bm_buf_get_i32(base + 1)
+  in
+    if eq_int_int(ch, chapter) then
+      if eq_int_int(pg, page) then 1
+      else is_page_bookmarked(sub_g1(rem, 1), chapter, page, idx + 1, count)
+    else is_page_bookmarked(sub_g1(rem, 1), chapter, page, idx + 1, count)
+  end
+
+(* update_bookmark_btn: sync button class to bookmark state.
+ * Sets class to "bm-active" if current page is bookmarked, "bm-btn" otherwise.
+ * Returns BOOKMARK_BTN_SYNCED proof — the ONLY way to obtain it. *)
+fn update_bookmark_btn(): (BOOKMARK_BTN_SYNCED() | void) = let
+  val btn_id = reader_get_bm_btn_id()
+in
+  if gt_int_int(btn_id, 0) then let
+    val ch = reader_get_current_chapter()
+    val pg = reader_get_current_page()
+    val cnt = reader_get_bm_count()
+    val found = is_page_bookmarked(_checked_nat(cnt), ch, pg, 0, cnt)
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+  in
+    if eq_int_int(found, 1) then let
+      val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5,
+        cls_bm_active(), 9)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+      prval pf = BM_BTN_SYNCED()
+    in (pf | ()) end
+    else let
+      val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5,
+        cls_bm_btn(), 6)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+      prval pf = BM_BTN_SYNCED()
+    in (pf | ()) end
+  end
+  else let
+    prval pf = BM_BTN_SYNCED()
+  in (pf | ()) end
+end
+
 (* save_reading_position: persist current reading position to IDB.
  * Returns POSITION_PERSISTED proof — compile-time guarantee that
  * library_update_position + library_save were called.
@@ -459,6 +525,8 @@ fn page_turn_forward(container_id: int)
   val () = reader_next_page()
   val () = apply_page_transform(container_id)
   val () = update_page_info()
+  val (pf_bm | ()) = update_bookmark_btn()
+  prval BM_BTN_SYNCED() = pf_bm
   val (pf_pos | ()) = save_reading_position()
   prval pf_pg = PAGE_TURNED_AND_SHOWN()
 in @(pf_pg, pf_pos | ()) end
@@ -474,6 +542,8 @@ fn page_turn_backward(container_id: int)
   val () = reader_prev_page()
   val () = apply_page_transform(container_id)
   val () = update_page_info()
+  val (pf_bm | ()) = update_bookmark_btn()
+  prval BM_BTN_SYNCED() = pf_bm
   val (pf_pos | ()) = save_reading_position()
   prval pf_pg = PAGE_TURNED_AND_SHOWN()
 in @(pf_pg, pf_pos | ()) end
@@ -589,6 +659,8 @@ fn finish_chapter_load(container_id: int)
     else ()
   end
   val () = apply_resume_page(container_id)
+  val (pf_bm | ()) = update_bookmark_btn()
+  prval BM_BTN_SYNCED() = pf_bm
   prval pf_title = TITLE_SHOWN()
   prval pf = MEASURED_AND_TRANSFORMED(pf_title)
 in (pf | ()) end
@@ -1022,6 +1094,184 @@ fn chrome_safe_navigate_next(container_id: int): void = let
   val () = start_chrome_auto_hide()
 in end
 
+(* save_bookmarks_to_idb: serialize bookmark buffer and store in IDB.
+ * If count == 0, deletes the IDB key.
+ * Each entry: 3 i32s (chapter, page, timestamp) = 12 bytes. *)
+fn save_bookmarks_to_idb(): void = let
+  val cnt = reader_get_bm_count()
+  val key = epub_build_bookmark_key()
+in
+  if lte_int_int(cnt, 0) then let
+    val () = ward_promise_discard<int>(ward_idb_delete(key, 20))
+  in end
+  else let
+    val byte_count = cnt * 12
+    val bc = g1ofg0(byte_count)
+  in
+    if bc > 0 then
+      if bc <= 3072 then let
+        val arr = ward_arr_alloc<byte>(bc)
+        fun write_entries {l:agz}{n:pos}{k:nat} .<k>.
+          (rem: int(k), a: !ward_arr(byte, l, n), alen: int n,
+           i: int, total: int): void =
+          if lte_g1(rem, 0) then ()
+          else if gte_int_int(i, total) then ()
+          else let
+            val base = i * 3
+            val ch = _app_bm_buf_get_i32(base)
+            val pg = _app_bm_buf_get_i32(base + 1)
+            val ts = _app_bm_buf_get_i32(base + 2)
+            val boff = i * 12
+            val () = ward_arr_set_byte(a, boff, alen, band_int_int(ch, 255))
+            val () = ward_arr_set_byte(a, boff + 1, alen, band_int_int(bsr_int_int(ch, 8), 255))
+            val () = ward_arr_set_byte(a, boff + 2, alen, band_int_int(bsr_int_int(ch, 16), 255))
+            val () = ward_arr_set_byte(a, boff + 3, alen, band_int_int(bsr_int_int(ch, 24), 255))
+            val () = ward_arr_set_byte(a, boff + 4, alen, band_int_int(pg, 255))
+            val () = ward_arr_set_byte(a, boff + 5, alen, band_int_int(bsr_int_int(pg, 8), 255))
+            val () = ward_arr_set_byte(a, boff + 6, alen, band_int_int(bsr_int_int(pg, 16), 255))
+            val () = ward_arr_set_byte(a, boff + 7, alen, band_int_int(bsr_int_int(pg, 24), 255))
+            val () = ward_arr_set_byte(a, boff + 8, alen, band_int_int(ts, 255))
+            val () = ward_arr_set_byte(a, boff + 9, alen, band_int_int(bsr_int_int(ts, 8), 255))
+            val () = ward_arr_set_byte(a, boff + 10, alen, band_int_int(bsr_int_int(ts, 16), 255))
+            val () = ward_arr_set_byte(a, boff + 11, alen, band_int_int(bsr_int_int(ts, 24), 255))
+          in write_entries(sub_g1(rem, 1), a, alen, i + 1, total) end
+        val () = write_entries(_checked_nat(cnt), arr, bc, 0, cnt)
+        val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+        val p = ward_idb_put(key, 20, borrow, bc)
+        val () = ward_arr_drop<byte>(frozen, borrow)
+        val arr = ward_arr_thaw<byte>(frozen)
+        val () = ward_arr_free<byte>(arr)
+        val () = ward_promise_discard<int>(p)
+      in end
+      else ()
+    else ()
+  end
+end
+
+(* toggle_bookmark: add or remove bookmark at current page.
+ * Returns BOOKMARK_TOGGLED proof — the ONLY way to obtain it. *)
+fn toggle_bookmark(): (BOOKMARK_TOGGLED() | void) = let
+  val ch = reader_get_current_chapter()
+  val pg = reader_get_current_page()
+  val cnt = reader_get_bm_count()
+  (* Search for existing bookmark *)
+  fun find_idx {k:nat} .<k>.
+    (rem: int(k), chapter: int, page: int, i: int, total: int): int =
+    if lte_g1(rem, 0) then 0 - 1
+    else if gte_int_int(i, total) then 0 - 1
+    else let
+      val base = i * 3
+      val bch = _app_bm_buf_get_i32(base)
+      val bpg = _app_bm_buf_get_i32(base + 1)
+    in
+      if eq_int_int(bch, chapter) then
+        if eq_int_int(bpg, page) then i
+        else find_idx(sub_g1(rem, 1), chapter, page, i + 1, total)
+      else find_idx(sub_g1(rem, 1), chapter, page, i + 1, total)
+    end
+  val found_idx = find_idx(_checked_nat(cnt), ch, pg, 0, cnt)
+in
+  if gte_int_int(found_idx, 0) then let
+    (* Remove: shift remaining entries down *)
+    fun shift_down {k:nat} .<k>.
+      (rem: int(k), i: int, total: int): void =
+      if lte_g1(rem, 0) then ()
+      else if gte_int_int(i, total) then ()
+      else let
+        val src = (i + 1) * 3
+        val dst = i * 3
+        val () = _app_bm_buf_set_i32(dst, _app_bm_buf_get_i32(src))
+        val () = _app_bm_buf_set_i32(dst + 1, _app_bm_buf_get_i32(src + 1))
+        val () = _app_bm_buf_set_i32(dst + 2, _app_bm_buf_get_i32(src + 2))
+      in shift_down(sub_g1(rem, 1), i + 1, total) end
+    val () = shift_down(_checked_nat(cnt), found_idx, cnt - 1)
+    val () = reader_set_bm_count(cnt - 1)
+    val (pf_btn | ()) = update_bookmark_btn()
+    prval BM_BTN_SYNCED() = pf_btn
+    val () = save_bookmarks_to_idb()
+    prval pf = BM_TOGGLED()
+  in (pf | ()) end
+  else let
+    (* Add: append if under max *)
+  in
+    if lt_int_int(cnt, BOOKMARK_MAX_COUNT) then let
+      val base = cnt * 3
+      val () = _app_bm_buf_set_i32(base, ch)
+      val () = _app_bm_buf_set_i32(base + 1, pg)
+      val () = _app_bm_buf_set_i32(base + 2, quire_time_now())
+      val () = reader_set_bm_count(cnt + 1)
+      val (pf_btn | ()) = update_bookmark_btn()
+      prval BM_BTN_SYNCED() = pf_btn
+      val () = save_bookmarks_to_idb()
+      prval pf = BM_TOGGLED()
+    in (pf | ()) end
+    else let
+      prval pf = BM_TOGGLED()
+    in (pf | ()) end
+  end
+end
+
+(* load_bookmarks_from_idb: fetch bookmark data from IDB and populate buffer.
+ * Called on reader entry after book_id is set. *)
+fn load_bookmarks_from_idb(): void = let
+  val key = epub_build_bookmark_key()
+  val p = ward_idb_get(key, 20)
+  val p2 = ward_promise_then<int><int>(p,
+    llam (data_len: int): ward_promise_chained(int) =>
+      if lte_int_int(data_len, 0) then let
+        val () = reader_set_bm_count(0)
+        val (pf_btn | ()) = update_bookmark_btn()
+        prval BM_BTN_SYNCED() = pf_btn
+      in ward_promise_return<int>(0) end
+      else let
+        val dl = _checked_pos(data_len)
+        val arr = ward_idb_get_result(dl)
+        (* Each entry = 12 bytes: 4 ch + 4 pg + 4 ts *)
+        val entry_count = div_int_int(data_len, 12)
+        val max_entries = if lt_int_int(entry_count, BOOKMARK_MAX_COUNT) then entry_count
+                          else BOOKMARK_MAX_COUNT
+        fun _rb {l:agz}{n:pos}
+          (a: !ward_arr(byte, l, n), off: int, cap: int n): int =
+          byte2int0(ward_arr_get<byte>(a, _ward_idx(off, cap)))
+        fun read_entries {l:agz}{n:pos}{k:nat} .<k>.
+          (rem: int(k), a: !ward_arr(byte, l, n), alen: int n,
+           i: int, total: int): void =
+          if lte_g1(rem, 0) then ()
+          else if gte_int_int(i, total) then ()
+          else let
+            val boff = i * 12
+            val b0 = _rb(a, boff, alen)
+            val b1 = _rb(a, boff + 1, alen)
+            val b2 = _rb(a, boff + 2, alen)
+            val b3 = _rb(a, boff + 3, alen)
+            val ch_val = bor_int_int(bor_int_int(b0, bsl_int_int(b1, 8)),
+                           bor_int_int(bsl_int_int(b2, 16), bsl_int_int(b3, 24)))
+            val b4 = _rb(a, boff + 4, alen)
+            val b5 = _rb(a, boff + 5, alen)
+            val b6 = _rb(a, boff + 6, alen)
+            val b7 = _rb(a, boff + 7, alen)
+            val pg_val = bor_int_int(bor_int_int(b4, bsl_int_int(b5, 8)),
+                           bor_int_int(bsl_int_int(b6, 16), bsl_int_int(b7, 24)))
+            val b8 = _rb(a, boff + 8, alen)
+            val b9 = _rb(a, boff + 9, alen)
+            val b10 = _rb(a, boff + 10, alen)
+            val b11 = _rb(a, boff + 11, alen)
+            val ts_val = bor_int_int(bor_int_int(b8, bsl_int_int(b9, 8)),
+                           bor_int_int(bsl_int_int(b10, 16), bsl_int_int(b11, 24)))
+            val base = i * 3
+            val () = _app_bm_buf_set_i32(base, ch_val)
+            val () = _app_bm_buf_set_i32(base + 1, pg_val)
+            val () = _app_bm_buf_set_i32(base + 2, ts_val)
+          in read_entries(sub_g1(rem, 1), a, alen, i + 1, total) end
+        val () = read_entries(_checked_nat(max_entries), arr, dl, 0, max_entries)
+        val () = ward_arr_free<byte>(arr)
+        val () = reader_set_bm_count(max_entries)
+        val (pf_btn | ()) = update_bookmark_btn()
+        prval BM_BTN_SYNCED() = pf_btn
+      in ward_promise_return<int>(1) end)
+  val () = ward_promise_discard<int>(p2)
+in end
+
 (* ========== Reader keyboard handler ========== *)
 
 fn on_reader_keydown(payload_len: int, root_id: int): void = let
@@ -1066,6 +1316,15 @@ in
       (* 't' (116) or 'T' (84): toggle chrome *)
       else if eq_int_int(k0, 116) then toggle_chrome()
       else if eq_int_int(k0, 84) then toggle_chrome()
+      (* 'b' (98) or 'B' (66): toggle bookmark *)
+      else if eq_int_int(k0, 98) then let
+        val (pf | ()) = toggle_bookmark()
+        prval BM_TOGGLED() = pf
+      in end
+      else if eq_int_int(k0, 66) then let
+        val (pf | ()) = toggle_bookmark()
+        prval BM_TOGGLED() = pf
+      in end
       else ()
     else ()
   end
@@ -1124,6 +1383,18 @@ implement enter_reader(root_id, book_index) = let
   val s = ward_dom_stream_create_element(s, ch_title_id, nav_id, tag_span(), 4)
   val s = ward_dom_stream_set_attr_safe(s, ch_title_id, attr_class(), 5,
     cls_ch_title(), 8)
+
+  (* Bookmark button *)
+  val bm_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, bm_btn_id, nav_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, bm_btn_id, attr_class(), 5,
+    cls_bm_btn(), 6)
+  val bm_st = let
+    val b = ward_text_build(2)
+    val b = ward_text_putc(b, 0, char2int1('B'))
+    val b = ward_text_putc(b, 1, char2int1('M'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, bm_btn_id, bm_st, 2)
 
   (* Nav controls wrapper *)
   val controls_id = dom_next_id()
@@ -1188,6 +1459,7 @@ implement enter_reader(root_id, book_index) = let
   val () = reader_set_nav_id(nav_id)
   val () = reader_set_page_info_id(page_info_id)
   val () = reader_set_chapter_title_id(ch_title_id)
+  val () = reader_set_bm_btn_id(bm_btn_id)
 
   (* Register click listener on back button *)
   val saved_root = root_id
@@ -1213,6 +1485,15 @@ implement enter_reader(root_id, book_index) = let
     next_btn_id, evt_click(), 5, LISTENER_NEXT,
     lam (_pl: int): int => let
       val () = chrome_safe_navigate_next(saved_container)
+    in 0 end
+  )
+
+  (* Register click listener on bookmark button *)
+  val () = ward_add_event_listener(
+    bm_btn_id, evt_click(), 5, LISTENER_BOOKMARK,
+    lam (_pl: int): int => let
+      val (pf | ()) = toggle_bookmark()
+      prval BM_TOGGLED() = pf
     in 0 end
   )
 
@@ -1283,6 +1564,7 @@ implement enter_reader(root_id, book_index) = let
         val now_g1 = _checked_nat(now)
         val () = library_set_last_opened(VALID_TIMESTAMP() | saved_bi, now_g1)
         val () = library_save()
+        val () = load_bookmarks_from_idb()
         val spine = epub_get_chapter_count()
         val spine_g1 = g1ofg0(spine)
         val saved_ch = library_get_chapter(saved_bi)

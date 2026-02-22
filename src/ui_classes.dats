@@ -480,6 +480,31 @@ implement cls_ch_title() = let
   val b = ward_text_putc(b, 7, char2int1('e'))
 in ward_text_done(b) end
 
+(* "bm-btn" = 6 chars *)
+implement cls_bm_btn() = let
+  val b = ward_text_build(6)
+  val b = ward_text_putc(b, 0, char2int1('b'))
+  val b = ward_text_putc(b, 1, char2int1('m'))
+  val b = ward_text_putc(b, 2, 45) (* '-' *)
+  val b = ward_text_putc(b, 3, char2int1('b'))
+  val b = ward_text_putc(b, 4, char2int1('t'))
+  val b = ward_text_putc(b, 5, char2int1('n'))
+in ward_text_done(b) end
+
+(* "bm-active" = 9 chars *)
+implement cls_bm_active() = let
+  val b = ward_text_build(9)
+  val b = ward_text_putc(b, 0, char2int1('b'))
+  val b = ward_text_putc(b, 1, char2int1('m'))
+  val b = ward_text_putc(b, 2, 45) (* '-' *)
+  val b = ward_text_putc(b, 3, char2int1('a'))
+  val b = ward_text_putc(b, 4, char2int1('c'))
+  val b = ward_text_putc(b, 5, char2int1('t'))
+  val b = ward_text_putc(b, 6, char2int1('i'))
+  val b = ward_text_putc(b, 7, char2int1('v'))
+  val b = ward_text_putc(b, 8, char2int1('e'))
+in ward_text_done(b) end
+
 (* "next-btn" = 8 chars *)
 implement cls_next_btn() = let
   val b = ward_text_build(8)

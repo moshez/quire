@@ -211,3 +211,9 @@ fun reader_set_chrome_timer_gen(v: int): void
 fun reader_incr_chrome_timer_gen(): int
 fun reader_set_chapter_title_id(id: int): void
 fun reader_get_chapter_title_id(): int
+fun reader_get_bm_count(): int
+fun reader_set_bm_count(v: int): void
+fun reader_get_bm_btn_id(): int
+fun reader_set_bm_btn_id(id: int): void
+fun reader_get_bm_save_pending(): int
+fun reader_set_bm_save_pending(v: int): void
