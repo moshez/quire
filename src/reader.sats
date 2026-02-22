@@ -15,6 +15,7 @@
 #define SLOT_READY    2
 
 staload "./drag_state.sats"
+staload "./library.sats"
 
 (* ========== M13: Functional Correctness Dataprops ========== *)
 
@@ -109,19 +110,9 @@ dataprop PAGE_IN_BOUNDS(page: int, total: int) =
 dataprop NAV_DIRECTION(d: int) =
   | NAV_PREV(~1) | NAV_NEXT(1)
 
-(* Position saved before exit proof.
- * POSITION_SAVED() proves that library_update_position was called
- * with the reader's current book_index, chapter, and page BEFORE
- * reader_exit clears reader state (book_index → -1, page → 0).
- *
- * Without this proof, reader_exit rejects at compile time.
- * The only way to construct SAVED() is at the call site where
- * library_update_position is textually adjacent — forcing the
- * developer to consciously save before exiting.
- *
- * BUG PREVENTED: reader_exit called without saving position,
- * causing library to show "Not started" after reading. *)
-dataprop POSITION_SAVED() = | SAVED()
+(* POSITION_SAVED: declared in library.sats as absprop.
+ * Produced only by library_update_position via local assume in library.dats.
+ * Required by reader_exit — unforgeable proof that position was saved. *)
 
 (* Named listener IDs — single source of truth.
  * Dataprop enum prevents arbitrary IDs in reader event listeners. *)
@@ -273,7 +264,7 @@ fun reader_get_toc_bm_count_btn_id(): int
 fun reader_set_toc_switch_btn_id(id: int): void
 fun reader_get_toc_switch_btn_id(): int
 fun reader_set_toc_view_mode(v: int): void
-fun reader_get_toc_view_mode(): int
+fun reader_get_toc_view_mode(): [n:nat] int(n)
 fun reader_set_toc_first_entry_id(id: int): void
 fun reader_get_toc_first_entry_id(): int
 fun reader_set_toc_entry_count(n: int): void

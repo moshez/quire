@@ -55,7 +55,7 @@ implement reader_enter(root_id, container_hide_id) = let
 in end
 
 implement reader_exit(pf) = let
-  prval SAVED() = pf
+  prval _ = pf
   val st = app_state_load()
   val () = app_set_rdr_active(st, 0)
   val () = app_set_rdr_book_index(st, 0 - 1)
@@ -562,7 +562,10 @@ implement reader_get_toc_view_mode() = let
   val st = app_state_load()
   val v = app_get_rdr_toc_view_mode(st)
   val () = app_state_store(st)
-in v end
+in
+  if v >= 0 then _checked_nat(v)
+  else _checked_nat(0)
+end
 
 implement reader_set_toc_first_entry_id(id) = let
   val st = app_state_load()

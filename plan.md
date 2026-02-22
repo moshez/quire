@@ -175,7 +175,7 @@ everything else depends on.
   persistent "back" affordance pops the stack, returning to the exact prior
   position. Stack stored in reader state (not persisted across sessions).
 
-- [ ] **4.7 Escape key hierarchy.** Escape key follows the UI stack: close
+- [x] **4.7 Escape key hierarchy.** Escape key follows the UI stack: close
   footnote popup → close TOC/settings/search panel → hide chrome → return to
   library. Each press pops one layer. This is also the Android hardware back
   button behavior in the Capacitor shell.

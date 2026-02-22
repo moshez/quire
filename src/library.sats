@@ -231,6 +231,11 @@ dataprop ADD_BOOK_RESULT(idx: int) =
   | {i:nat | i < 32} BOOK_ADDED(i)      (* success: book at index i *)
   | LIB_FULL(~1)                          (* library at 32-book capacity *)
 
+(* POSITION_SAVED(): proves library_update_position was called before reader_exit.
+ * absprop: unforgeable. Only library_update_position's local assume block can construct.
+ * BUG CLASS PREVENTED: reader_exit called without saving position. *)
+absprop POSITION_SAVED()
+
 (* ========== Module Functions ========== *)
 
 fun library_init(): void
@@ -249,7 +254,7 @@ fun library_set_shelf_state {s:int}
 
 fun library_add_book(): [i:int | i >= ~1; i < 32] (ADD_BOOK_RESULT(i) | int(i))
 fun library_remove_book(index: int): void
-fun library_update_position(index: int, chapter: int, page: int): void
+fun library_update_position(index: int, chapter: int, page: int): (POSITION_SAVED() | void)
 fun library_find_book_by_id(): [i:int | i >= ~1] int(i)
 
 (* Replace an existing book entry with new epub data.
