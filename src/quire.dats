@@ -1187,27 +1187,28 @@ in
     val ch = reader_get_pos_stack_ch(entry_idx)
     val pg = reader_get_pos_stack_pg(entry_idx)
     val spine = epub_get_chapter_count()
-    val ch_plus1 = ch + 1
+    val spine_g1 = g1ofg0(spine)
+    val ch_nat = _checked_nat(ch)
   in
-    if lt_int_int(ch_plus1, spine) then let
-      val ch_nat = _checked_nat(ch)
-    in
-      if lt1_int_int(ch_nat, spine) then let
-        val () = reader_go_to_chapter(ch_nat, spine)
-        val () = reader_go_to_page(pg)
-        val () = apply_page_transform(reader_get_container_id())
-        val (pf_pg_info | ()) = update_page_info()
-        prval _ = pf_pg_info
-        (* Hide back button if stack is now empty *)
-        val new_cnt = reader_get_pos_stack_count()
-        val back_id = reader_get_nav_back_btn_id()
-        val () = if gt_int_int(back_id, 0) then
-          if eq_int_int(new_cnt, 0) then set_style_none(back_id)
-          else ()
+    if lt1_int_int(ch_nat, spine_g1) then let
+      val container_id = reader_get_container_id()
+      prval pf = SPINE_ENTRY()
+      val () = reader_go_to_chapter(ch_nat, spine_g1)
+      val () = reader_set_resume_page(pg)
+      val dom = ward_dom_init()
+      val s = ward_dom_stream_begin(dom)
+      val s = ward_dom_stream_remove_children(s, container_id)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+      val () = load_chapter_from_idb(pf | ch_nat, spine_g1, container_id)
+      (* Hide back button if stack is now empty *)
+      val new_cnt = reader_get_pos_stack_count()
+      val back_id = reader_get_nav_back_btn_id()
+      val () = if gt_int_int(back_id, 0) then
+        if eq_int_int(new_cnt, 0) then set_style_none(back_id)
         else ()
-      in end
       else ()
-    end
+    in end
     else ()
   end
   else ()
@@ -1919,6 +1920,14 @@ in
         prval _ = pf_pushed
         val () = reader_go_to_chapter(idx_g1, total_g1)
         val () = hide_toc_panel()
+        val container_id = reader_get_container_id()
+        prval pf = SPINE_ENTRY()
+        val dom = ward_dom_init()
+        val s = ward_dom_stream_begin(dom)
+        val s = ward_dom_stream_remove_children(s, container_id)
+        val dom = ward_dom_stream_end(s)
+        val () = ward_dom_fini(dom)
+        val () = load_chapter_from_idb(pf | idx_g1, total_g1, container_id)
       in () end
       else ()
     else ()
