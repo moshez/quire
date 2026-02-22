@@ -145,7 +145,7 @@ everything else depends on.
   Cancel timer on user interaction with chrome elements (tapping any chrome
   button, interacting with scrubber). Use `ward_timer` API.
 
-- [ ] **4.2 Chapter title in top chrome.** Display the current chapter's
+- [x] **4.2 Chapter title in top chrome.** Display the current chapter's
   title in the top bar between the close button and bookmark toggle (per spec
   wireframe: `✕  Chapter 4: The Garden    🔖`). Look up title from TOC data
   using current spine index. Update on chapter transitions.

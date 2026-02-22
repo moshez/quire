@@ -33,6 +33,7 @@ fun cls_page_info(): ward_safe_text(9)
 fun cls_nav_controls(): ward_safe_text(12)
 fun cls_prev_btn(): ward_safe_text(8)
 fun cls_next_btn(): ward_safe_text(8)
+fun cls_ch_title(): ward_safe_text(8)
 
 (* ========== Event/type builders ========== *)
 

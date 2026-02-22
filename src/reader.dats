@@ -22,6 +22,7 @@ implement reader_init() = let
   val () = app_set_rdr_total_pages(st, 1)
   val () = app_set_rdr_chrome_visible(st, 0)
   val () = app_set_rdr_chrome_timer_gen(st, 0)
+  val () = app_set_rdr_chapter_title_id(st, 0)
   val () = app_state_store(st)
 in end
 
@@ -42,6 +43,7 @@ implement reader_exit(pf) = let
   val () = app_set_rdr_total_pages(st, 1)
   val () = app_set_rdr_chrome_visible(st, 0)
   val () = app_set_rdr_chrome_timer_gen(st, 0)
+  val () = app_set_rdr_chapter_title_id(st, 0)
   val () = app_state_store(st)
 in end
 
@@ -296,3 +298,15 @@ implement reader_incr_chrome_timer_gen() = let
   val () = app_set_rdr_chrome_timer_gen(st, nv)
   val () = app_state_store(st)
 in nv end
+
+implement reader_set_chapter_title_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_chapter_title_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_chapter_title_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_chapter_title_id(st)
+  val () = app_state_store(st)
+in v end

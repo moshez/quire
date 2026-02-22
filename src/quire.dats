@@ -187,8 +187,11 @@ in ward_text_done(b) end
  *
  * finish_chapter_load is the ONLY way to obtain this proof, and it
  * always calls apply_page_transform before apply_resume_page. *)
+dataprop CHAPTER_TITLE_DISPLAYED() =
+  | TITLE_SHOWN()
+
 dataprop CHAPTER_DISPLAY_READY() =
-  | MEASURED_AND_TRANSFORMED()
+  | MEASURED_AND_TRANSFORMED() of CHAPTER_TITLE_DISPLAYED()
 
 (* PAGE_DISPLAY_UPDATED: proves that after changing the page counter,
  * both the CSS transform AND the page indicator were updated.
@@ -379,6 +382,59 @@ in
   else ()
 end
 
+(* update_chapter_title: set chapter title span to "Chapter N".
+ * Returns CHAPTER_TITLE_DISPLAYED proof — the ONLY way to obtain it.
+ * Dependent type {n:int | n >= 1; n <= 9999} on ch_num proves buffer
+ * safety: "Chapter " (8 bytes) + at most 4 digits = 12 <= 48. *)
+fn update_chapter_title {n:int | n >= 1; n <= 9999}
+  (ch_num: int(n)): (CHAPTER_TITLE_DISPLAYED() | void) = let
+  val nid = reader_get_chapter_title_id()
+in
+  if gt_int_int(nid, 0) then let
+    val arr = ward_arr_alloc<byte>(48)
+    (* Write "Chapter " prefix — 8 bytes *)
+    val () = ward_arr_set<byte>(arr, _idx48(0), _byte(67))   (* 'C' *)
+    val () = ward_arr_set<byte>(arr, _idx48(1), _byte(104))  (* 'h' *)
+    val () = ward_arr_set<byte>(arr, _idx48(2), _byte(97))   (* 'a' *)
+    val () = ward_arr_set<byte>(arr, _idx48(3), _byte(112))  (* 'p' *)
+    val () = ward_arr_set<byte>(arr, _idx48(4), _byte(116))  (* 't' *)
+    val () = ward_arr_set<byte>(arr, _idx48(5), _byte(101))  (* 'e' *)
+    val () = ward_arr_set<byte>(arr, _idx48(6), _byte(114))  (* 'r' *)
+    val () = ward_arr_set<byte>(arr, _idx48(7), _byte(32))   (* ' ' *)
+    (* Chapter number via itoa_to_arr *)
+    val ndigits = itoa_to_arr(arr, g0ofg1(ch_num), 8)
+    val total_len = 8 + ndigits
+    val tl = g1ofg0(total_len)
+  in
+    if tl > 0 then
+      if tl < 48 then let
+        val @(used, rest) = ward_arr_split<byte>(arr, tl)
+        val () = ward_arr_free<byte>(rest)
+        val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+        val dom = ward_dom_init()
+        val s = ward_dom_stream_begin(dom)
+        val s = ward_dom_stream_set_text(s, nid, borrow, tl)
+        val dom = ward_dom_stream_end(s)
+        val () = ward_dom_fini(dom)
+        val () = ward_arr_drop<byte>(frozen, borrow)
+        val used = ward_arr_thaw<byte>(frozen)
+        val () = ward_arr_free<byte>(used)
+        prval pf_title = TITLE_SHOWN()
+      in (pf_title | ()) end
+      else let
+        val () = ward_arr_free<byte>(arr)
+        prval pf_title = TITLE_SHOWN()
+      in (pf_title | ()) end
+    else let
+      val () = ward_arr_free<byte>(arr)
+      prval pf_title = TITLE_SHOWN()
+    in (pf_title | ()) end
+  end
+  else let
+    prval pf_title = TITLE_SHOWN()
+  in (pf_title | ()) end
+end
+
 (* page_turn_forward: advance page within chapter and update display.
  * Bundles reader_next_page + apply_page_transform + update_page_info.
  * Returns PAGE_DISPLAY_UPDATED proof — the ONLY way to obtain it for
@@ -506,20 +562,35 @@ end
  *   2. validate_render_window — sanity check rendered element count
  *   3. apply_page_transform — reset CSS transform to current page
  *   4. update_page_info — update "Ch X/Y N/M" UI
- *   5. apply_resume_page — override if resuming saved position
+ *   5. update_chapter_title — update "Chapter N" in top chrome
+ *   6. apply_resume_page — override if resuming saved position
  *
  * Produces CHAPTER_DISPLAY_READY proof, which is the ONLY way to
- * obtain this dataprop. Consolidating all steps here makes it
- * impossible to skip apply_page_transform (the root cause of
- * blank first-page-after-chapter-transition). *)
+ * obtain this dataprop. MEASURED_AND_TRANSFORMED requires a
+ * CHAPTER_TITLE_DISPLAYED sub-proof — impossible to construct
+ * without calling update_chapter_title. *)
 fn finish_chapter_load(container_id: int)
   : (CHAPTER_DISPLAY_READY() | void) = let
   val () = measure_and_set_pages(container_id)
   val () = validate_render_window(dom_get_render_ecnt(), container_id)
   val () = apply_page_transform(container_id)
   val () = update_page_info()
+  (* Update chapter title in top chrome *)
+  val () = let
+    val raw = reader_get_current_chapter() + 1
+    val ch_g1 = g1ofg0(raw)
+  in
+    if ch_g1 >= 1 then
+      if ch_g1 <= 9999 then let
+        val (pf_t | ()) = update_chapter_title(ch_g1)
+        prval TITLE_SHOWN() = pf_t
+      in end
+      else ()
+    else ()
+  end
   val () = apply_resume_page(container_id)
-  prval pf = MEASURED_AND_TRANSFORMED()
+  prval pf_title = TITLE_SHOWN()
+  prval pf = MEASURED_AND_TRANSFORMED(pf_title)
 in (pf | ()) end
 
 (* Extract chapter directory from spine path in sbuf.
@@ -673,7 +744,7 @@ in
             val () = ward_arr_free<byte>(sax_buf)
             val () = ward_arr_free<byte>(dir_arr)
             val (pf_disp | ()) = finish_chapter_load(saved_cid)
-            prval MEASURED_AND_TRANSFORMED() = pf_disp
+            prval MEASURED_AND_TRANSFORMED(pf_t) = pf_disp prval TITLE_SHOWN() = pf_t
             (* Async: load images from IDB *)
             val () = load_idb_images_chain(
               _checked_nat(img_count), 0, img_count)
@@ -712,7 +783,7 @@ in
             val () = ward_dom_fini(dom)
             val () = ward_arr_free<byte>(sax_buf)
             val (pf_disp | ()) = finish_chapter_load(saved_cid)
-            prval MEASURED_AND_TRANSFORMED() = pf_disp
+            prval MEASURED_AND_TRANSFORMED(pf_t) = pf_disp prval TITLE_SHOWN() = pf_t
           in ward_promise_return<int>(1) end
           else let
             val () = show_chapter_error(VT_13() | saved_cid, 13, 21)
@@ -1022,6 +1093,7 @@ implement enter_reader(root_id, book_index) = let
 
   (* Create nav bar: <div class="reader-nav">
    *   <button class="back-btn">Back</button>
+   *   <span class="ch-title"></span>
    *   <div class="nav-controls">
    *     <button class="prev-btn">Prev</button>
    *     <span class="page-info"></span>
@@ -1046,6 +1118,12 @@ implement enter_reader(root_id, book_index) = let
     val b = ward_text_putc(b, 3, char2int1('k'))
   in ward_text_done(b) end
   val s = ward_dom_stream_set_safe_text(s, back_btn_id, back_st, 4)
+
+  (* Chapter title span *)
+  val ch_title_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, ch_title_id, nav_id, tag_span(), 4)
+  val s = ward_dom_stream_set_attr_safe(s, ch_title_id, attr_class(), 5,
+    cls_ch_title(), 8)
 
   (* Nav controls wrapper *)
   val controls_id = dom_next_id()
@@ -1109,6 +1187,7 @@ implement enter_reader(root_id, book_index) = let
   val () = reader_set_container_id(container_id)
   val () = reader_set_nav_id(nav_id)
   val () = reader_set_page_info_id(page_info_id)
+  val () = reader_set_chapter_title_id(ch_title_id)
 
   (* Register click listener on back button *)
   val saved_root = root_id
