@@ -678,6 +678,145 @@ implement cls_scrub_text() = let
   val b = ward_text_putc(b, 9, char2int1('t'))
 in ward_text_done(b) end
 
+(* "toc-btn" = 7 chars *)
+implement cls_toc_btn() = let
+  val b = ward_text_build(7)
+  val b = ward_text_putc(b, 0, char2int1('t'))
+  val b = ward_text_putc(b, 1, char2int1('o'))
+  val b = ward_text_putc(b, 2, char2int1('c'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('b'))
+  val b = ward_text_putc(b, 5, char2int1('t'))
+  val b = ward_text_putc(b, 6, char2int1('n'))
+in ward_text_done(b) end
+
+(* "toc-panel" = 9 chars *)
+implement cls_toc_panel() = let
+  val b = ward_text_build(9)
+  val b = ward_text_putc(b, 0, char2int1('t'))
+  val b = ward_text_putc(b, 1, char2int1('o'))
+  val b = ward_text_putc(b, 2, char2int1('c'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('p'))
+  val b = ward_text_putc(b, 5, char2int1('a'))
+  val b = ward_text_putc(b, 6, char2int1('n'))
+  val b = ward_text_putc(b, 7, char2int1('e'))
+  val b = ward_text_putc(b, 8, char2int1('l'))
+in ward_text_done(b) end
+
+(* "toc-header" = 10 chars *)
+implement cls_toc_header() = let
+  val b = ward_text_build(10)
+  val b = ward_text_putc(b, 0, char2int1('t'))
+  val b = ward_text_putc(b, 1, char2int1('o'))
+  val b = ward_text_putc(b, 2, char2int1('c'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('h'))
+  val b = ward_text_putc(b, 5, char2int1('e'))
+  val b = ward_text_putc(b, 6, char2int1('a'))
+  val b = ward_text_putc(b, 7, char2int1('d'))
+  val b = ward_text_putc(b, 8, char2int1('e'))
+  val b = ward_text_putc(b, 9, char2int1('r'))
+in ward_text_done(b) end
+
+(* "toc-close-btn" = 13 chars *)
+implement cls_toc_close_btn() = let
+  val b = ward_text_build(13)
+  val b = ward_text_putc(b, 0, char2int1('t'))
+  val b = ward_text_putc(b, 1, char2int1('o'))
+  val b = ward_text_putc(b, 2, char2int1('c'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('c'))
+  val b = ward_text_putc(b, 5, char2int1('l'))
+  val b = ward_text_putc(b, 6, char2int1('o'))
+  val b = ward_text_putc(b, 7, char2int1('s'))
+  val b = ward_text_putc(b, 8, char2int1('e'))
+  val b = ward_text_putc(b, 9, 45) (* '-' *)
+  val b = ward_text_putc(b, 10, char2int1('b'))
+  val b = ward_text_putc(b, 11, char2int1('t'))
+  val b = ward_text_putc(b, 12, char2int1('n'))
+in ward_text_done(b) end
+
+(* "toc-bm-count-btn" = 16 chars *)
+implement cls_toc_bm_count_btn() = let
+  val b = ward_text_build(16)
+  val b = ward_text_putc(b, 0, char2int1('t'))
+  val b = ward_text_putc(b, 1, char2int1('o'))
+  val b = ward_text_putc(b, 2, char2int1('c'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('b'))
+  val b = ward_text_putc(b, 5, char2int1('m'))
+  val b = ward_text_putc(b, 6, 45) (* '-' *)
+  val b = ward_text_putc(b, 7, char2int1('c'))
+  val b = ward_text_putc(b, 8, char2int1('o'))
+  val b = ward_text_putc(b, 9, char2int1('u'))
+  val b = ward_text_putc(b, 10, char2int1('n'))
+  val b = ward_text_putc(b, 11, char2int1('t'))
+  val b = ward_text_putc(b, 12, 45) (* '-' *)
+  val b = ward_text_putc(b, 13, char2int1('b'))
+  val b = ward_text_putc(b, 14, char2int1('t'))
+  val b = ward_text_putc(b, 15, char2int1('n'))
+in ward_text_done(b) end
+
+(* "toc-switch-btn" = 14 chars *)
+implement cls_toc_switch_btn() = let
+  val b = ward_text_build(14)
+  val b = ward_text_putc(b, 0, char2int1('t'))
+  val b = ward_text_putc(b, 1, char2int1('o'))
+  val b = ward_text_putc(b, 2, char2int1('c'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('s'))
+  val b = ward_text_putc(b, 5, char2int1('w'))
+  val b = ward_text_putc(b, 6, char2int1('i'))
+  val b = ward_text_putc(b, 7, char2int1('t'))
+  val b = ward_text_putc(b, 8, char2int1('c'))
+  val b = ward_text_putc(b, 9, char2int1('h'))
+  val b = ward_text_putc(b, 10, 45) (* '-' *)
+  val b = ward_text_putc(b, 11, char2int1('b'))
+  val b = ward_text_putc(b, 12, char2int1('t'))
+  val b = ward_text_putc(b, 13, char2int1('n'))
+in ward_text_done(b) end
+
+(* "toc-list" = 8 chars *)
+implement cls_toc_list() = let
+  val b = ward_text_build(8)
+  val b = ward_text_putc(b, 0, char2int1('t'))
+  val b = ward_text_putc(b, 1, char2int1('o'))
+  val b = ward_text_putc(b, 2, char2int1('c'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('l'))
+  val b = ward_text_putc(b, 5, char2int1('i'))
+  val b = ward_text_putc(b, 6, char2int1('s'))
+  val b = ward_text_putc(b, 7, char2int1('t'))
+in ward_text_done(b) end
+
+(* "toc-entry" = 9 chars *)
+implement cls_toc_entry() = let
+  val b = ward_text_build(9)
+  val b = ward_text_putc(b, 0, char2int1('t'))
+  val b = ward_text_putc(b, 1, char2int1('o'))
+  val b = ward_text_putc(b, 2, char2int1('c'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('e'))
+  val b = ward_text_putc(b, 5, char2int1('n'))
+  val b = ward_text_putc(b, 6, char2int1('t'))
+  val b = ward_text_putc(b, 7, char2int1('r'))
+  val b = ward_text_putc(b, 8, char2int1('y'))
+in ward_text_done(b) end
+
+(* "bm-entry" = 8 chars *)
+implement cls_bm_entry() = let
+  val b = ward_text_build(8)
+  val b = ward_text_putc(b, 0, char2int1('b'))
+  val b = ward_text_putc(b, 1, char2int1('m'))
+  val b = ward_text_putc(b, 2, 45) (* '-' *)
+  val b = ward_text_putc(b, 3, char2int1('e'))
+  val b = ward_text_putc(b, 4, char2int1('n'))
+  val b = ward_text_putc(b, 5, char2int1('t'))
+  val b = ward_text_putc(b, 6, char2int1('r'))
+  val b = ward_text_putc(b, 7, char2int1('y'))
+in ward_text_done(b) end
+
 (* "next-btn" = 8 chars *)
 implement cls_next_btn() = let
   val b = ward_text_build(8)

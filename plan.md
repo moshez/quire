@@ -164,7 +164,7 @@ everything else depends on.
   preview tooltip (hover on desktop); releasing navigates. Requires bridge
   touch/mouse drag events on the scrubber element.
 
-- [ ] **4.5 Bookmarks sub-view in TOC panel.** Per spec wireframe: TOC header
+- [x] **4.5 Bookmarks sub-view in TOC panel.** Per spec wireframe: TOC header
   shows bookmark count (`🔖 4`). Tapping it switches from Contents to
   Bookmarks view. Header changes to `✕  Bookmarks  Contents` (Contents link
   to switch back). Each bookmark shows chapter name, page number, and text

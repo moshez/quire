@@ -841,6 +841,11 @@ fun test_all_reader_listener_ids(): bool(true) = let
   prval () = assert_lid_valid(READER_LISTEN_SCRUB_DOWN())
   prval () = assert_lid_valid(READER_LISTEN_SCRUB_MOVE())
   prval () = assert_lid_valid(READER_LISTEN_SCRUB_UP())
+  prval () = assert_lid_valid(READER_LISTEN_TOC_TOGGLE())
+  prval () = assert_lid_valid(READER_LISTEN_TOC_CLOSE())
+  prval () = assert_lid_valid(READER_LISTEN_TOC_BM_VIEW())
+  prval () = assert_lid_valid(READER_LISTEN_TOC_SWITCH())
+  prval () = assert_lid_valid(READER_LISTEN_TOC_LIST_CLICK())
 in true end
 
 (* ================================================================

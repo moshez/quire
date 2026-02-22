@@ -135,6 +135,11 @@ dataprop READER_LISTENER(id: int) =
   | READER_LISTEN_SCRUB_DOWN(35)
   | READER_LISTEN_SCRUB_MOVE(36)
   | READER_LISTEN_SCRUB_UP(37)
+  | READER_LISTEN_TOC_TOGGLE(38)
+  | READER_LISTEN_TOC_CLOSE(39)
+  | READER_LISTEN_TOC_BM_VIEW(40)
+  | READER_LISTEN_TOC_SWITCH(41)
+  | READER_LISTEN_TOC_LIST_CLICK(42)
 
 (* ========== Module Functions ========== *)
 
@@ -251,3 +256,24 @@ fun reader_set_scrub_dragging{d:int}(pf: DRAG_STATE_VALID(d) | v: int(d)): void
 fun reader_get_scrub_dragging(): [d:nat | d <= 1] int(d)
 fun reader_set_scrub_drag_ch(v: int): void
 fun reader_get_scrub_drag_ch(): int
+
+(* ========== TOC panel state ========== *)
+
+fun reader_set_toc_panel_id(id: int): void
+fun reader_get_toc_panel_id(): int
+fun reader_set_toc_list_id(id: int): void
+fun reader_get_toc_list_id(): int
+fun reader_set_toc_close_btn_id(id: int): void
+fun reader_get_toc_close_btn_id(): int
+fun reader_set_toc_bm_count_btn_id(id: int): void
+fun reader_get_toc_bm_count_btn_id(): int
+fun reader_set_toc_switch_btn_id(id: int): void
+fun reader_get_toc_switch_btn_id(): int
+fun reader_set_toc_view_mode(v: int): void
+fun reader_get_toc_view_mode(): int
+fun reader_set_toc_first_entry_id(id: int): void
+fun reader_get_toc_first_entry_id(): int
+fun reader_set_toc_entry_count(n: int): void
+fun reader_get_toc_entry_count(): int
+fun reader_set_bm_first_entry_id(id: int): void
+fun reader_get_bm_first_entry_id(): int

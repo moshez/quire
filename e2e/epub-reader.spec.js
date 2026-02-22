@@ -2694,4 +2694,124 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('toc panel shows contents and bookmark views', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    page.on('crash', () => console.error('PAGE CRASHED'));
+
+    const epubBuffer = createEpub({
+      title: 'TOC Test',
+      author: 'Quire Bot',
+      chapters: 3,
+      paragraphsPerChapter: 20,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `toc-test-${vpTag}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open the book
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    // Verify TOC button exists in nav bar
+    const tocBtn = page.locator('.toc-btn');
+    await expect(tocBtn).toBeAttached();
+    await screenshot(page, 'toc-01-reader-loaded');
+
+    // TOC panel should be hidden initially
+    const tocPanel = page.locator('.toc-panel');
+    await expect(tocPanel).toBeAttached();
+    await expect(tocPanel).toBeHidden();
+
+    // Click TOC button to open panel
+    await tocBtn.click();
+    await page.waitForTimeout(300);
+    await expect(tocPanel).toBeVisible();
+    await screenshot(page, 'toc-02-panel-open');
+
+    // Panel should have the correct structure
+    await expect(page.locator('.toc-header')).toBeAttached();
+    await expect(page.locator('.toc-close-btn')).toBeAttached();
+    await expect(page.locator('.toc-bm-count-btn')).toBeAttached();
+    await expect(page.locator('.toc-switch-btn')).toBeAttached();
+    await expect(page.locator('.toc-list')).toBeAttached();
+
+    // Contents list should have chapter entries (3 chapters = 3 entries)
+    const tocEntries = page.locator('.toc-entry');
+    await expect(tocEntries).toHaveCount(3);
+
+    // Each entry should show a chapter label
+    const firstEntry = tocEntries.nth(0);
+    const entryText = await firstEntry.textContent();
+    expect(entryText).toMatch(/chapter/i);
+    await screenshot(page, 'toc-03-contents-shown');
+
+    // Click second chapter entry to navigate
+    await tocEntries.nth(1).click();
+    await page.waitForTimeout(500);
+
+    // Panel should close after navigation
+    await expect(tocPanel).toBeHidden();
+    await screenshot(page, 'toc-04-after-chapter-nav');
+
+    // Re-open TOC panel
+    await tocBtn.click();
+    await page.waitForTimeout(300);
+    await expect(tocPanel).toBeVisible();
+
+    // Switch to Bookmarks view via the switch button
+    const switchBtn = page.locator('.toc-switch-btn');
+    await switchBtn.click();
+    await page.waitForTimeout(300);
+
+    // Bookmark entries should be shown (initially 0, so list empty)
+    const bmEntries = page.locator('.bm-entry');
+    await expect(bmEntries).toHaveCount(0);
+    await screenshot(page, 'toc-05-bookmarks-view-empty');
+
+    // Close TOC panel via close button
+    await page.locator('.toc-close-btn').click();
+    await page.waitForTimeout(300);
+    await expect(tocPanel).toBeHidden();
+    await screenshot(page, 'toc-06-panel-closed');
+
+    // Add a bookmark via BM button
+    await page.locator('.bm-btn').click();
+    await page.waitForTimeout(300);
+
+    // Re-open TOC and switch to Bookmarks view
+    await tocBtn.click();
+    await page.waitForTimeout(300);
+    await expect(tocPanel).toBeVisible();
+    await page.locator('.toc-switch-btn').click();
+    await page.waitForTimeout(300);
+
+    // Now there should be 1 bookmark entry
+    await expect(page.locator('.bm-entry')).toHaveCount(1);
+    const bmText = await page.locator('.bm-entry').nth(0).textContent();
+    expect(bmText).toMatch(/ch/i);
+    await screenshot(page, 'toc-07-bookmark-in-list');
+
+    // Click bookmark to navigate
+    await page.locator('.bm-entry').nth(0).click();
+    await page.waitForTimeout(500);
+
+    // Panel should close after navigation
+    await expect(tocPanel).toBeHidden();
+    await screenshot(page, 'toc-08-after-bookmark-nav');
+
+    // Verify no page crashes
+    expect(errors).toEqual([]);
+  });
+
 });

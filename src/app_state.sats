@@ -157,6 +157,26 @@ fun app_set_rdr_bm_btn_id(st: !app_state, v: int): void
 fun app_get_rdr_bm_save_pending(st: !app_state): int
 fun app_set_rdr_bm_save_pending(st: !app_state, v: int): void
 
+(* TOC panel state *)
+fun app_get_rdr_toc_panel_id(st: !app_state): int
+fun app_set_rdr_toc_panel_id(st: !app_state, v: int): void
+fun app_get_rdr_toc_list_id(st: !app_state): int
+fun app_set_rdr_toc_list_id(st: !app_state, v: int): void
+fun app_get_rdr_toc_close_btn_id(st: !app_state): int
+fun app_set_rdr_toc_close_btn_id(st: !app_state, v: int): void
+fun app_get_rdr_toc_bm_count_btn_id(st: !app_state): int
+fun app_set_rdr_toc_bm_count_btn_id(st: !app_state, v: int): void
+fun app_get_rdr_toc_switch_btn_id(st: !app_state): int
+fun app_set_rdr_toc_switch_btn_id(st: !app_state, v: int): void
+fun app_get_rdr_toc_view_mode(st: !app_state): int
+fun app_set_rdr_toc_view_mode(st: !app_state, v: int): void
+fun app_get_rdr_toc_first_entry_id(st: !app_state): int
+fun app_set_rdr_toc_first_entry_id(st: !app_state, v: int): void
+fun app_get_rdr_toc_entry_count(st: !app_state): int
+fun app_set_rdr_toc_entry_count(st: !app_state, v: int): void
+fun app_get_rdr_bm_first_entry_id(st: !app_state): int
+fun app_set_rdr_bm_first_entry_id(st: !app_state, v: int): void
+
 (* Scrubber state *)
 fun app_get_rdr_scrub_bar_id(st: !app_state): int
 fun app_set_rdr_scrub_bar_id(st: !app_state, v: int): void
@@ -347,6 +367,26 @@ fun _app_stg_save_pend(): int
 fun _app_set_stg_save_pend(v: int): void
 fun _app_stg_load_pend(): int
 fun _app_set_stg_load_pend(v: int): void
+
+(* TOC panel accessors *)
+fun _app_rdr_toc_panel_id(): int
+fun _app_set_rdr_toc_panel_id(v: int): void
+fun _app_rdr_toc_list_id(): int
+fun _app_set_rdr_toc_list_id(v: int): void
+fun _app_rdr_toc_close_btn_id(): int
+fun _app_set_rdr_toc_close_btn_id(v: int): void
+fun _app_rdr_toc_bm_count_btn_id(): int
+fun _app_set_rdr_toc_bm_count_btn_id(v: int): void
+fun _app_rdr_toc_switch_btn_id(): int
+fun _app_set_rdr_toc_switch_btn_id(v: int): void
+fun _app_rdr_toc_view_mode(): int
+fun _app_set_rdr_toc_view_mode(v: int): void
+fun _app_rdr_toc_first_entry_id(): int
+fun _app_set_rdr_toc_first_entry_id(v: int): void
+fun _app_rdr_toc_entry_count(): int
+fun _app_set_rdr_toc_entry_count(v: int): void
+fun _app_rdr_bm_first_entry_id(): int
+fun _app_set_rdr_bm_first_entry_id(v: int): void
 
 (* Scrubber accessors *)
 fun _app_rdr_scrub_bar_id(): int

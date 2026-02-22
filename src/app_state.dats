@@ -89,6 +89,15 @@ datavtype app_state_impl =
       rdr_bm_count = int,
       rdr_bm_btn_id = int,
       rdr_bm_save_pending = int,
+      rdr_toc_panel_id = int,
+      rdr_toc_list_id = int,
+      rdr_toc_close_btn_id = int,
+      rdr_toc_bm_count_btn_id = int,
+      rdr_toc_switch_btn_id = int,
+      rdr_toc_view_mode = int,
+      rdr_toc_first_entry_id = int,
+      rdr_toc_entry_count = int,
+      rdr_bm_first_entry_id = int,
       rdr_scrub_bar_id = int,
       rdr_scrub_track_id = int,
       rdr_scrub_fill_id = int,
@@ -263,6 +272,15 @@ implement app_state_init() =
     rdr_bm_count = 0,
     rdr_bm_btn_id = 0,
     rdr_bm_save_pending = 0,
+    rdr_toc_panel_id = 0,
+    rdr_toc_list_id = 0,
+    rdr_toc_close_btn_id = 0,
+    rdr_toc_bm_count_btn_id = 0,
+    rdr_toc_switch_btn_id = 0,
+    rdr_toc_view_mode = 0,
+    rdr_toc_first_entry_id = 0,
+    rdr_toc_entry_count = 0,
+    rdr_bm_first_entry_id = 0,
     rdr_scrub_bar_id = 0,
     rdr_scrub_track_id = 0,
     rdr_scrub_fill_id = 0,
@@ -1028,6 +1046,61 @@ implement app_set_rdr_bm_save_pending(st, v) = let
   val @APP_STATE(r) = st val () = r.rdr_bm_save_pending := v
   prval () = fold@(st) in end
 
+implement app_get_rdr_toc_panel_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_toc_panel_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_toc_panel_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_toc_panel_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_toc_list_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_toc_list_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_toc_list_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_toc_list_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_toc_close_btn_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_toc_close_btn_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_toc_close_btn_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_toc_close_btn_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_toc_bm_count_btn_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_toc_bm_count_btn_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_toc_bm_count_btn_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_toc_bm_count_btn_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_toc_switch_btn_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_toc_switch_btn_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_toc_switch_btn_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_toc_switch_btn_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_toc_view_mode(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_toc_view_mode
+  prval () = fold@(st) in v end
+implement app_set_rdr_toc_view_mode(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_toc_view_mode := v
+  prval () = fold@(st) in end
+implement app_get_rdr_toc_first_entry_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_toc_first_entry_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_toc_first_entry_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_toc_first_entry_id := v
+  prval () = fold@(st) in end
+implement app_get_rdr_toc_entry_count(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_toc_entry_count
+  prval () = fold@(st) in v end
+implement app_set_rdr_toc_entry_count(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_toc_entry_count := v
+  prval () = fold@(st) in end
+implement app_get_rdr_bm_first_entry_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_bm_first_entry_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_bm_first_entry_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_bm_first_entry_id := v
+  prval () = fold@(st) in end
+
 implement app_get_rdr_scrub_bar_id(st) = let
   val @APP_STATE(r) = st val v = r.rdr_scrub_bar_id
   prval () = fold@(st) in v end
@@ -1077,6 +1150,97 @@ implement app_get_rdr_scrub_drag_ch(st) = let
 implement app_set_rdr_scrub_drag_ch(st, v) = let
   val @APP_STATE(r) = st val () = r.rdr_scrub_drag_ch := v
   prval () = fold@(st) in end
+
+implement _app_rdr_toc_panel_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_panel_id(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_toc_panel_id(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_panel_id(st, v)
+  val () = app_state_store(st)
+in end
+implement _app_rdr_toc_list_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_list_id(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_toc_list_id(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_list_id(st, v)
+  val () = app_state_store(st)
+in end
+implement _app_rdr_toc_close_btn_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_close_btn_id(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_toc_close_btn_id(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_close_btn_id(st, v)
+  val () = app_state_store(st)
+in end
+implement _app_rdr_toc_bm_count_btn_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_bm_count_btn_id(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_toc_bm_count_btn_id(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_bm_count_btn_id(st, v)
+  val () = app_state_store(st)
+in end
+implement _app_rdr_toc_switch_btn_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_switch_btn_id(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_toc_switch_btn_id(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_switch_btn_id(st, v)
+  val () = app_state_store(st)
+in end
+implement _app_rdr_toc_view_mode() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_view_mode(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_toc_view_mode(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_view_mode(st, v)
+  val () = app_state_store(st)
+in end
+implement _app_rdr_toc_first_entry_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_first_entry_id(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_toc_first_entry_id(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_first_entry_id(st, v)
+  val () = app_state_store(st)
+in end
+implement _app_rdr_toc_entry_count() = let
+  val st = app_state_load()
+  val v = app_get_rdr_toc_entry_count(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_toc_entry_count(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_toc_entry_count(st, v)
+  val () = app_state_store(st)
+in end
+implement _app_rdr_bm_first_entry_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_bm_first_entry_id(st)
+  val () = app_state_store(st)
+in v end
+implement _app_set_rdr_bm_first_entry_id(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_bm_first_entry_id(st, v)
+  val () = app_state_store(st)
+in end
 
 implement _app_rdr_scrub_bar_id() = let
   val st = app_state_load()

@@ -1200,6 +1200,46 @@ in
   end
 end
 
+(* Update the bookmark count button text: "BM: N".
+ * Defined before toggle_bookmark and load_bookmarks_from_idb (both call it). *)
+fn update_toc_bm_count_btn(): void = let
+  val btn_id = reader_get_toc_bm_count_btn_id()
+in
+  if gt_int_int(btn_id, 0) then let
+    val cnt = reader_get_bm_count()
+    val arr = ward_arr_alloc<byte>(48)
+    val () = ward_arr_set<byte>(arr, _idx48(0), _byte(66))  (* 'B' *)
+    val () = ward_arr_set<byte>(arr, _idx48(1), _byte(77))  (* 'M' *)
+    val () = ward_arr_set<byte>(arr, _idx48(2), _byte(58))  (* ':' *)
+    val () = ward_arr_set<byte>(arr, _idx48(3), _byte(32))  (* ' ' *)
+    val ndigits = itoa_to_arr(arr, cnt, 4)
+    val total_len = 4 + ndigits
+    val tl = g1ofg0(total_len)
+  in
+    if tl > 0 then
+      if tl < 48 then let
+        val @(used, rest) = ward_arr_split<byte>(arr, tl)
+        val () = ward_arr_free<byte>(rest)
+        val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+        val dom = ward_dom_init()
+        val s = ward_dom_stream_begin(dom)
+        val s = ward_dom_stream_set_text(s, btn_id, borrow, tl)
+        val dom = ward_dom_stream_end(s)
+        val () = ward_dom_fini(dom)
+        val () = ward_arr_drop<byte>(frozen, borrow)
+        val used = ward_arr_thaw<byte>(frozen)
+        val () = ward_arr_free<byte>(used)
+      in end
+      else let
+        val () = ward_arr_free<byte>(arr)
+      in end
+    else let
+      val () = ward_arr_free<byte>(arr)
+    in end
+  end
+  else ()
+end
+
 (* toggle_bookmark: add or remove bookmark at current page.
  * Returns BOOKMARK_TOGGLED proof — the ONLY way to obtain it. *)
 fn toggle_bookmark(): (BOOKMARK_TOGGLED() | void) = let
@@ -1238,6 +1278,7 @@ in
       in shift_down(sub_g1(rem, 1), i + 1, total) end
     val () = shift_down(_checked_nat(cnt), found_idx, cnt - 1)
     val () = reader_set_bm_count(cnt - 1)
+    val () = update_toc_bm_count_btn()
     val (pf_btn | ()) = update_bookmark_btn()
     prval BM_BTN_SYNCED() = pf_btn
     val () = save_bookmarks_to_idb()
@@ -1252,6 +1293,7 @@ in
       val () = _app_bm_buf_set_i32(base + 1, pg)
       val () = _app_bm_buf_set_i32(base + 2, quire_time_now())
       val () = reader_set_bm_count(cnt + 1)
+      val () = update_toc_bm_count_btn()
       val (pf_btn | ()) = update_bookmark_btn()
       prval BM_BTN_SYNCED() = pf_btn
       val () = save_bookmarks_to_idb()
@@ -1272,6 +1314,7 @@ fn load_bookmarks_from_idb(): void = let
     llam (data_len: int): ward_promise_chained(int) =>
       if lte_int_int(data_len, 0) then let
         val () = reader_set_bm_count(0)
+        val () = update_toc_bm_count_btn()
         val (pf_btn | ()) = update_bookmark_btn()
         prval BM_BTN_SYNCED() = pf_btn
       in ward_promise_return<int>(0) end
@@ -1318,6 +1361,7 @@ fn load_bookmarks_from_idb(): void = let
         val () = read_entries(_checked_nat(max_entries), arr, dl, 0, max_entries)
         val () = ward_arr_free<byte>(arr)
         val () = reader_set_bm_count(max_entries)
+        val () = update_toc_bm_count_btn()
         val (pf_btn | ()) = update_bookmark_btn()
         prval BM_BTN_SYNCED() = pf_btn
       in ward_promise_return<int>(1) end)
@@ -1526,6 +1570,296 @@ in
   in end
 end
 
+(* ========== TOC Panel ========== *)
+
+(* Helper: write "Chapter N" text on a DOM node via existing stream. *)
+fn _toc_set_chapter_text {l:agz}
+  (s: ward_dom_stream(l), node_id: int, ch_num: int): ward_dom_stream(l) = let
+  val arr = ward_arr_alloc<byte>(48)
+  val () = ward_arr_set<byte>(arr, _idx48(0), _byte(67))   (* 'C' *)
+  val () = ward_arr_set<byte>(arr, _idx48(1), _byte(104))  (* 'h' *)
+  val () = ward_arr_set<byte>(arr, _idx48(2), _byte(97))   (* 'a' *)
+  val () = ward_arr_set<byte>(arr, _idx48(3), _byte(112))  (* 'p' *)
+  val () = ward_arr_set<byte>(arr, _idx48(4), _byte(116))  (* 't' *)
+  val () = ward_arr_set<byte>(arr, _idx48(5), _byte(101))  (* 'e' *)
+  val () = ward_arr_set<byte>(arr, _idx48(6), _byte(114))  (* 'r' *)
+  val () = ward_arr_set<byte>(arr, _idx48(7), _byte(32))   (* ' ' *)
+  val ndigits = itoa_to_arr(arr, ch_num, 8)
+  val total_len = 8 + ndigits
+  val tl = g1ofg0(total_len)
+in
+  if tl > 0 then
+    if tl < 48 then let
+      val @(used, rest) = ward_arr_split<byte>(arr, tl)
+      val () = ward_arr_free<byte>(rest)
+      val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+      val s = ward_dom_stream_set_text(s, node_id, borrow, tl)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val used = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(used)
+    in s end
+    else let
+      val () = ward_arr_free<byte>(arr)
+    in s end
+  else let
+    val () = ward_arr_free<byte>(arr)
+  in s end
+end
+
+(* Helper: write "Ch N  Pg M" bookmark text on a DOM node via existing stream. *)
+fn _toc_set_bm_text {l:agz}
+  (s: ward_dom_stream(l), node_id: int, ch: int, pg: int): ward_dom_stream(l) = let
+  val arr = ward_arr_alloc<byte>(48)
+  val () = ward_arr_set<byte>(arr, _idx48(0), _byte(67))  (* 'C' *)
+  val () = ward_arr_set<byte>(arr, _idx48(1), _byte(104)) (* 'h' *)
+  val () = ward_arr_set<byte>(arr, _idx48(2), _byte(32))  (* ' ' *)
+  val nd1 = itoa_to_arr(arr, ch + 1, 3)
+  val off2 = 3 + nd1
+  val () = ward_arr_set<byte>(arr, _idx48(off2), _byte(32))      (* ' ' *)
+  val () = ward_arr_set<byte>(arr, _idx48(off2 + 1), _byte(32))  (* ' ' *)
+  val () = ward_arr_set<byte>(arr, _idx48(off2 + 2), _byte(80))  (* 'P' *)
+  val () = ward_arr_set<byte>(arr, _idx48(off2 + 3), _byte(103)) (* 'g' *)
+  val () = ward_arr_set<byte>(arr, _idx48(off2 + 4), _byte(32))  (* ' ' *)
+  val nd2 = itoa_to_arr(arr, pg + 1, off2 + 5)
+  val total_len = off2 + 5 + nd2
+  val tl = g1ofg0(total_len)
+in
+  if tl > 0 then
+    if tl < 48 then let
+      val @(used, rest) = ward_arr_split<byte>(arr, tl)
+      val () = ward_arr_free<byte>(rest)
+      val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+      val s = ward_dom_stream_set_text(s, node_id, borrow, tl)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val used = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(used)
+    in s end
+    else let
+      val () = ward_arr_free<byte>(arr)
+    in s end
+  else let
+    val () = ward_arr_free<byte>(arr)
+  in s end
+end
+
+(* Clear all children of the toc-list container. *)
+fn clear_toc_list(): void = let
+  val list_id = reader_get_toc_list_id()
+in
+  if gt_int_int(list_id, 0) then let
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_remove_children(s, list_id)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+  in end
+  else ()
+end
+
+(* Render N chapter entries into the toc-list.
+ * Stores first entry ID for event delegation. *)
+fn render_toc_entries(spine: int): void = let
+  val list_id = reader_get_toc_list_id()
+  fun add_entry {l:agz}{k:nat} .<k>.
+    (rem: int(k), s: ward_dom_stream(l), i: int, total: int): ward_dom_stream(l) =
+    if lte_g1(rem, 0) then s
+    else if gte_int_int(i, total) then s
+    else let
+      val entry_id = dom_next_id()
+      val () = if eq_int_int(i, 0) then reader_set_toc_first_entry_id(entry_id) else ()
+      val s = ward_dom_stream_create_element(s, entry_id, list_id, tag_div(), 3)
+      val s = ward_dom_stream_set_attr_safe(s, entry_id, attr_class(), 5,
+        cls_toc_entry(), 9)
+      val s = _toc_set_chapter_text(s, entry_id, i + 1)
+    in add_entry(sub_g1(rem, 1), s, i + 1, total) end
+in
+  if lt_int_int(spine, 1) then ()
+  else let
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = add_entry(_checked_nat(spine), s, 0, spine)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = reader_set_toc_entry_count(spine)
+  in end
+end
+
+(* Render bookmark entries into the toc-list.
+ * Stores first bm entry ID for event delegation. *)
+fn render_bm_entries(): void = let
+  val list_id = reader_get_toc_list_id()
+  val cnt = reader_get_bm_count()
+  fun add_bm {l:agz}{k:nat} .<k>.
+    (rem: int(k), s: ward_dom_stream(l), i: int, total: int): ward_dom_stream(l) =
+    if lte_g1(rem, 0) then s
+    else if gte_int_int(i, total) then s
+    else let
+      val entry_id = dom_next_id()
+      val () = if eq_int_int(i, 0) then reader_set_bm_first_entry_id(entry_id) else ()
+      val s = ward_dom_stream_create_element(s, entry_id, list_id, tag_div(), 3)
+      val s = ward_dom_stream_set_attr_safe(s, entry_id, attr_class(), 5,
+        cls_bm_entry(), 8)
+      val base = i * 3
+      val ch = _app_bm_buf_get_i32(base)
+      val pg = _app_bm_buf_get_i32(base + 1)
+      val s = _toc_set_bm_text(s, entry_id, ch, pg)
+    in add_bm(sub_g1(rem, 1), s, i + 1, total) end
+in
+  if lt_int_int(cnt, 1) then ()
+  else let
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = add_bm(_checked_nat(cnt), s, 0, cnt)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+  in end
+end
+
+(* Hide the TOC panel and reset view mode to 0. *)
+fn hide_toc_panel(): void = let
+  val panel_id = reader_get_toc_panel_id()
+in
+  if gt_int_int(panel_id, 0) then let
+    val () = reader_set_toc_view_mode(0)
+    val () = set_style_none(panel_id)
+  in end
+  else ()
+end
+
+(* Toggle TOC panel: show Contents if hidden, hide if visible. *)
+fn toggle_toc_panel(): void = let
+  val mode = reader_get_toc_view_mode()
+  val panel_id = reader_get_toc_panel_id()
+in
+  if eq_int_int(mode, 0) then let
+    (* Currently hidden: show Contents view *)
+    val () = reader_set_toc_view_mode(1)
+    val () = if gt_int_int(panel_id, 0) then set_style_flex(panel_id) else ()
+    val () = update_toc_bm_count_btn()
+  in end
+  else let
+    (* Currently visible: hide *)
+    val () = reader_set_toc_view_mode(0)
+    val () = if gt_int_int(panel_id, 0) then set_style_none(panel_id) else ()
+  in end
+end
+
+(* Switch TOC panel to Bookmarks view. *)
+fn switch_toc_to_bm(): void = let
+  val () = reader_set_toc_view_mode(2)
+  val () = clear_toc_list()
+  val () = render_bm_entries()
+  val switch_id = reader_get_toc_switch_btn_id()
+in
+  if gt_int_int(switch_id, 0) then let
+    (* "Contents" = 8 chars *)
+    val arr = ward_arr_alloc<byte>(12)
+    val () = ward_arr_set<byte>(arr, 0, _byte(67))   (* 'C' *)
+    val () = ward_arr_set<byte>(arr, 1, _byte(111))  (* 'o' *)
+    val () = ward_arr_set<byte>(arr, 2, _byte(110))  (* 'n' *)
+    val () = ward_arr_set<byte>(arr, 3, _byte(116))  (* 't' *)
+    val () = ward_arr_set<byte>(arr, 4, _byte(101))  (* 'e' *)
+    val () = ward_arr_set<byte>(arr, 5, _byte(110))  (* 'n' *)
+    val () = ward_arr_set<byte>(arr, 6, _byte(116))  (* 't' *)
+    val () = ward_arr_set<byte>(arr, 7, _byte(115))  (* 's' *)
+    val @(used, rest) = ward_arr_split<byte>(arr, 8)
+    val () = ward_arr_free<byte>(rest)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_set_text(s, switch_id, borrow, 8)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = ward_arr_drop<byte>(frozen, borrow)
+    val used = ward_arr_thaw<byte>(frozen)
+    val () = ward_arr_free<byte>(used)
+  in end
+  else ()
+end
+
+(* Switch TOC panel to Contents view. *)
+fn switch_toc_to_contents(): void = let
+  val () = reader_set_toc_view_mode(1)
+  val () = clear_toc_list()
+  val spine = epub_get_chapter_count()
+  val () = render_toc_entries(spine)
+  val switch_id = reader_get_toc_switch_btn_id()
+in
+  if gt_int_int(switch_id, 0) then let
+    (* "Bookmarks" = 9 chars *)
+    val arr = ward_arr_alloc<byte>(12)
+    val () = ward_arr_set<byte>(arr, 0, _byte(66))   (* 'B' *)
+    val () = ward_arr_set<byte>(arr, 1, _byte(111))  (* 'o' *)
+    val () = ward_arr_set<byte>(arr, 2, _byte(111))  (* 'o' *)
+    val () = ward_arr_set<byte>(arr, 3, _byte(107))  (* 'k' *)
+    val () = ward_arr_set<byte>(arr, 4, _byte(109))  (* 'm' *)
+    val () = ward_arr_set<byte>(arr, 5, _byte(97))   (* 'a' *)
+    val () = ward_arr_set<byte>(arr, 6, _byte(114))  (* 'r' *)
+    val () = ward_arr_set<byte>(arr, 7, _byte(107))  (* 'k' *)
+    val () = ward_arr_set<byte>(arr, 8, _byte(115))  (* 's' *)
+    val @(used, rest) = ward_arr_split<byte>(arr, 9)
+    val () = ward_arr_free<byte>(rest)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_set_text(s, switch_id, borrow, 9)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = ward_arr_drop<byte>(frozen, borrow)
+    val used = ward_arr_thaw<byte>(frozen)
+    val () = ward_arr_free<byte>(used)
+  in end
+  else ()
+end
+
+(* Handle click on a TOC list entry (event delegation by node ID offset). *)
+fn on_toc_list_click(clicked_id: int): void = let
+  val mode = reader_get_toc_view_mode()
+in
+  if eq_int_int(mode, 1) then let
+    (* Contents mode: navigate to the clicked chapter *)
+    val first_id = reader_get_toc_first_entry_id()
+    val idx = clicked_id - first_id
+    val total = reader_get_chapter_count()
+    val total_g1 = g1ofg0(total)
+    val idx_g1 = g1ofg0(idx)
+    val () = if idx_g1 >= 0 then
+      if lt1_int_int(idx_g1, total_g1) then let
+        val () = reader_go_to_chapter(idx_g1, total_g1)
+        val () = hide_toc_panel()
+      in () end
+      else ()
+    else ()
+  in end
+  else if eq_int_int(mode, 2) then let
+    (* Bookmarks mode: navigate to the clicked bookmark *)
+    val first_id = reader_get_bm_first_entry_id()
+    val idx = clicked_id - first_id
+    val cnt = reader_get_bm_count()
+    val idx_g1 = g1ofg0(idx)
+    val () = if idx_g1 >= 0 then
+      if lt_int_int(idx, cnt) then let
+        val base = idx * 3
+        val ch = _app_bm_buf_get_i32(base)
+        val pg = _app_bm_buf_get_i32(base + 1)
+        val total = reader_get_chapter_count()
+        val total_g1 = g1ofg0(total)
+        val ch_g1 = g1ofg0(ch)
+        val () = if ch_g1 >= 0 then
+          if lt1_int_int(ch_g1, total_g1) then let
+            val () = reader_go_to_chapter(ch_g1, total_g1)
+            val () = reader_set_resume_page(pg)
+            val () = hide_toc_panel()
+          in () end
+          else ()
+        else ()
+      in () end
+      else ()
+    else ()
+  in end
+  else ()
+end
+
 (* ========== Enter reader view ========== *)
 
 implement enter_reader(root_id, book_index) = let
@@ -1591,6 +1925,19 @@ implement enter_reader(root_id, book_index) = let
   in ward_text_done(b) end
   val s = ward_dom_stream_set_safe_text(s, bm_btn_id, bm_st, 2)
 
+  (* TOC toggle button *)
+  val toc_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, toc_btn_id, nav_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, toc_btn_id, attr_class(), 5,
+    cls_toc_btn(), 7)
+  val toc_btn_st = let
+    val b = ward_text_build(3)
+    val b = ward_text_putc(b, 0, char2int1('T'))
+    val b = ward_text_putc(b, 1, char2int1('O'))
+    val b = ward_text_putc(b, 2, char2int1('C'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, toc_btn_id, toc_btn_st, 3)
+
   (* Nav controls wrapper *)
   val controls_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, controls_id, nav_id, tag_div(), 3)
@@ -1650,6 +1997,10 @@ implement enter_reader(root_id, book_index) = let
   prval pf_vis = SCRUB_RENDERING_OK() (* 4>=2, 10>=10 — solver verifies *)
   val s = inject_scrub_css(pf_tap, pf_vis | s, root_id)
 
+  (* Inject TOC panel CSS — proof enforces z-index > 10, panel layers above chrome *)
+  prval pf_z = TOC_Z_OK()   (* 20 > 10 — solver verifies *)
+  val s = inject_toc_css(pf_z | s, root_id)
+
   (* Create bottom chrome bar:
    * <div class="reader-bottom">
    *   <div class="scrubber">
@@ -1696,6 +2047,64 @@ implement enter_reader(root_id, book_index) = let
   val s = ward_dom_stream_set_attr_safe(s, scrub_text_id, attr_class(), 5,
     cls_scrub_text(), 10)
 
+  (* Create TOC panel overlay:
+   * <div class="toc-panel">
+   *   <div class="toc-header">
+   *     <button class="toc-close-btn">X</button>
+   *     <button class="toc-bm-count-btn"></button>
+   *     <button class="toc-switch-btn">Bookmarks</button>
+   *   </div>
+   *   <div class="toc-list"></div>
+   * </div> *)
+  val toc_panel_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, toc_panel_id, root_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, toc_panel_id, attr_class(), 5,
+    cls_toc_panel(), 9)
+
+  val toc_header_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, toc_header_id, toc_panel_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, toc_header_id, attr_class(), 5,
+    cls_toc_header(), 10)
+
+  val toc_close_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, toc_close_btn_id, toc_header_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, toc_close_btn_id, attr_class(), 5,
+    cls_toc_close_btn(), 13)
+  val close_st = let
+    val b = ward_text_build(1)
+    val b = ward_text_putc(b, 0, char2int1('X'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, toc_close_btn_id, close_st, 1)
+
+  val toc_bm_count_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, toc_bm_count_btn_id, toc_header_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, toc_bm_count_btn_id, attr_class(), 5,
+    cls_toc_bm_count_btn(), 16)
+  (* Initial text set by update_toc_bm_count_btn when panel opens *)
+
+  val toc_switch_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, toc_switch_btn_id, toc_header_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, toc_switch_btn_id, attr_class(), 5,
+    cls_toc_switch_btn(), 14)
+  val switch_init_st = let
+    val b = ward_text_build(9)
+    val b = ward_text_putc(b, 0, char2int1('B'))
+    val b = ward_text_putc(b, 1, char2int1('o'))
+    val b = ward_text_putc(b, 2, char2int1('o'))
+    val b = ward_text_putc(b, 3, char2int1('k'))
+    val b = ward_text_putc(b, 4, char2int1('m'))
+    val b = ward_text_putc(b, 5, char2int1('a'))
+    val b = ward_text_putc(b, 6, char2int1('r'))
+    val b = ward_text_putc(b, 7, char2int1('k'))
+    val b = ward_text_putc(b, 8, char2int1('s'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, toc_switch_btn_id, switch_init_st, 9)
+
+  val toc_list_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, toc_list_id, toc_panel_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, toc_list_id, attr_class(), 5,
+    cls_toc_list(), 8)
+
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
 
@@ -1712,6 +2121,11 @@ implement enter_reader(root_id, book_index) = let
   val () = reader_set_scrub_handle_id(handle_id)
   val () = reader_set_scrub_tooltip_id(tooltip_id)
   val () = reader_set_scrub_text_id(scrub_text_id)
+  val () = reader_set_toc_panel_id(toc_panel_id)
+  val () = reader_set_toc_list_id(toc_list_id)
+  val () = reader_set_toc_close_btn_id(toc_close_btn_id)
+  val () = reader_set_toc_bm_count_btn_id(toc_bm_count_btn_id)
+  val () = reader_set_toc_switch_btn_id(toc_switch_btn_id)
 
   (* Register listeners — all reader registrations use reader_add_event_listener
    * with READER_LISTENER proof, preventing arbitrary listener IDs. *)
@@ -1887,6 +2301,57 @@ implement enter_reader(root_id, book_index) = let
     end
   )
 
+  (* TOC panel toggle button: show/hide TOC panel *)
+  val () = reader_add_event_listener(READER_LISTEN_TOC_TOGGLE() |
+    toc_btn_id, evt_click(), 5, 38,
+    lam (_pl: int): int => let
+      val () = toggle_toc_panel()
+    in 0 end
+  )
+
+  (* TOC close button: hide panel *)
+  val () = reader_add_event_listener(READER_LISTEN_TOC_CLOSE() |
+    toc_close_btn_id, evt_click(), 5, 39,
+    lam (_pl: int): int => let
+      val () = hide_toc_panel()
+    in 0 end
+  )
+
+  (* TOC bookmark count button: switch to bookmarks view *)
+  val () = reader_add_event_listener(READER_LISTEN_TOC_BM_VIEW() |
+    toc_bm_count_btn_id, evt_click(), 5, 40,
+    lam (_pl: int): int => let
+      val () = switch_toc_to_bm()
+    in 0 end
+  )
+
+  (* TOC switch button: toggle between Contents and Bookmarks views *)
+  val () = reader_add_event_listener(READER_LISTEN_TOC_SWITCH() |
+    toc_switch_btn_id, evt_click(), 5, 41,
+    lam (_pl: int): int => let
+      val mode = reader_get_toc_view_mode()
+      val () = if eq_int_int(mode, 1) then switch_toc_to_bm()
+               else if eq_int_int(mode, 2) then switch_toc_to_contents()
+               else ()
+    in 0 end
+  )
+
+  (* TOC list click: event delegation — compute which entry was clicked *)
+  val () = reader_add_event_listener(READER_LISTEN_TOC_LIST_CLICK() |
+    toc_list_id, evt_click(), 5, 42,
+    lam (pl: int): int => let
+      val pl1 = g1ofg0(pl)
+    in
+      if gt1_int_int(pl1, 19) then let
+        val payload = ward_event_get_payload(pl1)
+        val target = read_payload_target_id(payload)
+        val () = ward_arr_free<byte>(payload)
+        val () = on_toc_list_click(target)
+      in 0 end
+      else 0
+    end
+  )
+
   (* Show chrome and start auto-hide timer on reader entry *)
   val () = show_chrome()
   val () = start_chrome_auto_hide()
@@ -1911,6 +2376,8 @@ implement enter_reader(root_id, book_index) = let
         val spine_g1 = g1ofg0(spine)
         (* Add chapter boundary ticks to scrubber track (only if 2+ chapters) *)
         val () = add_scrubber_ticks(reader_get_scrub_track_id(), spine)
+        (* Populate TOC contents list with chapter entries *)
+        val () = render_toc_entries(spine)
         val saved_ch = library_get_chapter(saved_bi)
         val saved_pg = library_get_page(saved_bi)
         val start_ch: int = if lt_int_int(saved_ch, spine) then saved_ch else 0

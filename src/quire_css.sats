@@ -123,6 +123,22 @@ stadef SCRUB_CSS_WRITES = 234
 stadef SCRUB_CSS_LEN_S = SCRUB_CSS_WRITES * 4
 #define SCRUB_CSS_LEN 936
 
+(* TOC panel z-index constant and dataprop. *)
+#define TOC_PANEL_Z 20
+
+(* TOC_PANEL_LAYERED: TOC panel z-index must exceed scrubber/nav z-index (10).
+ * BUG CLASS PREVENTED: TOC panel hidden behind scrubber or nav bars. *)
+dataprop TOC_PANEL_LAYERED(z_idx: int) =
+  | {zi:int | zi > 10} TOC_Z_OK(zi)
+
+(* TOC CSS length — distinct stadef/define names prevent #define override.
+ * TOC_CSS_WRITES (type-level): number of _w4 calls.
+ * TOC_CSS_LEN_S (type-level): TOC_CSS_WRITES * 4 = byte count.
+ * TOC_CSS_LEN (dynamic-level): literal byte count for allocation. *)
+stadef TOC_CSS_WRITES = 246
+stadef TOC_CSS_LEN_S = TOC_CSS_WRITES * 4
+#define TOC_CSS_LEN 984
+
 (* ========== CSS injection functions ========== *)
 
 (* Create a <style> element under parent and fill it with app CSS. *)
@@ -143,4 +159,9 @@ fun inject_nav_css {l:agz}
 fun inject_scrub_css {l:agz}
   (pf_tap: SCRUB_TAPPABLE(SCRUB_PAD_V, SCRUB_BAR_H, SCRUB_HANDLE_SZ),
    pf_vis: SCRUB_VISIBLE(SCRUB_TRACK_H, SCRUB_BOTTOM_Z) |
+   s: ward_dom_stream(l), parent: int): ward_dom_stream(l)
+
+(* Inject TOC panel CSS — proof ensures z-index clears scrubber/nav layers. *)
+fun inject_toc_css {l:agz}
+  (pf_z: TOC_PANEL_LAYERED(TOC_PANEL_Z) |
    s: ward_dom_stream(l), parent: int): ward_dom_stream(l)
