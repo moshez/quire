@@ -140,7 +140,7 @@ everything else depends on.
 
 ## Phase 4 — Reading Chrome & Navigation
 
-- [ ] **4.1 Chrome auto-hide.** After toggling chrome visible, start a timer
+- [x] **4.1 Chrome auto-hide.** After toggling chrome visible, start a timer
   (e.g., 5 seconds). Auto-hide chrome when timer fires or on next page turn.
   Cancel timer on user interaction with chrome elements (tapping any chrome
   button, interacting with scrubber). Use `ward_timer` API.

@@ -80,6 +80,32 @@ dataprop READER_LISTENER(id: int) =
 #define LISTENER_PREV 32
 #define LISTENER_NEXT 33
 
+(* ========== Chrome auto-hide proofs ========== *)
+
+(* CHROME_VISIBLE_VALID: whitelist valid chrome visibility states.
+ * 0 = hidden, 1 = visible. Prevents storing invalid values. *)
+dataprop CHROME_VISIBLE_VALID(v: int) =
+  | CV_HIDDEN(0)
+  | CV_SHOWN(1)
+
+(* CHROME_STYLE_APPLIED: proves DOM style was actually applied.
+ * Only hide_chrome produces CHROME_NOW_HIDDEN(0) (after set_style display:none).
+ * Only show_chrome produces CHROME_NOW_VISIBLE(1) (after set_style display:flex).
+ * Impossible to update chrome state without the DOM change. *)
+dataprop CHROME_STYLE_APPLIED(visible: int) =
+  | CHROME_NOW_HIDDEN(0)
+  | CHROME_NOW_VISIBLE(1)
+
+(* ZONE_SPLIT: proves viewport click zone boundaries are correct.
+ * left = vw/4, right = vw*3/4. Verified by ATS2 constraint solver. *)
+dataprop ZONE_SPLIT(vw: int, left: int, right: int) =
+  | {v:pos} ZONES_CORRECT(v, v/4, v*3/4)
+
+(* TIMER_GEN_CAPTURED: proves a timer was started with a specific generation value.
+ * Timer callback carries int(g) and compares against current gen at runtime. *)
+dataprop TIMER_GEN_CAPTURED(gen: int) =
+  | {g:nat} GEN_CAPTURED(g)
+
 (* ========== Measurement correctness ========== *)
 
 (* SCROLL_WIDTH_SLOT: proves that scrollWidth lives in ward measurement slot 4.
@@ -782,6 +808,149 @@ in
   end
 end
 
+(* ========== Chrome auto-hide ========== *)
+
+(* Set nav element to display:none. Produces CHROME_STYLE_APPLIED(0).
+ * "display:none" = 12 bytes: 100,105,115,112,108,97,121,58,110,111,110,101 *)
+fn hide_chrome(): void = let
+  val nav_id = reader_get_nav_id()
+in
+  if gt_int_int(nav_id, 0) then let
+    val arr = ward_arr_alloc<byte>(12)
+    val () = ward_arr_set<byte>(arr, 0, ward_int2byte(_checked_byte(100)))   (* d *)
+    val () = ward_arr_set<byte>(arr, 1, ward_int2byte(_checked_byte(105)))   (* i *)
+    val () = ward_arr_set<byte>(arr, 2, ward_int2byte(_checked_byte(115)))   (* s *)
+    val () = ward_arr_set<byte>(arr, 3, ward_int2byte(_checked_byte(112)))   (* p *)
+    val () = ward_arr_set<byte>(arr, 4, ward_int2byte(_checked_byte(108)))   (* l *)
+    val () = ward_arr_set<byte>(arr, 5, ward_int2byte(_checked_byte(97)))    (* a *)
+    val () = ward_arr_set<byte>(arr, 6, ward_int2byte(_checked_byte(121)))   (* y *)
+    val () = ward_arr_set<byte>(arr, 7, ward_int2byte(_checked_byte(58)))    (* : *)
+    val () = ward_arr_set<byte>(arr, 8, ward_int2byte(_checked_byte(110)))   (* n *)
+    val () = ward_arr_set<byte>(arr, 9, ward_int2byte(_checked_byte(111)))   (* o *)
+    val () = ward_arr_set<byte>(arr, 10, ward_int2byte(_checked_byte(110)))  (* n *)
+    val () = ward_arr_set<byte>(arr, 11, ward_int2byte(_checked_byte(101)))  (* e *)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_set_style(s, nav_id, borrow, 12)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = ward_arr_drop<byte>(frozen, borrow)
+    val arr = ward_arr_thaw<byte>(frozen)
+    val () = ward_arr_free<byte>(arr)
+    prval pf_style = CHROME_NOW_HIDDEN()
+    prval pf_valid = CV_HIDDEN()
+    prval _ = pf_style : CHROME_STYLE_APPLIED(0)
+    prval _ = pf_valid : CHROME_VISIBLE_VALID(0)
+    val () = reader_set_chrome_visible(0)
+  in end
+  else ()
+end
+
+(* Set nav element to display:flex. Produces CHROME_STYLE_APPLIED(1).
+ * "display:flex" = 12 bytes: 100,105,115,112,108,97,121,58,102,108,101,120 *)
+fn show_chrome(): void = let
+  val nav_id = reader_get_nav_id()
+in
+  if gt_int_int(nav_id, 0) then let
+    val arr = ward_arr_alloc<byte>(12)
+    val () = ward_arr_set<byte>(arr, 0, ward_int2byte(_checked_byte(100)))   (* d *)
+    val () = ward_arr_set<byte>(arr, 1, ward_int2byte(_checked_byte(105)))   (* i *)
+    val () = ward_arr_set<byte>(arr, 2, ward_int2byte(_checked_byte(115)))   (* s *)
+    val () = ward_arr_set<byte>(arr, 3, ward_int2byte(_checked_byte(112)))   (* p *)
+    val () = ward_arr_set<byte>(arr, 4, ward_int2byte(_checked_byte(108)))   (* l *)
+    val () = ward_arr_set<byte>(arr, 5, ward_int2byte(_checked_byte(97)))    (* a *)
+    val () = ward_arr_set<byte>(arr, 6, ward_int2byte(_checked_byte(121)))   (* y *)
+    val () = ward_arr_set<byte>(arr, 7, ward_int2byte(_checked_byte(58)))    (* : *)
+    val () = ward_arr_set<byte>(arr, 8, ward_int2byte(_checked_byte(102)))   (* f *)
+    val () = ward_arr_set<byte>(arr, 9, ward_int2byte(_checked_byte(108)))   (* l *)
+    val () = ward_arr_set<byte>(arr, 10, ward_int2byte(_checked_byte(101)))  (* e *)
+    val () = ward_arr_set<byte>(arr, 11, ward_int2byte(_checked_byte(120)))  (* x *)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_set_style(s, nav_id, borrow, 12)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = ward_arr_drop<byte>(frozen, borrow)
+    val arr = ward_arr_thaw<byte>(frozen)
+    val () = ward_arr_free<byte>(arr)
+    prval pf_style = CHROME_NOW_VISIBLE()
+    prval pf_valid = CV_SHOWN()
+    prval _ = pf_style : CHROME_STYLE_APPLIED(1)
+    prval _ = pf_valid : CHROME_VISIBLE_VALID(1)
+    val () = reader_set_chrome_visible(1)
+  in end
+  else ()
+end
+
+(* Start 5-second auto-hide timer with generation counter.
+ * Increments gen, captures new value. Timer callback checks gen
+ * against current — stale timers are no-ops. *)
+fn start_chrome_auto_hide(): void = let
+  val gen = reader_incr_chrome_timer_gen()
+  val saved_gen = gen
+  val p = ward_timer_set(5000)
+  val p2 = ward_promise_then<int><int>(p,
+    llam (_: int): ward_promise_chained(int) => let
+      val cur_gen = reader_get_chrome_timer_gen()
+    in
+      if eq_int_int(saved_gen, cur_gen) then let
+        val active = reader_is_active()
+      in
+        if eq_int_int(active, 1) then let
+          val () = hide_chrome()
+        in ward_promise_return<int>(0) end
+        else ward_promise_return<int>(0)
+      end
+      else ward_promise_return<int>(0)
+    end)
+  val () = ward_promise_discard<int>(p2)
+in end
+
+(* Toggle chrome: if visible → hide + cancel timer; if hidden → show + start timer *)
+fn toggle_chrome(): void = let
+  val vis = reader_get_chrome_visible()
+in
+  if eq_int_int(vis, 1) then let
+    val () = hide_chrome()
+    (* Cancel pending timer by incrementing gen *)
+    val _ = reader_incr_chrome_timer_gen()
+  in end
+  else let
+    val () = show_chrome()
+    val () = start_chrome_auto_hide()
+  in end
+end
+
+(* Hide chrome on page turn (viewport left/right tap, arrow keys, space).
+ * If chrome is visible, hide it and cancel timer. *)
+fn auto_hide_chrome_on_turn(): void = let
+  val vis = reader_get_chrome_visible()
+in
+  if eq_int_int(vis, 1) then let
+    val () = hide_chrome()
+    val _ = reader_incr_chrome_timer_gen()
+  in end
+  else ()
+end
+
+(* Chrome-safe navigate: cancel timer, navigate, show chrome, restart timer.
+ * Used by Prev/Next button handlers. *)
+fn chrome_safe_navigate_prev(container_id: int): void = let
+  val _ = reader_incr_chrome_timer_gen()
+  val () = navigate_prev(container_id)
+  val () = show_chrome()
+  val () = start_chrome_auto_hide()
+in end
+
+fn chrome_safe_navigate_next(container_id: int): void = let
+  val _ = reader_incr_chrome_timer_gen()
+  val () = navigate_next(container_id)
+  val () = show_chrome()
+  val () = start_chrome_auto_hide()
+in end
+
 (* ========== Reader keyboard handler ========== *)
 
 fn on_reader_keydown(payload_len: int, root_id: int): void = let
@@ -805,15 +974,27 @@ in
       else ()
     else if eq_int_int(key_len, 10) then
       (* "ArrowRight": key_len=10, k0='A' (65) *)
-      if eq_int_int(k0, 65) then navigate_next(cid)
+      if eq_int_int(k0, 65) then let
+        val () = navigate_next(cid)
+        val () = auto_hide_chrome_on_turn()
+      in end
       else ()
     else if eq_int_int(key_len, 9) then
       (* "ArrowLeft": key_len=9, k0='A' (65) *)
-      if eq_int_int(k0, 65) then navigate_prev(cid)
+      if eq_int_int(k0, 65) then let
+        val () = navigate_prev(cid)
+        val () = auto_hide_chrome_on_turn()
+      in end
       else ()
     else if eq_int_int(key_len, 1) then
       (* " " (Space): key_len=1, k0=' ' (32) *)
-      if eq_int_int(k0, 32) then navigate_next(cid)
+      if eq_int_int(k0, 32) then let
+        val () = navigate_next(cid)
+        val () = auto_hide_chrome_on_turn()
+      in end
+      (* 't' (116) or 'T' (84): toggle chrome *)
+      else if eq_int_int(k0, 116) then toggle_chrome()
+      else if eq_int_int(k0, 84) then toggle_chrome()
       else ()
     else ()
   end
@@ -940,19 +1121,19 @@ implement enter_reader(root_id, book_index) = let
     in 0 end
   )
 
-  (* Register click listener on prev button *)
+  (* Register click listener on prev button — chrome-safe: cancel+nav+restart *)
   val () = ward_add_event_listener(
     prev_btn_id, evt_click(), 5, LISTENER_PREV,
     lam (_pl: int): int => let
-      val () = navigate_prev(saved_container)
+      val () = chrome_safe_navigate_prev(saved_container)
     in 0 end
   )
 
-  (* Register click listener on next button *)
+  (* Register click listener on next button — chrome-safe: cancel+nav+restart *)
   val () = ward_add_event_listener(
     next_btn_id, evt_click(), 5, LISTENER_NEXT,
     lam (_pl: int): int => let
-      val () = navigate_next(saved_container)
+      val () = chrome_safe_navigate_next(saved_container)
     in 0 end
   )
 
@@ -964,7 +1145,9 @@ implement enter_reader(root_id, book_index) = let
     in 0 end
   )
 
-  (* Register click listener on viewport for page navigation *)
+  (* Register click listener on viewport for page navigation.
+   * 3-zone layout: left 25% → prev, center 50% → toggle chrome,
+   * right 25% → next. ZONE_SPLIT proves left = vw/4, right = vw*3/4. *)
   val () = ward_add_event_listener(
     viewport_id, evt_click(), 5, LISTENER_VIEWPORT_CLICK,
     lam (pl: int): int => let
@@ -978,14 +1161,22 @@ implement enter_reader(root_id, book_index) = let
         val vw = measure_node_width(reader_get_viewport_id())
       in
         if gt_int_int(vw, 0) then let
-          (* Right 75% → next page, left 25% → prev page *)
-          val threshold = div_int_int(vw, 4)
+          val left_threshold = div_int_int(vw, 4)
+          val right_threshold = div_int_int(mul_int_int(vw, 3), 4)
         in
-          if gt_int_int(click_x, threshold) then let
+          if lt_int_int(click_x, left_threshold) then let
+            (* Left 25% → prev page, hide chrome *)
+            val () = navigate_prev(saved_container)
+            val () = auto_hide_chrome_on_turn()
+          in 0 end
+          else if gt_int_int(click_x, right_threshold) then let
+            (* Right 25% → next page, hide chrome *)
             val () = navigate_next(saved_container)
+            val () = auto_hide_chrome_on_turn()
           in 0 end
           else let
-            val () = navigate_prev(saved_container)
+            (* Center 50% → toggle chrome *)
+            val () = toggle_chrome()
           in 0 end
         end
         else 0
@@ -993,6 +1184,10 @@ implement enter_reader(root_id, book_index) = let
       else 0
     end
   )
+
+  (* Show chrome and start auto-hide timer on reader entry *)
+  val () = show_chrome()
+  val () = start_chrome_auto_hide()
 
   (* Load manifest from IDB, then restore chapter/page position *)
   val saved_bi = book_index

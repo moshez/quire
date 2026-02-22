@@ -241,6 +241,10 @@ test.describe('EPUB Reader E2E', () => {
     expect(transformPx).toBe(-vpWidth);
 
     // --- Test prev button navigation ---
+    // Show chrome first (hidden after right-zone click)
+    const centerX = viewport.width / 2;
+    await page.mouse.click(centerX, centerY);
+    await page.waitForTimeout(300);
     await prevBtn.click();
     await page.waitForTimeout(500);
     await screenshot(page, '04a-reader-prev-btn');
@@ -314,6 +318,9 @@ test.describe('EPUB Reader E2E', () => {
     await screenshot(page, '09-reader-space-forward');
 
     // --- Navigate back to library via back button ---
+    // Show chrome first (hidden after keyboard navigation)
+    await page.keyboard.press('t');
+    await page.waitForTimeout(300);
     const backBtnNav = page.locator('.back-btn');
     await backBtnNav.click();
     await page.waitForTimeout(500);
@@ -2416,6 +2423,103 @@ test.describe('EPUB Reader E2E', () => {
     await expect(page.locator('.book-card')).toHaveCount(0);
     await expect(page.locator('.empty-lib')).toContainText('No books yet');
     await screenshot(page, 'del-04-after-reload');
+  });
+
+  test('chrome auto-hide and toggle via center tap and T key', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    page.on('crash', () => console.error('PAGE CRASHED'));
+
+    const epubBuffer = createEpub({
+      title: 'Chrome Toggle Test',
+      author: 'Quire Bot',
+      chapters: 2,
+      paragraphsPerChapter: 20,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `chrome-test-${vpTag}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open the book
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    const readerNav = page.locator('.reader-nav');
+    await expect(readerNav).toBeVisible();
+    await screenshot(page, 'chrome-01-initial-visible');
+
+    // Chrome should auto-hide after ~5 seconds
+    await page.waitForTimeout(6000);
+    await screenshot(page, 'chrome-02-after-autohide');
+    await expect(readerNav).toBeHidden();
+
+    // Center tap to toggle chrome back on
+    const viewport = page.viewportSize();
+    const centerX = viewport.width / 2;
+    const centerY = viewport.height / 2;
+    await page.mouse.click(centerX, centerY);
+    await page.waitForTimeout(500);
+    await screenshot(page, 'chrome-03-after-center-tap-show');
+    await expect(readerNav).toBeVisible();
+
+    // Center tap again to hide
+    await page.mouse.click(centerX, centerY);
+    await page.waitForTimeout(500);
+    await screenshot(page, 'chrome-04-after-center-tap-hide');
+    await expect(readerNav).toBeHidden();
+
+    // T key to toggle chrome on
+    await page.locator('.reader-viewport').focus();
+    await page.keyboard.press('t');
+    await page.waitForTimeout(500);
+    await screenshot(page, 'chrome-05-after-t-key-show');
+    await expect(readerNav).toBeVisible();
+
+    // T key to toggle chrome off
+    await page.keyboard.press('t');
+    await page.waitForTimeout(500);
+    await screenshot(page, 'chrome-06-after-t-key-hide');
+    await expect(readerNav).toBeHidden();
+
+    // Show chrome, then navigate via right-zone tap — chrome should hide
+    await page.keyboard.press('t');
+    await page.waitForTimeout(500);
+    await expect(readerNav).toBeVisible();
+    const rightZoneX = viewport.width - 30;
+    await page.mouse.click(rightZoneX, centerY);
+    await page.waitForTimeout(500);
+    await screenshot(page, 'chrome-07-after-right-tap-hides');
+    await expect(readerNav).toBeHidden();
+
+    // Prev button navigation keeps chrome visible (chrome-safe)
+    // First show chrome with center tap
+    await page.mouse.click(centerX, centerY);
+    await page.waitForTimeout(500);
+    await expect(readerNav).toBeVisible();
+    // Click prev button
+    await page.locator('.prev-btn').click();
+    await page.waitForTimeout(500);
+    await screenshot(page, 'chrome-08-after-prev-btn');
+    await expect(readerNav).toBeVisible();
+
+    // Next button also keeps chrome visible
+    await page.locator('.next-btn').click();
+    await page.waitForTimeout(500);
+    await screenshot(page, 'chrome-09-after-next-btn');
+    await expect(readerNav).toBeVisible();
+
+    // Verify no page crashes
+    expect(errors).toEqual([]);
   });
 
 });
