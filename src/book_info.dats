@@ -934,13 +934,22 @@ fn _info_render_row_from_sbuf(meta_id: int, label_text_id: int,
 
 (* Step 5: Render metadata rows (progress, added, last read, size).
  * Each row uses _info_render_row which owns its own DOM stream
- * to avoid viewtype-in-if-then-else issues. *)
+ * to avoid viewtype-in-if-then-else issues.
+ *
+ * FLUSH REQUIRED: _info_render_row_from_sbuf creates separate DOM streams
+ * that reference meta_id as parent. meta_id must exist in the bridge's
+ * nodes map before the row streams can append to it. The main stream must
+ * be flushed (end+fini) before row rendering, then restarted after. *)
 fn _render_info_meta {l:agz}
   (s: ward_dom_stream(l), overlay_id: int, book_idx: int)
-  : (INFO_META_DONE() | ward_dom_stream(l)) = let
+  : (INFO_META_DONE() | [l2:agz] ward_dom_stream(l2)) = let
   val meta_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, meta_id, overlay_id, tag_div(), 3)
   val s = ward_dom_stream_set_attr_safe(s, meta_id, attr_class(), 5, cls_info_meta(), 9)
+
+  (* Flush main stream so meta_id exists in bridge nodes map *)
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
 
   (* Row 1: Progress *)
   val ch = library_get_chapter(book_idx)
@@ -970,6 +979,10 @@ fn _render_info_meta {l:agz}
   prval _ = pf_added
   prval _ = pf_lr
   prval _ = pf_sz
+
+  (* Restart main stream for remaining steps *)
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
 in (META_RENDERED() | s) end
 
 (* Helper: add hide/unhide button in info view *)
