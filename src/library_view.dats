@@ -583,6 +583,17 @@ implement register_library_delegated_listeners(list_id, root, vm) = let
     list_id, evt_contextmenu(), 11, LISTENER_LIB_CONTEXTMENU,
     lam (payload_len: int): int => let
       val pl = g1ofg0(payload_len)
+      (* Debug: log that contextmenu handler fired *)
+      val _log_ctx = let
+        val b = ward_text_build(7)
+        val b = ward_text_putc(b, 0, char2int1('c'))
+        val b = ward_text_putc(b, 1, char2int1('t'))
+        val b = ward_text_putc(b, 2, char2int1('x'))
+        val b = ward_text_putc(b, 3, 45) (* '-' *)
+        val b = ward_text_putc(b, 4, char2int1('c'))
+        val b = ward_text_putc(b, 5, char2int1('b'))
+        val b = ward_text_putc(b, 6, char2int1('k'))
+      in ward_log(1, ward_text_done(b), 7) end
     in
       if gte_g1(pl, 20) then let
         val arr = ward_event_get_payload(pl)
