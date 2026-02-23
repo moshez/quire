@@ -582,39 +582,62 @@ fn save_reading_position(): (POSITION_PERSISTED() | void) = let
     reader_get_current_chapter(),
     reader_get_current_page())
   val () = library_save()
+  val () = reader_set_page_turn_counter(0)
   prval pf = unit_p()
 in (pf | ()) end
 
 
 end (* local POSITION_PERSISTED *)
 
+(* debounced_page_turn_save: update in-memory position on every page turn,
+ * but only write to IDB every SAVE_EVERY (5) turns.
+ * Counter bounded by [n:nat | n < SAVE_EVERY] — the type system enforces
+ * that counter is always reset when it reaches the threshold.
+ * Unconditional saves (chapter transition, visibilitychange, exit) call
+ * save_reading_position which resets the counter. *)
+fn debounced_page_turn_save(): void = let
+  val (_pf_saved | ()) = library_update_position(
+    reader_get_book_index(),
+    reader_get_current_chapter(),
+    reader_get_current_page())
+  val ctr = reader_get_page_turn_counter()
+  val next = add_g1(ctr, 1)
+in
+  if gte_g1(next, 5) then let
+    val () = library_save()
+    val () = reader_set_page_turn_counter(0)
+  in end
+  else let
+    val () = reader_set_page_turn_counter(next)
+  in end
+end
+
 fn page_turn_forward(container_id: int)
-  : @(PAGE_DISPLAY_UPDATED(), POSITION_PERSISTED() | void) = let
+  : (PAGE_DISPLAY_UPDATED() | void) = let
   val () = reader_next_page()
   val () = apply_page_transform(container_id)
   val (pf_pg_info | ()) = update_page_info()
   val (pf_bm | ()) = update_bookmark_btn()
   prval _ = pf_bm
-  val (pf_pos | ()) = save_reading_position()
+  val () = debounced_page_turn_save()
   prval pf_pg = PAGE_TURNED_AND_SHOWN(pf_pg_info)
-in @(pf_pg, pf_pos | ()) end
+in (pf_pg | ()) end
 
 (* page_turn_backward: go to previous page within chapter and update display.
  * Bundles reader_prev_page + apply_page_transform + update_page_info.
- * Returns PAGE_DISPLAY_UPDATED + POSITION_PERSISTED proofs.
- * Caller must destructure both proofs.
+ * Returns PAGE_DISPLAY_UPDATED proof.
  *
  * Precondition: caller has already verified pg > 0. *)
 fn page_turn_backward(container_id: int)
-  : @(PAGE_DISPLAY_UPDATED(), POSITION_PERSISTED() | void) = let
+  : (PAGE_DISPLAY_UPDATED() | void) = let
   val () = reader_prev_page()
   val () = apply_page_transform(container_id)
   val (pf_pg_info | ()) = update_page_info()
   val (pf_bm | ()) = update_bookmark_btn()
   prval _ = pf_bm
-  val (pf_pos | ()) = save_reading_position()
+  val () = debounced_page_turn_save()
   prval pf_pg = PAGE_TURNED_AND_SHOWN(pf_pg_info)
-in @(pf_pg, pf_pos | ()) end
+in (pf_pg | ()) end
 
 (* reader_save_and_exit removed: callers now call library_update_position
  * directly and receive POSITION_SAVED proof from its return value.
@@ -922,9 +945,8 @@ fn navigate_next(container_id: int): void = let
 in
   if lt_int_int(pg, total - 1) then let
     (* Within chapter — advance page *)
-    val @(pf_pg, pf_pos | ()) = page_turn_forward(container_id)
+    val (pf_pg | ()) = page_turn_forward(container_id)
     prval _ = pf_pg
-    prval _ = pf_pos
   in end
   else let
     (* At last page — try advancing chapter *)
@@ -963,9 +985,8 @@ fn navigate_prev(container_id: int): void = let
 in
   if gt_int_int(pg, 0) then let
     (* Within chapter — go back a page *)
-    val @(pf_pg, pf_pos | ()) = page_turn_backward(container_id)
+    val (pf_pg | ()) = page_turn_backward(container_id)
     prval _ = pf_pg
-    prval _ = pf_pos
   in end
   else let
     (* At first page — try going to previous chapter *)

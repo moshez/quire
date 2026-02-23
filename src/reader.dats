@@ -44,6 +44,7 @@ implement reader_init() = let
   val () = app_set_rdr_toc_first_entry_id(st, 0)
   val () = app_set_rdr_toc_entry_count(st, 0)
   val () = app_set_rdr_bm_first_entry_id(st, 0)
+  val () = app_set_rdr_page_turn_counter(st, 0)
   val () = app_state_store(st)
 in end
 
@@ -644,4 +645,23 @@ implement reader_get_pos_stack_pg(i) =
 implement reader_set_pos_stack_entry(i, ch, pg) = let
   val () = _app_rdr_pos_stack_set_i32(i * 2, ch)
   val () = _app_rdr_pos_stack_set_i32(i * 2 + 1, pg)
+in end
+
+extern castfn _clamp_turn_counter(x: int): [n:nat | n < 5] int n
+
+implement reader_get_page_turn_counter() = let
+  val st = app_state_load()
+  val v = app_get_rdr_page_turn_counter(st)
+  val () = app_state_store(st)
+in
+  if v >= 0 then
+    if lt_int_int(v, 5) then _clamp_turn_counter(v)
+    else _clamp_turn_counter(0)
+  else _clamp_turn_counter(0)
+end
+
+implement reader_set_page_turn_counter{n}(v) = let
+  val st = app_state_load()
+  val () = app_set_rdr_page_turn_counter(st, v)
+  val () = app_state_store(st)
 in end
