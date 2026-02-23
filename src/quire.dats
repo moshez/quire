@@ -2542,6 +2542,34 @@ implement enter_reader(root_id, book_index) = let
     in 0 end
   )
 
+  (* Visibilitychange: save position when tab becomes hidden.
+   * Uses ward_add_document_event_listener (fires on document, not a node).
+   * Payload: [u8:hidden] where 1=hidden, 0=visible. *)
+  val () = ward_add_document_event_listener(
+    evt_visibilitychange(), 16, 44,
+    lam (payload_len: int): int => let
+      val pl = g1ofg0(payload_len)
+    in
+      if gt1_int_int(pl, 0) then let
+        val payload = ward_event_get_payload(pl)
+        val hidden = byte2int0(ward_arr_get<byte>(payload, 0))
+        val () = ward_arr_free<byte>(payload)
+      in
+        if eq_int_int(hidden, 1) then let
+          val active = reader_is_active()
+        in
+          if eq_int_int(active, 1) then let
+            val (pf_pos | ()) = save_reading_position()
+            prval _ = pf_pos
+          in 0 end
+          else 0
+        end
+        else 0
+      end
+      else 0
+    end
+  )
+
   (* Show chrome and start auto-hide timer on reader entry *)
   val () = show_chrome()
   val () = start_chrome_auto_hide()
