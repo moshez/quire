@@ -72,6 +72,7 @@ QUIRE_DATS := \
   src/epub.dats \
   src/sha256.dats \
   src/settings.dats \
+  src/theme.dats \
   src/library.dats \
   src/reader.dats \
   src/quire_text.dats \
