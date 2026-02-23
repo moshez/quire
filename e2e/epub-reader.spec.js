@@ -2903,5 +2903,67 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('escape key hierarchy: TOC → chrome → library', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+
+    const epubBuffer = createEpub({ title: 'Escape Test', chapters: 2, paragraphsPerChapter: 4 });
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `escape-test-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await page.locator('input[type="file"]').setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.textContent && el.textContent.length > 50;
+    }, { timeout: 15000 });
+
+    // Wait for auto-hide timer to expire, then toggle chrome on via center tap
+    await page.waitForTimeout(6000);
+    await expect(page.locator('.reader-nav')).toBeHidden();
+
+    const viewport = page.viewportSize();
+    const centerX = viewport.width / 2;
+    const centerY = viewport.height / 2;
+    await page.mouse.click(centerX, centerY);
+    await page.waitForTimeout(500);
+    await expect(page.locator('.reader-nav')).toBeVisible();
+    await screenshot(page, 'escape-01-chrome-visible');
+
+    // Open TOC panel
+    await page.locator('.toc-btn').click();
+    await page.waitForTimeout(500);
+    await expect(page.locator('.toc-panel')).toBeVisible();
+    await screenshot(page, 'escape-02-toc-open');
+
+    // Escape 1: closes TOC, still in reader with chrome visible
+    await page.locator('.reader-viewport').focus();
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+    await expect(page.locator('.toc-panel')).toBeHidden();
+    await expect(page.locator('.reader-nav')).toBeVisible();
+    await screenshot(page, 'escape-03-toc-closed');
+
+    // Escape 2: hides chrome, still in reader
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+    await expect(page.locator('.reader-nav')).toBeHidden();
+    await expect(page.locator('.reader-viewport')).toBeAttached();
+    await screenshot(page, 'escape-04-chrome-hidden');
+
+    // Escape 3: exits to library
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(1000);
+    await expect(page.locator('.book-card')).toBeVisible();
+    await screenshot(page, 'escape-05-library');
+
+    expect(errors).toEqual([]);
+  });
+
 
 });

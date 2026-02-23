@@ -320,14 +320,18 @@ in
   else _app_lib_books_set_i32(index * REC_INTS + LAST_OPENED_SLOT, ts)
 end
 
+local
+  assume POSITION_SAVED() = unit_p
+in
 implement library_update_position(index, chapter, page) =
-  if lt_int_int(index, 0) then ()
-  else if gte_int_int(index, _app_lib_count()) then ()
+  if lt_int_int(index, 0) then (unit_p() | ())
+  else if gte_int_int(index, _app_lib_count()) then (unit_p() | ())
   else let
     val base = index * REC_INTS
     val () = _app_lib_books_set_i32(base + CHAPTER_SLOT, chapter)
     val () = _app_lib_books_set_i32(base + PAGE_SLOT, page)
-  in end
+  in (unit_p() | ()) end
+end (* local POSITION_SAVED *)
 
 implement library_find_book_by_id() = let
   val count = _app_lib_count()

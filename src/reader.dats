@@ -55,7 +55,7 @@ implement reader_enter(root_id, container_hide_id) = let
 in end
 
 implement reader_exit(pf) = let
-  prval SAVED() = pf
+  prval _ = pf
   val st = app_state_load()
   val () = app_set_rdr_active(st, 0)
   val () = app_set_rdr_book_index(st, 0 - 1)
@@ -194,7 +194,10 @@ implement reader_remeasure_all() = ()
 implement reader_show_toc() = ()
 implement reader_hide_toc() = ()
 implement reader_toggle_toc() = ()
-implement reader_is_toc_visible() = gt_int_int(reader_get_toc_view_mode(), 0)
+implement reader_is_toc_visible() = let
+  val (pf_mode | mode) = reader_get_toc_view_mode()
+  prval _ = pf_mode
+in gt_int_int(mode, 0) end
 implement reader_get_toc_id() = 0
 implement reader_get_progress_bar_id() = 0
 implement reader_get_toc_index_for_node(node_id) = 0 - 1
@@ -552,7 +555,8 @@ implement reader_get_toc_switch_btn_id() = let
   val () = app_state_store(st)
 in v end
 
-implement reader_set_toc_view_mode(v) = let
+implement reader_set_toc_view_mode{m}(pf | v) = let
+  prval _ = pf
   val st = app_state_load()
   val () = app_set_rdr_toc_view_mode(st, v)
   val () = app_state_store(st)
@@ -562,7 +566,11 @@ implement reader_get_toc_view_mode() = let
   val st = app_state_load()
   val v = app_get_rdr_toc_view_mode(st)
   val () = app_state_store(st)
-in v end
+in
+  if eq_int_int(v, 1) then (TOC_MODE_CONTENTS() | 1)
+  else if eq_int_int(v, 2) then (TOC_MODE_BOOKMARKS() | 2)
+  else (TOC_MODE_HIDDEN() | 0)
+end
 
 implement reader_set_toc_first_entry_id(id) = let
   val st = app_state_load()
