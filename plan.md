@@ -197,7 +197,7 @@ everything else depends on.
   background), save current reading position to IndexedDB immediately. This
   covers app switching and crash recovery.
 
-- [ ] **5.2 Save position on chapter transition.** Whenever the reader
+- [x] **5.2 Save position on chapter transition.** Whenever the reader
   transitions to a new chapter, save the position. This is partially
   implemented (reader tracks chapter/page) but verify it persists to IDB.
 
