@@ -152,6 +152,70 @@ fun set_attr
 
 The `nl <= BUF_CAP` is redundant with `VALID_ATTR_NAME` (max name is 8 chars) but necessary for the constraint solver.
 
+## Static Unit Tests in ATS2
+
+### The Core Idea
+
+In ATS2, `bool(b)` is a singleton type — the only value assignable to `bool(true)` is `true`. This means a function declared to return `bool(true)` must, at compile time, be provably correct. The typechecker rejects any implementation that cannot statically guarantee the return value.
+
+This makes it possible to write unit tests that never run. They are verified by the compiler during type-checking, and they impose zero runtime cost.
+
+### What a Static Unit Test Looks Like
+
+```ats
+(* UNIT TEST *)
+fun test_add_2_3(): bool(true) = add(2, 3) = 5
+```
+
+If `add` has a sufficiently precise dependent type signature — `{m,n:int} int(m) -> int(n) -> int(m+n)` — this typechecks, and the test passes at compile time. If `add` returns `Int` (an existentially quantified integer — some integer, we don't know which), the test fails to compile.
+
+### Why This Matters
+
+The test is not checking that `add(2, 3)` happens to return `5` when run. It is checking that the type system *knows* `add(2, 3)` returns `5`. These are different things.
+
+A conventional unit test can be satisfied by an implementation that works on the tested inputs and lies about everything else. A static unit test cannot be satisfied unless the function's type signature is honest enough for the compiler to verify the property without executing anything.
+
+The practical consequence: **a static unit test is a demand on the precision of the types, not just on the behavior of the implementation.** Writing the test and having it fail is how you discover that a type signature is weaker than it should be. The test failure tells you exactly where the types are not carrying enough information.
+
+### The Discipline
+
+Mark all static unit tests with a `(* UNIT TEST *)` comment immediately above the function. This makes them easy to identify, audit, and eventually strip from release builds.
+
+```ats
+(* UNIT TEST *)
+fun test_sort_length {n:nat} (xs: list(int, n)): bool(true) =
+  list_length(sort(xs)) = n
+
+(* UNIT TEST *)
+fun test_sort_idempotent {n:nat} (xs: list(int, n)): bool(true) =
+  sort(sort(xs)) = sort(xs)
+```
+
+If a test cannot be written as returning `bool(true)`, that is a signal. Either the property is not statically verifiable with the current types, or the types are too weak. In either case, the test has done its job: it has located a gap.
+
+### What Static Tests Cannot Cover
+
+Static unit tests only work for properties that the type system can express and the constraint solver can verify. They are not a replacement for runtime testing of:
+
+- Properties where the return value depends on runtime data that cannot be expressed as a static index
+- Performance characteristics
+
+A function that performs I/O can still have a static unit test, as long as its return type can be statically guaranteed regardless of what the I/O does. The test is on the type of the return value, not on the presence or absence of side effects. Error handling paths that are determined by the type of the input — preconditions, postconditions, bounds checks, nonzero requirements — are expressible in dependent types and should have static tests.
+
+Where they apply, they are strictly stronger than runtime tests.
+
+### Summary
+
+| | Runtime unit test | Static unit test |
+|---|---|---|
+| When verified | At test execution | At compile time |
+| Can be gamed by partial correctness | Yes | No |
+| Demands type precision | No | Yes |
+| Runtime cost | Non-zero | Zero |
+| Identifies weak type signatures | No | Yes |
+
+Write static unit tests for every function. If a test does not compile, your types need work. That is not a reason to skip the test — it is the point of writing it.
+
 ## Guidelines for Application Code
 
 1. **Every state transition needs a proof witness**: Construct and consume a dataprop proof for every state transition.

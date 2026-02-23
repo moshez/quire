@@ -106,7 +106,8 @@ The bridge provides these functions as WASM imports under the `env` namespace:
 
 | Import | Signature | Purpose |
 |--------|-----------|---------|
-| `ward_js_add_event_listener` | `(nodeId, typePtr, typeLen, listenerId) -> void` | Register event listener |
+| `ward_js_add_event_listener` | `(nodeId, typePtr, typeLen, listenerId) -> void` | Register event listener on element |
+| `ward_js_add_document_event_listener` | `(typePtr, typeLen, listenerId) -> void` | Register event listener on document |
 | `ward_js_remove_event_listener` | `(listenerId) -> void` | Remove event listener |
 | `ward_js_prevent_default` | `() -> void` | Prevent default on current event |
 

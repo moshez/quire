@@ -192,7 +192,7 @@ everything else depends on.
 
 ## Phase 5 — Reading Position Persistence
 
-- [ ] **5.1 Save position on visibilitychange.** Register a bridge-level
+- [x] **5.1 Save position on visibilitychange.** Register a bridge-level
   `visibilitychange` listener. When the page becomes hidden (tab switch, app
   background), save current reading position to IndexedDB immediately. This
   covers app switching and crash recovery.

@@ -9,6 +9,13 @@ fun ward_add_event_listener
   (node_id: int, event_type: ward_safe_text(tn), type_len: int tn,
    listener_id: int, callback: int -<cloref1> int): void
 
+(* Register a document-level event listener (e.g. visibilitychange).
+   Same callback infrastructure, no node_id. *)
+fun ward_add_document_event_listener
+  {tn:pos}
+  (event_type: ward_safe_text(tn), type_len: int tn,
+   listener_id: int, callback: int -<cloref1> int): void
+
 fun ward_remove_event_listener(listener_id: int): void
 
 (* Must be called synchronously within event callback *)

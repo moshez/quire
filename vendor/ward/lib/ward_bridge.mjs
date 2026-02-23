@@ -427,6 +427,22 @@ export async function loadWard(wasmBytes, root, opts) {
     node.addEventListener(eventType, handler);
   }
 
+  function wardJsAddDocumentEventListener(eventTypePtr, typeLen, listenerId) {
+    const eventType = readString(eventTypePtr, typeLen);
+    const handler = (event) => {
+      currentEvent = event;
+      const payload = encodeEventPayload(event, eventType);
+      if (payload) {
+        const stashId = stashData(payload);
+        instance.exports.ward_bridge_stash_set_int(1, stashId);
+      }
+      instance.exports.ward_on_event(listenerId, payload ? payload.length : 0);
+      currentEvent = null;
+    };
+    listenerMap.set(listenerId, { node: document, eventType, handler });
+    document.addEventListener(eventType, handler);
+  }
+
   function wardJsRemoveEventListener(listenerId) {
     const entry = listenerMap.get(listenerId);
     if (entry) {
@@ -769,6 +785,7 @@ export async function loadWard(wasmBytes, root, opts) {
       ward_js_query_selector: wardJsQuerySelector,
       // Event listener
       ward_js_add_event_listener: wardJsAddEventListener,
+      ward_js_add_document_event_listener: wardJsAddDocumentEventListener,
       ward_js_remove_event_listener: wardJsRemoveEventListener,
       ward_js_prevent_default: wardJsPreventDefault,
       // Fetch

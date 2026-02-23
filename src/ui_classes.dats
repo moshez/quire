@@ -186,6 +186,27 @@ implement evt_pointermove() = let
   val b = ward_text_putc(b, 10, char2int1('e'))
 in ward_text_done(b) end
 
+(* "visibilitychange" = 16 chars *)
+implement evt_visibilitychange() = let
+  val b = ward_text_build(16)
+  val b = ward_text_putc(b, 0, char2int1('v'))
+  val b = ward_text_putc(b, 1, char2int1('i'))
+  val b = ward_text_putc(b, 2, char2int1('s'))
+  val b = ward_text_putc(b, 3, char2int1('i'))
+  val b = ward_text_putc(b, 4, char2int1('b'))
+  val b = ward_text_putc(b, 5, char2int1('i'))
+  val b = ward_text_putc(b, 6, char2int1('l'))
+  val b = ward_text_putc(b, 7, char2int1('i'))
+  val b = ward_text_putc(b, 8, char2int1('t'))
+  val b = ward_text_putc(b, 9, char2int1('y'))
+  val b = ward_text_putc(b, 10, char2int1('c'))
+  val b = ward_text_putc(b, 11, char2int1('h'))
+  val b = ward_text_putc(b, 12, char2int1('a'))
+  val b = ward_text_putc(b, 13, char2int1('n'))
+  val b = ward_text_putc(b, 14, char2int1('g'))
+  val b = ward_text_putc(b, 15, char2int1('e'))
+in ward_text_done(b) end
+
 implement cls_book_card() = let
   val b = ward_text_build(9)
   val b = ward_text_putc(b, 0, char2int1('b'))

@@ -65,6 +65,7 @@ fun evt_contextmenu(): ward_safe_text(11)
 fun evt_pointerdown(): ward_safe_text(11)
 fun evt_pointerup(): ward_safe_text(9)
 fun evt_pointermove(): ward_safe_text(11)
+fun evt_visibilitychange(): ward_safe_text(16)
 
 (* ========== Other builders ========== *)
 
