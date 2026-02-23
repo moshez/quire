@@ -1,5 +1,10 @@
-const CACHE = 'quire-v3';
-const SHELL = ['./', 'ward_bridge.js', 'quire.wasm', 'reader.css', 'manifest.json'];
+const CACHE = 'quire-v4';
+const SHELL = [
+  './', 'ward_bridge.js', 'quire.wasm', 'reader.css', 'manifest.json',
+  'assets/fonts/literata-latin.woff2',
+  'assets/fonts/literata-italic-latin.woff2',
+  'assets/fonts/inter-latin.woff2',
+];
 
 self.addEventListener('install', e => {
   self.skipWaiting();
