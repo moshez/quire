@@ -12,8 +12,13 @@ staload "./settings.sats"
 staload "./app_state.sats"
 staload "./arith.sats"
 staload "./reader.sats"
+staload "./dom.sats"
 staload "./../vendor/ward/lib/memory.sats"
+staload "./../vendor/ward/lib/dom.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
+staload _ = "./../vendor/ward/lib/dom.dats"
+
+extern castfn _byte {c:int | 0 <= c; c <= 255} (c: int c): byte
 
 (* ========== Castfns for bounded returns ========== *)
 
@@ -221,6 +226,62 @@ implement settings_on_save_complete(success) = ()
 implement settings_load() = ()
 implement settings_on_load_complete(len) = ()
 
+(* ========== Style helpers ========== *)
+
+fn _stg_set_style_none(node_id: int): void = let
+  val arr = ward_arr_alloc<byte>(12)
+  val () = ward_arr_set<byte>(arr, 0, _byte(100)) (* d *)
+  val () = ward_arr_set<byte>(arr, 1, _byte(105)) (* i *)
+  val () = ward_arr_set<byte>(arr, 2, _byte(115)) (* s *)
+  val () = ward_arr_set<byte>(arr, 3, _byte(112)) (* p *)
+  val () = ward_arr_set<byte>(arr, 4, _byte(108)) (* l *)
+  val () = ward_arr_set<byte>(arr, 5, _byte(97))  (* a *)
+  val () = ward_arr_set<byte>(arr, 6, _byte(121)) (* y *)
+  val () = ward_arr_set<byte>(arr, 7, _byte(58))  (* : *)
+  val () = ward_arr_set<byte>(arr, 8, _byte(110)) (* n *)
+  val () = ward_arr_set<byte>(arr, 9, _byte(111)) (* o *)
+  val () = ward_arr_set<byte>(arr, 10, _byte(110)) (* n *)
+  val () = ward_arr_set<byte>(arr, 11, _byte(101)) (* e *)
+  val @(used, rest) = ward_arr_split<byte>(arr, 12)
+  val () = ward_arr_free<byte>(rest)
+  val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+  val s = ward_dom_stream_set_style(s, node_id, borrow, 12)
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
+  val () = ward_arr_drop<byte>(frozen, borrow)
+  val used = ward_arr_thaw<byte>(frozen)
+  val () = ward_arr_free<byte>(used)
+in end
+
+fn _stg_set_style_flex(node_id: int): void = let
+  val arr = ward_arr_alloc<byte>(12)
+  val () = ward_arr_set<byte>(arr, 0, _byte(100)) (* d *)
+  val () = ward_arr_set<byte>(arr, 1, _byte(105)) (* i *)
+  val () = ward_arr_set<byte>(arr, 2, _byte(115)) (* s *)
+  val () = ward_arr_set<byte>(arr, 3, _byte(112)) (* p *)
+  val () = ward_arr_set<byte>(arr, 4, _byte(108)) (* l *)
+  val () = ward_arr_set<byte>(arr, 5, _byte(97))  (* a *)
+  val () = ward_arr_set<byte>(arr, 6, _byte(121)) (* y *)
+  val () = ward_arr_set<byte>(arr, 7, _byte(58))  (* : *)
+  val () = ward_arr_set<byte>(arr, 8, _byte(102)) (* f *)
+  val () = ward_arr_set<byte>(arr, 9, _byte(108)) (* l *)
+  val () = ward_arr_set<byte>(arr, 10, _byte(101)) (* e *)
+  val () = ward_arr_set<byte>(arr, 11, _byte(120)) (* x *)
+  val @(used, rest) = ward_arr_split<byte>(arr, 12)
+  val () = ward_arr_free<byte>(rest)
+  val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+  val s = ward_dom_stream_set_style(s, node_id, borrow, 12)
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
+  val () = ward_arr_drop<byte>(frozen, borrow)
+  val used = ward_arr_thaw<byte>(frozen)
+  val () = ward_arr_free<byte>(used)
+in end
+
 (* ========== Modal visibility ========== *)
 
 implement settings_is_visible() = let
@@ -232,13 +293,17 @@ in v end
 implement settings_show() = let
   val st = app_state_load()
   val () = app_set_stg_visible(st, 1)
+  val oid = app_get_stg_overlay_id(st)
   val () = app_state_store(st)
+  val () = if gt_int_int(oid, 0) then _stg_set_style_flex(oid) else ()
 in end
 
 implement settings_hide() = let
   val st = app_state_load()
   val () = app_set_stg_visible(st, 0)
+  val oid = app_get_stg_overlay_id(st)
   val () = app_state_store(st)
+  val () = if gt_int_int(oid, 0) then _stg_set_style_none(oid) else ()
 in end
 
 implement settings_toggle() = let

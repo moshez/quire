@@ -2118,6 +2118,18 @@ implement enter_reader(root_id, book_index) = let
   in ward_text_done(b) end
   val s = ward_dom_stream_set_safe_text(s, toc_btn_id, toc_btn_st, 3)
 
+  (* Settings button (Aa) *)
+  val settings_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, settings_btn_id, nav_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, settings_btn_id, attr_class(), 5,
+    cls_settings_btn(), 12)
+  val stg_st = let
+    val b = ward_text_build(2)
+    val b = ward_text_putc(b, 0, char2int1('A'))
+    val b = ward_text_putc(b, 1, char2int1('a'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, settings_btn_id, stg_st, 2)
+
   (* Nav back button — hidden initially via CSS .nav-back-btn{display:none},
    * shown when position stack is non-empty *)
   val nav_back_btn_id = dom_next_id()
@@ -2300,8 +2312,17 @@ implement enter_reader(root_id, book_index) = let
   val s = ward_dom_stream_set_attr_safe(s, toc_list_id, attr_class(), 5,
     cls_toc_list(), 8)
 
+  (* Settings panel overlay — initially hidden *)
+  val stg_overlay_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_overlay_id, root_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, stg_overlay_id, attr_class(), 5,
+    cls_settings_btn(), 12)
+
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
+
+  (* Hide settings overlay initially *)
+  val () = set_style_none(stg_overlay_id)
 
   (* Store IDs *)
   val () = reader_set_viewport_id(viewport_id)
@@ -2322,6 +2343,9 @@ implement enter_reader(root_id, book_index) = let
   val () = reader_set_toc_bm_count_btn_id(toc_bm_count_btn_id)
   val () = reader_set_toc_switch_btn_id(toc_switch_btn_id)
   val () = reader_set_nav_back_btn_id(nav_back_btn_id)
+  val st_store = app_state_load()
+  val () = app_set_stg_overlay_id(st_store, stg_overlay_id)
+  val () = app_state_store(st_store)
 
   (* Register listeners — all reader registrations use reader_add_event_listener
    * with READER_LISTENER proof, preventing arbitrary listener IDs. *)
@@ -2505,6 +2529,14 @@ implement enter_reader(root_id, book_index) = let
     toc_btn_id, evt_click(), 5, 38,
     lam (_pl: int): int => let
       val () = toggle_toc_panel()
+    in 0 end
+  )
+
+  (* Settings button: toggle settings panel *)
+  val () = reader_add_event_listener(READER_LISTEN_SETTINGS() |
+    settings_btn_id, evt_click(), 5, 45,
+    lam (_pl: int): int => let
+      val () = settings_toggle()
     in 0 end
   )
 
