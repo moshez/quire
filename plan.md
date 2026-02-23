@@ -232,7 +232,7 @@ everything else depends on.
   apply immediately with live preview. Settings debounce-persisted to IDB.
   Dismiss via ✕, tap outside, or swipe down.
 
-- [ ] **6.3 Provably correct theme data structures.** Each theme is a
+- [x] **6.3 Provably correct theme data structures.** Each theme is a
   compile-time data structure with specific color values for every surface
   (background, text, accent, highlight, chrome, etc.). Color correctness is
   proven via dataprops encoding color theory invariants. No theme can be
