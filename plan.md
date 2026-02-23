@@ -278,7 +278,7 @@ everything else depends on.
   Each pair (e.g., `chrome_fg` on `chrome_bg`) carries its own
   `CONTRAST_AA` proof.
 
-- [ ] **6.4 Auto theme.** Add "Auto" theme option that follows system
+- [x] **6.4 Auto theme.** Add "Auto" theme option that follows system
   `prefers-color-scheme`. Auto is the default on first launch. If user
   explicitly selects Light/Sepia/Dark, that overrides Auto. Requires bridge
   `matchMedia` listener for system theme changes. Auto resolves to one of
