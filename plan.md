@@ -307,7 +307,7 @@ everything else depends on.
   readability. Text and background colors are overridden; images are left
   untouched.
 
-- [ ] **6.8 E2e: typography settings.** Open typography panel (Aa), verify
+- [x] **6.8 E2e: typography settings.** Open typography panel (Aa), verify
   font/size/spacing/margin controls, change font, verify live update, change
   theme to Auto/Light/Sepia/Dark, verify colors update.
 
