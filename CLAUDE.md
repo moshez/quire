@@ -207,6 +207,14 @@ sudo apt-get install -y clang lld
 - Function implementations in src/runtime.c (linked separately)
 - CI builds ATS2 from source with caching
 
+## Task Discipline
+
+Task list steps must be **extremely granular** — one file edit or one logical
+change per step. "Implement feature X" is an aspiration, not a step. Break it
+into steps like "Add absprop POSITION_SAVED to library.sats" or "Change
+reader_get_toc_view_mode return type in reader.sats". Each step should be
+completable in under 2 minutes and verifiable in isolation.
+
 ## Protocol
 
 See quire-design.md §2 for bridge protocol (diff buffer layout, op codes, exports).

@@ -577,7 +577,7 @@ in
  * library_update_position + library_save were called.
  * Bug class prevented: adding a navigation path that skips save. *)
 fn save_reading_position(): (POSITION_PERSISTED() | void) = let
-  val () = library_update_position(
+  val (_pf_saved | ()) = library_update_position(
     reader_get_book_index(),
     reader_get_current_chapter(),
     reader_get_current_page())
@@ -616,19 +616,9 @@ fn page_turn_backward(container_id: int)
   prval pf_pg = PAGE_TURNED_AND_SHOWN(pf_pg_info)
 in @(pf_pg, pf_pos | ()) end
 
-(* Save reading position and exit reader.
- * Constructs POSITION_SAVED proof required by reader_exit.
- * This is THE only permitted way to exit the reader from ATS code.
- * See POSITION_SAVED dataprop in reader.sats. *)
-fn reader_save_and_exit(): void = let
-  val () = library_update_position(
-    reader_get_book_index(),
-    reader_get_current_chapter(),
-    reader_get_current_page())
-  prval pf = SAVED()
-in
-  reader_exit(pf)
-end
+(* reader_save_and_exit removed: callers now call library_update_position
+ * directly and receive POSITION_SAVED proof from its return value.
+ * See POSITION_SAVED absprop in library.sats. *)
 
 (* Apply resume page after chapter loads.
  * If reader_get_resume_page() > 0, go to that page (clamped to total),
@@ -1456,65 +1446,6 @@ fn load_bookmarks_from_idb(): void = let
   val () = ward_promise_discard<int>(p2)
 in end
 
-(* ========== Reader keyboard handler ========== *)
-
-fn on_reader_keydown(payload_len: int, root_id: int): void = let
-  val pl = g1ofg0(payload_len)
-in
-  (* Keydown payload: [u8:keyLen][bytes:key][u8:flags]
-   * Minimum payload sizes: Space=3, Escape=8, ArrowLeft=11, ArrowRight=12 *)
-  if gt1_int_int(pl, 2) then let
-    val payload = ward_event_get_payload(pl)
-    val key_len = byte2int0(ward_arr_get<byte>(payload, 0))
-    val k0 = byte2int0(ward_arr_get<byte>(payload, 1))
-    val () = ward_arr_free<byte>(payload)
-    val cid = reader_get_container_id()
-  in
-    if eq_int_int(key_len, 6) then
-      (* "Escape": key_len=6, k0='E' (69) *)
-      if eq_int_int(k0, 69) then let
-        val () = reader_save_and_exit()
-        val () = render_library(root_id)
-      in end
-      else ()
-    else if eq_int_int(key_len, 10) then
-      (* "ArrowRight": key_len=10, k0='A' (65) *)
-      if eq_int_int(k0, 65) then let
-        val () = navigate_next(cid)
-        val () = auto_hide_chrome_on_turn()
-      in end
-      else ()
-    else if eq_int_int(key_len, 9) then
-      (* "ArrowLeft": key_len=9, k0='A' (65) *)
-      if eq_int_int(k0, 65) then let
-        val () = navigate_prev(cid)
-        val () = auto_hide_chrome_on_turn()
-      in end
-      else ()
-    else if eq_int_int(key_len, 1) then
-      (* " " (Space): key_len=1, k0=' ' (32) *)
-      if eq_int_int(k0, 32) then let
-        val () = navigate_next(cid)
-        val () = auto_hide_chrome_on_turn()
-      in end
-      (* 't' (116) or 'T' (84): toggle chrome *)
-      else if eq_int_int(k0, 116) then toggle_chrome()
-      else if eq_int_int(k0, 84) then toggle_chrome()
-      (* 'b' (98) or 'B' (66): toggle bookmark *)
-      else if eq_int_int(k0, 98) then let
-        val (pf | ()) = toggle_bookmark()
-        prval _ = pf
-      in end
-      else if eq_int_int(k0, 66) then let
-        val (pf | ()) = toggle_bookmark()
-        prval _ = pf
-      in end
-      else ()
-    else ()
-  end
-  else ()
-end
-
 (* ========== Scrubber helpers ========== *)
 
 (* Compute target page from pointer X position on track.
@@ -1806,38 +1737,59 @@ in
   in end
 end
 
-(* Hide the TOC panel and reset view mode to 0. *)
-fn hide_toc_panel(): void = let
-  val panel_id = reader_get_toc_panel_id()
+local
+  assume TOC_STATE(b) = unit_p
 in
-  if gt_int_int(panel_id, 0) then let
-    val () = reader_set_toc_view_mode(0)
-    val () = set_style_none(panel_id)
-  in end
-  else ()
-end
+
+(* show_toc_panel: sole constructor of TOC_STATE(true).
+ * Atomically sets toc_view_mode=1 (Contents), shows panel DOM, updates BM count. *)
+fn show_toc_panel(): (TOC_STATE(true) | void) = let
+  val panel_id = reader_get_toc_panel_id()
+  val () = reader_set_toc_view_mode(TOC_MODE_CONTENTS() | 1)
+  val () = if gt_int_int(panel_id, 0) then set_style_flex(panel_id) else ()
+  val () = update_toc_bm_count_btn()
+in (unit_p() | ()) end
+
+(* witness_toc_visible: witnesses runtime TOC state for event handlers.
+ * Requires m > 0 (caller must have proved via gt1_int_int).
+ * Necessary in event-driven code where proofs cannot be threaded through
+ * callback dispatch. *)
+fn witness_toc_visible{m:pos | m <= 2}
+  (pf_mode: TOC_VIEW_MODE_VALID(m) | mode: int(m)): (TOC_STATE(true) | void) = let
+  prval _ = pf_mode
+in (unit_p() | ()) end
+
+(* hide_toc_panel: consumes TOC_STATE(true), produces TOC_STATE(false).
+ * ALWAYS resets toc_view_mode to 0 — fixes state inconsistency bug where
+ * stale mode=1 with no panel_id caused silent no-ops on future Escape presses. *)
+fn hide_toc_panel(pf: TOC_STATE(true) | ): (TOC_STATE(false) | void) = let
+  prval unit_p() = pf
+  val panel_id = reader_get_toc_panel_id()
+  val () = reader_set_toc_view_mode(TOC_MODE_HIDDEN() | 0)
+  val () = if gt_int_int(panel_id, 0) then set_style_none(panel_id) else ()
+in (unit_p() | ()) end
+
+end (* local TOC_STATE *)
 
 (* Toggle TOC panel: show Contents if hidden, hide if visible. *)
 fn toggle_toc_panel(): void = let
-  val mode = reader_get_toc_view_mode()
-  val panel_id = reader_get_toc_panel_id()
+  val (pf_mode | mode) = reader_get_toc_view_mode()
 in
-  if eq_int_int(mode, 0) then let
-    (* Currently hidden: show Contents view *)
-    val () = reader_set_toc_view_mode(1)
-    val () = if gt_int_int(panel_id, 0) then set_style_flex(panel_id) else ()
-    val () = update_toc_bm_count_btn()
+  if gt1_int_int(mode, 0) then let
+    val (pf_open | ()) = witness_toc_visible(pf_mode | mode)
+    val (pf_closed | ()) = hide_toc_panel(pf_open | )
+    prval _ = pf_closed
   in end
   else let
-    (* Currently visible: hide *)
-    val () = reader_set_toc_view_mode(0)
-    val () = if gt_int_int(panel_id, 0) then set_style_none(panel_id) else ()
+    prval _ = pf_mode
+    val (pf_shown | ()) = show_toc_panel()
+    prval _ = pf_shown
   in end
 end
 
 (* Switch TOC panel to Bookmarks view. *)
 fn switch_toc_to_bm(): void = let
-  val () = reader_set_toc_view_mode(2)
+  val () = reader_set_toc_view_mode(TOC_MODE_BOOKMARKS() | 2)
   val () = clear_toc_list()
   val () = render_bm_entries()
   val switch_id = reader_get_toc_switch_btn_id()
@@ -1870,7 +1822,7 @@ end
 
 (* Switch TOC panel to Contents view. *)
 fn switch_toc_to_contents(): void = let
-  val () = reader_set_toc_view_mode(1)
+  val () = reader_set_toc_view_mode(TOC_MODE_CONTENTS() | 1)
   val () = clear_toc_list()
   val spine = epub_get_chapter_count()
   val () = render_toc_entries(spine)
@@ -1903,61 +1855,161 @@ in
   else ()
 end
 
-(* Handle click on a TOC list entry (event delegation by node ID offset). *)
+(* Handle click on a TOC list entry (event delegation by node ID offset).
+ * Uses check_toc_open for proof-carrying dispatch. *)
 fn on_toc_list_click(clicked_id: int): void = let
-  val mode = reader_get_toc_view_mode()
+  val (pf_mode | mode) = reader_get_toc_view_mode()
 in
-  if eq_int_int(mode, 1) then let
-    (* Contents mode: navigate to the clicked chapter *)
-    val first_id = reader_get_toc_first_entry_id()
-    val idx = clicked_id - first_id
-    val total = reader_get_chapter_count()
-    val total_g1 = g1ofg0(total)
-    val idx_g1 = g1ofg0(idx)
-    val () = if idx_g1 >= 0 then
-      if lt1_int_int(idx_g1, total_g1) then let
-        val (pf_pushed | ()) = push_position()
-        prval _ = pf_pushed
-        val () = reader_go_to_chapter(idx_g1, total_g1)
-        val () = hide_toc_panel()
-        val container_id = reader_get_container_id()
-        prval pf = SPINE_ENTRY()
-        val dom = ward_dom_init()
-        val s = ward_dom_stream_begin(dom)
-        val s = ward_dom_stream_remove_children(s, container_id)
-        val dom = ward_dom_stream_end(s)
-        val () = ward_dom_fini(dom)
-        val () = load_chapter_from_idb(pf | idx_g1, total_g1, container_id)
-      in () end
-      else ()
-    else ()
-  in end
-  else if eq_int_int(mode, 2) then let
-    (* Bookmarks mode: navigate to the clicked bookmark *)
-    val first_id = reader_get_bm_first_entry_id()
-    val idx = clicked_id - first_id
-    val cnt = reader_get_bm_count()
-    val idx_g1 = g1ofg0(idx)
-    val () = if idx_g1 >= 0 then
-      if lt_int_int(idx, cnt) then let
-        val base = idx * 3
-        val ch = _app_bm_buf_get_i32(base)
-        val pg = _app_bm_buf_get_i32(base + 1)
+  if gt1_int_int(mode, 0) then let
+    val (pf_open | ()) = witness_toc_visible(pf_mode | mode)
+    val (pf_mode2 | mode2) = reader_get_toc_view_mode()
+    prval _ = pf_mode2
+    val raw = g0ofg1(mode2)
+      val () = if eq_int_int(raw, 1) then let
+        (* Contents mode: navigate to the clicked chapter *)
+        val first_id = reader_get_toc_first_entry_id()
+        val idx = clicked_id - first_id
         val total = reader_get_chapter_count()
         val total_g1 = g1ofg0(total)
-        val ch_g1 = g1ofg0(ch)
-        val () = if ch_g1 >= 0 then
-          if lt1_int_int(ch_g1, total_g1) then let
-            val () = reader_go_to_chapter(ch_g1, total_g1)
-            val () = reader_set_resume_page(pg)
-            val () = hide_toc_panel()
+        val idx_g1 = g1ofg0(idx)
+        val () = if idx_g1 >= 0 then
+          if lt1_int_int(idx_g1, total_g1) then let
+            val (pf_pushed | ()) = push_position()
+            prval _ = pf_pushed
+            val () = reader_go_to_chapter(idx_g1, total_g1)
+            val container_id = reader_get_container_id()
+            prval pf_spine = SPINE_ENTRY()
+            val dom = ward_dom_init()
+            val s = ward_dom_stream_begin(dom)
+            val s = ward_dom_stream_remove_children(s, container_id)
+            val dom = ward_dom_stream_end(s)
+            val () = ward_dom_fini(dom)
+            val () = load_chapter_from_idb(pf_spine | idx_g1, total_g1, container_id)
+          in () end
+          else ()
+        else ()
+      in () end
+      else if eq_int_int(raw, 2) then let
+        (* Bookmarks mode: navigate to the clicked bookmark *)
+        val first_id = reader_get_bm_first_entry_id()
+        val idx = clicked_id - first_id
+        val cnt = reader_get_bm_count()
+        val idx_g1 = g1ofg0(idx)
+        val () = if idx_g1 >= 0 then
+          if lt_int_int(idx, cnt) then let
+            val base = idx * 3
+            val ch = _app_bm_buf_get_i32(base)
+            val pg = _app_bm_buf_get_i32(base + 1)
+            val total = reader_get_chapter_count()
+            val total_g1 = g1ofg0(total)
+            val ch_g1 = g1ofg0(ch)
+            val () = if ch_g1 >= 0 then
+              if lt1_int_int(ch_g1, total_g1) then let
+                val () = reader_go_to_chapter(ch_g1, total_g1)
+                val () = reader_set_resume_page(pg)
+              in () end
+              else ()
+            else ()
           in () end
           else ()
         else ()
       in () end
       else ()
-    else ()
+      (* hide_toc_panel called once, after all navigation logic *)
+      val (pf_closed | ()) = hide_toc_panel(pf_open | )
+      prval _ = pf_closed
+    in () end
+  else let
+    prval _ = pf_mode
+  in () end
+end
+
+(* handle_escape: pop one UI layer per Escape press.
+ * 1. TOC open → close TOC
+ * 2. Chrome visible → hide chrome + cancel timer
+ * 3. Neither → save position + exit to library
+ * Individual function calls (hide_toc_panel, hide_chrome, reader_exit)
+ * enforce their own proof requirements. *)
+fn handle_escape(root_id: int): void = let
+  val (pf_mode | mode) = reader_get_toc_view_mode()
+in
+  if gt1_int_int(mode, 0) then let
+    val (pf_open | ()) = witness_toc_visible(pf_mode | mode)
+    val (pf_closed | ()) = hide_toc_panel(pf_open | )
+    prval _ = pf_closed
   in end
+  else let
+    prval _ = pf_mode
+    val chrome_vis = reader_get_chrome_visible()
+  in
+    if eq_int_int(chrome_vis, 1) then let
+      val () = hide_chrome()
+      val _ = reader_incr_chrome_timer_gen()
+    in end
+    else let
+      val (pf_saved | ()) = library_update_position(
+        reader_get_book_index(),
+        reader_get_current_chapter(),
+        reader_get_current_page())
+      val () = reader_exit(pf_saved)
+      val () = render_library(root_id)
+    in end
+  end
+end
+
+(* ========== Reader keyboard handler ========== *)
+
+fn on_reader_keydown(payload_len: int, root_id: int): void = let
+  val pl = g1ofg0(payload_len)
+in
+  (* Keydown payload: [u8:keyLen][bytes:key][u8:flags]
+   * Minimum payload sizes: Space=3, Escape=8, ArrowLeft=11, ArrowRight=12 *)
+  if gt1_int_int(pl, 2) then let
+    val payload = ward_event_get_payload(pl)
+    val key_len = byte2int0(ward_arr_get<byte>(payload, 0))
+    val k0 = byte2int0(ward_arr_get<byte>(payload, 1))
+    val () = ward_arr_free<byte>(payload)
+    val cid = reader_get_container_id()
+  in
+    if eq_int_int(key_len, 6) then
+      (* "Escape": key_len=6, k0='E' (69) — pop one UI layer *)
+      if eq_int_int(k0, 69) then handle_escape(root_id)
+      else ()
+    else if eq_int_int(key_len, 10) then
+      (* "ArrowRight": key_len=10, k0='A' (65) *)
+      if eq_int_int(k0, 65) then let
+        val () = navigate_next(cid)
+        val () = auto_hide_chrome_on_turn()
+      in end
+      else ()
+    else if eq_int_int(key_len, 9) then
+      (* "ArrowLeft": key_len=9, k0='A' (65) *)
+      if eq_int_int(k0, 65) then let
+        val () = navigate_prev(cid)
+        val () = auto_hide_chrome_on_turn()
+      in end
+      else ()
+    else if eq_int_int(key_len, 1) then
+      (* " " (Space): key_len=1, k0=' ' (32) *)
+      if eq_int_int(k0, 32) then let
+        val () = navigate_next(cid)
+        val () = auto_hide_chrome_on_turn()
+      in end
+      (* 't' (116) or 'T' (84): toggle chrome *)
+      else if eq_int_int(k0, 116) then toggle_chrome()
+      else if eq_int_int(k0, 84) then toggle_chrome()
+      (* 'b' (98) or 'B' (66): toggle bookmark *)
+      else if eq_int_int(k0, 98) then let
+        val (pf | ()) = toggle_bookmark()
+        prval _ = pf
+      in end
+      else if eq_int_int(k0, 66) then let
+        val (pf | ()) = toggle_bookmark()
+        prval _ = pf
+      in end
+      else ()
+    else ()
+  end
   else ()
 end
 
@@ -2255,7 +2307,11 @@ implement enter_reader(root_id, book_index) = let
   val () = reader_add_event_listener(READER_LISTEN_BACK() |
     back_btn_id, evt_click(), 5, 31,
     lam (_pl: int): int => let
-      val () = reader_save_and_exit()
+      val (pf_saved | ()) = library_update_position(
+        reader_get_book_index(),
+        reader_get_current_chapter(),
+        reader_get_current_page())
+      val () = reader_exit(pf_saved)
       val () = render_library(saved_root)
     in 0 end
   )
@@ -2429,7 +2485,15 @@ implement enter_reader(root_id, book_index) = let
   val () = reader_add_event_listener(READER_LISTEN_TOC_CLOSE() |
     toc_close_btn_id, evt_click(), 5, 39,
     lam (_pl: int): int => let
-      val () = hide_toc_panel()
+      val (pf_mode | mode) = reader_get_toc_view_mode()
+      val () = if gt1_int_int(mode, 0) then let
+        val (pf_open | ()) = witness_toc_visible(pf_mode | mode)
+        val (pf_closed | ()) = hide_toc_panel(pf_open | )
+        prval _ = pf_closed
+      in () end
+      else let
+        prval _ = pf_mode
+      in () end
     in 0 end
   )
 
@@ -2445,9 +2509,11 @@ implement enter_reader(root_id, book_index) = let
   val () = reader_add_event_listener(READER_LISTEN_TOC_SWITCH() |
     toc_switch_btn_id, evt_click(), 5, 41,
     lam (_pl: int): int => let
-      val mode = reader_get_toc_view_mode()
-      val () = if eq_int_int(mode, 1) then switch_toc_to_bm()
-               else if eq_int_int(mode, 2) then switch_toc_to_contents()
+      val (pf_mode | mode) = reader_get_toc_view_mode()
+      prval _ = pf_mode
+      val raw = g0ofg1(mode)
+      val () = if eq_int_int(raw, 1) then switch_toc_to_bm()
+               else if eq_int_int(raw, 2) then switch_toc_to_contents()
                else ()
     in 0 end
   )
