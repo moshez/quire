@@ -223,7 +223,7 @@ everything else depends on.
   Reference via `@font-face` in
   reader CSS. ~300–400 KB total per spec.
 
-- [ ] **6.2 Typography settings panel.** Per spec wireframe: Aa button opens
+- [x] **6.2 Typography settings panel.** Per spec wireframe: Aa button opens
   a bottom sheet (mobile) or popover (desktop, anchored near Aa button).
   Controls: Font selector (Literata / Inter / Publisher — tap to select),
   Size slider (smaller ↔ larger), Line spacing slider (tight ↔ loose),

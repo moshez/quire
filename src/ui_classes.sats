@@ -67,6 +67,10 @@ fun evt_pointerup(): ward_safe_text(9)
 fun evt_pointermove(): ward_safe_text(11)
 fun evt_visibilitychange(): ward_safe_text(16)
 
+(* ========== Settings ========== *)
+
+fun cls_settings_btn(): ward_safe_text(12)
+
 (* ========== Other builders ========== *)
 
 fun val_zero(): ward_safe_text(1)
