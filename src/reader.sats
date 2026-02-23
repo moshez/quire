@@ -136,6 +136,11 @@ dataprop READER_LISTENER(id: int) =
 
 #define POS_STACK_MAX 16
 
+(* Debounced page-turn save: persist to IDB every SAVE_EVERY page turns.
+ * Counter bounded by [n:nat | n < SAVE_EVERY] — type system enforces
+ * that the counter is always reset before reaching the threshold. *)
+stadef SAVE_EVERY = 5
+
 (* ========== Module Functions ========== *)
 
 (* Initialize reader module *)
@@ -289,3 +294,8 @@ fun reader_set_pos_stack_count(v: int): void
 fun reader_get_pos_stack_ch(i: int): int
 fun reader_get_pos_stack_pg(i: int): int
 fun reader_set_pos_stack_entry(i: int, ch: int, pg: int): void
+
+(* ========== Page turn debounce counter ========== *)
+
+fun reader_get_page_turn_counter(): [n:nat | n < SAVE_EVERY] int(n)
+fun reader_set_page_turn_counter{n:nat | n < SAVE_EVERY}(v: int(n)): void
