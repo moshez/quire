@@ -211,7 +211,7 @@ everything else depends on.
   chapter+page for backward compatibility. Used for position persistence,
   bookmark anchoring, and annotation addressing per spec.
 
-- [ ] **5.5 E2e: position persistence.** Read to a position, reload page,
+- [x] **5.5 E2e: position persistence.** Read to a position, reload page,
   verify reader resumes at saved position. Also test visibilitychange save.
 
 ---
