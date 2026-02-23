@@ -14,6 +14,11 @@ staload "./arith.sats"
 staload "./reader.sats"
 staload "./dom.sats"
 staload "./quire_ext.sats"
+
+(* Forward declaration for JS import — suppresses C99 warning *)
+%{
+extern int quire_get_dark_mode(void);
+%}
 staload "./../vendor/ward/lib/memory.sats"
 staload "./../vendor/ward/lib/dom.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
