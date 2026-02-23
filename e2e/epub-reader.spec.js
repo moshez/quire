@@ -3046,5 +3046,85 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('chapter transition persists position without exit', async ({ page }) => {
+    // Navigate to chapter 2, reload (no back button), verify position persisted.
+    // Isolates chapter-transition IDB save from exit-triggered save.
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+
+    const epubBuffer = createEpub({
+      title: 'Chapter Persist Test',
+      chapters: 3,
+      paragraphsPerChapter: 1,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `ch-persist-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await page.locator('input[type="file"]').setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open book
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    // Verify at chapter 1
+    const pageInfo = page.locator('.page-info');
+    const ch1Text = await pageInfo.textContent();
+    expect(ch1Text).toMatch(/^Ch 1\//);
+
+    // Navigate to chapter 2 via Next button
+    const container = page.locator('.chapter-container').first();
+    const ch1Content = await container.textContent();
+    await page.locator('.next-btn').click();
+    await page.waitForFunction((prev) => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.textContent !== prev && el.childElementCount > 0;
+    }, ch1Content, { timeout: 15000 });
+    await page.waitForTimeout(500);
+
+    // Verify at chapter 2
+    const ch2Text = await pageInfo.textContent();
+    expect(ch2Text).toMatch(/^Ch 2\//);
+    await screenshot(page, 'ch-persist-01-at-chapter2');
+
+    // Wait for IDB save to complete
+    await page.waitForTimeout(2000);
+
+    // Reload page WITHOUT pressing back button — tests that chapter
+    // transition itself persisted position to IDB
+    await page.reload();
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    await page.waitForSelector('.book-card', { timeout: 15000 });
+    await screenshot(page, 'ch-persist-02-after-reload');
+
+    // Verify position was saved (should show progress %, not "New")
+    const posText = await page.locator('.book-position').textContent();
+    expect(posText).not.toBe('New');
+
+    // Re-enter the book — should restore at chapter 2
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    const restoredText = await pageInfo.textContent();
+    expect(restoredText).toMatch(/^Ch 2\//);
+    await screenshot(page, 'ch-persist-03-restored');
+
+    expect(errors).toEqual([]);
+  });
+
 
 });

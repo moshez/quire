@@ -1185,6 +1185,8 @@ in
       prval pf = SPINE_ENTRY()
       val () = reader_go_to_chapter(ch_nat, spine_g1)
       val () = reader_set_resume_page(pg)
+      val (pf_pos | ()) = save_reading_position()
+      prval _ = pf_pos
       val dom = ward_dom_init()
       val s = ward_dom_stream_begin(dom)
       val s = ward_dom_stream_remove_children(s, container_id)
@@ -1877,6 +1879,8 @@ in
             val (pf_pushed | ()) = push_position()
             prval _ = pf_pushed
             val () = reader_go_to_chapter(idx_g1, total_g1)
+            val (pf_pos | ()) = save_reading_position()
+            prval _ = pf_pos
             val container_id = reader_get_container_id()
             prval pf_spine = SPINE_ENTRY()
             val dom = ward_dom_init()
@@ -1907,6 +1911,8 @@ in
               if lt1_int_int(ch_g1, total_g1) then let
                 val () = reader_go_to_chapter(ch_g1, total_g1)
                 val () = reader_set_resume_page(pg)
+                val (pf_pos | ()) = save_reading_position()
+                prval _ = pf_pos
               in () end
               else ()
             else ()
