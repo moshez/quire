@@ -3240,7 +3240,7 @@ test.describe('EPUB Reader E2E', () => {
     }, { timeout: 15000 });
 
     // Verify Aa button exists in reader chrome
-    const aaBtn = page.locator('.settings-btn');
+    const aaBtn = page.locator('button.settings-btn');
     await expect(aaBtn).toBeAttached();
     await expect(aaBtn).toContainText('Aa');
     await screenshot(page, 'settings-01-aa-button');
