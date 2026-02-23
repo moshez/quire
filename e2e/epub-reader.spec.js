@@ -3219,5 +3219,44 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('Aa button toggles settings panel', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+
+    const epubBuffer = createEpub({ title: 'Settings Test', chapters: 1, paragraphsPerChapter: 3 });
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `settings-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await page.locator('input[type="file"]').setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    // Verify Aa button exists in reader chrome
+    const aaBtn = page.locator('button.settings-btn');
+    await expect(aaBtn).toBeAttached();
+    await expect(aaBtn).toContainText('Aa');
+    await screenshot(page, 'settings-01-aa-button');
+
+    // Click Aa button — settings overlay should appear
+    await aaBtn.click();
+    await page.waitForTimeout(300);
+    await screenshot(page, 'settings-02-panel-open');
+
+    // Click Aa button again — overlay should hide
+    await aaBtn.click();
+    await page.waitForTimeout(300);
+    await screenshot(page, 'settings-03-panel-closed');
+
+    expect(errors).toEqual([]);
+  });
+
 
 });
