@@ -13,6 +13,7 @@
 #define THEME_LIGHT  0
 #define THEME_DARK   1
 #define THEME_SEPIA  2
+#define THEME_AUTO   3
 
 (* Font family constants *)
 #define FONT_SERIF      0
@@ -36,7 +37,7 @@ dataprop SETTINGS_VALID
   | {fs,ff,th,lh,m:nat |
       fs >= 14; fs <= 32;
       ff >= 0; ff <= 2;
-      th >= 0; th <= 2;
+      th >= 0; th <= 3;
       lh >= 14; lh <= 24;
       m >= 1; m <= 4}
     VALID_SETTINGS(fs, ff, th, lh, m)
@@ -60,7 +61,10 @@ fun settings_init(): void
 (* Get current settings values — bounded returns *)
 fun settings_get_font_size(): [fs:int | fs >= 14; fs <= 32] int(fs)
 fun settings_get_font_family(): [ff:int | ff >= 0; ff <= 2] int(ff)
-fun settings_get_theme(): [th:int | th >= 0; th <= 2] int(th)
+fun settings_get_theme(): [th:int | th >= 0; th <= 3] int(th)
+(* Resolve effective theme: Auto (3) maps to light (0) or dark (1) based on system.
+ * Returns 0, 1, or 2 — never 3. *)
+fun settings_resolve_theme(): [th:int | th >= 0; th <= 2] int(th)
 fun settings_get_line_height_tenths(): [lh:int | lh >= 14; lh <= 24] int(lh)
 fun settings_get_margin(): [m:int | m >= 1; m <= 4] int(m)
 

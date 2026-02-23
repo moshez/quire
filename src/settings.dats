@@ -13,6 +13,7 @@ staload "./app_state.sats"
 staload "./arith.sats"
 staload "./reader.sats"
 staload "./dom.sats"
+staload "./quire_ext.sats"
 staload "./../vendor/ward/lib/memory.sats"
 staload "./../vendor/ward/lib/dom.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
@@ -34,7 +35,7 @@ implement settings_init() = let
   val st = app_state_load()
   val () = app_set_stg_font_size(st, 18)
   val () = app_set_stg_font_family(st, FONT_SERIF)
-  val () = app_set_stg_theme(st, THEME_LIGHT)
+  val () = app_set_stg_theme(st, THEME_AUTO)
   val () = app_set_stg_lh_tenths(st, 16)
   val () = app_set_stg_margin(st, 2)
   val () = app_set_stg_visible(st, 0)
@@ -67,14 +68,17 @@ in
   else _clamp_ff(0)
 end
 
+extern castfn _clamp_th3(x: int): [th:int | th >= 0; th <= 3] int(th)
+
 implement settings_get_theme() = let
   val st = app_state_load()
   val v = app_get_stg_theme(st)
   val () = app_state_store(st)
 in
-  if eq_int_int(v, 1) then _clamp_th(1)
-  else if eq_int_int(v, 2) then _clamp_th(2)
-  else _clamp_th(0)
+  if eq_int_int(v, 1) then _clamp_th3(1)
+  else if eq_int_int(v, 2) then _clamp_th3(2)
+  else if eq_int_int(v, 3) then _clamp_th3(3)
+  else _clamp_th3(0)
 end
 
 implement settings_get_line_height_tenths() = let
@@ -99,6 +103,21 @@ in
   else _clamp_mg(MARGIN_MIN)
 end
 
+(* Resolve effective theme: Auto (3) maps to light/dark based on system preference *)
+implement settings_resolve_theme() = let
+  val th = settings_get_theme()
+in
+  if eq_int_int(th, 3) then let
+    val dark = quire_get_dark_mode()
+  in
+    if eq_int_int(dark, 1) then _clamp_th(1) (* dark *)
+    else _clamp_th(0) (* light *)
+  end
+  else if eq_int_int(th, 2) then _clamp_th(2) (* sepia *)
+  else if eq_int_int(th, 1) then _clamp_th(1) (* dark *)
+  else _clamp_th(0) (* light *)
+end
+
 (* ========== Setters (clamp to valid range) ========== *)
 
 implement settings_set_font_size(size) = let
@@ -121,7 +140,7 @@ in end
 
 implement settings_set_theme(theme) = let
   val clamped = if lt_int_int(theme, 0) then 0
-                else if gt_int_int(theme, 2) then 2
+                else if gt_int_int(theme, 3) then 3
                 else theme
   val st = app_state_load()
   val () = app_set_stg_theme(st, clamped)
@@ -185,7 +204,7 @@ in end
 
 implement settings_next_theme() = let
   val cur = settings_get_theme()
-  val next = if gte_int_int(cur, 2) then 0 else cur + 1
+  val next = if gte_int_int(cur, 3) then 0 else cur + 1
   val () = settings_set_theme(next)
   val (_pf | ()) = settings_apply()
   val () = settings_save()

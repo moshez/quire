@@ -23,3 +23,6 @@ fun read_payload_target_id {l:agz}{n:nat | n >= 20}
 
 (* Factory reset: delete IndexedDB database and reload page *)
 fun quire_factory_reset(): void = "mac#quire_factory_reset"
+
+(* Check system dark mode preference. Returns 1 if dark, 0 if light. *)
+fun quire_get_dark_mode(): int = "mac#quire_get_dark_mode"
