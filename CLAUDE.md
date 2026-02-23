@@ -23,8 +23,8 @@ npx serve .             # Dev server
 When completing a milestone from quire-design.md §8:
 1. Implement all items listed under the milestone
 2. Add/update tests as specified
-3. Mark the milestone checkbox as done: `- [ ]` → `- [x]`
-4. Commit and push
+3. Commit and push
+4. **Only mark the item complete (`- [x]`) when CI is green** — never before
 
 ## "next" Command
 

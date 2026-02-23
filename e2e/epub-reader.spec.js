@@ -2965,5 +2965,86 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('scrubber drag navigates and chapter ticks visible', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+
+    // 3 chapters with enough text for multi-page
+    const epubBuffer = createEpub({
+      title: 'Scrub Drag Test',
+      chapters: 3,
+      paragraphsPerChapter: 20,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `scrub-drag-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await page.locator('input[type="file"]').setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.textContent && el.textContent.length > 50;
+    }, { timeout: 15000 });
+
+    // Wait for auto-hide, then show chrome via center tap
+    await page.waitForTimeout(6000);
+    const viewport = page.viewportSize();
+    await page.mouse.click(viewport.width / 2, viewport.height / 2);
+    await page.waitForTimeout(500);
+    await expect(page.locator('.reader-nav')).toBeVisible();
+    await expect(page.locator('.reader-bottom')).toBeVisible();
+
+    // Verify chapter tick marks exist (3 chapters = 2 ticks)
+    const tickCount = await page.locator('.scrub-tick').count();
+    expect(tickCount).toBe(2);
+    await screenshot(page, 'scrub-drag-01-ticks-visible');
+
+    // Get initial page info
+    const pageInfo = page.locator('.page-info');
+    const initialText = await pageInfo.textContent();
+    expect(initialText).toMatch(/^Ch 1\/3/);
+
+    // Get scrubber track bounding box for drag
+    const track = page.locator('.scrub-track');
+    const trackBox = await track.boundingBox();
+    expect(trackBox).not.toBeNull();
+
+    // Drag from ~10% to ~80% of the track (should advance pages)
+    const startX = trackBox.x + trackBox.width * 0.1;
+    const endX = trackBox.x + trackBox.width * 0.8;
+    const trackY = trackBox.y + trackBox.height / 2;
+
+    await page.mouse.move(startX, trackY);
+    await page.mouse.down();
+    await page.waitForTimeout(100);
+
+    // Move in steps to simulate drag
+    for (let i = 1; i <= 5; i++) {
+      const x = startX + (endX - startX) * (i / 5);
+      await page.mouse.move(x, trackY);
+      await page.waitForTimeout(50);
+    }
+    await screenshot(page, 'scrub-drag-02-dragging');
+
+    await page.mouse.up();
+    await page.waitForTimeout(500);
+    await screenshot(page, 'scrub-drag-03-after-drag');
+
+    // Page info should have changed (dragging should advance position)
+    const afterText = await pageInfo.textContent();
+    expect(afterText).not.toBe(initialText);
+
+    // Navigate back to library
+    await page.locator('.back-btn').click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+
+    expect(errors).toEqual([]);
+  });
+
 
 });
