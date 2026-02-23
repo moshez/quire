@@ -71,6 +71,7 @@ datavtype app_state_impl =
       stg_disp_mg = int,
       stg_save_pend = int,
       stg_load_pend = int,
+      stg_css_mode = int,
       rdr_active = int,
       rdr_book_index = int,
       rdr_current_chapter = int,
@@ -258,6 +259,7 @@ implement app_state_init() =
     stg_disp_mg = 0,
     stg_save_pend = 0,
     stg_load_pend = 0,
+    stg_css_mode = 1,  (* CSS_READER = 1 — default *)
     rdr_active = 0,
     rdr_book_index = 0 - 1,
     rdr_current_chapter = 0,
@@ -941,6 +943,12 @@ implement app_get_stg_load_pend(st) = let
   prval () = fold@(st) in v end
 implement app_set_stg_load_pend(st, v) = let
   val @APP_STATE(r) = st val () = r.stg_load_pend := v
+  prval () = fold@(st) in end
+implement app_get_stg_css_mode(st) = let
+  val @APP_STATE(r) = st val v = r.stg_css_mode
+  prval () = fold@(st) in v end
+implement app_set_stg_css_mode(st, v) = let
+  val @APP_STATE(r) = st val () = r.stg_css_mode := v
   prval () = fold@(st) in end
 
 (* ========== Reader state ========== *)

@@ -286,7 +286,7 @@ everything else depends on.
   obligations are satisfied by the underlying concrete theme, not by Auto
   itself.
 
-- [ ] **6.5 Three CSS modes.** Implement per-book CSS mode:
+- [x] **6.5 Three CSS modes.** Implement per-book CSS mode:
   (a) Publisher default — book's CSS applied as-is, embedded fonts loaded via
   blob URLs, user can still adjust font size.
   (b) Reader default — Quire's typography (Literata/Inter, configured spacing)
