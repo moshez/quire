@@ -23,8 +23,8 @@ npx serve .             # Dev server
 When completing a milestone from quire-design.md §8:
 1. Implement all items listed under the milestone
 2. Add/update tests as specified
-3. Mark the milestone checkbox as done: `- [ ]` → `- [x]`
-4. Commit and push
+3. Commit and push
+4. **Only mark the item complete (`- [x]`) when CI is green** — never before
 
 ## "next" Command
 
@@ -214,6 +214,9 @@ change per step. "Implement feature X" is an aspiration, not a step. Break it
 into steps like "Add absprop POSITION_SAVED to library.sats" or "Change
 reader_get_toc_view_mode return type in reader.sats". Each step should be
 completable in under 2 minutes and verifiable in isolation.
+
+A task subject must never contain "+", "and", or commas — those indicate it
+should be split into multiple tasks.
 
 ## Protocol
 

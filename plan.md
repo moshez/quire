@@ -180,7 +180,7 @@ everything else depends on.
   library. Each press pops one layer. This is also the Android hardware back
   button behavior in the Capacitor shell.
 
-- [ ] **4.8 E2e: reading chrome and navigation.** Verify chrome auto-hides
+- [x] **4.8 E2e: reading chrome and navigation.** Verify chrome auto-hides
   after timeout and on page turn. Bookmark a page (tap or `B`), verify toggle
   state, check bookmark appears in TOC bookmarks sub-view, tap to navigate
   back. Interact with scrubber, verify chapter tick marks and drag-to-navigate.
