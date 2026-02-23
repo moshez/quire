@@ -123,6 +123,24 @@ in
   else _clamp_th(0) (* light *)
 end
 
+(* CSS mode — stored in app_state settings area *)
+implement settings_get_css_mode() = let
+  val st = app_state_load()
+  val v = app_get_stg_css_mode(st)
+  val () = app_state_store(st)
+in
+  if eq_int_int(v, 0) then (CSS_MODE_PUBLISHER() | 0)
+  else if eq_int_int(v, 2) then (CSS_MODE_CUSTOM() | 2)
+  else (CSS_MODE_READER() | 1)
+end
+
+implement settings_set_css_mode{m}(pf | mode) = let
+  prval _ = pf
+  val st = app_state_load()
+  val () = app_set_stg_css_mode(st, mode)
+  val () = app_state_store(st)
+in end
+
 (* ========== Setters (clamp to valid range) ========== *)
 
 implement settings_set_font_size(size) = let

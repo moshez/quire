@@ -116,6 +116,8 @@ fun app_get_stg_save_pend(st: !app_state): int
 fun app_set_stg_save_pend(st: !app_state, v: int): void
 fun app_get_stg_load_pend(st: !app_state): int
 fun app_set_stg_load_pend(st: !app_state, v: int): void
+fun app_get_stg_css_mode(st: !app_state): int
+fun app_set_stg_css_mode(st: !app_state, v: int): void
 
 (* Reader state *)
 fun app_get_rdr_active(st: !app_state): int

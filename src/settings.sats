@@ -28,7 +28,18 @@
 #define MARGIN_MIN 1
 #define MARGIN_MAX 4
 
+(* CSS mode constants *)
+#define CSS_PUBLISHER 0
+#define CSS_READER    1
+#define CSS_CUSTOM    2
+
 (* ========== Functional Correctness Dataprops ========== *)
+
+(* CSS mode validity: publisher (0), reader (1), custom (2). *)
+dataprop CSS_MODE_VALID(m: int) =
+  | CSS_MODE_PUBLISHER(0)
+  | CSS_MODE_READER(1)
+  | CSS_MODE_CUSTOM(2)
 
 (* Settings validity proof.
  * Proves all 5 settings values are within their valid ranges. *)
@@ -74,6 +85,10 @@ fun settings_set_font_family(family: int): void
 fun settings_set_theme(theme: int): void
 fun settings_set_line_height_tenths(tenths: int): void
 fun settings_set_margin(margin: int): void
+
+(* CSS mode — stored in reader state (not per-book yet) *)
+fun settings_get_css_mode(): [m:nat | m <= 2] (CSS_MODE_VALID(m) | int(m))
+fun settings_set_css_mode{m:nat | m <= 2}(pf: CSS_MODE_VALID(m) | mode: int(m)): void
 
 (* Increment/decrement helpers for UI.
  * Each: modify setting, apply CSS, save to IDB. *)
