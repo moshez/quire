@@ -218,7 +218,7 @@ everything else depends on.
 
 ## Phase 6 — CSS & Typography
 
-- [ ] **6.1 Bundle Literata and Inter fonts.** Add Literata (serif) and Inter
+- [x] **6.1 Bundle Literata and Inter fonts.** Add Literata (serif) and Inter
   (sans-serif) as static assets in the PWA. Pull from Google Fonts and save in assets.
   Reference via `@font-face` in
   reader CSS. ~300–400 KB total per spec.

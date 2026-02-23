@@ -16,8 +16,8 @@ import { resolve } from 'path';
 const swSource = readFileSync(resolve(__dirname, '../service-worker.js'), 'utf8');
 
 describe('Service Worker Source', () => {
-  it('should define cache name quire-v3', () => {
-    expect(swSource).toContain("const CACHE = 'quire-v3'");
+  it('should define cache name quire-v4', () => {
+    expect(swSource).toContain("const CACHE = 'quire-v4'");
   });
 
   it('should define SHELL with all app shell assets', () => {
@@ -94,9 +94,12 @@ describe('Service Worker Behavior', () => {
     listeners.install(event);
     await waitUntilPromise.current;
 
-    expect(mockCaches.open).toHaveBeenCalledWith('quire-v3');
+    expect(mockCaches.open).toHaveBeenCalledWith('quire-v4');
     expect(mockCache.addAll).toHaveBeenCalledWith([
-      './', 'ward_bridge.js', 'quire.wasm', 'reader.css', 'manifest.json'
+      './', 'ward_bridge.js', 'quire.wasm', 'reader.css', 'manifest.json',
+      'assets/fonts/literata-latin.woff2',
+      'assets/fonts/literata-italic-latin.woff2',
+      'assets/fonts/inter-latin.woff2',
     ]);
   });
 
