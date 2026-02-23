@@ -201,7 +201,7 @@ everything else depends on.
   transitions to a new chapter, save the position. This is partially
   implemented (reader tracks chapter/page) but verify it persists to IDB.
 
-- [ ] **5.3 Debounced save every 5 page turns.** Count page turns and save
+- [x] **5.3 Debounced save every 5 page turns.** Count page turns and save
   to IndexedDB every 5th turn. Use a counter in reader state, not a timer.
 
 - [ ] **5.4 Character-offset position tracking.** Replace page-index-based
