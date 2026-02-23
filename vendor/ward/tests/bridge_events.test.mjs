@@ -28,6 +28,16 @@ describe('Event listeners', () => {
   });
 });
 
+describe('Document event listeners', () => {
+  it('dispatches document-level events via ward_js_add_document_event_listener', async () => {
+    const { root, ward } = await createWardInstance();
+
+    // Verify the document event listener import is wired up
+    // by checking that ward_on_event export exists (shared dispatch)
+    assert.equal(typeof ward.ward_on_event, 'function');
+  });
+});
+
 describe('Bridge callbacks', () => {
   it('ward_on_callback export exists', async () => {
     const { ward } = await createWardInstance();

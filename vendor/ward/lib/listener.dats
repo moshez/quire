@@ -42,6 +42,19 @@ ward_add_event_listener{tn}
   val () = _ward_listener_set(listener_id, cbp)
 in _ward_js_add_event_listener(node_id, event_type, type_len, listener_id) end
 
+extern fun _ward_js_add_document_event_listener
+  {tn:pos}
+  (event_type: ward_safe_text(tn), type_len: int tn,
+   listener_id: int)
+  : void = "mac#ward_js_add_document_event_listener"
+
+implement
+ward_add_document_event_listener{tn}
+  (event_type, type_len, listener_id, callback) = let
+  val cbp = $UNSAFE.castvwtp0{ptr}(callback) (* [U-cb] *)
+  val () = _ward_listener_set(listener_id, cbp)
+in _ward_js_add_document_event_listener(event_type, type_len, listener_id) end
+
 implement
 ward_remove_event_listener(listener_id) = let
   val () = _ward_listener_set(listener_id, the_null_ptr)

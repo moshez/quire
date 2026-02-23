@@ -385,6 +385,7 @@ extern int ward_js_query_selector(void *selector, int selector_len);
 
 /* Event listener JS imports */
 extern void ward_js_add_event_listener(int node_id, void *event_type, int type_len, int listener_id);
+extern void ward_js_add_document_event_listener(void *event_type, int type_len, int listener_id);
 extern void ward_js_remove_event_listener(int listener_id);
 extern void ward_js_prevent_default(void);
 

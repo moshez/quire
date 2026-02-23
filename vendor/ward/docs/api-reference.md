@@ -364,6 +364,10 @@ fun ward_add_event_listener {tn:pos}
   (node_id: int, event_type: ward_safe_text(tn), type_len: int tn,
    listener_id: int, callback: int -<cloref1> int): void
 
+fun ward_add_document_event_listener {tn:pos}
+  (event_type: ward_safe_text(tn), type_len: int tn,
+   listener_id: int, callback: int -<cloref1> int): void
+
 fun ward_remove_event_listener (listener_id: int): void
 
 fun ward_prevent_default (): void   (* must be called synchronously within callback *)
