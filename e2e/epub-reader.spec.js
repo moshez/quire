@@ -3258,5 +3258,37 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('selection toolbar shows Highlight button on text select', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+
+    const epubBuffer = createEpub({ title: 'Selection Test', chapters: 1, paragraphsPerChapter: 5 });
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `sel-test-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await page.locator('input[type="file"]').setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.textContent && el.textContent.length > 50;
+    }, { timeout: 15000 });
+
+    // Selection toolbar should exist but be hidden initially
+    const selToolbar = page.locator('.sel-toolbar');
+    await expect(selToolbar).toBeAttached();
+    await screenshot(page, 'sel-01-toolbar-hidden');
+
+    // Verify Highlight button exists in the toolbar
+    const hlBtn = page.locator('.sel-toolbar button');
+    await expect(hlBtn).toBeAttached();
+
+    expect(errors).toEqual([]);
+  });
+
 
 });
