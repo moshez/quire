@@ -49,8 +49,13 @@ absprop POS_STACK_PUSHED()
 dataprop PAGE_DISPLAY_UPDATED() =
   | PAGE_TURNED_AND_SHOWN() of PAGE_INFO_SHOWN()
 
-(* CHAPTER_DISPLAY_READY: proves chapter load + title + page info all occurred.
- * Requires BOTH CHAPTER_TITLE_DISPLAYED and PAGE_INFO_SHOWN sub-proofs (both absprop).
- * BUG CLASS PREVENTED: chapter load that skips title or page info update. *)
+(* HIGHLIGHTS_RENDERED: proves render_highlights was called after chapter load.
+ * absprop: unforgeable. Only render_highlights's local assume block can construct.
+ * BUG CLASS PREVENTED: chapter load that skips highlight rendering. *)
+absprop HIGHLIGHTS_RENDERED()
+
+(* CHAPTER_DISPLAY_READY: proves chapter load + title + page info + highlights all occurred.
+ * Requires CHAPTER_TITLE_DISPLAYED, PAGE_INFO_SHOWN, and HIGHLIGHTS_RENDERED sub-proofs.
+ * BUG CLASS PREVENTED: chapter load that skips title, page info, or highlight rendering. *)
 dataprop CHAPTER_DISPLAY_READY() =
-  | MEASURED_AND_TRANSFORMED() of (CHAPTER_TITLE_DISPLAYED(), PAGE_INFO_SHOWN())
+  | MEASURED_AND_TRANSFORMED() of (CHAPTER_TITLE_DISPLAYED(), PAGE_INFO_SHOWN(), HIGHLIGHTS_RENDERED())

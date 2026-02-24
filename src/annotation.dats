@@ -87,7 +87,16 @@ in
   else ()
 end
 
-implement annotation_get_chapter(idx) = _annot_get_field(idx, 0)
-implement annotation_get_start(idx) = _annot_get_field(idx, 1)
-implement annotation_get_end(idx) = _annot_get_field(idx, 2)
-implement annotation_get_timestamp(idx) = _annot_get_field(idx, 3)
+implement annotation_get_chapter{n}{i}(count, idx) = let
+  val v = _annot_get_field(idx, 0)
+in if v >= 0 then _checked_nat(v) else _checked_nat(0) end
+
+implement annotation_get_start{n}{i}(count, idx) = let
+  val v = _annot_get_field(idx, 1)
+in if v >= 0 then _checked_nat(v) else _checked_nat(0) end
+
+implement annotation_get_end{n}{i}(count, idx) = let
+  val v = _annot_get_field(idx, 2)
+in if v >= 0 then _checked_nat(v) else _checked_nat(0) end
+
+implement annotation_get_timestamp{n}{i}(count, idx) = _annot_get_field(idx, 3)
