@@ -374,7 +374,7 @@ everything else depends on.
   open the search UI. Entering search pushes current position onto position
   stack.
 
-- [ ] **8.2 Search UI.** Per spec wireframe: search bar slides down from top,
+- [x] **8.2 Search UI.** Per spec wireframe: search bar slides down from top,
   replacing chrome header (mobile) or appearing as sidebar with dropdown
   results (desktop). Keyboard opens automatically. Book text visible but
   dimmed. Results appear as scrollable list as user types: chapter name + text
