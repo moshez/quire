@@ -354,7 +354,7 @@ everything else depends on.
   `**Note:** User's note`, footer `*Exported from Quire · [date]*`.
   Download as `.md` file via bridge.
 
-- [ ] **7.7 Annotation re-anchoring on re-import.** When a book is re-imported
+- [x] **7.7 Annotation re-anchoring on re-import.** When a book is re-imported
   (same content hash), annotations survive automatically. If CFI fails to
   resolve (slightly different structure), fuzzy text matching using stored
   surrounding context recovers the annotation position.
