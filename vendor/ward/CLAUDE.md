@@ -175,6 +175,7 @@ Used for attribute values and MIME types. `SAFE_CHAR` is a subset of `SAFE_CONTE
 - `nav.sats` / `nav.dats` -- URL navigation bridge
 - `window.sats` / `window.dats` -- window focus, visibility, logging
 - `dom_read.sats` / `dom_read.dats` -- DOM measurement and query
+- `blob.sats` / `blob.dats` -- blob URL creation and revocation
 - `ward_bridge.mjs` -- JS bridge: binary diff protocol, event listeners, data stash, HTML parsing
 - `runtime.h` -- freestanding WASM runtime: ATS2 macro infrastructure + ward type definitions
 - `runtime.c` -- free-list allocator (size classes: 32/128/512/4096/8192/16384/65536/262144/1048576 + oversized), arena allocator for WASM

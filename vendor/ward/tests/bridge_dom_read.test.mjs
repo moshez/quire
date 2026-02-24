@@ -57,3 +57,11 @@ describe('DOM read selection APIs', () => {
     // Bridge loads with ward_js_get_selection_range registered.
   });
 });
+
+describe('Blob URL APIs', () => {
+  it('bridge loads with blob URL imports registered', async () => {
+    // Verifies ward_js_create_blob_url and ward_js_revoke_blob_url
+    // are registered as WASM imports without errors.
+    await createWardInstance();
+  });
+});

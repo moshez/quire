@@ -420,6 +420,10 @@ extern void ward_js_push_get_subscription(int resolver_id);
 /* HTML parsing JS import */
 extern int ward_js_parse_html(void *html, int html_len);
 
+/* Blob URL JS imports */
+extern int ward_js_create_blob_url(void *data, int data_len, void *mime, int mime_len);
+extern void ward_js_revoke_blob_url(void *url, int url_len);
+
 /* Callback registry — WASM export, JS calls this to fire callbacks */
 void ward_on_callback(int id, int payload);
 

@@ -908,6 +908,28 @@ export async function loadWard(wasmBytes, root, opts) {
     return totalLen;
   }
 
+  // --- Blob URL ---
+
+  function wardJsCreateBlobUrl(dataPtr, dataLen, mimePtr, mimeLen) {
+    try {
+      const mime = readString(mimePtr, mimeLen);
+      const bytes = readBytes(dataPtr, dataLen);
+      const blob = new Blob([bytes], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const urlBytes = new TextEncoder().encode(url);
+      const stashId = stashData(urlBytes);
+      instance.exports.ward_bridge_stash_set_int(1, stashId);
+      return urlBytes.length;
+    } catch(e) { return 0; }
+  }
+
+  function wardJsRevokeBlobUrl(urlPtr, urlLen) {
+    try {
+      const url = readString(urlPtr, urlLen);
+      URL.revokeObjectURL(url);
+    } catch(e) {}
+  }
+
   const imports = {
     env: {
       ...extraImports,
@@ -962,6 +984,9 @@ export async function loadWard(wasmBytes, root, opts) {
       ward_js_push_get_subscription: wardJsPushGetSubscription,
       // HTML parsing
       ward_js_parse_html: wardJsParseHtml,
+      // Blob URL
+      ward_js_create_blob_url: wardJsCreateBlobUrl,
+      ward_js_revoke_blob_url: wardJsRevokeBlobUrl,
       // Data stash
       ward_js_stash_read: wardJsStashRead,
     },
