@@ -100,3 +100,8 @@ implement annotation_get_end{n}{i}(count, idx) = let
 in if v >= 0 then _checked_nat(v) else _checked_nat(0) end
 
 implement annotation_get_timestamp{n}{i}(count, idx) = _annot_get_field(idx, 3)
+
+(* Export annotations as Markdown — stub.
+ * Bridge infrastructure (quire_download_text) is in place.
+ * Full Markdown generation and download deferred. *)
+implement annotation_export_markdown() = ()
