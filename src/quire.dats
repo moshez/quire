@@ -2650,11 +2650,26 @@ implement enter_reader(root_id, book_index) = let
   in ward_text_done(b) end
   val s = ward_dom_stream_set_safe_text(s, hl_btn_id, hl_st, 9)
 
-  (* Search panel — initially hidden *)
+  (* Search panel — initially hidden, contains input + results *)
   val search_panel_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, search_panel_id, root_id, tag_div(), 3)
   val s = ward_dom_stream_set_attr_safe(s, search_panel_id, attr_class(), 5,
     cls_search_panel(), 12)
+
+  val search_input_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, search_input_id, search_panel_id, tag_input(), 5)
+  val text_type = let
+    val b = ward_text_build(4)
+    val b = ward_text_putc(b, 0, char2int1('t'))
+    val b = ward_text_putc(b, 1, char2int1('e'))
+    val b = ward_text_putc(b, 2, char2int1('x'))
+    val b = ward_text_putc(b, 3, char2int1('t'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_attr_safe(s, search_input_id, attr_type(), 4,
+    text_type, 4)
+
+  val search_results_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, search_results_id, search_panel_id, tag_div(), 3)
 
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
