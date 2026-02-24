@@ -33,7 +33,7 @@ staload "./../vendor/ward/lib/event.sats"
 staload "./../vendor/ward/lib/decompress.sats"
 staload "./../vendor/ward/lib/xml.sats"
 staload "./../vendor/ward/lib/dom_read.sats"
-(* staload "./../vendor/ward/lib/blob.sats" — blocked on ward#31 MIME type fix *)
+staload "./../vendor/ward/lib/blob.sats"
 staload "./../vendor/ward/lib/window.sats"
 staload "./../vendor/ward/lib/idb.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
@@ -45,7 +45,7 @@ staload _ = "./../vendor/ward/lib/event.dats"
 staload _ = "./../vendor/ward/lib/decompress.dats"
 staload _ = "./../vendor/ward/lib/xml.dats"
 staload _ = "./../vendor/ward/lib/dom_read.dats"
-(* staload _ = "./../vendor/ward/lib/blob.dats" — blocked on ward#31 *)
+staload _ = "./../vendor/ward/lib/blob.dats"
 staload _ = "./../vendor/ward/lib/idb.dats"
 
 staload "./arith.sats"
@@ -949,10 +949,36 @@ fn prescan_fonts_in_manifest(): int = let
   val () = scan(_checked_nat(count), 0, count)
 in _font_entry_get_count() end
 
-(* MIME type builders for fonts — blocked on ward#31.
- * ward_create_blob_url requires ward_safe_text for MIME,
- * but MIME types contain '/' which isn't SAFE_CHAR.
- * Blob URL creation deferred until ward fixes the type. *)
+(* MIME type builder for font blob URLs.
+ * "application/octet-stream" = 24 chars — generic binary MIME.
+ * Browser determines font format from the binary data. *)
+fn _build_font_mime(): [l:agz] @(ward_safe_content_text(l, 24), int 24) = let
+  val b = ward_content_text_build(24)
+  val b = ward_content_text_putc(b, 0, char2int1('a'))
+  val b = ward_content_text_putc(b, 1, char2int1('p'))
+  val b = ward_content_text_putc(b, 2, char2int1('p'))
+  val b = ward_content_text_putc(b, 3, char2int1('l'))
+  val b = ward_content_text_putc(b, 4, char2int1('i'))
+  val b = ward_content_text_putc(b, 5, char2int1('c'))
+  val b = ward_content_text_putc(b, 6, char2int1('a'))
+  val b = ward_content_text_putc(b, 7, char2int1('t'))
+  val b = ward_content_text_putc(b, 8, char2int1('i'))
+  val b = ward_content_text_putc(b, 9, char2int1('o'))
+  val b = ward_content_text_putc(b, 10, char2int1('n'))
+  val b = ward_content_text_putc(b, 11, 47) (* '/' *)
+  val b = ward_content_text_putc(b, 12, char2int1('o'))
+  val b = ward_content_text_putc(b, 13, char2int1('c'))
+  val b = ward_content_text_putc(b, 14, char2int1('t'))
+  val b = ward_content_text_putc(b, 15, char2int1('e'))
+  val b = ward_content_text_putc(b, 16, char2int1('t'))
+  val b = ward_content_text_putc(b, 17, 45) (* '-' *)
+  val b = ward_content_text_putc(b, 18, char2int1('s'))
+  val b = ward_content_text_putc(b, 19, char2int1('t'))
+  val b = ward_content_text_putc(b, 20, char2int1('r'))
+  val b = ward_content_text_putc(b, 21, char2int1('e'))
+  val b = ward_content_text_putc(b, 22, char2int1('a'))
+  val b = ward_content_text_putc(b, 23, char2int1('m'))
+in @(ward_content_text_done(b), 24) end
 
 (* Load a single font from IDB, create blob URL.
  * The blob URL is created but not yet injected into CSS — that happens
@@ -977,12 +1003,22 @@ fun load_idb_fonts_chain {k:nat} .<k>.
         else let
           val dl = _checked_pos(data_len)
           val arr = ward_idb_get_result(dl)
-          (* Create blob URL for this font *)
-          val () = ward_arr_free<byte>(arr)
-          (* Font blob URL created — ward bridge manages the URL lifecycle.
-           * Full @font-face CSS injection requires knowing the font-family name,
-           * which comes from the publisher's CSS. For now, fonts are loaded into
-           * blob URLs and available for future CSS rewriting. *)
+          (* Create blob URL for this font via ward_create_blob_url *)
+          val @(frozen, borrow) = ward_arr_freeze<byte>(arr)
+          val @(mime, mlen) = _build_font_mime()
+          val url_len = ward_create_blob_url(borrow, dl, mime, mlen)
+          val () = ward_safe_content_text_free(mime)
+          val () = ward_arr_drop<byte>(frozen, borrow)
+          val arr2 = ward_arr_thaw<byte>(frozen)
+          val () = ward_arr_free<byte>(arr2)
+          (* Blob URL created and tracked by ward bridge.
+           * Revoked automatically when chapter container is removed. *)
+          val () = if gt_int_int(url_len, 0) then let
+            val ul = _checked_pos(url_len)
+            val url_arr = ward_create_blob_url_get(ul)
+            val () = ward_arr_free<byte>(url_arr)
+          in end
+          else ()
           val () = load_idb_fonts_chain(saved_rem, saved_next, saved_total)
         in ward_promise_return<int>(1) end)
     val () = ward_promise_discard<int>(p2)
