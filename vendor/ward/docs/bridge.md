@@ -154,6 +154,13 @@ The bridge provides these functions as WASM imports under the `env` namespace:
 | `ward_js_push_subscribe` | `(vapidPtr, vapidLen, resolverId) -> void` | Subscribe to push |
 | `ward_js_push_get_subscription` | `(resolverId) -> void` | Get existing subscription |
 
+### Blob URL
+
+| Import | Signature | Purpose |
+|--------|-----------|---------|
+| `ward_js_create_blob_url` | `(dataPtr, dataLen, mimePtr, mimeLen) -> i32` | Create blob URL, stash URL string, return byte length |
+| `ward_js_revoke_blob_url` | `(urlPtr, urlLen) -> void` | Revoke a blob URL |
+
 ### Data stash
 
 | Import | Signature | Purpose |

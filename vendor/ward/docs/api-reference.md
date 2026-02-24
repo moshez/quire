@@ -512,3 +512,25 @@ fun ward_on_permission_result
 fun ward_on_push_subscribe
   (resolver_id: int, json_len: int): void = "ext#ward_on_push_subscribe"
 ```
+
+---
+
+## blob -- Blob URL creation and revocation
+
+**Source:** `lib/blob.sats`
+
+### Functions
+
+```ats
+fun ward_create_blob_url {lb:agz}{n:pos}{m:pos}
+  (data: !ward_arr_borrow(byte, lb, n), data_len: int n,
+   mime: ward_safe_text(m), mime_len: int m): int   (* URL byte length, 0=failure *)
+
+fun ward_create_blob_url_get {n:pos}
+  (len: int n): [l:agz] ward_arr(byte, l, n)        (* retrieve stashed URL *)
+
+fun ward_revoke_blob_url {lb:agz}{n:pos}
+  (url: !ward_arr_borrow(byte, lb, n), url_len: int n): void
+```
+
+`ward_create_blob_url` creates a blob URL from binary data (via borrow) and a MIME type (safe text). The URL string is stashed for retrieval via `ward_create_blob_url_get`. Call `ward_revoke_blob_url` to release the blob URL when no longer needed.

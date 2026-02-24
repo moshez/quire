@@ -54,6 +54,7 @@ WARD_DATS := \
   $(WARD_DIR)/window.dats \
   $(WARD_DIR)/nav.dats \
   $(WARD_DIR)/dom_read.dats \
+  $(WARD_DIR)/blob.dats \
   $(WARD_DIR)/listener.dats \
   $(WARD_DIR)/fetch.dats \
   $(WARD_DIR)/clipboard.dats \

@@ -160,6 +160,10 @@ build/decompress_dats.c: lib/decompress.dats lib/decompress.sats $(BRIDGE_SATS) 
 build/notify_dats.c: lib/notify.dats lib/notify.sats $(BRIDGE_SATS) | build
 	$(PATSOPT) -o $@ -d $<
 
+# ATS2 -> C for blob module
+build/blob_dats.c: lib/blob.dats lib/blob.sats lib/memory.sats lib/memory.dats | build
+	$(PATSOPT) -o $@ -d $<
+
 # All bridge .sats/.dats for dom_exerciser deps
 BRIDGE_ALL_SATS := lib/memory.sats lib/memory.dats lib/dom.sats lib/dom.dats \
   lib/promise.sats lib/promise.dats lib/event.sats lib/event.dats \
@@ -169,7 +173,7 @@ BRIDGE_ALL_SATS := lib/memory.sats lib/memory.dats lib/dom.sats lib/dom.dats \
   lib/fetch.sats lib/fetch.dats \
   lib/clipboard.sats lib/clipboard.dats lib/file.sats lib/file.dats \
   lib/decompress.sats lib/decompress.dats lib/notify.sats lib/notify.dats \
-  lib/xml.sats lib/xml.dats
+  lib/xml.sats lib/xml.dats lib/blob.sats lib/blob.dats
 
 # ATS2 -> C for dom_exerciser
 build/dom_exerciser_dats.c: exerciser/dom_exerciser.dats $(BRIDGE_ALL_SATS) | build
@@ -218,6 +222,9 @@ build/decompress_dats.o: build/decompress_dats.c lib/runtime.h | build
 build/notify_dats.o: build/notify_dats.c lib/runtime.h | build
 	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
 
+build/blob_dats.o: build/blob_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
 build/dom_exerciser_dats.o: build/dom_exerciser_dats.c lib/runtime.h | build
 	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
 
@@ -236,7 +243,7 @@ NODE_WASM_OBJS := build/memory_node_dats.o build/dom_node_dats.o build/promise_n
   build/event_dats.o build/idb_dats.o \
   build/window_dats.o build/nav_dats.o build/dom_read_dats.o build/listener_dats.o build/callback_dats.o \
   build/fetch_dats.o build/clipboard_dats.o build/file_dats.o build/decompress_dats.o build/xml_dats.o \
-  build/notify_dats.o \
+  build/notify_dats.o build/blob_dats.o \
   build/dom_exerciser_dats.o build/runtime_node.o
 
 # WASM exports for bridge callbacks
