@@ -302,7 +302,7 @@ everything else depends on.
   inject `@font-face` rules pointing to blob URLs. Revoke URLs when chapter
   is unloaded.
 
-- [ ] **6.7 Dark mode color inversion.** Publisher-specified colors (e.g.,
+- [x] **6.7 Dark mode color inversion.** Publisher-specified colors (e.g.,
   colored text for dialogue attribution) are inverted in dark mode to maintain
   readability. Text and background colors are overridden; images are left
   untouched.
