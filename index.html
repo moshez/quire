@@ -22,7 +22,9 @@
     const root = document.getElementById('app');
     const resp = await fetch('quire.wasm');
     const bytes = await resp.arrayBuffer();
-    await loadWard(bytes, root, {
+    let wardNodes = null;
+    let wasmMem = null;
+    const { exports, nodes } = await loadWard(bytes, root, {
       extraImports: {
         quireSetTitle(mode) {
           document.title = mode ? 'Quire (importing)' : 'Quire';
@@ -38,9 +40,27 @@
           try {
             return window.matchMedia('(prefers-color-scheme: dark)').matches ? 1 : 0;
           } catch(e) { return 0; }
+        },
+        quire_create_blob_url(dataPtr, dataLen, mimePtr, mimeLen, destPtr, destMaxLen) {
+          // Create blob URL from WASM memory data, write URL string to destPtr.
+          // Returns URL string byte length (0 on error).
+          if (!wasmMem) return 0;
+          try {
+            const mem = new Uint8Array(wasmMem.buffer);
+            const mime = new TextDecoder().decode(mem.slice(mimePtr, mimePtr + mimeLen));
+            const bytes = new Uint8Array(mem.slice(dataPtr, dataPtr + dataLen));
+            const blob = new Blob([bytes], { type: mime });
+            const url = URL.createObjectURL(blob);
+            const urlBytes = new TextEncoder().encode(url);
+            const copyLen = Math.min(urlBytes.length, destMaxLen);
+            new Uint8Array(wasmMem.buffer).set(urlBytes.subarray(0, copyLen), destPtr);
+            return copyLen;
+          } catch(e) { return 0; }
         }
       }
     });
+    wardNodes = nodes;
+    wasmMem = exports.memory;
   </script>
   <script>
     if ('serviceWorker' in navigator) {

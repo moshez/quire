@@ -26,3 +26,12 @@ fun quire_factory_reset(): void = "mac#quire_factory_reset"
 
 (* Check system dark mode preference. Returns 1 if dark, 0 if light. *)
 fun quire_get_dark_mode(): int = "mac#quire_get_dark_mode"
+
+(* Create blob URL from binary data in WASM memory.
+ * data/mime are raw WASM memory offsets. dest is where the URL string is written.
+ * Returns URL string byte length (0 on error).
+ * Used for embedded font loading — font data from IDB → blob URL for @font-face. *)
+fun quire_create_blob_url(
+  data_ptr: int, data_len: int,
+  mime_ptr: int, mime_len: int,
+  dest_ptr: int, dest_max_len: int): int = "mac#quire_create_blob_url"
