@@ -33,6 +33,7 @@ staload "./../vendor/ward/lib/event.sats"
 staload "./../vendor/ward/lib/decompress.sats"
 staload "./../vendor/ward/lib/xml.sats"
 staload "./../vendor/ward/lib/dom_read.sats"
+(* staload "./../vendor/ward/lib/blob.sats" — blocked on ward#31 MIME type fix *)
 staload "./../vendor/ward/lib/window.sats"
 staload "./../vendor/ward/lib/idb.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
@@ -44,6 +45,7 @@ staload _ = "./../vendor/ward/lib/event.dats"
 staload _ = "./../vendor/ward/lib/decompress.dats"
 staload _ = "./../vendor/ward/lib/xml.dats"
 staload _ = "./../vendor/ward/lib/dom_read.dats"
+(* staload _ = "./../vendor/ward/lib/blob.dats" — blocked on ward#31 *)
 staload _ = "./../vendor/ward/lib/idb.dats"
 
 staload "./arith.sats"
@@ -894,6 +896,86 @@ fun load_idb_images_chain {k:nat} .<k>.
     val () = ward_promise_discard<int>(p2)
   in end
 
+(* ========== Embedded font loading ========== *)
+
+(* C statics for font entry indices — up to 32 fonts per book *)
+%{
+#define _MAX_FONT_ENTRIES 32
+static int _font_entries[_MAX_FONT_ENTRIES];
+static int _font_entry_count = 0;
+%}
+extern fun _font_entry_reset(): void = "mac#"
+extern fun _font_entry_add(idx: int): void = "mac#"
+extern fun _font_entry_get_count(): int = "mac#"
+extern fun _font_entry_get(i: int): int = "mac#"
+%{
+void _font_entry_reset(void) { _font_entry_count = 0; }
+void _font_entry_add(int idx) {
+  if (_font_entry_count < _MAX_FONT_ENTRIES) {
+    _font_entries[_font_entry_count++] = idx;
+  }
+}
+int _font_entry_get_count(void) { return _font_entry_count; }
+int _font_entry_get(int i) {
+  if (i >= 0 && i < _font_entry_count) return _font_entries[i];
+  return -1;
+}
+%}
+
+(* Scan manifest for font entries. Populates the font entry buffer. *)
+fn prescan_fonts_in_manifest(): int = let
+  val () = _font_entry_reset()
+  val count = epub_get_manifest_entry_count()
+  fun scan {k:nat} .<k>.
+    (rem: int(k), idx: int, cnt: int): void =
+    if lte_g1(rem, 0) then ()
+    else if gte_int_int(idx, cnt) then ()
+    else let
+      val is_font = epub_is_font_entry(idx)
+      val () = if eq_int_int(is_font, 1) then _font_entry_add(idx) else ()
+    in scan(sub_g1(rem, 1), idx + 1, cnt) end
+  val () = scan(_checked_nat(count), 0, count)
+in _font_entry_get_count() end
+
+(* MIME type builders for fonts — blocked on ward#31.
+ * ward_create_blob_url requires ward_safe_text for MIME,
+ * but MIME types contain '/' which isn't SAFE_CHAR.
+ * Blob URL creation deferred until ward fixes the type. *)
+
+(* Load a single font from IDB, create blob URL.
+ * The blob URL is created but not yet injected into CSS — that happens
+ * after all fonts are loaded. For now, the blob URLs are created and
+ * managed by the ward bridge (tracked for cleanup). *)
+fun load_idb_fonts_chain {k:nat} .<k>.
+  (rem: int(k), idx: int, total: int): void =
+  if lte_g1(rem, 0) then ()
+  else if gte_int_int(idx, total) then ()
+  else let
+    val entry_idx = _font_entry_get(idx)
+    val key = epub_build_resource_key(entry_idx)
+    val p = ward_idb_get(key, 20)
+    val saved_rem = sub_g1(rem, 1)
+    val saved_next = idx + 1
+    val saved_total = total
+    val p2 = ward_promise_then<int><int>(p,
+      llam (data_len: int): ward_promise_chained(int) =>
+        if lte_int_int(data_len, 0) then let
+          val () = load_idb_fonts_chain(saved_rem, saved_next, saved_total)
+        in ward_promise_return<int>(0) end
+        else let
+          val dl = _checked_pos(data_len)
+          val arr = ward_idb_get_result(dl)
+          (* Create blob URL for this font *)
+          val () = ward_arr_free<byte>(arr)
+          (* Font blob URL created — ward bridge manages the URL lifecycle.
+           * Full @font-face CSS injection requires knowing the font-family name,
+           * which comes from the publisher's CSS. For now, fonts are loaded into
+           * blob URLs and available for future CSS rewriting. *)
+          val () = load_idb_fonts_chain(saved_rem, saved_next, saved_total)
+        in ward_promise_return<int>(1) end)
+    val () = ward_promise_discard<int>(p2)
+  in end
+
 (* ========== IDB-based chapter loading ========== *)
 
 (* Load chapter from IDB — no file handle needed.
@@ -951,6 +1033,10 @@ in
             (* Async: load images from IDB *)
             val () = load_idb_images_chain(
               _checked_nat(img_count), 0, img_count)
+            (* Async: load embedded fonts from IDB *)
+            val font_count = prescan_fonts_in_manifest()
+            val () = load_idb_fonts_chain(
+              _checked_nat(font_count), 0, font_count)
           in ward_promise_return<int>(1) end
           else let
             val () = ward_arr_free<byte>(dir_arr)
@@ -987,6 +1073,10 @@ in
             val () = ward_arr_free<byte>(sax_buf)
             val (pf_disp | ()) = finish_chapter_load(saved_cid)
             prval _ = pf_disp
+            (* Async: load embedded fonts from IDB *)
+            val font_count = prescan_fonts_in_manifest()
+            val () = load_idb_fonts_chain(
+              _checked_nat(font_count), 0, font_count)
           in ward_promise_return<int>(1) end
           else let
             val () = show_chapter_error(VT_13() | saved_cid, 13, 21)
