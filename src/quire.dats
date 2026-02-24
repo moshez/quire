@@ -2373,6 +2373,21 @@ implement enter_reader(root_id, book_index) = let
   val s = ward_dom_stream_create_element(s, nav_id, root_id, tag_div(), 3)
   val s = ward_dom_stream_set_attr_safe(s, nav_id, attr_class(), 5,
     cls_reader_nav(), 10)
+  (* ARIA: role=navigation for screen readers *)
+  val nav_role_st = let
+    val b = ward_text_build(10)
+    val b = ward_text_putc(b, 0, char2int1('n'))
+    val b = ward_text_putc(b, 1, char2int1('a'))
+    val b = ward_text_putc(b, 2, char2int1('v'))
+    val b = ward_text_putc(b, 3, char2int1('i'))
+    val b = ward_text_putc(b, 4, char2int1('g'))
+    val b = ward_text_putc(b, 5, char2int1('a'))
+    val b = ward_text_putc(b, 6, char2int1('t'))
+    val b = ward_text_putc(b, 7, char2int1('i'))
+    val b = ward_text_putc(b, 8, char2int1('o'))
+    val b = ward_text_putc(b, 9, char2int1('n'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_attr_safe(s, nav_id, attr_role(), 4, nav_role_st, 10)
 
   val back_btn_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, back_btn_id, nav_id, tag_button(), 6)
@@ -2487,6 +2502,18 @@ implement enter_reader(root_id, book_index) = let
   val s = ward_dom_stream_create_element(s, page_info_id, controls_id, tag_span(), 4)
   val s = ward_dom_stream_set_attr_safe(s, page_info_id, attr_class(), 5,
     cls_page_info(), 9)
+  (* ARIA: live region for screen reader page-turn announcements *)
+  val polite_st = let
+    val b = ward_text_build(6)
+    val b = ward_text_putc(b, 0, char2int1('p'))
+    val b = ward_text_putc(b, 1, char2int1('o'))
+    val b = ward_text_putc(b, 2, char2int1('l'))
+    val b = ward_text_putc(b, 3, char2int1('i'))
+    val b = ward_text_putc(b, 4, char2int1('t'))
+    val b = ward_text_putc(b, 5, char2int1('e'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_attr_safe(s, page_info_id, attr_aria_live(), 9,
+    polite_st, 6)
 
   (* Next button *)
   val next_btn_id = dom_next_id()
