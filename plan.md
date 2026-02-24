@@ -444,11 +444,11 @@ everything else depends on.
 
 ## Phase 11 — Wide tables & images
 
-- [ ] **11.1 Wide table horizontal scroll.** Tables exceeding viewport width
+- [x] **11.1 Wide table horizontal scroll.** Tables exceeding viewport width
   get `overflow-x: auto` wrapper. No scaling or reformatting. CSS-only fix
   applied during chapter rendering.
 
-- [ ] **11.2 Images scaled to viewport width.** Ensure images in chapter
+- [x] **11.2 Images scaled to viewport width.** Ensure images in chapter
   content are constrained to `max-width: 100%`. Per spec: "Scaled to fit
   viewport width for v1."
 

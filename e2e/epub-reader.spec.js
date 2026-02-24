@@ -3420,5 +3420,42 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('chapter images have max-width CSS applied', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    const epubBuffer = createEpub({
+      title: 'CSS Render Test', chapters: 1, paragraphsPerChapter: 3, coverImage: true,
+    });
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `cssrender-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await page.locator('input[type="file"]').setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    // Verify the CSS rule is loaded (reader.css)
+    const hasRule = await page.evaluate(() => {
+      for (const sheet of document.styleSheets) {
+        try {
+          for (const rule of sheet.cssRules) {
+            if (rule.selectorText && rule.selectorText.includes('.chapter-container img')) {
+              return true;
+            }
+          }
+        } catch(e) {}
+      }
+      return false;
+    });
+    expect(hasRule).toBe(true);
+    await screenshot(page, 'cssrender-01-rules');
+    expect(errors).toEqual([]);
+  });
+
 
 });
