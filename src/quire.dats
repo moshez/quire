@@ -796,6 +796,9 @@ end
  * Produces CHAPTER_DISPLAY_READY proof requiring both CHAPTER_TITLE_DISPLAYED
  * and PAGE_INFO_SHOWN sub-proofs. MEASURED_AND_TRANSFORMED is impossible to
  * construct without calling both handle_chapter_title and update_page_info. *)
+%{
+extern int _annot_get_field(int idx, int field);
+%}
 extern fun _annot_get_field(idx: int, field: int): int = "mac#"
 
 local
