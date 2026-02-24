@@ -1,0 +1,8 @@
+{
+  "appId": "io.quire.app",
+  "appName": "Quire",
+  "webDir": ".",
+  "server": {
+    "androidScheme": "https"
+  }
+}

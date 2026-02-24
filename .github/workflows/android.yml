@@ -25,10 +25,10 @@ jobs:
         run: npm ci
 
       - name: Install Capacitor CLI
-        run: npm install -g @capacitor/cli
+        run: npm install --no-save @capacitor/cli
 
       - name: Add Android platform
-        run: npx cap add android || true
+        run: npx cap add android
 
       - name: Sync web assets to Android
         run: npx cap sync android
