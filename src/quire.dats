@@ -2612,11 +2612,27 @@ implement enter_reader(root_id, book_index) = let
   val s = ward_dom_stream_set_attr_safe(s, stg_overlay_id, attr_class(), 5,
     cls_settings_btn(), 12)
 
-  (* Selection toolbar — initially hidden *)
+  (* Selection toolbar — initially hidden, contains Highlight button *)
   val sel_toolbar_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, sel_toolbar_id, root_id, tag_div(), 3)
   val s = ward_dom_stream_set_attr_safe(s, sel_toolbar_id, attr_class(), 5,
     cls_sel_toolbar(), 11)
+
+  val hl_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, hl_btn_id, sel_toolbar_id, tag_button(), 6)
+  val hl_st = let
+    val b = ward_text_build(9)
+    val b = ward_text_putc(b, 0, char2int1('H'))
+    val b = ward_text_putc(b, 1, char2int1('i'))
+    val b = ward_text_putc(b, 2, char2int1('g'))
+    val b = ward_text_putc(b, 3, char2int1('h'))
+    val b = ward_text_putc(b, 4, char2int1('l'))
+    val b = ward_text_putc(b, 5, char2int1('i'))
+    val b = ward_text_putc(b, 6, char2int1('g'))
+    val b = ward_text_putc(b, 7, char2int1('h'))
+    val b = ward_text_putc(b, 8, char2int1('t'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, hl_btn_id, hl_st, 9)
 
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
@@ -2930,6 +2946,14 @@ implement enter_reader(root_id, book_index) = let
       end
       else 0
     end
+  )
+
+  (* Highlight button: create annotation from selection *)
+  val () = reader_add_event_listener(READER_LISTEN_HIGHLIGHT_BTN() |
+    hl_btn_id, evt_click(), 5, 47,
+    lam (_pl: int): int => let
+      val () = create_highlight_from_selection()
+    in 0 end
   )
 
   (* Selectionchange: show/hide selection toolbar *)
