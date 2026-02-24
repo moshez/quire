@@ -155,6 +155,7 @@ fun attr_transform(): ward_safe_text(9)
 fun attr_viewBox(): ward_safe_text(7)
 fun attr_aria_label(): ward_safe_text(10)
 fun attr_aria_hidden(): ward_safe_text(11)
+fun attr_aria_live(): ward_safe_text(9)
 fun attr_name(): ward_safe_text(4)
 fun attr_value(): ward_safe_text(5)
 

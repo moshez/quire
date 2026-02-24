@@ -423,19 +423,19 @@ everything else depends on.
 
 ## Phase 10 — Accessibility
 
-- [ ] **10.1 ARIA on app chrome.** Add ARIA roles and labels to library UI
+- [x] **10.1 ARIA on app chrome.** Add ARIA roles and labels to library UI
   (list, listitem, button labels for ⊕/⚙/▼), settings modal, import
   controls, shelf filter, context menu. Ensure keyboard-navigable.
 
-- [ ] **10.2 ARIA on reading chrome.** Label reading chrome buttons (close,
+- [x] **10.2 ARIA on reading chrome.** Label reading chrome buttons (close,
   bookmark, TOC, typography, search, overflow). Add roles to TOC panel,
   scrubber (slider role), annotations panel, search panel.
 
-- [ ] **10.3 Screen reader page-turn announcements.** Use ARIA live region
+- [x] **10.3 Screen reader page-turn announcements.** Use ARIA live region
   to announce page changes (e.g., "Page 5 of 12, Chapter 3"). Announce
   chapter transitions.
 
-- [ ] **10.4 Focus management.** Ensure screen readers navigate smoothly
+- [x] **10.4 Focus management.** Ensure screen readers navigate smoothly
   between app UI and book content. No focus traps. When TOC/settings/search
   panels open, focus moves into them; on close, focus returns to prior
   element. Pinch-to-zoom is not intercepted (browser accessibility feature).

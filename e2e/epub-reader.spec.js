@@ -3388,5 +3388,37 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('ARIA: reader nav has role=navigation and page info has aria-live', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    const epubBuffer = createEpub({ title: 'ARIA Test', chapters: 1, paragraphsPerChapter: 3 });
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `aria-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await page.locator('input[type="file"]').setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    // Verify nav has role=navigation
+    const nav = page.locator('.reader-nav');
+    const navRole = await nav.getAttribute('role');
+    expect(navRole).toBe('navigation');
+
+    // Verify page-info has aria-live=polite
+    const pageInfo = page.locator('.page-info');
+    const ariaLive = await pageInfo.getAttribute('aria-live');
+    expect(ariaLive).toBe('polite');
+
+    await screenshot(page, 'aria-01-roles-verified');
+    expect(errors).toEqual([]);
+  });
+
 
 });
