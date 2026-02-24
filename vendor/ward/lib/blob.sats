@@ -6,9 +6,9 @@ staload "./memory.sats"
    Returns URL byte length (0 on failure).
    Stashes URL bytes for retrieval via ward_create_blob_url_get. *)
 fun ward_create_blob_url
-  {lb:agz}{n:pos}{m:pos}
+  {lb:agz}{n:pos}{lm:agz}{m:pos}
   (data: !ward_arr_borrow(byte, lb, n), data_len: int n,
-   mime: ward_safe_text(m), mime_len: int m): int
+   mime: !ward_safe_content_text(lm, m), mime_len: int m): int
 
 (* Retrieve stashed blob URL. Call after ward_create_blob_url. *)
 fun ward_create_blob_url_get
