@@ -50,3 +50,6 @@ fun annotation_get_chapter{n:pos}{i:nat | i < n}(count: int(n), idx: int(i)): [c
 fun annotation_get_start{n:pos}{i:nat | i < n}(count: int(n), idx: int(i)): [s:nat] int(s)
 fun annotation_get_end{n:pos}{i:nat | i < n}(count: int(n), idx: int(i)): [e:nat] int(e)
 fun annotation_get_timestamp{n:pos}{i:nat | i < n}(count: int(n), idx: int(i)): int
+
+(* Export all annotations as Markdown and trigger browser download. *)
+fun annotation_export_markdown(): void

@@ -2650,6 +2650,20 @@ implement enter_reader(root_id, book_index) = let
   in ward_text_done(b) end
   val s = ward_dom_stream_set_safe_text(s, hl_btn_id, hl_st, 9)
 
+  (* Export button inside toolbar *)
+  val export_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, export_btn_id, sel_toolbar_id, tag_button(), 6)
+  val export_st = let
+    val b = ward_text_build(6)
+    val b = ward_text_putc(b, 0, char2int1('E'))
+    val b = ward_text_putc(b, 1, char2int1('x'))
+    val b = ward_text_putc(b, 2, char2int1('p'))
+    val b = ward_text_putc(b, 3, char2int1('o'))
+    val b = ward_text_putc(b, 4, char2int1('r'))
+    val b = ward_text_putc(b, 5, char2int1('t'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, export_btn_id, export_st, 6)
+
   (* Search panel — initially hidden, contains input + results *)
   val search_panel_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, search_panel_id, root_id, tag_div(), 3)
@@ -3003,6 +3017,14 @@ implement enter_reader(root_id, book_index) = let
     hl_btn_id, evt_click(), 5, 47,
     lam (_pl: int): int => let
       val () = create_highlight_from_selection()
+    in 0 end
+  )
+
+  (* Export button: export annotations as Markdown *)
+  val () = reader_add_event_listener(READER_LISTEN_EXPORT_BTN() |
+    export_btn_id, evt_click(), 5, 49,
+    lam (_pl: int): int => let
+      val () = annotation_export_markdown()
     in 0 end
   )
 

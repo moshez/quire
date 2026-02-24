@@ -35,3 +35,9 @@ fun quire_create_blob_url(
   data_ptr: int, data_len: int,
   mime_ptr: int, mime_len: int,
   dest_ptr: int, dest_max_len: int): int = "mac#quire_create_blob_url"
+
+(* Download text data as a file via browser download dialog.
+ * data/name are raw WASM memory offsets. *)
+fun quire_download_text(
+  data_ptr: int, data_len: int,
+  name_ptr: int, name_len: int): void = "mac#quire_download_text"
