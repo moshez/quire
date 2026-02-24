@@ -2216,6 +2216,33 @@ fn check_sel_toolbar_visible(): bool = let
   (* Read toolbar visibility from app state — non-zero = visible *)
 in false end
 
+(* create_highlight_from_selection: get selection range, create annotation. *)
+fn create_highlight_from_selection(): void = let
+  val found = ward_get_selection_range()
+in
+  if eq_int_int(found, 1) then let
+    val start_off = ward_measure_get_x() (* slot 0 = start_offset *)
+    val end_off = ward_measure_get_y()   (* slot 1 = end_offset *)
+    val ch = reader_get_current_chapter()
+    val spine = epub_get_chapter_count()
+    val ch_g1 = g1ofg0(ch)
+    val spine_g1 = g1ofg0(spine)
+    val start_g1 = g1ofg0(start_off)
+    val end_g1 = g1ofg0(end_off)
+  in
+    if start_g1 >= 0 then
+      if lt1_int_int(start_g1, end_g1) then
+        if ch_g1 >= 0 then
+          if lt1_int_int(ch_g1, spine_g1) then
+            annotation_add(ANNOTATION_OK() | ch_g1, start_g1, end_g1, spine_g1)
+          else ()
+        else ()
+      else ()
+    else ()
+  end
+  else ()
+end
+
 end (* local SELECTION_TOOLBAR_STATE *)
 
 (* handle_escape: pop one UI layer per Escape press.
