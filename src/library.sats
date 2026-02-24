@@ -87,6 +87,8 @@ dataprop SINGLE_PENDING(handler_id: int) =
   | PENDING_LIB_INDEX(2)
   | PENDING_EPUB_IMPORT(3)
   | PENDING_READER_CHAPTER(4)
+  | PENDING_ANNOT_SAVE(5)
+  | PENDING_ANNOT_LOAD(6)
 
 (* Import lock proof. *)
 absprop IMPORT_LOCK_FREE
