@@ -348,7 +348,7 @@ everything else depends on.
   Empty state: "No annotations yet / Highlight text while reading to add
   your first annotation."
 
-- [ ] **7.6 Annotation export to Markdown.** Export button in annotations
+- [x] **7.6 Annotation export to Markdown.** Export button in annotations
   panel header. Generate Markdown per spec format: `# Book Title`,
   `## Author Name`, `### Chapter Name`, `> Highlighted text`,
   `**Note:** User's note`, footer `*Exported from Quire · [date]*`.
