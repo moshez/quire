@@ -297,7 +297,7 @@ everything else depends on.
   Inter → Reader default mode; selecting Publisher → Publisher mode. Store
   mode per book in library record.
 
-- [ ] **6.6 Embedded font loading via blob URLs.** When rendering a chapter in
+- [x] **6.6 Embedded font loading via blob URLs.** When rendering a chapter in
   Publisher CSS mode, extract font resources from IndexedDB, create blob URLs,
   inject `@font-face` rules pointing to blob URLs. Revoke URLs when chapter
   is unloaded.
