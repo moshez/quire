@@ -134,6 +134,11 @@ dataprop READER_LISTENER(id: int) =
   | READER_LISTEN_NAV_BACK(43)
   | READER_LISTEN_VISIBILITY(44)
   | READER_LISTEN_SETTINGS(45)
+  | READER_LISTEN_SELECTION(46)
+
+(* Selection toolbar visibility state machine.
+ * Follows TOC_STATE pattern — prevents double-show/double-hide. *)
+absprop SELECTION_TOOLBAR_STATE(visible: bool)
 
 #define POS_STACK_MAX 16
 

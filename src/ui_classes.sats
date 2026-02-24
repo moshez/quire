@@ -70,6 +70,8 @@ fun evt_visibilitychange(): ward_safe_text(16)
 (* ========== Settings ========== *)
 
 fun cls_settings_btn(): ward_safe_text(12)
+fun cls_sel_toolbar(): ward_safe_text(11)
+fun evt_selectionchange(): ward_safe_text(15)
 
 (* ========== Other builders ========== *)
 

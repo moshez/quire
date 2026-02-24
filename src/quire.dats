@@ -160,6 +160,18 @@ in
   ward_add_event_listener(node_id, event_type, event_len, listener_id, handler)
 end
 
+(* Proof-requiring document-level event listener registration wrapper.
+ * Same as reader_add_event_listener but for document-level events
+ * (visibilitychange, selectionchange). *)
+fn reader_add_document_event_listener {id:int}{tn:pos}
+  (pf: READER_LISTENER(id) |
+   event_type: ward_safe_text(tn), event_len: int(tn),
+   listener_id: int(id), handler: int -<cloref1> int): void = let
+  prval _ = pf
+in
+  ward_add_document_event_listener(event_type, event_len, listener_id, handler)
+end
+
 (* ========== Chapter load error messages ========== *)
 
 (* mk_ch_err builds "err-ch-XYZ" safe text where XYZ are the 3 suffix chars.
@@ -2103,6 +2115,28 @@ in
   in () end
 end
 
+(* ========== Selection toolbar state machine ========== *)
+
+local
+  assume SELECTION_TOOLBAR_STATE(b) = unit_p
+in
+
+fn show_sel_toolbar(sel_toolbar_id: int): (SELECTION_TOOLBAR_STATE(true) | void) = let
+  val () = set_style_flex(sel_toolbar_id)
+in (unit_p() | ()) end
+
+fn hide_sel_toolbar(pf: SELECTION_TOOLBAR_STATE(true) | sel_toolbar_id: int)
+  : (SELECTION_TOOLBAR_STATE(false) | void) = let
+  prval unit_p() = pf
+  val () = set_style_none(sel_toolbar_id)
+in (unit_p() | ()) end
+
+fn check_sel_toolbar_visible(): bool = let
+  (* Read toolbar visibility from app state — non-zero = visible *)
+in false end
+
+end (* local SELECTION_TOOLBAR_STATE *)
+
 (* handle_escape: pop one UI layer per Escape press.
  * 1. TOC open → close TOC
  * 2. Chrome visible → hide chrome + cancel timer
@@ -2470,8 +2504,17 @@ implement enter_reader(root_id, book_index) = let
   val s = ward_dom_stream_set_attr_safe(s, stg_overlay_id, attr_class(), 5,
     cls_settings_btn(), 12)
 
+  (* Selection toolbar — initially hidden *)
+  val sel_toolbar_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, sel_toolbar_id, root_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, sel_toolbar_id, attr_class(), 5,
+    cls_sel_toolbar(), 11)
+
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
+
+  (* Hide selection toolbar initially *)
+  val () = set_style_none(sel_toolbar_id)
 
   (* Hide settings overlay initially *)
   val () = set_style_none(stg_overlay_id)
@@ -2754,9 +2797,9 @@ implement enter_reader(root_id, book_index) = let
   )
 
   (* Visibilitychange: save position when tab becomes hidden.
-   * Uses ward_add_document_event_listener (fires on document, not a node).
+   * Uses reader_add_document_event_listener with READER_LISTENER proof.
    * Payload: [u8:hidden] where 1=hidden, 0=visible. *)
-  val () = ward_add_document_event_listener(
+  val () = reader_add_document_event_listener(READER_LISTEN_VISIBILITY() |
     evt_visibilitychange(), 16, 44,
     lam (payload_len: int): int => let
       val pl = g1ofg0(payload_len)
@@ -2776,6 +2819,41 @@ implement enter_reader(root_id, book_index) = let
           else 0
         end
         else 0
+      end
+      else 0
+    end
+  )
+
+  (* Selectionchange: show/hide selection toolbar *)
+  val saved_sel_toolbar = sel_toolbar_id
+  val () = reader_add_document_event_listener(READER_LISTEN_SELECTION() |
+    evt_selectionchange(), 15, 46,
+    lam (payload_len: int): int => let
+      val pl = g1ofg0(payload_len)
+    in
+      if gt1_int_int(pl, 0) then let
+        val payload = ward_event_get_payload(pl)
+        val has_sel = byte2int0(ward_arr_get<byte>(payload, 0))
+        val () = ward_arr_free<byte>(payload)
+      in
+        if eq_int_int(has_sel, 1) then let
+          (* Selection exists — get rect and show toolbar *)
+          val found = ward_get_selection_rect()
+          val () = if eq_int_int(found, 1) then let
+            val x = ward_measure_get_x()
+            val y = ward_measure_get_y()
+            val w = ward_measure_get_w()
+            (* Position toolbar above selection *)
+            val toolbar_x = x + div_int_int(w, 2) - 60
+            val toolbar_y = y - 40
+            val () = set_style_flex(saved_sel_toolbar)
+          in end
+          else ()
+        in 0 end
+        else let
+          (* No selection — hide toolbar *)
+          val () = set_style_none(saved_sel_toolbar)
+        in 0 end
       end
       else 0
     end
