@@ -45,6 +45,7 @@ implement reader_init() = let
   val () = app_set_rdr_toc_entry_count(st, 0)
   val () = app_set_rdr_bm_first_entry_id(st, 0)
   val () = app_set_rdr_page_turn_counter(st, 0)
+  val () = app_set_rdr_char_offset(st, 0 - 1)
   val () = app_state_store(st)
 in end
 
@@ -663,5 +664,24 @@ end
 implement reader_set_page_turn_counter{n}(v) = let
   val st = app_state_load()
   val () = app_set_rdr_page_turn_counter(st, v)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_char_offset() = let
+  val st = app_state_load()
+  val v = app_get_rdr_char_offset(st)
+  val () = app_state_store(st)
+in v end
+
+implement reader_set_char_offset{n}(pf | v) = let
+  prval CARET_AT() = pf
+  val st = app_state_load()
+  val () = app_set_rdr_char_offset(st, v)
+  val () = app_state_store(st)
+in end
+
+implement reader_clear_char_offset() = let
+  val st = app_state_load()
+  val () = app_set_rdr_char_offset(st, 0 - 1)
   val () = app_state_store(st)
 in end

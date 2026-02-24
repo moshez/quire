@@ -119,6 +119,14 @@ in
   ward_measure_get_w()  (* slot 2 = rect.width *)
 end
 
+(* Safe wrapper: measures a node and returns its element height.
+ * Uses slot 3 = el.height from getBoundingClientRect. *)
+fn measure_node_height(node_id: int): int = let
+  val _found = ward_measure_node(node_id)
+in
+  ward_measure_get_h()  (* slot 3 = rect.height *)
+end
+
 (* Castfn for indices proven in-bounds at runtime but not by solver.
  * Used for ward_arr(byte, l, 48) where max write index is 35. *)
 extern castfn _idx48(x: int): [i:nat | i < 48] int i
@@ -292,6 +300,22 @@ in
     val () = reader_set_total_pages(total)
   in end
   else ()
+end
+
+(* Compute and store the character offset at the left edge of the current page.
+ * Uses ward_caret_position_from_point to find which character is visible
+ * at the center of the viewport. Stores via CARET_OFFSET_VALID proof. *)
+fn update_char_offset(): void = let
+  val vp_h = measure_node_height(reader_get_viewport_id())
+  val center_y = div_int_int(vp_h, 2)
+  val offset = ward_caret_position_from_point(0, center_y)
+in
+  if gte_int_int(offset, 0) then let
+    val off_nat = _checked_nat(offset)
+  in
+    reader_set_char_offset(CARET_AT() | off_nat)
+  end
+  else reader_clear_char_offset()
 end
 
 local
@@ -600,6 +624,7 @@ fn debounced_page_turn_save(): void = let
     reader_get_book_index(),
     reader_get_current_chapter(),
     reader_get_current_page())
+  val () = update_char_offset()
   val ctr = reader_get_page_turn_counter()
   val next = add_g1(ctr, 1)
 in
@@ -644,13 +669,50 @@ in (pf_pg | ()) end
  * See POSITION_SAVED absprop in library.sats. *)
 
 (* Apply resume page after chapter loads.
- * If reader_get_resume_page() > 0, go to that page (clamped to total),
- * apply transform, clear resume page. Called BEFORE update_page_info in
- * finish_chapter_load — page info update happens once at the end. *)
+ * First tries char_offset-based restore (stable across font/viewport changes).
+ * Falls back to page-index restore if char_offset is not available.
+ * Called BEFORE update_page_info in finish_chapter_load. *)
 fn apply_resume_page(container_id: int): void = let
   val resume_pg = reader_get_resume_page()
+  val char_off = reader_get_char_offset()
 in
-  if gt_int_int(resume_pg, 0) then let
+  if gt_int_int(char_off, 0) then let
+    (* Try char offset restore: measure where the offset appears *)
+    val found = ward_measure_text_offset(container_id, char_off)
+  in
+    if eq_int_int(found, 1) then let
+      (* Offset found — compute page from x coordinate *)
+      val x = ward_measure_get_x()
+      val page_width = measure_node_width(reader_get_viewport_id())
+      val () = if gt_int_int(page_width, 0) then let
+        val target_page = div_int_int(x, page_width)
+        val () = reader_go_to_page(target_page)
+        val () = apply_page_transform(container_id)
+        val () = reader_set_resume_page(0)
+        val () = reader_clear_char_offset()
+      in end
+      else if gt_int_int(resume_pg, 0) then let
+        (* Fallback to page-index *)
+        val () = reader_go_to_page(resume_pg)
+        val () = apply_page_transform(container_id)
+        val () = reader_set_resume_page(0)
+        val () = reader_clear_char_offset()
+      in end
+      else ()
+    in end
+    else if gt_int_int(resume_pg, 0) then let
+      (* Char offset not found — fallback to page-index *)
+      val () = reader_go_to_page(resume_pg)
+      val () = apply_page_transform(container_id)
+      val () = reader_set_resume_page(0)
+      val () = reader_clear_char_offset()
+    in end
+    else let
+      val () = reader_clear_char_offset()
+    in end
+  end
+  else if gt_int_int(resume_pg, 0) then let
+    (* No char offset — use page-index *)
     val () = reader_go_to_page(resume_pg)
     val () = apply_page_transform(container_id)
     val () = reader_set_resume_page(0)

@@ -324,6 +324,150 @@ export async function loadWard(wasmBytes, root, opts) {
     } catch(e) { return -1; }
   }
 
+  function wardJsCaretPositionFromPoint(x, y) {
+    try {
+      let offsetNode, offset;
+      if (typeof document.caretPositionFromPoint === 'function') {
+        const pos = document.caretPositionFromPoint(x, y);
+        if (!pos) { instance.exports.ward_measure_set(0, -1); return -1; }
+        offsetNode = pos.offsetNode;
+        offset = pos.offset;
+      } else if (typeof document.caretRangeFromPoint === 'function') {
+        const range = document.caretRangeFromPoint(x, y);
+        if (!range) { instance.exports.ward_measure_set(0, -1); return -1; }
+        offsetNode = range.startContainer;
+        offset = range.startOffset;
+      } else {
+        instance.exports.ward_measure_set(0, -1);
+        return -1;
+      }
+      // Walk up to nearest element to find node_id
+      let el = offsetNode.nodeType === 1 ? offsetNode : offsetNode.parentElement;
+      let nodeId = -1;
+      while (el) {
+        for (const [id, node] of nodes) {
+          if (node === el) { nodeId = id; break; }
+        }
+        if (nodeId >= 0) break;
+        el = el.parentElement;
+      }
+      instance.exports.ward_measure_set(0, nodeId);
+      return offset;
+    } catch(e) {
+      instance.exports.ward_measure_set(0, -1);
+      return -1;
+    }
+  }
+
+  function wardJsReadTextContent(nodeId) {
+    const el = nodes.get(nodeId);
+    if (!el) return 0;
+    const text = el.textContent || '';
+    if (text.length === 0) return 0;
+    const encoded = new TextEncoder().encode(text);
+    const stashId = stashData(encoded);
+    instance.exports.ward_bridge_stash_set_int(1, stashId);
+    return encoded.length;
+  }
+
+  function wardJsMeasureTextOffset(nodeId, offset) {
+    const el = nodes.get(nodeId);
+    if (!el) {
+      for (let i = 0; i < 4; i++) instance.exports.ward_measure_set(i, 0);
+      return 0;
+    }
+    // Find first text child
+    let textNode = null;
+    for (let i = 0; i < el.childNodes.length; i++) {
+      if (el.childNodes[i].nodeType === 3) { textNode = el.childNodes[i]; break; }
+    }
+    if (!textNode || offset > (textNode.textContent || '').length) {
+      for (let i = 0; i < 4; i++) instance.exports.ward_measure_set(i, 0);
+      return 0;
+    }
+    try {
+      const range = document.createRange();
+      range.setStart(textNode, offset);
+      range.setEnd(textNode, offset);
+      const rect = range.getBoundingClientRect();
+      instance.exports.ward_measure_set(0, Math.round(rect.x));
+      instance.exports.ward_measure_set(1, Math.round(rect.y));
+      instance.exports.ward_measure_set(2, Math.round(rect.width));
+      instance.exports.ward_measure_set(3, Math.round(rect.height));
+      return 1;
+    } catch(e) {
+      for (let i = 0; i < 4; i++) instance.exports.ward_measure_set(i, 0);
+      return 0;
+    }
+  }
+
+  // --- Selection ---
+
+  function wardJsGetSelectionText() {
+    try {
+      const win = root.ownerDocument.defaultView;
+      const sel = (win || document).getSelection();
+      if (!sel || sel.toString().length === 0) return 0;
+      const text = sel.toString();
+      const encoded = new TextEncoder().encode(text);
+      const stashId = stashData(encoded);
+      instance.exports.ward_bridge_stash_set_int(1, stashId);
+      return encoded.length;
+    } catch(e) { return 0; }
+  }
+
+  function wardJsGetSelectionRect() {
+    try {
+      const win = root.ownerDocument.defaultView;
+      const sel = (win || document).getSelection();
+      if (!sel || sel.rangeCount === 0 || sel.toString().length === 0) {
+        for (let i = 0; i < 4; i++) instance.exports.ward_measure_set(i, 0);
+        return 0;
+      }
+      const range = sel.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      instance.exports.ward_measure_set(0, Math.round(rect.x));
+      instance.exports.ward_measure_set(1, Math.round(rect.y));
+      instance.exports.ward_measure_set(2, Math.round(rect.width));
+      instance.exports.ward_measure_set(3, Math.round(rect.height));
+      return 1;
+    } catch(e) {
+      for (let i = 0; i < 4; i++) instance.exports.ward_measure_set(i, 0);
+      return 0;
+    }
+  }
+
+  function wardJsGetSelectionRange() {
+    try {
+      const win = root.ownerDocument.defaultView;
+      const sel = (win || document).getSelection();
+      if (!sel || sel.rangeCount === 0 || sel.toString().length === 0) {
+        for (let i = 0; i < 4; i++) instance.exports.ward_measure_set(i, 0);
+        return 0;
+      }
+      const range = sel.getRangeAt(0);
+      instance.exports.ward_measure_set(0, range.startOffset);
+      instance.exports.ward_measure_set(1, range.endOffset);
+      // Walk up from containers to nearest ward-registered element
+      function findNodeId(container) {
+        let el = container.nodeType === 1 ? container : container.parentElement;
+        while (el) {
+          for (const [id, node] of nodes) {
+            if (node === el) return id;
+          }
+          el = el.parentElement;
+        }
+        return -1;
+      }
+      instance.exports.ward_measure_set(2, findNodeId(range.startContainer));
+      instance.exports.ward_measure_set(3, findNodeId(range.endContainer));
+      return 1;
+    } catch(e) {
+      for (let i = 0; i < 4; i++) instance.exports.ward_measure_set(i, 0);
+      return 0;
+    }
+  }
+
   // --- Event listener ---
 
   const listenerMap = new Map();
@@ -405,6 +549,11 @@ export async function loadWard(wasmBytes, root, opts) {
     if (eventType === 'visibilitychange') {
       // [u8:hidden]
       return new Uint8Array([document.visibilityState === 'hidden' ? 1 : 0]);
+    }
+    if (eventType === 'selectionchange') {
+      // [u8:has_selection]
+      const sel = (root.ownerDocument.defaultView || document).getSelection();
+      return new Uint8Array([sel && sel.toString().length > 0 ? 1 : 0]);
     }
     return null;
   }
@@ -783,6 +932,12 @@ export async function loadWard(wasmBytes, root, opts) {
       // DOM read
       ward_js_measure_node: wardJsMeasureNode,
       ward_js_query_selector: wardJsQuerySelector,
+      ward_js_caret_position_from_point: wardJsCaretPositionFromPoint,
+      ward_js_read_text_content: wardJsReadTextContent,
+      ward_js_measure_text_offset: wardJsMeasureTextOffset,
+      ward_js_get_selection_text: wardJsGetSelectionText,
+      ward_js_get_selection_rect: wardJsGetSelectionRect,
+      ward_js_get_selection_range: wardJsGetSelectionRange,
       // Event listener
       ward_js_add_event_listener: wardJsAddEventListener,
       ward_js_add_document_event_listener: wardJsAddDocumentEventListener,

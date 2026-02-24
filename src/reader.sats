@@ -300,3 +300,14 @@ fun reader_set_pos_stack_entry(i: int, ch: int, pg: int): void
 
 fun reader_get_page_turn_counter(): [n:nat | n < SAVE_EVERY] int(n)
 fun reader_set_page_turn_counter{n:nat | n < SAVE_EVERY}(v: int(n)): void
+
+(* ========== Character offset position tracking ========== *)
+
+(* CARET_OFFSET_VALID: proves the character offset is non-negative.
+ * Prevents storing the sentinel -1 as a valid position. *)
+dataprop CARET_OFFSET_VALID(n: int) =
+  | {n:nat} CARET_AT(n)
+
+fun reader_get_char_offset(): int
+fun reader_set_char_offset{n:nat}(pf: CARET_OFFSET_VALID(n) | v: int(n)): void
+fun reader_clear_char_offset(): void

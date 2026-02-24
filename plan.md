@@ -204,7 +204,7 @@ everything else depends on.
 - [x] **5.3 Debounced save every 5 page turns.** Count page turns and save
   to IndexedDB every 5th turn. Use a counter in reader state, not a timer.
 
-- [ ] **5.4 Character-offset position tracking.** Replace page-index-based
+- [x] **5.4 Character-offset position tracking.** Replace page-index-based
   position with character offset within the book's text content. This is
   stable across font size / viewport changes. Requires mapping page boundaries
   to character offsets during layout. Store character offset in IDB alongside

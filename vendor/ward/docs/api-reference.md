@@ -349,7 +349,27 @@ fun ward_measure_get_top (): int
 fun ward_measure_get_left (): int
 fun ward_query_selector {n:pos}
   (selector: ward_safe_text(n), selector_len: int n): int   (* node_id or -1 *)
+
+fun ward_caret_position_from_point (x: int, y: int): int   (* char offset or -1 *)
+fun ward_caret_get_node_id (): int                          (* target node_id from stash *)
+
+fun ward_read_text_content (node_id: int): int              (* byte length, 0=not found *)
+fun ward_read_text_content_get {n:pos}
+  (len: int n): [l:agz] ward_arr(byte, l, n)               (* retrieve stashed text *)
+
+fun ward_measure_text_offset (node_id: int, offset: int): int  (* 1=found, 0=not found *)
+
+fun ward_get_selection_text (): int                            (* byte length, 0=no selection *)
+fun ward_get_selection_text_get {n:pos}
+  (len: int n): [l:agz] ward_arr(byte, l, n)                  (* retrieve stashed selection text *)
+
+fun ward_get_selection_rect (): int                            (* 1=selection exists, 0=not *)
+fun ward_get_selection_range (): int                           (* 1=selection exists, 0=not *)
 ```
+
+`ward_get_selection_rect` fills measure stash slots 0-3 (x, y, w, h) from the selection range's bounding rect.
+
+`ward_get_selection_range` fills measure stash slots: 0=start_offset, 1=end_offset, 2=start_node_id, 3=end_node_id. Node IDs are found by walking up from range containers to the nearest ward-registered element.
 
 ---
 
