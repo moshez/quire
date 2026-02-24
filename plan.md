@@ -388,7 +388,7 @@ everything else depends on.
   with chapter index, character offset, and surrounding sentence context
   snippet.
 
-- [ ] **8.4 Search result navigation.** Tapping a result closes the list,
+- [x] **8.4 Search result navigation.** Tapping a result closes the list,
   navigates to the location, highlights the match in the rendered page.
   Enters result navigation mode per spec wireframe: bottom bar shows
   `◂  2 of 7  ▸` with arrows to cycle through results + ☰ button to
@@ -396,7 +396,7 @@ everything else depends on.
   jump to next/prev result regardless of current page. ✕ closes search and
   returns to reading position before search was opened (position stack).
 
-- [ ] **8.5 E2e: search.** Open reader, activate search (🔍 or `/` or
+- [x] **8.5 E2e: search.** Open reader, activate search (🔍 or `/` or
   Ctrl+F), type query, verify results list with chapter names and highlighted
   snippets, tap result, verify navigation + result navigation bar with ◂/▸
   and count.
