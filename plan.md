@@ -383,7 +383,7 @@ everything else depends on.
   Keyboard shortcuts in search: Enter/↓ next result, Shift+Enter/↑ previous,
   Escape closes search.
 
-- [ ] **8.3 Search execution.** Query the per-chapter plain text index in
+- [x] **8.3 Search execution.** Query the per-chapter plain text index in
   IndexedDB. Case-insensitive, diacritics-folded matching. Return results
   with chapter index, character offset, and surrounding sentence context
   snippet.

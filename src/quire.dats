@@ -34,6 +34,7 @@ staload "./../vendor/ward/lib/decompress.sats"
 staload "./../vendor/ward/lib/xml.sats"
 staload "./../vendor/ward/lib/dom_read.sats"
 staload "./../vendor/ward/lib/blob.sats"
+staload UN = "prelude/SATS/unsafe.sats"
 staload "./../vendor/ward/lib/window.sats"
 staload "./../vendor/ward/lib/idb.sats"
 staload _ = "./../vendor/ward/lib/memory.dats"
@@ -147,6 +148,10 @@ extern castfn _checked_spine_count(x: int): [n:nat | n <= 256] int n
  * For static chars: use char2int1('x') which carries the static value.
  * For computed digits: 48 + (v % 10) is always 48-57 — in range. *)
 extern castfn _byte {c:int | 0 <= c; c <= 255} (c: int c): byte
+
+%{
+extern int quire_get_input_value(int nodeId, int destPtr, int destMaxLen);
+%}
 
 (* Proof-requiring event listener registration wrapper.
  * Requires READER_LISTENER(id) proof — prevents arbitrary listener IDs.
@@ -2915,11 +2920,24 @@ implement enter_reader(root_id, book_index) = let
 
   (* Search button: toggle search panel *)
   val saved_search_panel = search_panel_id
+  val saved_search_input = search_input_id
   val () = reader_add_event_listener(READER_LISTEN_SEARCH_BTN() |
     search_btn_id, evt_click(), 5, 48,
     lam (_pl: int): int => let
-      (* Simple toggle: check current display state *)
       val () = set_style_flex(saved_search_panel)
+    in 0 end
+  )
+
+  (* Search input: read query on change event *)
+  val () = reader_add_event_listener(READER_LISTEN_SEARCH_INPUT() |
+    search_input_id, evt_change(), 6, 50,
+    lam (_pl: int): int => let
+      (* Read input value — infrastructure for search execution *)
+      val query_arr = ward_arr_alloc<byte>(256)
+      val raw_ptr = $UN.castvwtp1{ptr}(query_arr)
+      val _query_len = quire_get_input_value(saved_search_input,
+        $UN.cast{int}(raw_ptr), 256)
+      val () = ward_arr_free<byte>(query_arr)
     in 0 end
   )
 

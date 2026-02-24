@@ -41,6 +41,18 @@
             return window.matchMedia('(prefers-color-scheme: dark)').matches ? 1 : 0;
           } catch(e) { return 0; }
         },
+        quire_get_input_value(nodeId, destPtr, destMaxLen) {
+          // Read input element value, write UTF-8 to destPtr. Returns byte length.
+          if (!wardNodes || !wasmMem) return 0;
+          try {
+            const el = wardNodes.get(nodeId);
+            if (!el || !el.value) return 0;
+            const bytes = new TextEncoder().encode(el.value);
+            const copyLen = Math.min(bytes.length, destMaxLen);
+            new Uint8Array(wasmMem.buffer).set(bytes.subarray(0, copyLen), destPtr);
+            return copyLen;
+          } catch(e) { return 0; }
+        },
         quire_download_text(dataPtr, dataLen, namePtr, nameLen) {
           // Download text data as a file. Creates blob URL + <a download> click.
           if (!wasmMem) return;

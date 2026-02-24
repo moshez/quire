@@ -3322,5 +3322,49 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('search panel opens with input field', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+
+    const epubBuffer = createEpub({ title: 'Search Test', chapters: 2, paragraphsPerChapter: 3 });
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `search-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await page.locator('input[type="file"]').setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    // Search button should exist
+    const searchBtn = page.locator('button.search-btn');
+    await expect(searchBtn).toBeAttached();
+    await screenshot(page, 'search-01-btn-exists');
+
+    // Click search — panel should appear
+    await searchBtn.click();
+    await page.waitForTimeout(300);
+    const searchPanel = page.locator('.search-panel');
+    await expect(searchPanel).toBeVisible();
+    await screenshot(page, 'search-02-panel-open');
+
+    // Input field should be present
+    const searchInput = searchPanel.locator('input[type="text"]');
+    await expect(searchInput).toBeAttached();
+
+    // Type a query — should not crash
+    await searchInput.fill('mountain');
+    await page.waitForTimeout(500);
+    await screenshot(page, 'search-03-query-entered');
+
+    expect(errors).toEqual([]);
+  });
+
 
 });
