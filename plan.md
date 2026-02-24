@@ -315,7 +315,7 @@ everything else depends on.
 
 ## Phase 7 — Text Selection & Annotations
 
-- [ ] **7.1 Text selection detection.** Detect browser-native text selection
+- [x] **7.1 Text selection detection.** Detect browser-native text selection
   completion (long press on touch, click-drag on mouse). When selection exists,
   show a floating toolbar near the selection per spec wireframe:
   `│ 🖍 📝  📋  🔍  │` (Highlight, Note, Copy, Search for selection).
