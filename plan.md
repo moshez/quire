@@ -329,7 +329,7 @@ everything else depends on.
   (few words before/after for fuzzy re-anchoring), optional note text, chapter
   title + index, creation timestamp.
 
-- [ ] **7.3 Highlight rendering.** When pages enter the materialization
+- [x] **7.3 Highlight rendering.** When pages enter the materialization
   window, look up annotations for the visible range. Render highlights as
   styled overlays (colored background spans). Index annotations by page range
   for efficient lookup on page turns.
