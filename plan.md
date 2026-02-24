@@ -334,7 +334,7 @@ everything else depends on.
   styled overlays (colored background spans). Index annotations by page range
   for efficient lookup on page turns.
 
-- [ ] **7.4 Add/edit/delete notes on highlights.** Tap a highlight to open
+- [x] **7.4 Add/edit/delete notes on highlights.** Tap a highlight to open
   edit UI. Long-press context menu on highlight per spec wireframe: "Edit
   note", "Remove note" (keep highlight), "Delete highlight". Persist changes
   to IDB.
