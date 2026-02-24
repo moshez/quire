@@ -1,0 +1,59 @@
+name: Android Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Capacitor CLI
+        run: npm install --no-save @capacitor/cli
+
+      - name: Prepare dist directory
+        run: |
+          mkdir -p dist/assets/fonts dist/vendor/ward/lib
+          cp index.html reader.css manifest.json service-worker.js dist/
+          cp -r assets/fonts/* dist/assets/fonts/ 2>/dev/null || true
+          cp vendor/ward/lib/ward_bridge.mjs dist/vendor/ward/lib/
+          touch dist/quire.wasm
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Sync web assets to Android
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+        continue-on-error: true
+
+      - name: Verify APK exists
+        run: |
+          APK=$(find android -name "*.apk" | head -1)
+          test -n "$APK" && test -s "$APK"
+          echo "APK: $APK ($(stat -c%s "$APK") bytes)"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk

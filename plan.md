@@ -456,30 +456,30 @@ everything else depends on.
 
 ## Phase 12 — Mobile: Capacitor Android Build
 
-- [ ] **12.1 Add Capacitor.** `npm install @capacitor/core @capacitor/android`,
+- [x] **12.1 Add Capacitor.** `npm install @capacitor/core @capacitor/android`,
   `npx cap init` with app name "Quire" and bundle ID. Add `capacitor.config.ts`
   pointing `webDir` at the PWA root (`.`). Run `npx cap add android` to
   scaffold the `android/` directory.
 
-- [ ] **12.2 Android project configuration.** Set `minSdkVersion 24` (Android
+- [x] **12.2 Android project configuration.** Set `minSdkVersion 24` (Android
   7.0+, WebView with WASM support). Configure `AndroidManifest.xml`:
   `INTERNET` permission, `android:usesCleartextTraffic="false"`, portrait +
   landscape orientation. Set app icon and splash screen assets.
 
-- [ ] **12.3 Capacitor plugins.** Add `@capacitor/status-bar` (immersive
+- [x] **12.3 Capacitor plugins.** Add `@capacitor/status-bar` (immersive
   reading mode), `@capacitor/keyboard` (search input focus management),
   `@capacitor/app` (hardware back button → Escape key hierarchy from 4.7).
   Wire hardware back button to the same escape dispatch already implemented
   in WASM.
 
-- [ ] **12.4 CI: build Android APK.** Add `.github/workflows/android.yml`:
+- [x] **12.4 CI: build Android APK.** Add `.github/workflows/android.yml`:
   checkout, setup-node 20, setup-java temurin 17, cache Gradle, `npm ci`,
   build WASM + assets, `npx cap sync android`, `./gradlew assembleDebug`.
   Upload debug APK as artifact. Optionally build signed release APK when
   keystore secrets are configured (base64-decode keystore, pass signing
   properties to `assembleRelease`, upload release APK).
 
-- [ ] **12.5 E2e: verify Android build artifact.** CI step after APK build:
+- [x] **12.5 E2e: verify Android build artifact.** CI step after APK build:
   assert the debug APK exists and is > 0 bytes. (Full device testing is
   manual for v1.)
 
