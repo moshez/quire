@@ -37,7 +37,7 @@ fun annotation_get_count(): [n:nat | n <= 256] int(n)
 (* Add an annotation. Requires room (count < 256) and valid range.
  * Returns new count. *)
 fun annotation_add
-  {c,s,e,t:nat | s < e; c < t; c < 256}
+  {c,s,e,t:nat | s < e; c < t}
   (pf: ANNOTATION_VALID(c, s, e, t) |
    chapter: int(c), start_off: int(s), end_off: int(e),
    total_chapters: int(t)): void
