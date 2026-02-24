@@ -322,7 +322,7 @@ everything else depends on.
   Requires bridge event for selection change + range coordinates. Text
   selection cannot span a page boundary (spec-acknowledged limitation).
 
-- [ ] **7.2 Highlight storage.** IndexedDB object store for annotations,
+- [x] **7.2 Highlight storage.** IndexedDB object store for annotations,
   separate from book content (per spec: "enabling independent export and
   survival across book re-imports"). Keyed by book content hash. Each
   annotation: EPUB CFI (primary anchor), highlighted text, surrounding context
