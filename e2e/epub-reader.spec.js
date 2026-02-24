@@ -138,7 +138,14 @@ test.describe('EPUB Reader E2E', () => {
     await screenshot(page, '03-reader-chapter1');
 
     // --- Verify navigation bar UI ---
+    // Ensure chrome is visible (may have auto-hidden during chapter load)
     const readerNav = page.locator('.reader-nav');
+    const navVisible = await readerNav.isVisible();
+    if (!navVisible) {
+      const vp0 = page.viewportSize();
+      await page.mouse.click(vp0.width / 2, vp0.height / 2);
+      await page.waitForTimeout(500);
+    }
     await expect(readerNav).toBeVisible();
 
     const backBtn = page.locator('.back-btn');
