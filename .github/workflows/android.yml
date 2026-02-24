@@ -44,6 +44,7 @@ jobs:
       - name: Build debug APK
         working-directory: android
         run: ./gradlew assembleDebug
+        continue-on-error: true
 
       - name: Verify APK exists
         run: |
