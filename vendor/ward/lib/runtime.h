@@ -382,6 +382,12 @@ extern void ward_js_push_state(void *url, int url_len);
 /* DOM read JS imports */
 extern int ward_js_measure_node(int node_id);
 extern int ward_js_query_selector(void *selector, int selector_len);
+extern int ward_js_caret_position_from_point(int x, int y);
+extern int ward_js_read_text_content(int node_id);
+extern int ward_js_measure_text_offset(int node_id, int offset);
+extern int ward_js_get_selection_text(void);
+extern int ward_js_get_selection_rect(void);
+extern int ward_js_get_selection_range(void);
 
 /* Event listener JS imports */
 extern void ward_js_add_event_listener(int node_id, void *event_type, int type_len, int listener_id);
