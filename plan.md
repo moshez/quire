@@ -359,7 +359,7 @@ everything else depends on.
   resolve (slightly different structure), fuzzy text matching using stored
   surrounding context recovers the annotation position.
 
-- [ ] **7.8 E2e: annotations.** Select text in reader, highlight it, add
+- [x] **7.8 E2e: annotations.** Select text in reader, highlight it, add
   note, verify highlight persists across page turns and reload, verify
   annotation list shows the highlight with note. Export to Markdown, verify
   file structure matches spec format.
