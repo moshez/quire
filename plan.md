@@ -405,18 +405,18 @@ everything else depends on.
 
 ## Phase 9 — Footnotes & Links
 
-- [ ] **9.1 Footnote popup.** Intercept links with `epub:type="noteref"`.
+- [x] **9.1 Footnote popup.** Intercept links with `epub:type="noteref"`.
   Instead of navigating, show a popup near the reference per spec wireframe:
   bordered box with footnote content, ✕ dismiss button. Long footnotes scroll
   internally within the popup. Dismiss via ✕ or tap outside. Push position
   onto position stack. On touch: footnote link tap shows popup. On desktop:
   hover on footnote link changes cursor to indicate popup behavior.
 
-- [ ] **9.2 External link handling.** Links pointing outside the EPUB
+- [x] **9.2 External link handling.** Links pointing outside the EPUB
   (http/https) open in a new browser tab. Internal cross-chapter links
   navigate within the reader and push onto position stack.
 
-- [ ] **9.3 E2e: footnotes.** Open EPUB with footnotes, tap noteref link,
+- [x] **9.3 E2e: footnotes.** Open EPUB with footnotes, tap noteref link,
   verify popup appears with footnote content, verify ✕ dismisses.
 
 ---

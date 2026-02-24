@@ -36,8 +36,10 @@ fun quire_create_blob_url(
   mime_ptr: int, mime_len: int,
   dest_ptr: int, dest_max_len: int): int = "mac#quire_create_blob_url"
 
-(* Download text data as a file via browser download dialog.
- * data/name are raw WASM memory offsets. *)
+(* Setup link click handler on chapter container.
+ * External links open in new tab, footnote links intercepted for popup. *)
+fun quire_setup_link_handler(container_node_id: int): void = "mac#quire_setup_link_handler"
+
 (* Read input element value as UTF-8. Writes to dest buffer, returns byte length. *)
 fun quire_get_input_value(
   node_id: int, dest_ptr: int, dest_max_len: int): int = "mac#quire_get_input_value"
