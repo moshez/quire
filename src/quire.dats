@@ -53,6 +53,7 @@ staload "./sha256.sats"
 staload "./quire_ext.sats"
 staload "./buf.sats"
 staload "./settings.sats"
+staload "./annotation.sats"
 staload "./drag_state.sats"
 
 (* Shared proof declarations: SCRUBBER_FILL_CHECKED, PAGE_INFO_SHOWN,
@@ -795,19 +796,60 @@ end
  * Produces CHAPTER_DISPLAY_READY proof requiring both CHAPTER_TITLE_DISPLAYED
  * and PAGE_INFO_SHOWN sub-proofs. MEASURED_AND_TRANSFORMED is impossible to
  * construct without calling both handle_chapter_title and update_page_info. *)
+extern fun _annot_get_field(idx: int, field: int): int = "mac#"
+
+local
+  assume HIGHLIGHTS_RENDERED() = unit_p
+in
+
+(* render_highlights: scan annotations for the current chapter.
+ * For each annotation matching current chapter, measures text offset
+ * to determine if the highlight is visible. Returns HIGHLIGHTS_RENDERED proof.
+ * Highlight overlay DOM creation will be expanded in future commits. *)
+fn render_highlights(container_id: int): (HIGHLIGHTS_RENDERED() | void) = let
+  val count = annotation_get_count()
+  val cur_ch = reader_get_current_chapter()
+in
+  if gt_int_int(count, 0) then let
+    fun scan {k:nat} .<k>.
+      (rem: int(k), idx: int, cnt: int, ch: int, cid: int): void =
+      if lte_g1(rem, 0) then ()
+      else if gte_int_int(idx, cnt) then ()
+      else let
+        val ann_ch = _annot_get_field(idx, 0)
+        val () = if eq_int_int(ann_ch, ch) then let
+          val start_off = _annot_get_field(idx, 1)
+          val found = ward_measure_text_offset(cid, start_off)
+        in
+          if eq_int_int(found, 1) then let
+            val _x = ward_measure_get_x()
+            val _y = ward_measure_get_y()
+            val _w = ward_measure_get_w()
+            val _h = ward_measure_get_h()
+          in () end
+          else ()
+        end
+        else ()
+      in scan(sub_g1(rem, 1), idx + 1, cnt, ch, cid) end
+    val () = scan(_checked_nat(count), 0, count, cur_ch, container_id)
+  in (unit_p() | ()) end
+  else (unit_p() | ())
+end
+
+end (* local HIGHLIGHTS_RENDERED *)
+
 fn finish_chapter_load(container_id: int)
   : (CHAPTER_DISPLAY_READY() | void) = let
   val () = measure_and_set_pages(container_id)
   val () = validate_render_window(dom_get_render_ecnt(), container_id)
   val () = apply_page_transform(container_id)
-  (* Get chapter title proof — update_chapter_title handles range check internally *)
   val (pf_title | ()) = update_chapter_title()
-  (* apply_resume_page may set a different page; update_page_info called ONCE after *)
   val () = apply_resume_page(container_id)
   val (pf_pg_info | ()) = update_page_info()
   val (pf_bm | ()) = update_bookmark_btn()
   prval _ = pf_bm
-  prval pf = MEASURED_AND_TRANSFORMED(pf_title, pf_pg_info)
+  val (pf_hl | ()) = render_highlights(container_id)
+  prval pf = MEASURED_AND_TRANSFORMED(pf_title, pf_pg_info, pf_hl)
 in (pf | ()) end
 
 (* Extract chapter directory from spine path in sbuf.

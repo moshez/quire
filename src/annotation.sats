@@ -45,8 +45,8 @@ fun annotation_add
 (* Remove annotation at index *)
 fun annotation_remove(idx: int): void
 
-(* Get annotation fields by index *)
-fun annotation_get_chapter(idx: int): int
-fun annotation_get_start(idx: int): int
-fun annotation_get_end(idx: int): int
-fun annotation_get_timestamp(idx: int): int
+(* Get annotation fields by index — requires bounded index *)
+fun annotation_get_chapter{n:pos}{i:nat | i < n}(count: int(n), idx: int(i)): [c:nat] int(c)
+fun annotation_get_start{n:pos}{i:nat | i < n}(count: int(n), idx: int(i)): [s:nat] int(s)
+fun annotation_get_end{n:pos}{i:nat | i < n}(count: int(n), idx: int(i)): [e:nat] int(e)
+fun annotation_get_timestamp{n:pos}{i:nat | i < n}(count: int(n), idx: int(i)): int
