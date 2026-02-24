@@ -240,6 +240,13 @@ fun epub_load_manifest(): ward_promise_chained(int)
  * the constraint solver the sign information in each branch. *)
 fun epub_find_resource(path_len: int): [r:int | r >= ~1] int(r)
 
+(* Check if manifest entry at index has a font file extension.
+ * Returns 1 if name ends with .woff2/.woff/.ttf/.otf, 0 otherwise. *)
+fun epub_is_font_entry(entry_idx: int): int
+
+(* Get manifest entry count. *)
+fun epub_get_manifest_entry_count(): [n:nat] int(n)
+
 (* Copy book_id from library slot to epub module state.
  * Requires BOOK_ACCESS_SAFE proof — proves index is within buffer bounds.
  * Returns bid_len clamped to [0, 64]. *)

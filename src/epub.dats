@@ -1345,6 +1345,82 @@ implement epub_find_resource(path_len) = let
     end
 in scan(_checked_nat(count), 0, count, path_len) end
 
+(* ========== epub_get_manifest_entry_count ========== *)
+
+implement epub_get_manifest_entry_count() = let
+  val c = _app_epub_manifest_count()
+in
+  if c >= 0 then _checked_nat(c)
+  else _checked_nat(0)
+end
+
+(* ========== epub_is_font_entry ========== *)
+
+(* Check last bytes of manifest entry name for font extensions.
+ * Compares lowercased suffix against .woff2, .woff, .ttf, .otf *)
+implement epub_is_font_entry(entry_idx) = let
+  val count = _app_epub_manifest_count()
+in
+  if lt_int_int(entry_idx, 0) then 0
+  else if gte_int_int(entry_idx, count) then 0
+  else let
+    val noff = _app_epub_manifest_offsets_get_i32(entry_idx)
+    val nlen = _app_epub_manifest_lens_get_i32(entry_idx)
+  in
+    if lt_int_int(nlen, 4) then 0
+    else let
+      (* Read last 6 bytes for extension check *)
+      val b1 = bor_int_int(_app_epub_manifest_names_get_u8(noff + nlen - 1), 32)
+      val b2 = bor_int_int(_app_epub_manifest_names_get_u8(noff + nlen - 2), 32)
+      val b3 = bor_int_int(_app_epub_manifest_names_get_u8(noff + nlen - 3), 32)
+      val b4 = bor_int_int(_app_epub_manifest_names_get_u8(noff + nlen - 4), 32)
+    in
+      (* .ttf: 116 116 102 46 *)
+      if eq_int_int(b1, 102) then (* 'f' *)
+        if eq_int_int(b2, 116) then (* 't' *)
+          if eq_int_int(b3, 116) then (* 't' *)
+            if eq_int_int(b4, 46) then 1 (* '.' → .ttf *)
+            else 0
+          else if eq_int_int(b3, 111) then (* 'o' *)
+            if eq_int_int(b4, 46) then 1 (* '.' → .otf *)
+            else 0
+          else 0
+        else if eq_int_int(b2, 102) then (* 'f' *)
+          if eq_int_int(b3, 111) then (* 'o' *)
+            if eq_int_int(b4, 119) then (* 'w' *)
+              if gte_int_int(nlen, 5) then let
+                val b5 = bor_int_int(_app_epub_manifest_names_get_u8(noff + nlen - 5), 32)
+              in
+                if eq_int_int(b5, 46) then 1 (* '.' → .woff *)
+                else 0
+              end
+              else 0
+            else 0
+          else 0
+        else 0
+      (* .woff2: check for '2' at end *)
+      else if eq_int_int(b1, 50) then (* '2' *)
+        if gte_int_int(nlen, 6) then let
+          val b5 = bor_int_int(_app_epub_manifest_names_get_u8(noff + nlen - 5), 32)
+          val b6 = bor_int_int(_app_epub_manifest_names_get_u8(noff + nlen - 6), 32)
+        in
+          if eq_int_int(b2, 102) then (* 'f' *)
+            if eq_int_int(b3, 102) then (* 'f' *)
+              if eq_int_int(b4, 111) then (* 'o' *)
+                if eq_int_int(b5, 119) then (* 'w' *)
+                  if eq_int_int(b6, 46) then 1 (* '.' → .woff2 *)
+                  else 0
+                else 0
+              else 0
+            else 0
+          else 0
+        end
+        else 0
+      else 0
+    end
+  end
+end
+
 (* ========== epub_set_book_id_from_library ========== *)
 
 (* Constants eliminated: uses library_rec_ints/bytes as single source of truth.
