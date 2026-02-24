@@ -339,7 +339,7 @@ everything else depends on.
   note", "Remove note" (keep highlight), "Delete highlight". Persist changes
   to IDB.
 
-- [ ] **7.5 Annotations list panel.** Per spec wireframe: accessed from ⋯
+- [x] **7.5 Annotations list panel.** Per spec wireframe: accessed from ⋯
   overflow menu in reading chrome. Mobile: full-screen overlay with header
   `✕  Annotations  Export`. Desktop: sidebar alongside reading content.
   Highlights grouped by chapter with chapter name as section header. Each
