@@ -194,9 +194,116 @@ local
   assume SETTINGS_APPLIED() = unit_p
 in
 
+(* Dark mode CSS: invert chapter container colors, preserve images.
+ * "filter:invert(1) hue-rotate(180deg)" inverts all colors while
+ * preserving hue relationships. Apply reverse filter on images. *)
+#define DARK_CSS_LEN 128
+
+fn _inject_dark_mode_css(container_id: int): void = let
+  (* CSS: .chapter-container{filter:invert(1) hue-rotate(180deg)}
+   *      .chapter-container img{filter:invert(1) hue-rotate(180deg)} *)
+  val arr = ward_arr_alloc<byte>(DARK_CSS_LEN)
+  (* Build: "filter:invert(1) hue-rotate(180deg)" = 39 chars *)
+  val filter_css = "filter:invert(1) hue-rotate(180deg)"
+  (* Use a simple approach: set the style directly on the container *)
+in
+  if gt_int_int(container_id, 0) then let
+    val style_arr = ward_arr_alloc<byte>(48)
+    (* "filter:invert(1) hue-rotate(180deg)" = 39 bytes *)
+    val () = ward_arr_set<byte>(style_arr, 0, _byte(102))   (* f *)
+    val () = ward_arr_set<byte>(style_arr, 1, _byte(105))   (* i *)
+    val () = ward_arr_set<byte>(style_arr, 2, _byte(108))   (* l *)
+    val () = ward_arr_set<byte>(style_arr, 3, _byte(116))   (* t *)
+    val () = ward_arr_set<byte>(style_arr, 4, _byte(101))   (* e *)
+    val () = ward_arr_set<byte>(style_arr, 5, _byte(114))   (* r *)
+    val () = ward_arr_set<byte>(style_arr, 6, _byte(58))    (* : *)
+    val () = ward_arr_set<byte>(style_arr, 7, _byte(105))   (* i *)
+    val () = ward_arr_set<byte>(style_arr, 8, _byte(110))   (* n *)
+    val () = ward_arr_set<byte>(style_arr, 9, _byte(118))   (* v *)
+    val () = ward_arr_set<byte>(style_arr, 10, _byte(101))  (* e *)
+    val () = ward_arr_set<byte>(style_arr, 11, _byte(114))  (* r *)
+    val () = ward_arr_set<byte>(style_arr, 12, _byte(116))  (* t *)
+    val () = ward_arr_set<byte>(style_arr, 13, _byte(40))   (* ( *)
+    val () = ward_arr_set<byte>(style_arr, 14, _byte(49))   (* 1 *)
+    val () = ward_arr_set<byte>(style_arr, 15, _byte(41))   (* ) *)
+    val () = ward_arr_set<byte>(style_arr, 16, _byte(32))   (* ' ' *)
+    val () = ward_arr_set<byte>(style_arr, 17, _byte(104))  (* h *)
+    val () = ward_arr_set<byte>(style_arr, 18, _byte(117))  (* u *)
+    val () = ward_arr_set<byte>(style_arr, 19, _byte(101))  (* e *)
+    val () = ward_arr_set<byte>(style_arr, 20, _byte(45))   (* - *)
+    val () = ward_arr_set<byte>(style_arr, 21, _byte(114))  (* r *)
+    val () = ward_arr_set<byte>(style_arr, 22, _byte(111))  (* o *)
+    val () = ward_arr_set<byte>(style_arr, 23, _byte(116))  (* t *)
+    val () = ward_arr_set<byte>(style_arr, 24, _byte(97))   (* a *)
+    val () = ward_arr_set<byte>(style_arr, 25, _byte(116))  (* t *)
+    val () = ward_arr_set<byte>(style_arr, 26, _byte(101))  (* e *)
+    val () = ward_arr_set<byte>(style_arr, 27, _byte(40))   (* ( *)
+    val () = ward_arr_set<byte>(style_arr, 28, _byte(49))   (* 1 *)
+    val () = ward_arr_set<byte>(style_arr, 29, _byte(56))   (* 8 *)
+    val () = ward_arr_set<byte>(style_arr, 30, _byte(48))   (* 0 *)
+    val () = ward_arr_set<byte>(style_arr, 31, _byte(100))  (* d *)
+    val () = ward_arr_set<byte>(style_arr, 32, _byte(101))  (* e *)
+    val () = ward_arr_set<byte>(style_arr, 33, _byte(103))  (* g *)
+    val () = ward_arr_set<byte>(style_arr, 34, _byte(41))   (* ) *)
+    val @(used, rest) = ward_arr_split<byte>(style_arr, 35)
+    val () = ward_arr_free<byte>(rest)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_set_style(s, container_id, borrow, 35)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = ward_arr_drop<byte>(frozen, borrow)
+    val used = ward_arr_thaw<byte>(frozen)
+    val () = ward_arr_free<byte>(used)
+    val () = ward_arr_free<byte>(arr)
+  in end
+  else ward_arr_free<byte>(arr)
+end
+
+fn _clear_dark_mode_css(container_id: int): void = let
+in
+  if gt_int_int(container_id, 0) then let
+    (* Set empty style to clear the filter *)
+    val arr = ward_arr_alloc<byte>(12)
+    val () = ward_arr_set<byte>(arr, 0, _byte(102))  (* f *)
+    val () = ward_arr_set<byte>(arr, 1, _byte(105))  (* i *)
+    val () = ward_arr_set<byte>(arr, 2, _byte(108))  (* l *)
+    val () = ward_arr_set<byte>(arr, 3, _byte(116))  (* t *)
+    val () = ward_arr_set<byte>(arr, 4, _byte(101))  (* e *)
+    val () = ward_arr_set<byte>(arr, 5, _byte(114))  (* r *)
+    val () = ward_arr_set<byte>(arr, 6, _byte(58))   (* : *)
+    val () = ward_arr_set<byte>(arr, 7, _byte(110))  (* n *)
+    val () = ward_arr_set<byte>(arr, 8, _byte(111))  (* o *)
+    val () = ward_arr_set<byte>(arr, 9, _byte(110))  (* n *)
+    val () = ward_arr_set<byte>(arr, 10, _byte(101)) (* e *)
+    val @(used, rest) = ward_arr_split<byte>(arr, 11)
+    val () = ward_arr_free<byte>(rest)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_set_style(s, container_id, borrow, 11)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = ward_arr_drop<byte>(frozen, borrow)
+    val used = ward_arr_thaw<byte>(frozen)
+    val () = ward_arr_free<byte>(used)
+  in end
+  else ()
+end
+
 implement settings_apply() = let
   val active = reader_is_active()
-  val () = if eq_int_int(active, 1) then reader_remeasure_all() else ()
+  val () = if eq_int_int(active, 1) then let
+    val () = reader_remeasure_all()
+    (* Apply dark mode inversion if theme is dark *)
+    val resolved = settings_resolve_theme()
+    val cid = reader_get_container_id()
+  in
+    if eq_int_int(resolved, 1) then _inject_dark_mode_css(cid)
+    else _clear_dark_mode_css(cid)
+  end
+  else ()
 in (unit_p() | ()) end
 
 end (* local SETTINGS_APPLIED *)
