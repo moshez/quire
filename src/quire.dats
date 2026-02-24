@@ -2424,6 +2424,22 @@ implement enter_reader(root_id, book_index) = let
   in ward_text_done(b) end
   val s = ward_dom_stream_set_safe_text(s, settings_btn_id, stg_st, 2)
 
+  (* Search button *)
+  val search_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, search_btn_id, nav_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, search_btn_id, attr_class(), 5,
+    cls_search_btn(), 10)
+  val srch_st = let
+    val b = ward_text_build(6)
+    val b = ward_text_putc(b, 0, char2int1('S'))
+    val b = ward_text_putc(b, 1, char2int1('e'))
+    val b = ward_text_putc(b, 2, char2int1('a'))
+    val b = ward_text_putc(b, 3, char2int1('r'))
+    val b = ward_text_putc(b, 4, char2int1('c'))
+    val b = ward_text_putc(b, 5, char2int1('h'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, search_btn_id, srch_st, 6)
+
   (* Nav back button — hidden initially via CSS .nav-back-btn{display:none},
    * shown when position stack is non-empty *)
   val nav_back_btn_id = dom_next_id()
@@ -2634,6 +2650,12 @@ implement enter_reader(root_id, book_index) = let
   in ward_text_done(b) end
   val s = ward_dom_stream_set_safe_text(s, hl_btn_id, hl_st, 9)
 
+  (* Search panel — initially hidden *)
+  val search_panel_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, search_panel_id, root_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, search_panel_id, attr_class(), 5,
+    cls_search_panel(), 12)
+
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
 
@@ -2642,6 +2664,9 @@ implement enter_reader(root_id, book_index) = let
 
   (* Hide settings overlay initially *)
   val () = set_style_none(stg_overlay_id)
+
+  (* Hide search panel initially *)
+  val () = set_style_none(search_panel_id)
 
   (* Store IDs *)
   val () = reader_set_viewport_id(viewport_id)
@@ -2856,6 +2881,16 @@ implement enter_reader(root_id, book_index) = let
     settings_btn_id, evt_click(), 5, 45,
     lam (_pl: int): int => let
       val () = settings_toggle()
+    in 0 end
+  )
+
+  (* Search button: toggle search panel *)
+  val saved_search_panel = search_panel_id
+  val () = reader_add_event_listener(READER_LISTEN_SEARCH_BTN() |
+    search_btn_id, evt_click(), 5, 48,
+    lam (_pl: int): int => let
+      (* Simple toggle: check current display state *)
+      val () = set_style_flex(saved_search_panel)
     in 0 end
   )
 

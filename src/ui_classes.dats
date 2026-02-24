@@ -260,6 +260,38 @@ implement evt_selectionchange() = let
   val b = ward_text_putc(b, 14, char2int1('e'))
 in ward_text_done(b) end
 
+(* "search-btn" = 10 chars *)
+implement cls_search_btn() = let
+  val b = ward_text_build(10)
+  val b = ward_text_putc(b, 0, char2int1('s'))
+  val b = ward_text_putc(b, 1, char2int1('e'))
+  val b = ward_text_putc(b, 2, char2int1('a'))
+  val b = ward_text_putc(b, 3, char2int1('r'))
+  val b = ward_text_putc(b, 4, char2int1('c'))
+  val b = ward_text_putc(b, 5, char2int1('h'))
+  val b = ward_text_putc(b, 6, 45) (* '-' *)
+  val b = ward_text_putc(b, 7, char2int1('b'))
+  val b = ward_text_putc(b, 8, char2int1('t'))
+  val b = ward_text_putc(b, 9, char2int1('n'))
+in ward_text_done(b) end
+
+(* "search-panel" = 12 chars *)
+implement cls_search_panel() = let
+  val b = ward_text_build(12)
+  val b = ward_text_putc(b, 0, char2int1('s'))
+  val b = ward_text_putc(b, 1, char2int1('e'))
+  val b = ward_text_putc(b, 2, char2int1('a'))
+  val b = ward_text_putc(b, 3, char2int1('r'))
+  val b = ward_text_putc(b, 4, char2int1('c'))
+  val b = ward_text_putc(b, 5, char2int1('h'))
+  val b = ward_text_putc(b, 6, 45) (* '-' *)
+  val b = ward_text_putc(b, 7, char2int1('p'))
+  val b = ward_text_putc(b, 8, char2int1('a'))
+  val b = ward_text_putc(b, 9, char2int1('n'))
+  val b = ward_text_putc(b, 10, char2int1('e'))
+  val b = ward_text_putc(b, 11, char2int1('l'))
+in ward_text_done(b) end
+
 implement cls_book_card() = let
   val b = ward_text_build(9)
   val b = ward_text_putc(b, 0, char2int1('b'))

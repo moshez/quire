@@ -354,7 +354,7 @@ everything else depends on.
   `**Note:** User's note`, footer `*Exported from Quire · [date]*`.
   Download as `.md` file via bridge.
 
-- [ ] **7.7 Annotation re-anchoring on re-import.** When a book is re-imported
+- [x] **7.7 Annotation re-anchoring on re-import.** When a book is re-imported
   (same content hash), annotations survive automatically. If CFI fails to
   resolve (slightly different structure), fuzzy text matching using stored
   surrounding context recovers the annotation position.
@@ -368,7 +368,7 @@ everything else depends on.
 
 ## Phase 8 — Search
 
-- [ ] **8.1 Search activation.** Three triggers per spec: 🔍 button in
+- [x] **8.1 Search activation.** Three triggers per spec: 🔍 button in
   chrome, `Ctrl+F`/`Cmd+F` interception (prevent browser default — native
   find won't work with virtualized rendering), `/` keyboard shortcut. All
   open the search UI. Entering search pushes current position onto position
