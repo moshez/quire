@@ -16,7 +16,7 @@ staload _ = "./../vendor/ward/lib/memory.dats"
 staload UN = "prelude/SATS/unsafe.sats"
 
 %{
-extern void quire_download_text(void *data, int data_len, void *name, int name_len);
+extern void quire_download_text(int data, int data_len, int name, int name_len);
 %}
 
 extern castfn _byte {c:int | 0 <= c; c <= 255} (c: int c): byte
