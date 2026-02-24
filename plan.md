@@ -368,7 +368,7 @@ everything else depends on.
 
 ## Phase 8 — Search
 
-- [ ] **8.1 Search activation.** Three triggers per spec: 🔍 button in
+- [x] **8.1 Search activation.** Three triggers per spec: 🔍 button in
   chrome, `Ctrl+F`/`Cmd+F` interception (prevent browser default — native
   find won't work with virtualized rendering), `/` keyboard shortcut. All
   open the search UI. Entering search pushes current position onto position
