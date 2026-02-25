@@ -15,7 +15,7 @@
 
 ## Wave 3 — Library card cleanup
 
-- [ ] **L3** Remove inline Read/Hide/Archive buttons; primary card tap opens book; right-click/long-press opens context menu
+- [x] **L3** Remove inline Read/Hide/Archive buttons; primary card tap opens book; right-click/long-press opens context menu
 - [ ] **L4** Thicker progress bar (4–6px); move percentage next to bar rather than inline with title
 
 ## Wave 4 — Library toolbar restructure
