@@ -48,9 +48,8 @@ test.describe('Smoke', () => {
     const bookTitle = page.locator('.book-title');
     await expect(bookTitle).toContainText('Smoke Test');
 
-    // Open book — reader renders
-    const readBtn = page.locator('.read-btn');
-    await readBtn.click();
+    // Open book — L3: card click opens book (no inline Read button)
+    await page.locator('.book-card').click();
     await page.waitForSelector('.chapter-container', { timeout: 15000 });
 
     await page.waitForFunction(() => {
