@@ -853,11 +853,7 @@ in true end
  * 480 <= 680 <= 800 at compile time.
  * ================================================================ *)
 
-(* UNIT TEST *)
-fun test_column_cap_valid(): bool(true) = let
-  prval pf = COLUMN_CAP_OK()
-  prval _ = pf : TEXT_COLUMN_CAP_VALID(CSS_MAX_COL_WIDTH_PX)
-in true end
+(* Test 27 removed — R6 max-width broke column pagination *)
 
 (* ================================================================
  * Test 28: CHILD_MARGIN_SUFFICIENT dataprop (R7)

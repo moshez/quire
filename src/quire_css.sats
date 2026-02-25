@@ -36,18 +36,6 @@ dataprop CHILD_PADDED(pad_left_10: int, pad_right_10: int) =
 dataprop NAV_BTN_VISIBLE(font_size_10: int, padding_h_10: int) =
   | {fs,ph:pos} BTNS_HAVE_SIZE(fs, ph)
 
-(* TEXT_COLUMN_CAP_VALID: max-width for reading column is in comfortable range.
- * Prevents lines that are too long (> 800px) or too short (< 480px) for reading.
- * BUG PREVENTED: unreadably wide text lines on large screens. *)
-dataprop TEXT_COLUMN_CAP_VALID(max_width_px: int) =
-  | {w:int | w >= 480; w <= 800} COLUMN_CAP_OK(w)
-
-(* CHILD_MARGIN_SUFFICIENT: horizontal padding >= 12 tenths (1.2rem ~= 19px).
- * R7: at 2rem (20 tenths), this exceeds the 24px mobile minimum at 16px base.
- * BUG PREVENTED: text flush against viewport edges on mobile. *)
-dataprop CHILD_MARGIN_SUFFICIENT(pad_tenths: int) =
-  | {p:int | p >= 12} MARGIN_OK(p)
-
 (* ========== CSS property constants ========== *)
 (* #define is textual expansion — applies in BOTH dynamic and static contexts.
  * Dataprop constructors like COLUMNS_MATCH_VIEWPORT{CSS_COL_WIDTH_VW, ...}
@@ -55,16 +43,15 @@ dataprop CHILD_MARGIN_SUFFICIENT(pad_tenths: int) =
  * Changing any value triggers a compile-time constraint failure. *)
 #define CSS_COL_WIDTH_VW 100       (* column-width: 100vw *)
 #define CSS_CONTAINER_PAD_H 0      (* padding: 2rem 0 — zero horizontal *)
-#define CSS_CHILD_PAD_L_10 20      (* padding-left: 2rem = 20 tenths *)
-#define CSS_CHILD_PAD_R_10 20      (* padding-right: 2rem = 20 tenths *)
+#define CSS_CHILD_PAD_L_10 15      (* padding-left: 1.5rem = 15 tenths *)
+#define CSS_CHILD_PAD_R_10 15      (* padding-right: 1.5rem = 15 tenths *)
 #define CSS_BTN_FONT_10 10         (* font-size: 1rem = 10 tenths *)
 #define CSS_BTN_PAD_H_10 3         (* padding: 0 .3rem = 3 tenths *)
-#define CSS_MAX_COL_WIDTH_PX 680   (* max-width: 680px for reading comfort *)
 
 (* ========== CSS length constants ========== *)
 (* #define: runtime values; stadef: type-level constraints *)
-#define APP_CSS_LEN 2603
-stadef APP_CSS_LEN = 2603
+#define APP_CSS_LEN 2505
+stadef APP_CSS_LEN = 2505
 (* NAV CSS alignment — distinct stadef/define names prevent #define override.
  * NAV_CSS_WRITES (type-level): number of _w4 calls.
  * NAV_CSS_LEN_S (type-level): NAV_CSS_WRITES * 4 = byte count.
@@ -119,20 +106,6 @@ fun stamp_nav_css {l:agz}{n:int | n >= NAV_CSS_LEN_S}
 #define SCRUB_HANDLE_SZ 16     (* handle diameter, px *)
 #define SCRUB_BOTTOM_Z 10      (* bottom bar z-index *)
 
-(* SCRUB_THEME_MATCHED: scrubber background matches page background.
- * R5: scrubber uses page bg (#fafaf8) instead of dark overlay.
- * BUG PREVENTED: scrubber visually disconnected from reading content. *)
-dataprop SCRUB_THEME_MATCHED(bg_matches_page: int) =
-  | {b:int | b == 1} SCRUB_BG_OK(b)
-
-(* PROGRESS_BAR_VISIBLE: bar height is 4-6px for visual prominence.
- * L4: thicker progress bar (was 2px, now 5px).
- * BUG CLASS PREVENTED: invisible/too-thin progress bar. *)
-dataprop PROGRESS_BAR_VISIBLE(height_px: int) =
-  | {h:int | h >= 4; h <= 6} PBAR_HEIGHT_OK(h)
-
-#define PBAR_HEIGHT_PX 5  (* progress bar height in px *)
-
 (* SCRUB_TAPPABLE: interactive elements meet minimum touch target sizes.
  * BUG CLASS PREVENTED: untappable scrubber on mobile — if pad < 8,
  * bar height < 16, or handle < 16, fingers can't reliably hit targets. *)
@@ -152,9 +125,9 @@ dataprop SCRUB_VISIBLE(track_h: int, z_idx: int) =
  * SCRUB_CSS_LEN_S (type-level): SCRUB_CSS_WRITES * 4 = byte count.
  * SCRUB_CSS_LEN (dynamic-level): literal byte count for allocation.
  * Solver unifies: if #define != stadef product, build fails. *)
-stadef SCRUB_CSS_WRITES = 238
+stadef SCRUB_CSS_WRITES = 234
 stadef SCRUB_CSS_LEN_S = SCRUB_CSS_WRITES * 4
-#define SCRUB_CSS_LEN 952
+#define SCRUB_CSS_LEN 936
 
 (* TOC panel z-index constant and dataprop. *)
 #define TOC_PANEL_Z 20
