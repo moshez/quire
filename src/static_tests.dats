@@ -910,3 +910,15 @@ fun test_scrub_theme_matched(): bool(true) = let
   prval pf = SCRUB_BG_OK()
   prval _ = pf : SCRUB_THEME_MATCHED(1)
 in true end
+
+(* ================================================================
+ * Test 32: CARD_CLICK_OPENS_BOOK (L3)
+ *
+ * Verifies that library cards open books on click (no inline buttons).
+ * ================================================================ *)
+
+(* UNIT TEST *)
+fun test_card_click_opens_book(): bool(true) = let
+  prval pf = CARD_OPENS_BOOK()
+  prval _ = pf : CARD_CLICK_OPENS_BOOK(1)
+in true end
