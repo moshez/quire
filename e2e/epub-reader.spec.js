@@ -3543,5 +3543,37 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('R5: scrubber has light background matching page', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    const epubBuffer = createEpub({ title: 'Scrub Style Test', chapters: 1, paragraphsPerChapter: 10 });
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `r5-scrub-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await page.locator('input[type="file"]').setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    // Verify scrubber bottom bar has light background (not dark)
+    const bottomStyle = await page.evaluate(() => {
+      const bottom = document.querySelector('.reader-bottom');
+      if (!bottom) return null;
+      const cs = getComputedStyle(bottom);
+      return { bg: cs.backgroundColor, borderTop: cs.borderTop };
+    });
+    expect(bottomStyle).not.toBeNull();
+    // Background should NOT be dark (rgba(0,0,0,...))
+    expect(bottomStyle.bg).not.toContain('rgba(0, 0, 0');
+    await screenshot(page, 'r5-01-light-scrubber');
+    expect(errors).toEqual([]);
+  });
+
 
 });

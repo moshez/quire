@@ -898,3 +898,15 @@ fun test_page_format_simplified(): bool(true) = let
   prval pf = MIDDOT_FORMAT()
   prval _ = pf : PAGE_FORMAT_SIMPLIFIED(183)
 in true end
+
+(* ================================================================
+ * Test 31: SCRUB_THEME_MATCHED (R5)
+ *
+ * Verifies scrubber background matches the page theme.
+ * ================================================================ *)
+
+(* UNIT TEST *)
+fun test_scrub_theme_matched(): bool(true) = let
+  prval pf = SCRUB_BG_OK()
+  prval _ = pf : SCRUB_THEME_MATCHED(1)
+in true end

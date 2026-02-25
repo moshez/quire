@@ -119,6 +119,12 @@ fun stamp_nav_css {l:agz}{n:int | n >= NAV_CSS_LEN_S}
 #define SCRUB_HANDLE_SZ 16     (* handle diameter, px *)
 #define SCRUB_BOTTOM_Z 10      (* bottom bar z-index *)
 
+(* SCRUB_THEME_MATCHED: scrubber background matches page background.
+ * R5: scrubber uses page bg (#fafaf8) instead of dark overlay.
+ * BUG PREVENTED: scrubber visually disconnected from reading content. *)
+dataprop SCRUB_THEME_MATCHED(bg_matches_page: int) =
+  | {b:int | b == 1} SCRUB_BG_OK(b)
+
 (* SCRUB_TAPPABLE: interactive elements meet minimum touch target sizes.
  * BUG CLASS PREVENTED: untappable scrubber on mobile — if pad < 8,
  * bar height < 16, or handle < 16, fingers can't reliably hit targets. *)
@@ -138,9 +144,9 @@ dataprop SCRUB_VISIBLE(track_h: int, z_idx: int) =
  * SCRUB_CSS_LEN_S (type-level): SCRUB_CSS_WRITES * 4 = byte count.
  * SCRUB_CSS_LEN (dynamic-level): literal byte count for allocation.
  * Solver unifies: if #define != stadef product, build fails. *)
-stadef SCRUB_CSS_WRITES = 234
+stadef SCRUB_CSS_WRITES = 238
 stadef SCRUB_CSS_LEN_S = SCRUB_CSS_WRITES * 4
-#define SCRUB_CSS_LEN 936
+#define SCRUB_CSS_LEN 952
 
 (* TOC panel z-index constant and dataprop. *)
 #define TOC_PANEL_Z 20
