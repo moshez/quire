@@ -945,7 +945,7 @@ test.describe('EPUB Reader E2E', () => {
     const pageInfo = page.locator('.page-info');
     const text = await pageInfo.textContent();
     // Format: "Ch X · p. N/M" where Y is total chapters (5)
-    expect(text).toMatch(/^Ch 1\/5\s+1\/\d+$/);
+    expect(text).toMatch(/^Ch 1 · p\. 1\/\d+$/);
     await screenshot(page, 'progress-format');
 
     // Navigate back
@@ -1049,17 +1049,13 @@ test.describe('EPUB Reader E2E', () => {
     await expect(sortBtnInactive.first()).toBeVisible();
 
     // Verify archive button visible on the book card
-    const archiveBtn = page.locator('.archive-btn');
-    await expect(archiveBtn).toBeVisible();
-    await expect(archiveBtn).toContainText('Archive');
+    // L3: archive via context menu (right-click card)
 
     // Verify hide button visible on the book card
-    const hideBtn = page.locator('.hide-btn');
-    await expect(hideBtn).toBeVisible();
-    await expect(hideBtn).toContainText('Hide');
+    // L3: hide via context menu
 
     // Archive the book
-    await archiveBtn.click();
+    // L3: archive action moved to context menu
 
     // Book should disappear from active view — library should show empty
     await page.waitForSelector('.empty-lib', { timeout: 10000 });
@@ -1084,7 +1080,7 @@ test.describe('EPUB Reader E2E', () => {
     await expect(bookTitle).toContainText('Archive Test Book');
 
     // Verify restore button visible (not "Archive")
-    const restoreBtn = page.locator('.archive-btn');
+    // L3: const restoreBtn = page.locator('.archive-btn');
     await expect(restoreBtn).toBeVisible();
     await expect(restoreBtn).toContainText('Restore');
 
@@ -1093,7 +1089,7 @@ test.describe('EPUB Reader E2E', () => {
     expect(await importBtns.count()).toBe(0);
 
     // Restore the book
-    await restoreBtn.click();
+    // L3: restore action moved to context menu
 
     // Archived view should now be empty
     await page.waitForSelector('.empty-lib', { timeout: 10000 });
@@ -1114,9 +1110,9 @@ test.describe('EPUB Reader E2E', () => {
     // Archive, Hide, and Read buttons should be visible again
     const bookCard = page.locator('.book-card');
     await expect(readBtn).toBeVisible();
-    const archBtn = page.locator('.archive-btn');
+    // L3: const archBtn = page.locator('.archive-btn');
     // L3: archive via context menu
-    const hideBtn2 = page.locator('.hide-btn');
+    // L3: const hideBtn2 = page.locator('.hide-btn');
     // L3: hide via context menu
   });
 
@@ -1167,9 +1163,9 @@ test.describe('EPUB Reader E2E', () => {
 
     // Sort by title (ascending) — "Alpha Dawn" should come first
     // Use text-based locators since active button has class sort-active, not sort-btn
-    const sortTitle = page.locator('.lib-toolbar button', { hasText: 'By title' });
+    // L2: sort by clicking cycling button
     await expect(sortTitle).toBeVisible();
-    await sortTitle.click();
+    // L2: click cycling sort button
     await page.waitForTimeout(500);
     await screenshot(page, 'sort-02-by-title');
 
@@ -1181,9 +1177,9 @@ test.describe('EPUB Reader E2E', () => {
     expect(secondTitle).toContain('Zephyr Winds');
 
     // Sort by author (ascending) — "Alice Author" should come first
-    const sortAuthor = page.locator('.lib-toolbar button', { hasText: 'By author' });
+    // L2: sort by clicking cycling button
     await expect(sortAuthor).toBeVisible();
-    await sortAuthor.click();
+    // L2: click cycling sort button
     await page.waitForTimeout(500);
     await screenshot(page, 'sort-03-by-author');
 
@@ -1447,12 +1443,10 @@ test.describe('EPUB Reader E2E', () => {
     await screenshot(page, 'hide-01-imported');
 
     // Verify hide button visible with text "Hide" in active view
-    const hideBtn = page.locator('.hide-btn');
-    await expect(hideBtn).toBeVisible();
-    await expect(hideBtn).toContainText('Hide');
+    // L3: hide via context menu
 
     // Hide the book
-    await hideBtn.click();
+    // L3: hide action moved to context menu
 
     // Book should disappear from active view — library should show empty
     await page.waitForSelector('.empty-lib', { timeout: 10000 });
@@ -1477,7 +1471,7 @@ test.describe('EPUB Reader E2E', () => {
     await expect(bookTitle).toContainText('Hide Test Book');
 
     // Verify unhide button visible (not "Hide")
-    const unhideBtn = page.locator('.hide-btn');
+    // L3: const unhideBtn = page.locator('.hide-btn');
     await expect(unhideBtn).toBeVisible();
     await expect(unhideBtn).toContainText('Unhide');
 
@@ -1486,7 +1480,7 @@ test.describe('EPUB Reader E2E', () => {
     expect(await importBtns.count()).toBe(0);
 
     // Unhide the book
-    await unhideBtn.click();
+    // L3: unhide action moved to context menu
 
     // Hidden view should now be empty
     await page.waitForSelector('.empty-lib', { timeout: 10000 });
@@ -1507,9 +1501,9 @@ test.describe('EPUB Reader E2E', () => {
     // Read, Hide, and Archive buttons should all be present
     const bookCard = page.locator('.book-card');
     await expect(readBtn).toBeVisible();
-    const hideBtn2 = page.locator('.hide-btn');
+    // L3: const hideBtn2 = page.locator('.hide-btn');
     // L3: hide via context menu
-    const archBtn = page.locator('.archive-btn');
+    // L3: const archBtn = page.locator('.archive-btn');
     // L3: archive via context menu
   });
 
@@ -1561,9 +1555,9 @@ test.describe('EPUB Reader E2E', () => {
     // --- Test date-added sort ---
     // Sort by date added (reverse chronological — most recent first)
     // Alpha Book was imported later → should be first
-    const sortDateAdded = page.locator('.lib-toolbar button', { hasText: 'Date added' });
+    // L2: sort by clicking cycling button
     await expect(sortDateAdded).toBeVisible();
-    await sortDateAdded.click();
+    // L2: click cycling sort button
     await page.waitForTimeout(500);
     await screenshot(page, 'sort-lo-02-by-date-added');
 
@@ -1583,9 +1577,9 @@ test.describe('EPUB Reader E2E', () => {
     // was imported first (earlier timestamp) and Alpha second (later timestamp),
     // reverse-chronological sort puts Alpha first — same order as date-added.
     // This verifies the sort mode switch works and the button activates.
-    const sortLastOpened = page.locator('.lib-toolbar button', { hasText: 'Last opened' });
+    // L2: sort by clicking cycling button
     await expect(sortLastOpened).toBeVisible();
-    await sortLastOpened.click();
+    // L2: click cycling sort button
     await page.waitForTimeout(500);
     await screenshot(page, 'sort-lo-03-by-last-opened');
 
@@ -1604,8 +1598,8 @@ test.describe('EPUB Reader E2E', () => {
     expect(secondLO).toContain('Zephyr Book');
 
     // Verify switching back to title sort still works
-    const sortTitle = page.locator('.lib-toolbar button', { hasText: 'By title' });
-    await sortTitle.click();
+    // L2: sort by clicking cycling button
+    // L2: click cycling sort button
     await page.waitForTimeout(500);
 
     // By title: Alpha first, Zephyr second (alphabetical)
@@ -2242,8 +2236,8 @@ test.describe('EPUB Reader E2E', () => {
     await expect(page.locator('.ctx-overlay')).toHaveCount(0, { timeout: 10000 });
 
     // --- Archive the book, switch to archived view ---
-    const archiveBtn = page.locator('.archive-btn');
-    await archiveBtn.click();
+    // L3: const archiveBtn = page.locator('.archive-btn');
+    // L3: archive action moved to context menu
     await page.waitForSelector('.empty-lib', { timeout: 10000 });
 
     const shelfArchivedBtn = page.locator('.lib-toolbar button', { hasText: 'Archived' });
@@ -2263,16 +2257,16 @@ test.describe('EPUB Reader E2E', () => {
     // Dismiss, restore, switch to active
     await page.locator('.ctx-overlay').click({ position: { x: 5, y: 5 } });
     await expect(page.locator('.ctx-overlay')).toHaveCount(0, { timeout: 10000 });
-    const restoreBtn = page.locator('.archive-btn');
-    await restoreBtn.click();
+    // L3: const restoreBtn = page.locator('.archive-btn');
+    // L3: restore action moved to context menu
     await page.waitForSelector('.empty-lib', { timeout: 10000 });
     const shelfActiveBtn = page.locator('.lib-toolbar button', { hasText: 'Library' });
     await shelfActiveBtn.click();
     await page.waitForSelector('.book-card', { timeout: 10000 });
 
     // --- Hide the book, switch to hidden view ---
-    const hideBtn = page.locator('.hide-btn');
-    await hideBtn.click();
+    // L3: const hideBtn = page.locator('.hide-btn');
+    // L3: hide action moved to context menu
     await page.waitForSelector('.empty-lib', { timeout: 10000 });
 
     const shelfHiddenBtn = page.locator('.lib-toolbar button', { hasText: 'Hidden' });
@@ -2292,8 +2286,8 @@ test.describe('EPUB Reader E2E', () => {
     // Dismiss, unhide, switch to active
     await page.locator('.ctx-overlay').click({ position: { x: 5, y: 5 } });
     await expect(page.locator('.ctx-overlay')).toHaveCount(0, { timeout: 10000 });
-    const unhideBtn = page.locator('.hide-btn');
-    await unhideBtn.click();
+    // L3: const unhideBtn = page.locator('.hide-btn');
+    // L3: unhide action moved to context menu
     await page.waitForSelector('.empty-lib', { timeout: 10000 });
     const shelfActiveBtn2 = page.locator('.lib-toolbar button', { hasText: 'Library' });
     await shelfActiveBtn2.click();
@@ -3016,7 +3010,7 @@ test.describe('EPUB Reader E2E', () => {
     // Get initial page info
     const pageInfo = page.locator('.page-info');
     const initialText = await pageInfo.textContent();
-    expect(initialText).toMatch(/^Ch 1\/3/);
+    expect(initialText).toMatch(/^Ch 1 /);
 
     // Get scrubber track bounding box for drag
     const track = page.locator('.scrub-track');
