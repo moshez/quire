@@ -2,7 +2,7 @@
 
 ## Wave 1 — Reading content (CSS-only, highest impact)
 
-- [ ] **R6** Cap text column at ~680px, centered
+- [x] **R6** Cap text column at ~680px, centered
 - [ ] **R7** Add horizontal margins (≥24px mobile, more on desktop before max-width kicks in)
 
 ## Wave 2 — Reader chrome clutter
