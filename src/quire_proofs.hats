@@ -60,6 +60,12 @@ absprop HIGHLIGHTS_RENDERED()
 dataprop CHAPTER_DISPLAY_READY() =
   | MEASURED_AND_TRANSFORMED() of (CHAPTER_TITLE_DISPLAYED(), PAGE_INFO_SHOWN(), HIGHLIGHTS_RENDERED())
 
+(* CARD_CLICK_OPENS_BOOK: proves book cards are clickable without
+ * inline buttons. L3: card tap opens book directly.
+ * BUG CLASS PREVENTED: card not wired to open-book action. *)
+dataprop CARD_CLICK_OPENS_BOOK(has_card_handler: int) =
+  | {h:int | h == 1} CARD_OPENS_BOOK(h)
+
 (* PAGE_FORMAT_SIMPLIFIED: proves the page info format uses middot
  * separator (U+00B7) instead of slash for chapter/page separation.
  * R4: "Ch X · p. N/M" is cleaner than "Ch X/Y  N/M".

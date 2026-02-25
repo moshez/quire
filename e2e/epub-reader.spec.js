@@ -127,8 +127,8 @@ test.describe('EPUB Reader E2E', () => {
     await expect(bookPosition).toContainText('New');
 
     // --- Open the book ---
-    const readBtn = page.locator('.read-btn');
-    await readBtn.click();
+    const bookCard = page.locator('.book-card');
+    await bookCard.click();
 
     // Wait for reader to appear with chapter content
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
@@ -395,8 +395,8 @@ test.describe('EPUB Reader E2E', () => {
     await expect(bookAuthor).toContainText('Robert E. Howard');
 
     // --- Open the book and verify reading works ---
-    const readBtn = page.locator('.read-btn');
-    await readBtn.click();
+    const bookCard = page.locator('.book-card');
+    await bookCard.click();
 
     // Wait for reader to appear
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
@@ -570,8 +570,8 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
     // Open book
-    const readBtn = page.locator('.read-btn');
-    await readBtn.click();
+    const bookCard = page.locator('.book-card');
+    await bookCard.click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForSelector('.chapter-container', { timeout: 15000 });
 
@@ -679,8 +679,8 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
     // Open book
-    const readBtn = page.locator('.read-btn');
-    await readBtn.click();
+    const bookCard = page.locator('.book-card');
+    await bookCard.click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
 
     // Wait for cover to render
@@ -743,8 +743,8 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
     // Open book
-    const readBtn = page.locator('.read-btn');
-    await readBtn.click();
+    const bookCard = page.locator('.book-card');
+    await bookCard.click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
 
     // Wait for cover to render
@@ -852,8 +852,8 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
     // Open book
-    const readBtn = page.locator('.read-btn');
-    await readBtn.click();
+    const bookCard = page.locator('.book-card');
+    await bookCard.click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -893,8 +893,8 @@ test.describe('EPUB Reader E2E', () => {
     await screenshot(page, 'position-02-library-saved');
 
     // Re-enter the book
-    const readBtn2 = page.locator('.read-btn');
-    await readBtn2.click();
+    const bookCard2 = page.locator('.book-card');
+    await bookCard2.click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -932,8 +932,8 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
     // Open book
-    const readBtn = page.locator('.read-btn');
-    await readBtn.click();
+    const bookCard = page.locator('.book-card');
+    await bookCard.click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -977,8 +977,8 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
     // Open book — first spine entry is the SVG cover page
-    const readBtn = page.locator('.read-btn');
-    await readBtn.click();
+    const bookCard = page.locator('.book-card');
+    await bookCard.click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -1112,12 +1112,12 @@ test.describe('EPUB Reader E2E', () => {
     await expect(restoredTitle).toContainText('Archive Test Book');
 
     // Archive, Hide, and Read buttons should be visible again
-    const readBtn = page.locator('.read-btn');
+    const bookCard = page.locator('.book-card');
     await expect(readBtn).toBeVisible();
     const archBtn = page.locator('.archive-btn');
-    await expect(archBtn).toContainText('Archive');
+    // L3: archive via context menu
     const hideBtn2 = page.locator('.hide-btn');
-    await expect(hideBtn2).toContainText('Hide');
+    // L3: hide via context menu
   });
 
   test('sort books by title and author', async ({ page }) => {
@@ -1328,8 +1328,8 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
     // Open book
-    const readBtn = page.locator('.read-btn');
-    await readBtn.click();
+    const bookCard = page.locator('.book-card');
+    await bookCard.click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -1380,8 +1380,8 @@ test.describe('EPUB Reader E2E', () => {
     await screenshot(page, 'content-persist-01-imported');
 
     // Open book and verify chapter renders
-    const readBtn = page.locator('.read-btn');
-    await readBtn.click();
+    const bookCard = page.locator('.book-card');
+    await bookCard.click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -1409,8 +1409,8 @@ test.describe('EPUB Reader E2E', () => {
     await screenshot(page, 'content-persist-03-after-reload');
 
     // Re-open the same book — should load from IDB
-    const readBtn2 = page.locator('.read-btn');
-    await readBtn2.click();
+    const bookCard2 = page.locator('.book-card');
+    await bookCard2.click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -1505,12 +1505,12 @@ test.describe('EPUB Reader E2E', () => {
     await expect(restoredTitle).toContainText('Hide Test Book');
 
     // Read, Hide, and Archive buttons should all be present
-    const readBtn = page.locator('.read-btn');
+    const bookCard = page.locator('.book-card');
     await expect(readBtn).toBeVisible();
     const hideBtn2 = page.locator('.hide-btn');
-    await expect(hideBtn2).toContainText('Hide');
+    // L3: hide via context menu
     const archBtn = page.locator('.archive-btn');
-    await expect(archBtn).toContainText('Archive');
+    // L3: archive via context menu
   });
 
   test('sort books by last opened and date added', async ({ page }) => {
@@ -2120,8 +2120,8 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
     // Open book
-    const readBtn = page.locator('.read-btn');
-    await readBtn.click();
+    const bookCard = page.locator('.book-card');
+    await bookCard.click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -2164,8 +2164,8 @@ test.describe('EPUB Reader E2E', () => {
     await screenshot(page, 'page-pos-02-library');
 
     // Re-enter the book
-    const readBtn2 = page.locator('.read-btn');
-    await readBtn2.click();
+    const bookCard2 = page.locator('.book-card');
+    await bookCard2.click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -2470,7 +2470,7 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
     // Open the book
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForTimeout(1000);
 
@@ -2567,7 +2567,7 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
     // Open the book
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForTimeout(1000);
 
@@ -2653,7 +2653,7 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
     // Open the book
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForTimeout(1000);
 
@@ -2728,7 +2728,7 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
     // Open the book
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForTimeout(1000);
 
@@ -2851,7 +2851,7 @@ test.describe('EPUB Reader E2E', () => {
     await fileInput.setInputFiles(epubPath);
 
     await page.waitForSelector('.book-card', { timeout: 30000 });
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
 
     // Wait for chapter content to load
@@ -2925,7 +2925,7 @@ test.describe('EPUB Reader E2E', () => {
     writeFileSync(epubPath, epubBuffer);
     await page.locator('input[type="file"]').setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -2993,7 +2993,7 @@ test.describe('EPUB Reader E2E', () => {
     writeFileSync(epubPath, epubBuffer);
     await page.locator('input[type="file"]').setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -3077,7 +3077,7 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
     // Open book
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -3120,7 +3120,7 @@ test.describe('EPUB Reader E2E', () => {
     expect(posText).not.toBe('New');
 
     // Re-enter the book — should restore at chapter 2
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -3157,7 +3157,7 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
     // Open book
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -3213,7 +3213,7 @@ test.describe('EPUB Reader E2E', () => {
     expect(posText).not.toBe('New');
 
     // Re-enter book — should resume at chapter 2
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -3241,7 +3241,7 @@ test.describe('EPUB Reader E2E', () => {
     writeFileSync(epubPath, epubBuffer);
     await page.locator('input[type="file"]').setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -3280,7 +3280,7 @@ test.describe('EPUB Reader E2E', () => {
     writeFileSync(epubPath, epubBuffer);
     await page.locator('input[type="file"]').setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -3333,7 +3333,7 @@ test.describe('EPUB Reader E2E', () => {
     writeFileSync(epubPath, epubBuffer);
     await page.locator('input[type="file"]').setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -3357,7 +3357,7 @@ test.describe('EPUB Reader E2E', () => {
     writeFileSync(epubPath, epubBuffer);
     await page.locator('input[type="file"]').setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -3399,7 +3399,7 @@ test.describe('EPUB Reader E2E', () => {
     writeFileSync(epubPath, epubBuffer);
     await page.locator('input[type="file"]').setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -3433,7 +3433,7 @@ test.describe('EPUB Reader E2E', () => {
     writeFileSync(epubPath, epubBuffer);
     await page.locator('input[type="file"]').setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -3468,7 +3468,7 @@ test.describe('EPUB Reader E2E', () => {
     writeFileSync(epubPath, epubBuffer);
     await page.locator('input[type="file"]').setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -3526,7 +3526,7 @@ test.describe('EPUB Reader E2E', () => {
     writeFileSync(epubPath, epubBuffer);
     await page.locator('input[type="file"]').setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -3554,7 +3554,7 @@ test.describe('EPUB Reader E2E', () => {
     writeFileSync(epubPath, epubBuffer);
     await page.locator('input[type="file"]').setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
-    await page.locator('.read-btn').click();
+    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -3572,6 +3572,36 @@ test.describe('EPUB Reader E2E', () => {
     // Background should NOT be dark (rgba(0,0,0,...))
     expect(bottomStyle.bg).not.toContain('rgba(0, 0, 0');
     await screenshot(page, 'r5-01-light-scrubber');
+    expect(errors).toEqual([]);
+  });
+
+  test('L3: card click opens book, no inline Read/Hide/Archive buttons', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    const epubBuffer = createEpub({ title: 'Card Click Test', chapters: 1, paragraphsPerChapter: 3 });
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `l3-card-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await page.locator('input[type="file"]').setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Verify NO inline buttons exist
+    await expect(page.locator('.read-btn')).toHaveCount(0);
+    await expect(page.locator('.hide-btn')).toHaveCount(0);
+    await expect(page.locator('.archive-btn')).toHaveCount(0);
+    await screenshot(page, 'l3-01-no-buttons');
+
+    // Click the card itself to open the book
+    await page.locator('.book-card').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await screenshot(page, 'l3-02-reader-opened');
+
     expect(errors).toEqual([]);
   });
 

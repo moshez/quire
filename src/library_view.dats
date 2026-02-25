@@ -361,55 +361,13 @@ implement render_library_with_books(s, list_id, view_mode) = let
         val s = ward_dom_stream_set_attr_safe(s, pos_id, attr_class(), 5, cls_book_position(), 13)
         val s = render_book_progress(s, pos_id, library_get_chapter(i), library_get_page(i), library_get_spine_count(i))
 
-        (* Card actions: buttons depend on view mode *)
-        val actions_id = dom_next_id()
-        val s = ward_dom_stream_create_element(s, actions_id, card_id, tag_div(), 3)
-        val s = ward_dom_stream_set_attr_safe(s, actions_id, attr_class(), 5, cls_card_actions(), 12)
+        (* L3: No inline buttons — card click opens book, context menu for actions.
+         * reader_set_btn_id(i, 0): no Read button; card_id at slot i+96 handles click. *)
+        val () = reader_set_btn_id(i, 0)
+        val () = reader_set_btn_id(i + 32, 0)
+        val () = reader_set_btn_id(i + 64, 0)
       in
-        if eq_int_int(vm, 0) then let
-          (* Active view: Read + Hide + Archive buttons *)
-          val btn_id = dom_next_id()
-          val () = reader_set_btn_id(i, btn_id)
-          val s = ward_dom_stream_create_element(s, btn_id, actions_id, tag_button(), 6)
-          val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5, cls_read_btn(), 8)
-          val s = set_text_cstr(VT_3() | s, btn_id, 3, 4)
-
-          val hide_btn_id = dom_next_id()
-          val () = reader_set_btn_id(i + 64, hide_btn_id)
-          val s = ward_dom_stream_create_element(s, hide_btn_id, actions_id, tag_button(), 6)
-          val s = ward_dom_stream_set_attr_safe(s, hide_btn_id, attr_class(), 5, cls_hide_btn(), 8)
-          val s = set_text_cstr(VT_27() | s, hide_btn_id, 27, 4)
-
-          val arch_btn_id = dom_next_id()
-          val () = reader_set_btn_id(i + 32, arch_btn_id)
-          val s = ward_dom_stream_create_element(s, arch_btn_id, actions_id, tag_button(), 6)
-          val s = ward_dom_stream_set_attr_safe(s, arch_btn_id, attr_class(), 5, cls_archive_btn(), 11)
-          val s = set_text_cstr(VT_20() | s, arch_btn_id, 20, 7)
-        in loop(sub_g1(rem, 1), s, i + 1, n, vm) end
-        else if eq_int_int(vm, 2) then let
-          (* Hidden view: Read + Unhide buttons *)
-          val btn_id = dom_next_id()
-          val () = reader_set_btn_id(i, btn_id)
-          val s = ward_dom_stream_create_element(s, btn_id, actions_id, tag_button(), 6)
-          val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5, cls_read_btn(), 8)
-          val s = set_text_cstr(VT_3() | s, btn_id, 3, 4)
-
-          val unhide_btn_id = dom_next_id()
-          val () = reader_set_btn_id(i + 64, unhide_btn_id)
-          val s = ward_dom_stream_create_element(s, unhide_btn_id, actions_id, tag_button(), 6)
-          val s = ward_dom_stream_set_attr_safe(s, unhide_btn_id, attr_class(), 5, cls_hide_btn(), 8)
-          val s = set_text_cstr(VT_28() | s, unhide_btn_id, 28, 6)
-        in loop(sub_g1(rem, 1), s, i + 1, n, vm) end
-        else let
-          (* Archived view: Restore only (no Read — IDB content deleted) *)
-          val () = reader_set_btn_id(i, 0)
-
-          val restore_btn_id = dom_next_id()
-          val () = reader_set_btn_id(i + 32, restore_btn_id)
-          val s = ward_dom_stream_create_element(s, restore_btn_id, actions_id, tag_button(), 6)
-          val s = ward_dom_stream_set_attr_safe(s, restore_btn_id, attr_class(), 5, cls_archive_btn(), 11)
-          val s = set_text_cstr(VT_21() | s, restore_btn_id, 21, 7)
-        in loop(sub_g1(rem, 1), s, i + 1, n, vm) end
+        loop(sub_g1(rem, 1), s, i + 1, n, vm)
       end
       else loop(sub_g1(rem, 1), s, i + 1, n, vm)
     end
@@ -428,9 +386,16 @@ fun match_click {k:nat} .<k>.
     val read_id = reader_get_btn_id(i)
     val arch_id = reader_get_btn_id(i + 32)
     val hide_id = reader_get_btn_id(i + 64)
+    val card_id = reader_get_btn_id(i + 96)
   in
+    (* L3: card click OR read button click opens book *)
     if eq_int_int(target_id, read_id) then
       if gt_int_int(read_id, 0) then let
+        val () = enter_reader(root, i)
+      in 1 end
+      else match_click(sub_g1(rem, 1), i + 1, n, target_id, root, vm)
+    else if eq_int_int(target_id, card_id) then
+      if gt_int_int(card_id, 0) then let
         val () = enter_reader(root, i)
       in 1 end
       else match_click(sub_g1(rem, 1), i + 1, n, target_id, root, vm)
