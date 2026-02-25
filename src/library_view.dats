@@ -946,51 +946,29 @@ implement render_library(root_id) = let
   val s = ward_dom_stream_create_element(s, toolbar_id, root_id, tag_div(), 3)
   val s = ward_dom_stream_set_attr_safe(s, toolbar_id, attr_class(), 5, cls_lib_toolbar(), 11)
 
-  (* Shelf filter buttons — Library / Hidden / Archived *)
+  (* L1: Single shelf filter button — shows "Library", click cycles views *)
   val shelf_active_btn_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, shelf_active_btn_id, toolbar_id, tag_button(), 6)
-  val s = set_sort_btn_class(s, shelf_active_btn_id, eq_int_int(view_mode, 0))
+  val s = set_sort_btn_class(s, shelf_active_btn_id, true)
   val s = set_text_cstr(VT_17() | s, shelf_active_btn_id, 17, 7)
 
-  val shelf_hidden_btn_id = dom_next_id()
-  val s = ward_dom_stream_create_element(s, shelf_hidden_btn_id, toolbar_id, tag_button(), 6)
-  val s = set_sort_btn_class(s, shelf_hidden_btn_id, eq_int_int(view_mode, 2))
-  val s = set_text_cstr(VT_25() | s, shelf_hidden_btn_id, 25, 6)
+  (* L1: Dummy IDs for hidden/archived (removed buttons) *)
+  val shelf_hidden_btn_id = 0
+  val shelf_archived_btn_id = 0
 
-  val shelf_archived_btn_id = dom_next_id()
-  val s = ward_dom_stream_create_element(s, shelf_archived_btn_id, toolbar_id, tag_button(), 6)
-  val s = set_sort_btn_class(s, shelf_archived_btn_id, eq_int_int(view_mode, 1))
-  val s = set_text_cstr(VT_16() | s, shelf_archived_btn_id, 16, 8)
-
-  (* Sort by title button *)
+  (* L2: Single sort button — shows "By title", click cycles sort modes *)
   val sort_title_btn_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, sort_title_btn_id, toolbar_id, tag_button(), 6)
-  val s = set_sort_btn_class(s, sort_title_btn_id, eq_int_int(sort_mode, 0))
+  val s = set_sort_btn_class(s, sort_title_btn_id, true)
   val s = set_text_cstr(VT_18() | s, sort_title_btn_id, 18, 8)
 
-  (* Sort by author button *)
-  val sort_author_btn_id = dom_next_id()
-  val s = ward_dom_stream_create_element(s, sort_author_btn_id, toolbar_id, tag_button(), 6)
-  val s = set_sort_btn_class(s, sort_author_btn_id, eq_int_int(sort_mode, 1))
-  val s = set_text_cstr(VT_19() | s, sort_author_btn_id, 19, 9)
+  (* L2: Dummy IDs for removed sort buttons *)
+  val sort_author_btn_id = 0
+  val sort_last_opened_btn_id = 0
+  val sort_date_added_btn_id = 0
 
-  (* Sort by last opened button *)
-  val sort_last_opened_btn_id = dom_next_id()
-  val s = ward_dom_stream_create_element(s, sort_last_opened_btn_id, toolbar_id, tag_button(), 6)
-  val s = set_sort_btn_class(s, sort_last_opened_btn_id, eq_int_int(sort_mode, 2))
-  val s = set_text_cstr(VT_23() | s, sort_last_opened_btn_id, 23, 11)
-
-  (* Sort by date added button *)
-  val sort_date_added_btn_id = dom_next_id()
-  val s = ward_dom_stream_create_element(s, sort_date_added_btn_id, toolbar_id, tag_button(), 6)
-  val s = set_sort_btn_class(s, sort_date_added_btn_id, eq_int_int(sort_mode, 3))
-  val s = set_text_cstr(VT_24() | s, sort_date_added_btn_id, 24, 10)
-
-  (* Reset button *)
-  val reset_btn_id = dom_next_id()
-  val s = ward_dom_stream_create_element(s, reset_btn_id, toolbar_id, tag_button(), 6)
-  val s = ward_dom_stream_set_attr_safe(s, reset_btn_id, attr_class(), 5, cls_sort_btn(), 8)
-  val s = set_text_cstr(VT_33() | s, reset_btn_id, 33, 5)
+  (* L2: Reset button removed — factory reset via context menu or settings *)
+  val reset_btn_id = 0
 
   (* Import button — only shown in active view *)
   val label_id = dom_next_id()
@@ -1037,69 +1015,52 @@ implement render_library(root_id) = let
 
   (* Register toolbar button listeners *)
   val saved_root = root_id
+  (* L1: Single shelf button cycles: Library(0) → Hidden(2) → Archived(1) → Library *)
   val () = ward_add_event_listener(
     shelf_active_btn_id, evt_click(), 5, LISTENER_VIEW_ACTIVE,
     lam (_pl: int): int => let
-      val () = _app_set_lib_view_mode(0)
+      val cur = _app_lib_view_mode()
+      val next = if eq_int_int(cur, 0) then 2
+                 else if eq_int_int(cur, 2) then 1
+                 else 0
+      val () = _app_set_lib_view_mode(next)
       val () = render_library(saved_root)
     in 0 end
   )
-  val () = ward_add_event_listener(
-    shelf_hidden_btn_id, evt_click(), 5, LISTENER_VIEW_HIDDEN,
-    lam (_pl: int): int => let
-      val () = _app_set_lib_view_mode(2)
-      val () = render_library(saved_root)
-    in 0 end
-  )
-  val () = ward_add_event_listener(
-    shelf_archived_btn_id, evt_click(), 5, LISTENER_VIEW_ARCHIVED,
-    lam (_pl: int): int => let
-      val () = _app_set_lib_view_mode(1)
-      val () = render_library(saved_root)
-    in 0 end
-  )
+  (* L2: Single sort button cycles: title(0) → author(1) → last-opened(2) → date-added(3) → title *)
   val () = ward_add_event_listener(
     sort_title_btn_id, evt_click(), 5, LISTENER_SORT_TITLE,
     lam (_pl: int): int => let
-      val (_ | _n) = library_sort(SORT_BY_TITLE() | 0)
-      val () = _app_set_lib_sort_mode(0)
-      val () = library_save()
-      val () = render_library(saved_root)
-    in 0 end
+      val cur = _app_lib_sort_mode()
+      val next = if gte_int_int(cur, 3) then 0 else cur + 1
+    in
+      if eq_int_int(next, 0) then let
+        val (_ | _n) = library_sort(SORT_BY_TITLE() | 0)
+        val () = _app_set_lib_sort_mode(0)
+        val () = library_save()
+        val () = render_library(saved_root)
+      in 0 end
+      else if eq_int_int(next, 1) then let
+        val (_ | _n) = library_sort(SORT_BY_AUTHOR() | 1)
+        val () = _app_set_lib_sort_mode(1)
+        val () = library_save()
+        val () = render_library(saved_root)
+      in 0 end
+      else if eq_int_int(next, 2) then let
+        val (_ | _n) = library_sort(SORT_BY_LAST_OPENED() | 2)
+        val () = _app_set_lib_sort_mode(2)
+        val () = library_save()
+        val () = render_library(saved_root)
+      in 0 end
+      else let
+        val (_ | _n) = library_sort(SORT_BY_DATE_ADDED() | 3)
+        val () = _app_set_lib_sort_mode(3)
+        val () = library_save()
+        val () = render_library(saved_root)
+      in 0 end
+    end
   )
-  val () = ward_add_event_listener(
-    sort_author_btn_id, evt_click(), 5, LISTENER_SORT_AUTHOR,
-    lam (_pl: int): int => let
-      val (_ | _n) = library_sort(SORT_BY_AUTHOR() | 1)
-      val () = _app_set_lib_sort_mode(1)
-      val () = library_save()
-      val () = render_library(saved_root)
-    in 0 end
-  )
-  val () = ward_add_event_listener(
-    sort_last_opened_btn_id, evt_click(), 5, LISTENER_SORT_LAST_OPENED,
-    lam (_pl: int): int => let
-      val (_ | _n) = library_sort(SORT_BY_LAST_OPENED() | 2)
-      val () = _app_set_lib_sort_mode(2)
-      val () = library_save()
-      val () = render_library(saved_root)
-    in 0 end
-  )
-  val () = ward_add_event_listener(
-    sort_date_added_btn_id, evt_click(), 5, LISTENER_SORT_DATE_ADDED,
-    lam (_pl: int): int => let
-      val (_ | _n) = library_sort(SORT_BY_DATE_ADDED() | 3)
-      val () = _app_set_lib_sort_mode(3)
-      val () = library_save()
-      val () = render_library(saved_root)
-    in 0 end
-  )
-  val () = ward_add_event_listener(
-    reset_btn_id, evt_click(), 5, LISTENER_RESET_BTN,
-    lam (_pl: int): int => let
-      val () = render_reset_modal(saved_root)
-    in 0 end
-  )
+  (* L2: Reset button removed *)
 
   (* Register change listener on file input — only in active view.
    * Multi-phase promise chain with timer yields between phases
