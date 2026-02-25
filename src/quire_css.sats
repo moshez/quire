@@ -42,6 +42,12 @@ dataprop NAV_BTN_VISIBLE(font_size_10: int, padding_h_10: int) =
 dataprop TEXT_COLUMN_CAP_VALID(max_width_px: int) =
   | {w:int | w >= 480; w <= 800} COLUMN_CAP_OK(w)
 
+(* CHILD_MARGIN_SUFFICIENT: horizontal padding >= 12 tenths (1.2rem ~= 19px).
+ * R7: at 2rem (20 tenths), this exceeds the 24px mobile minimum at 16px base.
+ * BUG PREVENTED: text flush against viewport edges on mobile. *)
+dataprop CHILD_MARGIN_SUFFICIENT(pad_tenths: int) =
+  | {p:int | p >= 12} MARGIN_OK(p)
+
 (* ========== CSS property constants ========== *)
 (* #define is textual expansion — applies in BOTH dynamic and static contexts.
  * Dataprop constructors like COLUMNS_MATCH_VIEWPORT{CSS_COL_WIDTH_VW, ...}
@@ -49,16 +55,16 @@ dataprop TEXT_COLUMN_CAP_VALID(max_width_px: int) =
  * Changing any value triggers a compile-time constraint failure. *)
 #define CSS_COL_WIDTH_VW 100       (* column-width: 100vw *)
 #define CSS_CONTAINER_PAD_H 0      (* padding: 2rem 0 — zero horizontal *)
-#define CSS_CHILD_PAD_L_10 15      (* padding-left: 1.5rem = 15 tenths *)
-#define CSS_CHILD_PAD_R_10 15      (* padding-right: 1.5rem = 15 tenths *)
+#define CSS_CHILD_PAD_L_10 20      (* padding-left: 2rem = 20 tenths *)
+#define CSS_CHILD_PAD_R_10 20      (* padding-right: 2rem = 20 tenths *)
 #define CSS_BTN_FONT_10 10         (* font-size: 1rem = 10 tenths *)
 #define CSS_BTN_PAD_H_10 3         (* padding: 0 .3rem = 3 tenths *)
 #define CSS_MAX_COL_WIDTH_PX 680   (* max-width: 680px for reading comfort *)
 
 (* ========== CSS length constants ========== *)
 (* #define: runtime values; stadef: type-level constraints *)
-#define APP_CSS_LEN 2556
-stadef APP_CSS_LEN = 2556
+#define APP_CSS_LEN 2603
+stadef APP_CSS_LEN = 2603
 (* NAV CSS alignment — distinct stadef/define names prevent #define override.
  * NAV_CSS_WRITES (type-level): number of _w4 calls.
  * NAV_CSS_LEN_S (type-level): NAV_CSS_WRITES * 4 = byte count.
