@@ -60,6 +60,13 @@ absprop HIGHLIGHTS_RENDERED()
 dataprop CHAPTER_DISPLAY_READY() =
   | MEASURED_AND_TRANSFORMED() of (CHAPTER_TITLE_DISPLAYED(), PAGE_INFO_SHOWN(), HIGHLIGHTS_RENDERED())
 
+(* PAGE_FORMAT_SIMPLIFIED: proves the page info format uses middot
+ * separator (U+00B7) instead of slash for chapter/page separation.
+ * R4: "Ch X · p. N/M" is cleaner than "Ch X/Y  N/M".
+ * BUG CLASS PREVENTED: format regression to verbose Ch X/Y display. *)
+dataprop PAGE_FORMAT_SIMPLIFIED(separator_cp: int) =
+  | {s:int | s == 183} MIDDOT_FORMAT(s)
+
 (* BOOKMARK_ICON_PAIR: proves the bookmark icons are a valid
  * unfilled/filled pair from the same Unicode block.
  * unfilled_cp and filled_cp must differ by exactly 1 (adjacent codepoints).
