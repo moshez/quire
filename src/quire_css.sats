@@ -36,6 +36,12 @@ dataprop CHILD_PADDED(pad_left_10: int, pad_right_10: int) =
 dataprop NAV_BTN_VISIBLE(font_size_10: int, padding_h_10: int) =
   | {fs,ph:pos} BTNS_HAVE_SIZE(fs, ph)
 
+(* TEXT_COLUMN_CAP_VALID: max-width for reading column is in comfortable range.
+ * Prevents lines that are too long (> 800px) or too short (< 480px) for reading.
+ * BUG PREVENTED: unreadably wide text lines on large screens. *)
+dataprop TEXT_COLUMN_CAP_VALID(max_width_px: int) =
+  | {w:int | w >= 480; w <= 800} COLUMN_CAP_OK(w)
+
 (* ========== CSS property constants ========== *)
 (* #define is textual expansion — applies in BOTH dynamic and static contexts.
  * Dataprop constructors like COLUMNS_MATCH_VIEWPORT{CSS_COL_WIDTH_VW, ...}
@@ -47,11 +53,12 @@ dataprop NAV_BTN_VISIBLE(font_size_10: int, padding_h_10: int) =
 #define CSS_CHILD_PAD_R_10 15      (* padding-right: 1.5rem = 15 tenths *)
 #define CSS_BTN_FONT_10 10         (* font-size: 1rem = 10 tenths *)
 #define CSS_BTN_PAD_H_10 3         (* padding: 0 .3rem = 3 tenths *)
+#define CSS_MAX_COL_WIDTH_PX 680   (* max-width: 680px for reading comfort *)
 
 (* ========== CSS length constants ========== *)
 (* #define: runtime values; stadef: type-level constraints *)
-#define APP_CSS_LEN 2505
-stadef APP_CSS_LEN = 2505
+#define APP_CSS_LEN 2556
+stadef APP_CSS_LEN = 2556
 (* NAV CSS alignment — distinct stadef/define names prevent #define override.
  * NAV_CSS_WRITES (type-level): number of _w4 calls.
  * NAV_CSS_LEN_S (type-level): NAV_CSS_WRITES * 4 = byte count.

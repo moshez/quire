@@ -3457,5 +3457,47 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('R6: chapter content has max-width cap on wide viewports', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    const epubBuffer = createEpub({ title: 'Width Cap Test', chapters: 1, paragraphsPerChapter: 5 });
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `r6-widthcap-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await page.locator('input[type="file"]').setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    // Check that paragraph elements have max-width applied
+    const pStyle = await page.evaluate(() => {
+      const p = document.querySelector('.chapter-container p');
+      if (!p) return null;
+      const cs = getComputedStyle(p);
+      return {
+        maxWidth: cs.maxWidth,
+        marginLeft: cs.marginLeft,
+        marginRight: cs.marginRight,
+      };
+    });
+    expect(pStyle).not.toBeNull();
+    // max-width should be 680px
+    expect(pStyle.maxWidth).toBe('680px');
+    // On wide viewports, margins should be auto (computed as positive px)
+    if (vp.width > 680) {
+      // margin-left should be > 0 (auto centering kicks in)
+      expect(parseFloat(pStyle.marginLeft)).toBeGreaterThan(0);
+    }
+    await screenshot(page, 'r6-01-width-cap');
+    expect(errors).toEqual([]);
+  });
+
 
 });

@@ -40,6 +40,7 @@ build, tests, dataprop analysis per platform-usage rules), mark it done
 2. **bridge.js is generic** — no app-specific logic, publishable as npm package (see Bridge Policy below)
 3. **All UI logic in WASM** — bridge forwards events and applies diffs
 4. **WASM owns node IDs** — assigned via CREATE_ELEMENT diffs
+5. **index.html and reader.css must never change** — except for adding extraImports in index.html. All app CSS is injected from WASM via `<style>` elements. reader.css is only for the loading screen and bundled font @font-face declarations.
 
 ## ATS2 Notes
 
