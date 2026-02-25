@@ -361,11 +361,11 @@ implement render_library_with_books(s, list_id, view_mode) = let
         val s = ward_dom_stream_set_attr_safe(s, pos_id, attr_class(), 5, cls_book_position(), 13)
         val s = render_book_progress(s, pos_id, library_get_chapter(i), library_get_page(i), library_get_spine_count(i))
 
-        (* L3: No inline buttons — card click opens book, context menu for actions.
-         * reader_set_btn_id(i, 0): no Read button; card_id at slot i+96 handles click. *)
-        val () = reader_set_btn_id(i, 0)
-        val () = reader_set_btn_id(i + 32, 0)
-        val () = reader_set_btn_id(i + 64, 0)
+        (* L3: No inline buttons — card click opens book.
+         * Store child IDs so click delegation can match any part of the card. *)
+        val () = reader_set_btn_id(i, title_id)
+        val () = reader_set_btn_id(i + 32, author_id)
+        val () = reader_set_btn_id(i + 64, pos_id)
       in
         loop(sub_g1(rem, 1), s, i + 1, n, vm)
       end
@@ -383,24 +383,23 @@ fun match_click {k:nat} .<k>.
   if lte_g1(rem, 0) then 0
   else if gte_int_int(i, n) then 0
   else let
-    val read_id = reader_get_btn_id(i)
-    val arch_id = reader_get_btn_id(i + 32)
-    val hide_id = reader_get_btn_id(i + 64)
+    (* L3: slots store card element IDs — all clicks open book *)
+    val title_id = reader_get_btn_id(i)
+    val author_id = reader_get_btn_id(i + 32)
+    val pos_id = reader_get_btn_id(i + 64)
     val card_id = reader_get_btn_id(i + 96)
+    (* Check if target matches any part of the card *)
+    val is_card_click =
+      (eq_int_int(target_id, card_id) andalso gt_int_int(card_id, 0))
+      orelse (eq_int_int(target_id, title_id) andalso gt_int_int(title_id, 0))
+      orelse (eq_int_int(target_id, author_id) andalso gt_int_int(author_id, 0))
+      orelse (eq_int_int(target_id, pos_id) andalso gt_int_int(pos_id, 0))
   in
-    (* L3: card click OR read button click opens book *)
-    if eq_int_int(target_id, read_id) then
-      if gt_int_int(read_id, 0) then let
-        val () = enter_reader(root, i)
-      in 1 end
-      else match_click(sub_g1(rem, 1), i + 1, n, target_id, root, vm)
-    else if eq_int_int(target_id, card_id) then
-      if gt_int_int(card_id, 0) then let
-        val () = enter_reader(root, i)
-      in 1 end
-      else match_click(sub_g1(rem, 1), i + 1, n, target_id, root, vm)
-    else if eq_int_int(target_id, arch_id) then
-      if gt_int_int(arch_id, 0) then let
+    if is_card_click then let
+      val () = enter_reader(root, i)
+    in 1 end
+    else if false then
+      if gt_int_int(0, 0) then let
         val book_idx = i
       in
         if eq_int_int(vm, 0) then let
@@ -427,8 +426,8 @@ fun match_click {k:nat} .<k>.
         in 1 end
       end
       else match_click(sub_g1(rem, 1), i + 1, n, target_id, root, vm)
-    else if eq_int_int(target_id, hide_id) then
-      if gt_int_int(hide_id, 0) then let
+    else if eq_int_int(0, 0) then
+      if gt_int_int(0, 0) then let
         val book_idx = i
       in
         if eq_int_int(vm, 0) then let
