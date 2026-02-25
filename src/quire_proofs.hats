@@ -59,3 +59,11 @@ absprop HIGHLIGHTS_RENDERED()
  * BUG CLASS PREVENTED: chapter load that skips title, page info, or highlight rendering. *)
 dataprop CHAPTER_DISPLAY_READY() =
   | MEASURED_AND_TRANSFORMED() of (CHAPTER_TITLE_DISPLAYED(), PAGE_INFO_SHOWN(), HIGHLIGHTS_RENDERED())
+
+(* BOOKMARK_ICON_PAIR: proves the bookmark icons are a valid
+ * unfilled/filled pair from the same Unicode block.
+ * unfilled_cp and filled_cp must differ by exactly 1 (adjacent codepoints).
+ * BUG CLASS PREVENTED: mismatched bookmark icon pair. *)
+dataprop BOOKMARK_ICON_PAIR(unfilled_cp: int, filled_cp: int) =
+  | {u,f:int | f == u - 1; u >= 0x2600; u <= 0x26FF}
+    STAR_PAIR(u, f)

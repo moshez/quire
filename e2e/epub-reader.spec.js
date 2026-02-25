@@ -3515,5 +3515,33 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('R1: bookmark button shows star icon instead of BM text', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    const epubBuffer = createEpub({ title: 'BM Icon Test', chapters: 1, paragraphsPerChapter: 3 });
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `r1-bm-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await page.locator('input[type="file"]').setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await page.locator('.read-btn').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+
+    // Bookmark button should show ☆ (unfilled star), not "BM"
+    const bmBtn = page.locator('.bm-btn');
+    await expect(bmBtn).toBeAttached();
+    const bmText = await bmBtn.textContent();
+    expect(bmText).not.toBe('BM');
+    expect(bmText).toBe('☆');
+    await screenshot(page, 'r1-01-star-icon');
+    expect(errors).toEqual([]);
+  });
+
 
 });

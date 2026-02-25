@@ -7,7 +7,7 @@
 
 ## Wave 2 — Reader chrome clutter
 
-- [ ] **R1** Replace "BM" with a bookmark icon (filled/unfilled)
+- [x] **R1** Replace "BM" with a bookmark icon (filled/unfilled)
 - [ ] **R2** Add Aa button for typography settings
 - [ ] **R3** Add search button (🔍)
 - [ ] **R4** Simplify position display — replace "Ch 6/32 2/10" with "Ch 6 · p. 2/10" or just percentage
