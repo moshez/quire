@@ -886,3 +886,15 @@ fun test_bookmark_icon_pair(): bool(true) = let
   prval pf = STAR_PAIR()
   prval _ = pf : BOOKMARK_ICON_PAIR(0x2606, 0x2605)
 in true end
+
+(* ================================================================
+ * Test 30: PAGE_FORMAT_SIMPLIFIED (R4)
+ *
+ * Verifies page info uses middot (U+00B7 = codepoint 183) as separator.
+ * ================================================================ *)
+
+(* UNIT TEST *)
+fun test_page_format_simplified(): bool(true) = let
+  prval pf = MIDDOT_FORMAT()
+  prval _ = pf : PAGE_FORMAT_SIMPLIFIED(183)
+in true end

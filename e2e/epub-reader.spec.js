@@ -172,11 +172,11 @@ test.describe('EPUB Reader E2E', () => {
     const pageInfo = page.locator('.page-info');
     await expect(pageInfo).toBeVisible();
 
-    // Page indicator should show "Ch X/Y  N/M" format after chapter loads
+    // Page indicator should show "Ch X · p. N/M" format after chapter loads
     const pageText = await pageInfo.textContent();
-    expect(pageText).toMatch(/^Ch \d+\/\d+\s+\d+\/\d+$/);
-    // First chapter, first page: "Ch 1/3  1/N"
-    expect(pageText).toMatch(/^Ch 1\//);
+    expect(pageText).toMatch(/^Ch \d+ · p\. \d+\/\d+$/);
+    // First chapter, first page: "Ch 1 · p. 1/N"
+    expect(pageText).toMatch(/^Ch 1 /);
 
     // Verify chapter container is visible and has paragraph text
     const chapterContainer = page.locator('.chapter-container').first();
@@ -244,8 +244,8 @@ test.describe('EPUB Reader E2E', () => {
 
     // Verify page indicator updated after forward click
     const pageTextAfterForward = await pageInfo.textContent();
-    expect(pageTextAfterForward).toMatch(/^Ch \d+\/\d+\s+\d+\/\d+$/);
-    // Page 2: "Ch 1/3  2/N"
+    expect(pageTextAfterForward).toMatch(/^Ch \d+ · p\. \d+\/\d+$/);
+    // Page 2: "Ch 1 · p. 2/N"
     expect(pageTextAfterForward).toMatch(/\s+2\/\d+$/);
 
     // RENDERING PROOF: after forward, transform shifts by exactly viewport width
@@ -278,7 +278,7 @@ test.describe('EPUB Reader E2E', () => {
     const pageTextAfterNext = await pageInfo.textContent();
     expect(pageTextAfterNext).toMatch(/\s+2\/\d+$/);
 
-    // Determine total pages — extract from "Ch X/Y  N/M" format
+    // Determine total pages — extract from "Ch X · p. N/M" format
     const totalPages = parseInt(pageTextAfterNext.match(/\s+\d+\/(\d+)$/)[1]);
 
     // Click right zone again only if more pages exist in this chapter.
@@ -427,10 +427,10 @@ test.describe('EPUB Reader E2E', () => {
     const childCount = await container.evaluate(el => el.childElementCount);
     expect(childCount).toBeGreaterThan(0);
 
-    // Verify chapter progress format: "Ch X/Y  N/M"
+    // Verify chapter progress format: "Ch X · p. N/M"
     const pageInfo = page.locator('.page-info');
     const progressText = await pageInfo.textContent();
-    expect(progressText).toMatch(/^Ch \d+\/\d+\s+\d+\/\d+$/);
+    expect(progressText).toMatch(/^Ch \d+ · p\. \d+\/\d+$/);
 
     // --- 50-page walk: click Next up to 50 times, screenshot each ---
     const nextBtn = page.locator('.next-btn');
@@ -446,7 +446,7 @@ test.describe('EPUB Reader E2E', () => {
     for (let step = 1; step <= 50; step++) {
       if (crashed) break;
 
-      const prevCh = prevPageText.match(/^Ch (\d+)\//)?.[1];
+      const prevCh = prevPageText.match(/^Ch (\d+) /)?.[1];
 
       try {
         await nextBtn.click();
@@ -460,7 +460,7 @@ test.describe('EPUB Reader E2E', () => {
         }, prevPageText, { timeout: 5000 });
 
         const curPageText = await pageInfoEl.textContent();
-        const curCh = curPageText.match(/^Ch (\d+)\//)?.[1];
+        const curCh = curPageText.match(/^Ch (\d+) /)?.[1];
 
         // On chapter transition, wait for content to load
         if (curCh !== prevCh) {
@@ -586,7 +586,7 @@ test.describe('EPUB Reader E2E', () => {
     // Should be at page 1 of chapter 1 (only 1 page with 1 paragraph)
     const pageInfo = page.locator('.page-info');
     const initialText = await pageInfo.textContent();
-    expect(initialText).toMatch(/^Ch 1\//);
+    expect(initialText).toMatch(/^Ch 1 /);
 
     // Get initial chapter content
     const container = page.locator('.chapter-container').first();
@@ -604,9 +604,9 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForTimeout(500);
     await screenshot(page, 'chapnav-02-chapter2');
 
-    // Page info should show chapter 2: "Ch 2/..."
+    // Page info should show chapter 2: "Ch 2 ..."
     const ch2Text = await pageInfo.textContent();
-    expect(ch2Text).toMatch(/^Ch 2\//);
+    expect(ch2Text).toMatch(/^Ch 2 /);
 
     // Chapter title should update to "Chapter 2"
     const ch2Title = await page.locator('.ch-title').textContent();
@@ -636,7 +636,7 @@ test.describe('EPUB Reader E2E', () => {
 
     // Should be at chapter 1 again
     const backText = await pageInfo.textContent();
-    expect(backText).toMatch(/^Ch 1\//);
+    expect(backText).toMatch(/^Ch 1 /);
 
     // Verify chapter 1 has non-empty content after backward transition
     const ch1ChildCount = await container.evaluate(el => el.childElementCount);
@@ -697,10 +697,10 @@ test.describe('EPUB Reader E2E', () => {
     const nextBtn = page.locator('.next-btn');
     await nextBtn.click();
 
-    // Wait for chapter content (should show Ch 2/)
+    // Wait for chapter content (should show Ch 2 )
     await page.waitForFunction(() => {
       const info = document.querySelector('.page-info');
-      return info && /^Ch 2\//.test(info.textContent);
+      return info && /^Ch 2 /.test(info.textContent);
     }, { timeout: 15000 });
 
     const container = page.locator('.chapter-container').first();
@@ -759,10 +759,10 @@ test.describe('EPUB Reader E2E', () => {
     const nextBtn = page.locator('.next-btn');
     await nextBtn.click();
 
-    // Wait for chapter content (should show Ch 2/)
+    // Wait for chapter content (should show Ch 2 )
     await page.waitForFunction(() => {
       const info = document.querySelector('.page-info');
-      return info && /^Ch 2\//.test(info.textContent);
+      return info && /^Ch 2 /.test(info.textContent);
     }, { timeout: 15000 });
 
     const container = page.locator('.chapter-container').first();
@@ -864,7 +864,7 @@ test.describe('EPUB Reader E2E', () => {
     // Should start at chapter 1
     const pageInfo = page.locator('.page-info');
     const initialText = await pageInfo.textContent();
-    expect(initialText).toMatch(/^Ch 1\//);
+    expect(initialText).toMatch(/^Ch 1 /);
 
     // Navigate to chapter 2
     const nextBtn = page.locator('.next-btn');
@@ -879,7 +879,7 @@ test.describe('EPUB Reader E2E', () => {
 
     // Verify we're at chapter 2
     const ch2Text = await pageInfo.textContent();
-    expect(ch2Text).toMatch(/^Ch 2\//);
+    expect(ch2Text).toMatch(/^Ch 2 /);
     await screenshot(page, 'position-01-at-chapter2');
 
     // Go back to library
@@ -904,7 +904,7 @@ test.describe('EPUB Reader E2E', () => {
 
     // Verify position restored: should be at chapter 2
     const restoredText = await pageInfo.textContent();
-    expect(restoredText).toMatch(/^Ch 2\//);
+    expect(restoredText).toMatch(/^Ch 2 /);
     await screenshot(page, 'position-03-restored');
 
     // Navigate back
@@ -914,7 +914,7 @@ test.describe('EPUB Reader E2E', () => {
   });
 
   test('chapter progress shows Ch X/Y format', async ({ page }) => {
-    // Verify the page info displays chapter progress in "Ch X/Y  N/M" format
+    // Verify the page info displays chapter progress in "Ch X · p. N/M" format
     const epubBuffer = createEpub({
       title: 'Progress Format Test',
       author: 'Format Bot',
@@ -941,10 +941,10 @@ test.describe('EPUB Reader E2E', () => {
     }, { timeout: 15000 });
     await page.waitForTimeout(1000);
 
-    // Verify "Ch 1/5  1/N" format
+    // Verify "Ch 1 · p. 1/N" format
     const pageInfo = page.locator('.page-info');
     const text = await pageInfo.textContent();
-    // Format: "Ch X/Y  N/M" where Y is total chapters (5)
+    // Format: "Ch X · p. N/M" where Y is total chapters (5)
     expect(text).toMatch(/^Ch 1\/5\s+1\/\d+$/);
     await screenshot(page, 'progress-format');
 
@@ -2132,7 +2132,7 @@ test.describe('EPUB Reader E2E', () => {
     // Should start at Ch 1, page 1
     const pageInfo = page.locator('.page-info');
     const initialText = await pageInfo.textContent();
-    expect(initialText).toMatch(/^Ch 1\//);
+    expect(initialText).toMatch(/^Ch 1 /);
     expect(initialText).toMatch(/\s+1\/\d+$/);
 
     // Get total pages to know how many to flip
@@ -2176,7 +2176,7 @@ test.describe('EPUB Reader E2E', () => {
     // Verify restored page is the same page we were on (or close — within 1
     // due to viewport size differences between render passes)
     const restoredText = await pageInfo.textContent();
-    expect(restoredText).toMatch(/^Ch 1\//);
+    expect(restoredText).toMatch(/^Ch 1 /);
     const restoredPage = parseInt(restoredText.match(/\s+(\d+)\/\d+$/)[1]);
     // Allow ±1 tolerance since total pages can shift between render passes
     expect(Math.abs(restoredPage - afterFlipPageNum)).toBeLessThanOrEqual(1);
@@ -3088,7 +3088,7 @@ test.describe('EPUB Reader E2E', () => {
     // Verify at chapter 1
     const pageInfo = page.locator('.page-info');
     const ch1Text = await pageInfo.textContent();
-    expect(ch1Text).toMatch(/^Ch 1\//);
+    expect(ch1Text).toMatch(/^Ch 1 /);
 
     // Navigate to chapter 2 via Next button
     const container = page.locator('.chapter-container').first();
@@ -3102,7 +3102,7 @@ test.describe('EPUB Reader E2E', () => {
 
     // Verify at chapter 2
     const ch2Text = await pageInfo.textContent();
-    expect(ch2Text).toMatch(/^Ch 2\//);
+    expect(ch2Text).toMatch(/^Ch 2 /);
     await screenshot(page, 'ch-persist-01-at-chapter2');
 
     // Wait for IDB save to complete
@@ -3129,7 +3129,7 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForTimeout(1000);
 
     const restoredText = await pageInfo.textContent();
-    expect(restoredText).toMatch(/^Ch 2\//);
+    expect(restoredText).toMatch(/^Ch 2 /);
     await screenshot(page, 'ch-persist-03-restored');
 
     expect(errors).toEqual([]);
@@ -3168,7 +3168,7 @@ test.describe('EPUB Reader E2E', () => {
     // Verify at chapter 1
     const pageInfo = page.locator('.page-info');
     const ch1Text = await pageInfo.textContent();
-    expect(ch1Text).toMatch(/^Ch 1\//);
+    expect(ch1Text).toMatch(/^Ch 1 /);
 
     // Navigate to chapter 2 via Next
     const container = page.locator('.chapter-container').first();
@@ -3181,7 +3181,7 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForTimeout(500);
 
     const ch2Text = await pageInfo.textContent();
-    expect(ch2Text).toMatch(/^Ch 2\//);
+    expect(ch2Text).toMatch(/^Ch 2 /);
     await screenshot(page, 'vis-save-01-at-chapter2');
 
     // Dispatch visibilitychange with hidden state — triggers IDB save
@@ -3222,7 +3222,7 @@ test.describe('EPUB Reader E2E', () => {
     await page.waitForTimeout(1000);
 
     const restoredText = await pageInfo.textContent();
-    expect(restoredText).toMatch(/^Ch 2\//);
+    expect(restoredText).toMatch(/^Ch 2 /);
     await screenshot(page, 'vis-save-03-restored');
 
     expect(errors).toEqual([]);

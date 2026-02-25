@@ -408,11 +408,10 @@ local
   assume PAGE_INFO_SHOWN() = SCRUBBER_FILL_CHECKED()
 in
 
-(* Update page indicator text: "Ch X/Y  N/M" showing chapter and page position.
- * Calls update_scrubber_fill first (proof chain: PAGE_INFO_SHOWN requires SCRUBBER_FILL_CHECKED).
- * Uses standalone DOM stream — safe to call from event handlers.
- * Format: "Ch 1/5  3/10" — chapter 1 of 5, page 3 of 10.
- * Buffer: 48 bytes, max realistic content ~20 chars. *)
+(* Update page indicator text: "Ch X · p. N/M" showing chapter and page position.
+ * R4: simplified from "Ch X/Y  N/M" — removes total chapter count, adds middot.
+ * Calls update_scrubber_fill first (proof chain).
+ * Buffer: 48 bytes, max realistic content ~22 chars. *)
 
 fn update_page_info(): (PAGE_INFO_SHOWN() | void) = let
   val (pf_sfc | ()) = update_scrubber_fill()
@@ -420,27 +419,29 @@ fn update_page_info(): (PAGE_INFO_SHOWN() | void) = let
 in
   if gt_int_int(nid, 0) then let
     val cur_ch = reader_get_current_chapter()
-    val total_ch = reader_get_chapter_count()
     val cur_pg = reader_get_current_page()
     val total_pg = reader_get_total_pages()
     val arr = ward_arr_alloc<byte>(48)
-    (* Write "Ch " prefix — 67='C' 104='h' 32=' ' *)
+    (* Write "Ch " prefix *)
     val () = ward_arr_set<byte>(arr, _idx48(0), _byte(67))
     val () = ward_arr_set<byte>(arr, _idx48(1), _byte(104))
     val () = ward_arr_set<byte>(arr, _idx48(2), _byte(32))
     (* Chapter number (1-indexed) *)
     val ch_digits = itoa_to_arr(arr, cur_ch + 1, 3)
     val p = 3 + ch_digits
-    val () = ward_arr_set<byte>(arr, _idx48(p), _byte(47))     (* '/' *)
-    val tch_digits = itoa_to_arr(arr, total_ch, p + 1)
-    val p2 = p + 1 + tch_digits
-    (* Two-space separator *)
-    val () = ward_arr_set<byte>(arr, _idx48(p2), _byte(32))
-    val () = ward_arr_set<byte>(arr, _idx48(p2 + 1), _byte(32))
+    (* " · p. " separator — middot is U+00B7 = UTF-8 C2 B7 *)
+    val () = ward_arr_set<byte>(arr, _idx48(p), _byte(32))
+    val () = ward_arr_set<byte>(arr, _idx48(p + 1), _byte(194))
+    val () = ward_arr_set<byte>(arr, _idx48(p + 2), _byte(183))
+    val () = ward_arr_set<byte>(arr, _idx48(p + 3), _byte(32))
+    val () = ward_arr_set<byte>(arr, _idx48(p + 4), _byte(112))
+    val () = ward_arr_set<byte>(arr, _idx48(p + 5), _byte(46))
+    val () = ward_arr_set<byte>(arr, _idx48(p + 6), _byte(32))
+    val p2 = p + 7
     (* Page number (1-indexed) *)
-    val pg_digits = itoa_to_arr(arr, cur_pg + 1, p2 + 2)
-    val p3 = p2 + 2 + pg_digits
-    val () = ward_arr_set<byte>(arr, _idx48(p3), _byte(47))    (* '/' *)
+    val pg_digits = itoa_to_arr(arr, cur_pg + 1, p2)
+    val p3 = p2 + pg_digits
+    val () = ward_arr_set<byte>(arr, _idx48(p3), _byte(47))
     val tpg_digits = itoa_to_arr(arr, total_pg, p3 + 1)
     val total_len = p3 + 1 + tpg_digits
     val tl = g1ofg0(total_len)
