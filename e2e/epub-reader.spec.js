@@ -3645,5 +3645,19 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('L1+L2: toolbar has single shelf and sort cycling buttons', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Count toolbar buttons — should be <= 4 (shelf + sort + import section)
+    const toolbarBtns = await page.locator('.library-toolbar button').count();
+    expect(toolbarBtns).toBeLessThanOrEqual(4);
+    expect(toolbarBtns).toBeGreaterThanOrEqual(2);
+    await screenshot(page, 'l1l2-01-simplified-toolbar');
+    expect(errors).toEqual([]);
+  });
+
 
 });

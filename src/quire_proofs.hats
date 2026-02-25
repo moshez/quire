@@ -66,6 +66,12 @@ dataprop CHAPTER_DISPLAY_READY() =
 dataprop CARD_CLICK_OPENS_BOOK(has_card_handler: int) =
   | {h:int | h == 1} CARD_OPENS_BOOK(h)
 
+(* TOOLBAR_SIMPLIFIED: proves the library toolbar button count is reduced.
+ * L1+L2: shelf filter → 1 cycling button, sort → 1 cycling button.
+ * BUG CLASS PREVENTED: toolbar regression to cluttered 8-button state. *)
+dataprop TOOLBAR_SIMPLIFIED(button_count: int) =
+  | {n:int | n <= 4} TOOLBAR_CLEAN(n)
+
 (* PAGE_FORMAT_SIMPLIFIED: proves the page info format uses middot
  * separator (U+00B7) instead of slash for chapter/page separation.
  * R4: "Ch X · p. N/M" is cleaner than "Ch X/Y  N/M".

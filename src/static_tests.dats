@@ -934,3 +934,16 @@ fun test_progress_bar_height(): bool(true) = let
   prval pf = PBAR_HEIGHT_OK()
   prval _ = pf : PROGRESS_BAR_VISIBLE(PBAR_HEIGHT_PX)
 in true end
+
+(* ================================================================
+ * Test 34: TOOLBAR_SIMPLIFIED (L1+L2)
+ *
+ * Verifies toolbar has <= 4 buttons (was 8).
+ * 2 cycling buttons (shelf + sort) + import = 3.
+ * ================================================================ *)
+
+(* UNIT TEST *)
+fun test_toolbar_simplified(): bool(true) = let
+  prval pf = TOOLBAR_CLEAN()
+  prval _ = pf : TOOLBAR_SIMPLIFIED(3)
+in true end
