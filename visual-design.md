@@ -11,7 +11,7 @@
 - [x] **R2** Add Aa button for typography settings
 - [x] **R3** Add search button (🔍)
 - [x] **R4** Simplify position display — replace "Ch 6/32 2/10" with "Ch 6 · p. 2/10" or just percentage
-- [ ] **R5** Scrubber styling — match page background, subtle divider, styled thumb
+- [x] **R5** Scrubber styling — match page background, subtle divider, styled thumb
 
 ## Wave 3 — Library card cleanup
 
