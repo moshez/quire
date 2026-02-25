@@ -15,6 +15,7 @@ staload "./epub.sats"
 staload "./../vendor/ward/lib/memory.sats"
 staload "./drag_state.sats"
 staload "./reader.sats"
+staload "./quire_css.sats"
 
 (* Shared proof declarations — production types, not shadows.
  * Tests use these directly to verify proof structure. *)
@@ -842,4 +843,18 @@ fun test_drag_state_valid(): bool(true) = let
   prval _ = pf0 : DRAG_STATE_VALID(0)
   prval pf1 = DRAG_ACTIVE()
   prval _ = pf1 : DRAG_STATE_VALID(1)
+in true end
+
+(* ================================================================
+ * Test 27: TEXT_COLUMN_CAP_VALID dataprop
+ *
+ * Verifies CSS_MAX_COL_WIDTH_PX (680) is within the comfortable
+ * reading range [480, 800]. The constraint solver checks
+ * 480 <= 680 <= 800 at compile time.
+ * ================================================================ *)
+
+(* UNIT TEST *)
+fun test_column_cap_valid(): bool(true) = let
+  prval pf = COLUMN_CAP_OK()
+  prval _ = pf : TEXT_COLUMN_CAP_VALID(CSS_MAX_COL_WIDTH_PX)
 in true end
