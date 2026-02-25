@@ -593,6 +593,16 @@ in
     if eq_int_int(found, 1) then let
       val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5,
         cls_bm_active(), 9)
+      (* ★ filled star (U+2605) = E2 98 85 *)
+      val star_arr = ward_arr_alloc<byte>(3)
+      val () = ward_arr_set<byte>(star_arr, 0, _byte(226))
+      val () = ward_arr_set<byte>(star_arr, 1, _byte(152))
+      val () = ward_arr_set<byte>(star_arr, 2, _byte(133))
+      val @(sf, sb) = ward_arr_freeze<byte>(star_arr)
+      val s = ward_dom_stream_set_text(s, btn_id, sb, 3)
+      val () = ward_arr_drop<byte>(sf, sb)
+      val sa = ward_arr_thaw<byte>(sf)
+      val () = ward_arr_free<byte>(sa)
       val dom = ward_dom_stream_end(s)
       val () = ward_dom_fini(dom)
       prval pf = unit_p()
@@ -600,6 +610,16 @@ in
     else let
       val s = ward_dom_stream_set_attr_safe(s, btn_id, attr_class(), 5,
         cls_bm_btn(), 6)
+      (* ☆ unfilled star (U+2606) = E2 98 86 *)
+      val star_arr = ward_arr_alloc<byte>(3)
+      val () = ward_arr_set<byte>(star_arr, 0, _byte(226))
+      val () = ward_arr_set<byte>(star_arr, 1, _byte(152))
+      val () = ward_arr_set<byte>(star_arr, 2, _byte(134))
+      val @(sf, sb) = ward_arr_freeze<byte>(star_arr)
+      val s = ward_dom_stream_set_text(s, btn_id, sb, 3)
+      val () = ward_arr_drop<byte>(sf, sb)
+      val sa = ward_arr_thaw<byte>(sf)
+      val () = ward_arr_free<byte>(sa)
       val dom = ward_dom_stream_end(s)
       val () = ward_dom_fini(dom)
       prval pf = unit_p()
@@ -2414,12 +2434,16 @@ implement enter_reader(root_id, book_index) = let
   val s = ward_dom_stream_create_element(s, bm_btn_id, nav_id, tag_button(), 6)
   val s = ward_dom_stream_set_attr_safe(s, bm_btn_id, attr_class(), 5,
     cls_bm_btn(), 6)
-  val bm_st = let
-    val b = ward_text_build(2)
-    val b = ward_text_putc(b, 0, char2int1('B'))
-    val b = ward_text_putc(b, 1, char2int1('M'))
-  in ward_text_done(b) end
-  val s = ward_dom_stream_set_safe_text(s, bm_btn_id, bm_st, 2)
+  (* Bookmark icon: ☆ (U+2606) = UTF-8 E2 98 86 *)
+  val bm_arr = ward_arr_alloc<byte>(3)
+  val () = ward_arr_set<byte>(bm_arr, 0, _byte(226))
+  val () = ward_arr_set<byte>(bm_arr, 1, _byte(152))
+  val () = ward_arr_set<byte>(bm_arr, 2, _byte(134))
+  val @(bm_frozen, bm_borrow) = ward_arr_freeze<byte>(bm_arr)
+  val s = ward_dom_stream_set_text(s, bm_btn_id, bm_borrow, 3)
+  val () = ward_arr_drop<byte>(bm_frozen, bm_borrow)
+  val bm_arr2 = ward_arr_thaw<byte>(bm_frozen)
+  val () = ward_arr_free<byte>(bm_arr2)
 
   (* TOC toggle button *)
   val toc_btn_id = dom_next_id()

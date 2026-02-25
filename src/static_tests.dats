@@ -873,3 +873,16 @@ fun test_child_margin_sufficient(): bool(true) = let
   prval pf_r = MARGIN_OK()
   prval _ = pf_r : CHILD_MARGIN_SUFFICIENT(CSS_CHILD_PAD_R_10)
 in true end
+
+(* ================================================================
+ * Test 29: BOOKMARK_ICON_PAIR (R1)
+ *
+ * Verifies ☆ (U+2606) and ★ (U+2605) are a valid icon pair:
+ * adjacent codepoints in the Miscellaneous Symbols block.
+ * ================================================================ *)
+
+(* UNIT TEST *)
+fun test_bookmark_icon_pair(): bool(true) = let
+  prval pf = STAR_PAIR()
+  prval _ = pf : BOOKMARK_ICON_PAIR(0x2606, 0x2605)
+in true end
