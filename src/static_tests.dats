@@ -922,3 +922,15 @@ fun test_card_click_opens_book(): bool(true) = let
   prval pf = CARD_OPENS_BOOK()
   prval _ = pf : CARD_CLICK_OPENS_BOOK(1)
 in true end
+
+(* ================================================================
+ * Test 33: PROGRESS_BAR_VISIBLE (L4)
+ *
+ * Verifies progress bar height is in visible range [4, 6] px.
+ * ================================================================ *)
+
+(* UNIT TEST *)
+fun test_progress_bar_height(): bool(true) = let
+  prval pf = PBAR_HEIGHT_OK()
+  prval _ = pf : PROGRESS_BAR_VISIBLE(PBAR_HEIGHT_PX)
+in true end

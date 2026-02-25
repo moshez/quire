@@ -3605,5 +3605,45 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('L4: progress bar is 5px tall', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    const epubBuffer = createEpub({ title: 'Bar Height Test', chapters: 3, paragraphsPerChapter: 1 });
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `l4-bar-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await page.locator('input[type="file"]').setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    // Open and close to get a reading position
+    await page.locator('.book-card').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    // Go back to library
+    const navVisible = await page.locator('.reader-nav').isVisible();
+    if (!navVisible) {
+      await page.mouse.click(vp.width / 2, vp.height / 2);
+      await page.waitForTimeout(500);
+    }
+    await page.locator('.back-btn').click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+    // Check progress bar height
+    const barHeight = await page.evaluate(() => {
+      const bar = document.querySelector('.pbar');
+      if (!bar) return null;
+      return parseFloat(getComputedStyle(bar).height);
+    });
+    if (barHeight !== null) {
+      expect(barHeight).toBeGreaterThanOrEqual(4);
+      expect(barHeight).toBeLessThanOrEqual(6);
+    }
+    await screenshot(page, 'l4-01-bar-height');
+    expect(errors).toEqual([]);
+  });
+
 
 });

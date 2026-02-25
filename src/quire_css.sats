@@ -125,6 +125,14 @@ fun stamp_nav_css {l:agz}{n:int | n >= NAV_CSS_LEN_S}
 dataprop SCRUB_THEME_MATCHED(bg_matches_page: int) =
   | {b:int | b == 1} SCRUB_BG_OK(b)
 
+(* PROGRESS_BAR_VISIBLE: bar height is 4-6px for visual prominence.
+ * L4: thicker progress bar (was 2px, now 5px).
+ * BUG CLASS PREVENTED: invisible/too-thin progress bar. *)
+dataprop PROGRESS_BAR_VISIBLE(height_px: int) =
+  | {h:int | h >= 4; h <= 6} PBAR_HEIGHT_OK(h)
+
+#define PBAR_HEIGHT_PX 5  (* progress bar height in px *)
+
 (* SCRUB_TAPPABLE: interactive elements meet minimum touch target sizes.
  * BUG CLASS PREVENTED: untappable scrubber on mobile — if pad < 8,
  * bar height < 16, or handle < 16, fingers can't reliably hit targets. *)
