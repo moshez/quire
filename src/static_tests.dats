@@ -858,3 +858,18 @@ fun test_column_cap_valid(): bool(true) = let
   prval pf = COLUMN_CAP_OK()
   prval _ = pf : TEXT_COLUMN_CAP_VALID(CSS_MAX_COL_WIDTH_PX)
 in true end
+
+(* ================================================================
+ * Test 28: CHILD_MARGIN_SUFFICIENT dataprop (R7)
+ *
+ * Verifies CSS_CHILD_PAD_L_10 (20) and CSS_CHILD_PAD_R_10 (20)
+ * meet the minimum margin requirement (>= 12 tenths ≈ 19px).
+ * ================================================================ *)
+
+(* UNIT TEST *)
+fun test_child_margin_sufficient(): bool(true) = let
+  prval pf_l = MARGIN_OK()
+  prval _ = pf_l : CHILD_MARGIN_SUFFICIENT(CSS_CHILD_PAD_L_10)
+  prval pf_r = MARGIN_OK()
+  prval _ = pf_r : CHILD_MARGIN_SUFFICIENT(CSS_CHILD_PAD_R_10)
+in true end

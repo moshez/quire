@@ -3495,7 +3495,23 @@ test.describe('EPUB Reader E2E', () => {
       // margin-left should be > 0 (auto centering kicks in)
       expect(parseFloat(pStyle.marginLeft)).toBeGreaterThan(0);
     }
-    await screenshot(page, 'r6-01-width-cap');
+    // R7: padding should be 2rem = 32px
+    const padStyle = await page.evaluate(() => {
+      const p = document.querySelector('.chapter-container p');
+      if (!p) return null;
+      const cs = getComputedStyle(p);
+      return {
+        paddingLeft: parseFloat(cs.paddingLeft),
+        paddingRight: parseFloat(cs.paddingRight),
+      };
+    });
+    if (padStyle) {
+      // 2rem at default 16px = 32px; at 18px base = 36px
+      // Just verify >= 24px (the R7 minimum requirement)
+      expect(padStyle.paddingLeft).toBeGreaterThanOrEqual(24);
+      expect(padStyle.paddingRight).toBeGreaterThanOrEqual(24);
+    }
+    await screenshot(page, 'r6r7-01-width-and-padding');
     expect(errors).toEqual([]);
   });
 
