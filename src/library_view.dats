@@ -970,11 +970,25 @@ implement render_library(root_id) = let
   (* L2: Reset button removed — factory reset via context menu or settings *)
   val reset_btn_id = 0
 
-  (* Import button — only shown in active view *)
+  (* L5: Gear icon (settings) button — UTF-8 ⚙ U+2699 = E2 9A 99 *)
+  val gear_btn_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, gear_btn_id, toolbar_id, tag_button(), 6)
+  val s = set_sort_btn_class(s, gear_btn_id, false)
+  val gear_arr = ward_arr_alloc<byte>(3)
+  val () = ward_arr_set<byte>(gear_arr, 0, _byte(226))
+  val () = ward_arr_set<byte>(gear_arr, 1, _byte(154))
+  val () = ward_arr_set<byte>(gear_arr, 2, _byte(153))
+  val @(gf, gb) = ward_arr_freeze<byte>(gear_arr)
+  val s = ward_dom_stream_set_text(s, gear_btn_id, gb, 3)
+  val () = ward_arr_drop<byte>(gf, gb)
+  val ga = ward_arr_thaw<byte>(gf)
+  val () = ward_arr_free<byte>(ga)
+
+  (* L6: Import button moved into toolbar — normal-sized *)
   val label_id = dom_next_id()
   val span_id = dom_next_id()
   val input_id = dom_next_id()
-  val s = add_import_section(s, root_id, view_mode, label_id, span_id, input_id)
+  val s = add_import_section(s, toolbar_id, view_mode, label_id, span_id, input_id)
 
   (* Status div: <div class="import-status"></div> — updated during import *)
   val status_id = dom_next_id()
@@ -1060,7 +1074,13 @@ implement render_library(root_id) = let
       in 0 end
     end
   )
-  (* L2: Reset button removed *)
+  (* L5: Gear button — opens reset/settings modal *)
+  val () = ward_add_event_listener(
+    gear_btn_id, evt_click(), 5, LISTENER_RESET_BTN,
+    lam (_pl: int): int => let
+      val () = render_reset_modal(saved_root)
+    in 0 end
+  )
 
   (* Register change listener on file input — only in active view.
    * Multi-phase promise chain with timer yields between phases

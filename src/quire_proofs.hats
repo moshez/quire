@@ -66,6 +66,12 @@ dataprop CHAPTER_DISPLAY_READY() =
 dataprop CARD_CLICK_OPENS_BOOK(has_card_handler: int) =
   | {h:int | h == 1} CARD_OPENS_BOOK(h)
 
+(* GEAR_ICON_VALID: proves the gear icon codepoint is in Misc Symbols block.
+ * L5: ⚙ (U+2699).
+ * BUG CLASS PREVENTED: invalid icon codepoint. *)
+dataprop GEAR_ICON_VALID(codepoint: int) =
+  | {cp:int | cp >= 0x2600; cp <= 0x26FF} GEAR_CP_OK(cp)
+
 (* TOOLBAR_SIMPLIFIED: proves the library toolbar button count is reduced.
  * L1+L2: shelf filter → 1 cycling button, sort → 1 cycling button.
  * BUG CLASS PREVENTED: toolbar regression to cluttered 8-button state. *)

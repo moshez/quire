@@ -22,5 +22,5 @@
 
 - [x] **L1** Move shelf state into a "Library ▼" filter popover; clear the toolbar
 - [x] **L2** Replace sort buttons with a single "Sort ▼" dropdown; remove Reset button
-- [ ] **L5** Add gear icon (settings) to library toolbar
-- [ ] **L6** Shrink Import to a normal toolbar button
+- [x] **L5** Add gear icon (settings) to library toolbar
+- [x] **L6** Shrink Import to a normal toolbar button
