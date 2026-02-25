@@ -38,13 +38,25 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
+      - name: Fix Kotlin dependency conflict
+        run: |
+          # Force consistent Kotlin stdlib version to fix classpath duplicate
+          cat >> android/app/build.gradle << 'GRADLE'
+          configurations.all {
+              resolutionStrategy {
+                  force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+                  force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
+                  force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
+              }
+          }
+          GRADLE
+
       - name: Sync web assets to Android
         run: npx cap sync android
 
       - name: Build debug APK
         working-directory: android
         run: ./gradlew assembleDebug
-        continue-on-error: true
 
       - name: Verify APK exists
         run: |
