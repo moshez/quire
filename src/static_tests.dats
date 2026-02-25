@@ -947,3 +947,15 @@ fun test_toolbar_simplified(): bool(true) = let
   prval pf = TOOLBAR_CLEAN()
   prval _ = pf : TOOLBAR_SIMPLIFIED(3)
 in true end
+
+(* ================================================================
+ * Test 35: GEAR_ICON_VALID (L5)
+ *
+ * Verifies gear icon ⚙ (U+2699) is in valid range.
+ * ================================================================ *)
+
+(* UNIT TEST *)
+fun test_gear_icon_valid(): bool(true) = let
+  prval pf = GEAR_CP_OK()
+  prval _ = pf : GEAR_ICON_VALID(0x2699)
+in true end

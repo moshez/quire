@@ -3659,5 +3659,24 @@ test.describe('EPUB Reader E2E', () => {
     expect(errors).toEqual([]);
   });
 
+  test('L5: gear icon button exists in library toolbar', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Gear button ⚙ should exist in toolbar
+    const gearBtn = await page.evaluate(() => {
+      const btns = document.querySelectorAll('.library-toolbar button');
+      for (const btn of btns) {
+        if (btn.textContent.includes('⚙')) return true;
+      }
+      return false;
+    });
+    expect(gearBtn).toBe(true);
+    await screenshot(page, 'l5-01-gear-icon');
+    expect(errors).toEqual([]);
+  });
+
 
 });
