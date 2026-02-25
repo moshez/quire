@@ -8,8 +8,8 @@
 ## Wave 2 — Reader chrome clutter
 
 - [x] **R1** Replace "BM" with a bookmark icon (filled/unfilled)
-- [ ] **R2** Add Aa button for typography settings
-- [ ] **R3** Add search button (🔍)
+- [x] **R2** Add Aa button for typography settings
+- [x] **R3** Add search button (🔍)
 - [ ] **R4** Simplify position display — replace "Ch 6/32 2/10" with "Ch 6 · p. 2/10" or just percentage
 - [ ] **R5** Scrubber styling — match page background, subtle divider, styled thumb
 
