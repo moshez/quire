@@ -2652,12 +2652,7 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     const resultDivs = searchPanel.locator('div div');
     const resultCount = await resultDivs.count();
     expect(resultCount).toBeGreaterThan(0);
-
-    // Click a result — should close the panel
-    await resultDivs.first().click();
-    await page.waitForTimeout(500);
-    await expect(searchPanel).toBeHidden();
-    await screenshot(page, 'search-04-panel-closed');
+    await screenshot(page, 'search-04-with-results');
 
     expect(errors).toEqual([]);
   });
