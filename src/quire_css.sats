@@ -43,10 +43,23 @@ dataprop NAV_BTN_VISIBLE(font_size_10: int, padding_h_10: int) =
  * Changing any value triggers a compile-time constraint failure. *)
 #define CSS_COL_WIDTH_VW 100       (* column-width: 100vw *)
 #define CSS_CONTAINER_PAD_H 0      (* padding: 2rem 0 — zero horizontal *)
-#define CSS_CHILD_PAD_L_10 15      (* padding-left: 1.5rem = 15 tenths *)
-#define CSS_CHILD_PAD_R_10 15      (* padding-right: 1.5rem = 15 tenths *)
+#define CSS_CHILD_PAD_L_10 20      (* padding-left: 2.0rem = 20 tenths *)
+#define CSS_CHILD_PAD_R_10 20      (* padding-right: 2.0rem = 20 tenths *)
 #define CSS_BTN_FONT_10 10         (* font-size: 1rem = 10 tenths *)
 #define CSS_BTN_PAD_H_10 3         (* padding: 0 .3rem = 3 tenths *)
+#define PBAR_HEIGHT_PX 5           (* progress bar height in px *)
+
+(* CHILD_MARGIN_SUFFICIENT: horizontal padding >= 12 tenths (1.2rem ~= 19px). *)
+dataprop CHILD_MARGIN_SUFFICIENT(pad_tenths: int) =
+  | {p:int | p >= 12} MARGIN_OK(p)
+
+(* PROGRESS_BAR_VISIBLE: bar height is 4-6px for visual prominence. *)
+dataprop PROGRESS_BAR_VISIBLE(height_px: int) =
+  | {h:int | h >= 4; h <= 6} PBAR_HEIGHT_OK(h)
+
+(* SCRUB_THEME_MATCHED: scrubber background matches page background. *)
+dataprop SCRUB_THEME_MATCHED(bg_matches_page: int) =
+  | {b:int | b == 1} SCRUB_BG_OK(b)
 
 (* ========== CSS length constants ========== *)
 (* #define: runtime values; stadef: type-level constraints *)

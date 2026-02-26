@@ -26,6 +26,7 @@ When completing a milestone from quire-design.md §8:
 3. **Every PR with a user-facing feature must include an e2e test that validates it**
 4. Commit and push
 5. **Only mark the item complete (`- [x]`) when CI is green** — never before
+6. **No skipped tests, no continue-on-error** — every test must run and pass. Never paper over failures with `test.skip()` or `continue-on-error: true`.
 
 ## "next" Command
 
