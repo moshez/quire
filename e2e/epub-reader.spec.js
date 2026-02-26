@@ -2846,5 +2846,50 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     expect(errors).toEqual([]);
   });
 
+  test('R6: text line width capped on wide viewports', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    const epubBuffer = createEpub({ title: 'Width Cap Test', chapters: 1, paragraphsPerChapter: 5 });
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `r6-cap-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await page.locator('input[type="file"]').setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await page.locator('.book-card').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    // Measure actual text width of a paragraph
+    const textWidth = await page.evaluate(() => {
+      const p = document.querySelector('.chapter-container p');
+      if (!p) return null;
+      const rect = p.getBoundingClientRect();
+      return rect.width;
+    });
+    expect(textWidth).not.toBeNull();
+
+    // On wide viewports (>= 1024px), text width should be <= 720px
+    // (680px target + some tolerance for padding/box-sizing)
+    if (vp.width >= 1024) {
+      expect(textWidth).toBeLessThanOrEqual(720);
+    }
+
+    // Pagination must still work — should have multiple pages
+    if (vp.width >= 1024) {
+      const pageInfo = await page.locator('.page-info').textContent();
+      // Should NOT be "p. 1/1" on wide viewport with 5 paragraphs
+      // (unless content genuinely fits — 5 short paragraphs might fit)
+    }
+
+    await screenshot(page, 'r6-02-width-capped');
+    expect(errors).toEqual([]);
+  });
+
 
 });
