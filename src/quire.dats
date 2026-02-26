@@ -3240,6 +3240,9 @@ implement enter_reader(root_id, book_index) = let
         val target = read_payload_target_id(payload)
         val () = ward_arr_free<byte>(payload)
         val handled = settings_handle_click(target)
+        (* If click wasn't on a recognized button, close the panel.
+         * This lets users dismiss settings by clicking the backdrop. *)
+        val () = if eq_int_int(handled, 0) then settings_hide() else ()
       in 0 end
       else 0
     end

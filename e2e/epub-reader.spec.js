@@ -2516,8 +2516,8 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     await page.waitForTimeout(300);
     await screenshot(page, 'settings-05-light-theme');
 
-    // Click Aa button again — overlay should hide
-    await aaBtn.click();
+    // Click the overlay backdrop (not a button) to dismiss
+    await overlay.click({ position: { x: 10, y: 10 } });
     await page.waitForTimeout(300);
     // Overlay should be hidden (display:none)
     await expect(overlay).toBeHidden();
