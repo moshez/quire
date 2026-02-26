@@ -103,3 +103,10 @@ html, body {
   from { opacity: 0.4; }
   to { opacity: 1; }
 }
+
+/* L6: Import button visual sizing — override padding visually
+ * while keeping the label's full click target for file input. */
+.import-btn {
+  padding: .3rem .6rem !important;
+  font-size: .85rem !important;
+}
