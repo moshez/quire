@@ -47,6 +47,16 @@
   max-width: 680px;
 }
 
+/* L3: Progress bar click-through — pbar/pfill are decorative children of
+ * .book-position. Without pointer-events:none, clicks on the progress bar
+ * reach pbar/pfill as event.target instead of .book-position, and the WASM
+ * click delegation doesn't recognize those node IDs.
+ * BUG CLASS PREVENTED: card re-entry fails when layout shifts cause click
+ * center to land on progress bar elements. */
+.pbar, .pfill {
+  pointer-events: none;
+}
+
 /* ========== Content rendering fixes ========== */
 
 /* 11.1: Wide tables get horizontal scroll instead of breaking layout */

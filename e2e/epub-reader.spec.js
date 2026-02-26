@@ -2923,5 +2923,28 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     expect(errors).toEqual([]);
   });
 
+  test('L6: Import button is reasonably sized in toolbar', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Measure Import button height vs Library button height
+    const heights = await page.evaluate(() => {
+      const importBtn = document.querySelector('.import-btn');
+      const libBtn = document.querySelector('.lib-toolbar button');
+      if (!importBtn || !libBtn) return null;
+      return {
+        importH: importBtn.getBoundingClientRect().height,
+        libH: libBtn.getBoundingClientRect().height,
+      };
+    });
+    expect(heights).not.toBeNull();
+    // Import should not be more than 1.5x the height of toolbar buttons
+    expect(heights.importH).toBeLessThanOrEqual(heights.libH * 1.5);
+    await screenshot(page, 'l6-01-import-size');
+    expect(errors).toEqual([]);
+  });
+
 
 });
