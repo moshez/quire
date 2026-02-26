@@ -184,3 +184,18 @@ fun inject_scrub_css {l:agz}
 fun inject_toc_css {l:agz}
   (pf_z: TOC_PANEL_LAYERED(TOC_PANEL_Z) |
    s: ward_dom_stream(l), parent: int): ward_dom_stream(l)
+
+(* Settings panel CSS length — distinct stadef/define names prevent #define override. *)
+stadef STG_CSS_WRITES = 99
+stadef STG_CSS_LEN_S = STG_CSS_WRITES * 4
+#define STG_CSS_LEN 396
+
+(* Settings panel z-index must exceed TOC panel z-index (20). *)
+#define STG_PANEL_Z 30
+dataprop STG_PANEL_LAYERED(z_idx: int) =
+  | {zi:int | zi > 20} STG_Z_OK(zi)
+
+(* Inject settings panel CSS. *)
+fun inject_stg_css {l:agz}
+  (pf_z: STG_PANEL_LAYERED(STG_PANEL_Z) |
+   s: ward_dom_stream(l), parent: int): ward_dom_stream(l)

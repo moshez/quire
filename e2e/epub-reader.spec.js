@@ -2434,7 +2434,7 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     expect(errors).toEqual([]);
   });
 
-  test('Aa button toggles settings panel', async ({ page }) => {
+  test('Aa settings panel controls font size and theme', async ({ page }) => {
     const errors = [];
     page.on('pageerror', err => errors.push(err.message));
 
@@ -2460,15 +2460,68 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     await expect(aaBtn).toContainText('Aa');
     await screenshot(page, 'settings-01-aa-button');
 
-    // Click Aa button — settings overlay should appear
+    // Click Aa button — settings overlay should appear with controls
     await aaBtn.click();
     await page.waitForTimeout(300);
+    const overlay = page.locator('.stg-overlay');
+    await expect(overlay).toBeVisible();
+
+    // Verify settings panel has rows with buttons
+    const rows = overlay.locator('.stg-row');
+    const rowCount = await rows.count();
+    expect(rowCount).toBeGreaterThanOrEqual(4);  // font size, font family, theme, spacing, margin
     await screenshot(page, 'settings-02-panel-open');
+
+    // Read initial font size from viewport style
+    const initialFontSize = await page.evaluate(() => {
+      const vp = document.querySelector('.reader-viewport');
+      return vp ? getComputedStyle(vp).fontSize : null;
+    });
+
+    // Click font size "A+" button — should increase font-size
+    const fontPlusBtn = overlay.locator('button', { hasText: 'A+' });
+    await expect(fontPlusBtn).toBeAttached();
+    await fontPlusBtn.click();
+    await page.waitForTimeout(300);
+    await screenshot(page, 'settings-03-font-increased');
+
+    // Verify font-size changed on viewport
+    const newFontSize = await page.evaluate(() => {
+      const vp = document.querySelector('.reader-viewport');
+      return vp ? vp.style.fontSize : null;
+    });
+    expect(newFontSize).toBeTruthy();
+    // Font size should have increased (default 18px → 19px)
+    const newPx = parseInt(newFontSize, 10);
+    expect(newPx).toBeGreaterThan(18);
+
+    // Click Dark theme button — should apply dark mode filter
+    const darkBtn = overlay.locator('button', { hasText: 'Dark' });
+    await expect(darkBtn).toBeAttached();
+    await darkBtn.click();
+    await page.waitForTimeout(300);
+    await screenshot(page, 'settings-04-dark-theme');
+
+    // Verify dark mode filter is applied on chapter container
+    const containerStyle = await page.evaluate(() => {
+      const cc = document.querySelector('.chapter-container');
+      return cc ? cc.getAttribute('style') : null;
+    });
+    expect(containerStyle).toContain('invert');
+
+    // Click Light theme button — should remove dark mode filter
+    const lightBtn = overlay.locator('button', { hasText: 'Light' });
+    await expect(lightBtn).toBeAttached();
+    await lightBtn.click();
+    await page.waitForTimeout(300);
+    await screenshot(page, 'settings-05-light-theme');
 
     // Click Aa button again — overlay should hide
     await aaBtn.click();
     await page.waitForTimeout(300);
-    await screenshot(page, 'settings-03-panel-closed');
+    // Overlay should be hidden (display:none)
+    await expect(overlay).toBeHidden();
+    await screenshot(page, 'settings-06-panel-closed');
 
     expect(errors).toEqual([]);
   });

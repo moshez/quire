@@ -2577,6 +2577,10 @@ implement enter_reader(root_id, book_index) = let
   prval pf_z = TOC_Z_OK()   (* 20 > 10 — solver verifies *)
   val s = inject_toc_css(pf_z | s, root_id)
 
+  (* Inject settings panel CSS — proof enforces z-index > 20 *)
+  prval pf_stg_z = STG_Z_OK()  (* 30 > 20 — solver verifies *)
+  val s = inject_stg_css(pf_stg_z | s, root_id)
+
   (* Create bottom chrome bar:
    * <div class="reader-bottom">
    *   <div class="scrubber">
@@ -2685,7 +2689,245 @@ implement enter_reader(root_id, book_index) = let
   val stg_overlay_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, stg_overlay_id, root_id, tag_div(), 3)
   val s = ward_dom_stream_set_attr_safe(s, stg_overlay_id, attr_class(), 5,
-    cls_settings_btn(), 12)
+    cls_stg_overlay(), 11)
+
+  (* --- Settings panel controls --- *)
+
+  (* Font size row: [-] display [+] *)
+  val stg_fs_row = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_fs_row, stg_overlay_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, stg_fs_row, attr_class(), 5,
+    cls_stg_row(), 7)
+
+  val stg_fs_lbl = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_fs_lbl, stg_fs_row, tag_span(), 4)
+  val s = ward_dom_stream_set_attr_safe(s, stg_fs_lbl, attr_class(), 5,
+    cls_stg_lbl(), 7)
+  val fs_lbl_st = let
+    val b = ward_text_build(4)
+    val b = ward_text_putc(b, 0, char2int1('S'))
+    val b = ward_text_putc(b, 1, char2int1('i'))
+    val b = ward_text_putc(b, 2, char2int1('z'))
+    val b = ward_text_putc(b, 3, char2int1('e'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, stg_fs_lbl, fs_lbl_st, 4)
+
+  val stg_btn_fs_minus = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_btn_fs_minus, stg_fs_row, tag_button(), 6)
+  val fs_m_st = let
+    val b = ward_text_build(2)
+    val b = ward_text_putc(b, 0, char2int1('A'))
+    val b = ward_text_putc(b, 1, 45) (* '-' *)
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, stg_btn_fs_minus, fs_m_st, 2)
+
+  val stg_disp_fs = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_disp_fs, stg_fs_row, tag_span(), 4)
+  val fs_d_st = let
+    val b = ward_text_build(2)
+    val b = ward_text_putc(b, 0, char2int1('1'))
+    val b = ward_text_putc(b, 1, char2int1('8'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, stg_disp_fs, fs_d_st, 2)
+
+  val stg_btn_fs_plus = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_btn_fs_plus, stg_fs_row, tag_button(), 6)
+  val fs_p_arr = ward_arr_alloc<byte>(2)
+  val () = ward_arr_set<byte>(fs_p_arr, 0, _byte(65))  (* A *)
+  val () = ward_arr_set<byte>(fs_p_arr, 1, _byte(43))  (* + *)
+  val @(fs_p_f, fs_p_b) = ward_arr_freeze<byte>(fs_p_arr)
+  val s = ward_dom_stream_set_text(s, stg_btn_fs_plus, fs_p_b, 2)
+  val () = ward_arr_drop<byte>(fs_p_f, fs_p_b)
+  val fs_p_arr = ward_arr_thaw<byte>(fs_p_f)
+  val () = ward_arr_free<byte>(fs_p_arr)
+
+  (* Font family row: cycle button *)
+  val stg_ff_row = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_ff_row, stg_overlay_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, stg_ff_row, attr_class(), 5,
+    cls_stg_row(), 7)
+
+  val stg_ff_lbl = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_ff_lbl, stg_ff_row, tag_span(), 4)
+  val s = ward_dom_stream_set_attr_safe(s, stg_ff_lbl, attr_class(), 5,
+    cls_stg_lbl(), 7)
+  val ff_lbl_st = let
+    val b = ward_text_build(4)
+    val b = ward_text_putc(b, 0, char2int1('F'))
+    val b = ward_text_putc(b, 1, char2int1('o'))
+    val b = ward_text_putc(b, 2, char2int1('n'))
+    val b = ward_text_putc(b, 3, char2int1('t'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, stg_ff_lbl, ff_lbl_st, 4)
+
+  val stg_btn_ff = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_btn_ff, stg_ff_row, tag_button(), 6)
+  val ff_st = let
+    val b = ward_text_build(5)
+    val b = ward_text_putc(b, 0, char2int1('S'))
+    val b = ward_text_putc(b, 1, char2int1('e'))
+    val b = ward_text_putc(b, 2, char2int1('r'))
+    val b = ward_text_putc(b, 3, char2int1('i'))
+    val b = ward_text_putc(b, 4, char2int1('f'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, stg_btn_ff, ff_st, 5)
+
+  val stg_disp_ff = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_disp_ff, stg_ff_row, tag_span(), 4)
+
+  (* Theme row: L D S buttons *)
+  val stg_th_row = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_th_row, stg_overlay_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, stg_th_row, attr_class(), 5,
+    cls_stg_row(), 7)
+
+  val stg_th_lbl = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_th_lbl, stg_th_row, tag_span(), 4)
+  val s = ward_dom_stream_set_attr_safe(s, stg_th_lbl, attr_class(), 5,
+    cls_stg_lbl(), 7)
+  val th_lbl_st = let
+    val b = ward_text_build(5)
+    val b = ward_text_putc(b, 0, char2int1('T'))
+    val b = ward_text_putc(b, 1, char2int1('h'))
+    val b = ward_text_putc(b, 2, char2int1('e'))
+    val b = ward_text_putc(b, 3, char2int1('m'))
+    val b = ward_text_putc(b, 4, char2int1('e'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, stg_th_lbl, th_lbl_st, 5)
+
+  val stg_btn_th_l = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_btn_th_l, stg_th_row, tag_button(), 6)
+  val th_l_st = let
+    val b = ward_text_build(5)
+    val b = ward_text_putc(b, 0, char2int1('L'))
+    val b = ward_text_putc(b, 1, char2int1('i'))
+    val b = ward_text_putc(b, 2, char2int1('g'))
+    val b = ward_text_putc(b, 3, char2int1('h'))
+    val b = ward_text_putc(b, 4, char2int1('t'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, stg_btn_th_l, th_l_st, 5)
+
+  val stg_btn_th_d = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_btn_th_d, stg_th_row, tag_button(), 6)
+  val th_d_st = let
+    val b = ward_text_build(4)
+    val b = ward_text_putc(b, 0, char2int1('D'))
+    val b = ward_text_putc(b, 1, char2int1('a'))
+    val b = ward_text_putc(b, 2, char2int1('r'))
+    val b = ward_text_putc(b, 3, char2int1('k'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, stg_btn_th_d, th_d_st, 4)
+
+  val stg_btn_th_s = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_btn_th_s, stg_th_row, tag_button(), 6)
+  val th_s_st = let
+    val b = ward_text_build(5)
+    val b = ward_text_putc(b, 0, char2int1('S'))
+    val b = ward_text_putc(b, 1, char2int1('e'))
+    val b = ward_text_putc(b, 2, char2int1('p'))
+    val b = ward_text_putc(b, 3, char2int1('i'))
+    val b = ward_text_putc(b, 4, char2int1('a'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, stg_btn_th_s, th_s_st, 5)
+
+  (* Line height row: [-] display [+] *)
+  val stg_lh_row = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_lh_row, stg_overlay_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, stg_lh_row, attr_class(), 5,
+    cls_stg_row(), 7)
+
+  val stg_lh_lbl = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_lh_lbl, stg_lh_row, tag_span(), 4)
+  val s = ward_dom_stream_set_attr_safe(s, stg_lh_lbl, attr_class(), 5,
+    cls_stg_lbl(), 7)
+  val lh_lbl_st = let
+    val b = ward_text_build(7)
+    val b = ward_text_putc(b, 0, char2int1('S'))
+    val b = ward_text_putc(b, 1, char2int1('p'))
+    val b = ward_text_putc(b, 2, char2int1('a'))
+    val b = ward_text_putc(b, 3, char2int1('c'))
+    val b = ward_text_putc(b, 4, char2int1('i'))
+    val b = ward_text_putc(b, 5, char2int1('n'))
+    val b = ward_text_putc(b, 6, char2int1('g'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, stg_lh_lbl, lh_lbl_st, 7)
+
+  val stg_btn_lh_minus = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_btn_lh_minus, stg_lh_row, tag_button(), 6)
+  val lh_m_st = let
+    val b = ward_text_build(1)
+    val b = ward_text_putc(b, 0, 45) (* '-' *)
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, stg_btn_lh_minus, lh_m_st, 1)
+
+  val stg_disp_lh = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_disp_lh, stg_lh_row, tag_span(), 4)
+  val lh_d_arr = ward_arr_alloc<byte>(3)
+  val () = ward_arr_set<byte>(lh_d_arr, 0, _byte(49))  (* 1 *)
+  val () = ward_arr_set<byte>(lh_d_arr, 1, _byte(46))  (* . *)
+  val () = ward_arr_set<byte>(lh_d_arr, 2, _byte(54))  (* 6 *)
+  val @(lh_d_f, lh_d_b) = ward_arr_freeze<byte>(lh_d_arr)
+  val s = ward_dom_stream_set_text(s, stg_disp_lh, lh_d_b, 3)
+  val () = ward_arr_drop<byte>(lh_d_f, lh_d_b)
+  val lh_d_arr = ward_arr_thaw<byte>(lh_d_f)
+  val () = ward_arr_free<byte>(lh_d_arr)
+
+  val stg_btn_lh_plus = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_btn_lh_plus, stg_lh_row, tag_button(), 6)
+  val lh_p_arr = ward_arr_alloc<byte>(1)
+  val () = ward_arr_set<byte>(lh_p_arr, 0, _byte(43))  (* + *)
+  val @(lh_p_f, lh_p_b) = ward_arr_freeze<byte>(lh_p_arr)
+  val s = ward_dom_stream_set_text(s, stg_btn_lh_plus, lh_p_b, 1)
+  val () = ward_arr_drop<byte>(lh_p_f, lh_p_b)
+  val lh_p_arr = ward_arr_thaw<byte>(lh_p_f)
+  val () = ward_arr_free<byte>(lh_p_arr)
+
+  (* Margin row: [-] display [+] *)
+  val stg_mg_row = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_mg_row, stg_overlay_id, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, stg_mg_row, attr_class(), 5,
+    cls_stg_row(), 7)
+
+  val stg_mg_lbl = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_mg_lbl, stg_mg_row, tag_span(), 4)
+  val s = ward_dom_stream_set_attr_safe(s, stg_mg_lbl, attr_class(), 5,
+    cls_stg_lbl(), 7)
+  val mg_lbl_st = let
+    val b = ward_text_build(6)
+    val b = ward_text_putc(b, 0, char2int1('M'))
+    val b = ward_text_putc(b, 1, char2int1('a'))
+    val b = ward_text_putc(b, 2, char2int1('r'))
+    val b = ward_text_putc(b, 3, char2int1('g'))
+    val b = ward_text_putc(b, 4, char2int1('i'))
+    val b = ward_text_putc(b, 5, char2int1('n'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, stg_mg_lbl, mg_lbl_st, 6)
+
+  val stg_btn_mg_minus = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_btn_mg_minus, stg_mg_row, tag_button(), 6)
+  val mg_m_st = let
+    val b = ward_text_build(1)
+    val b = ward_text_putc(b, 0, 45) (* '-' *)
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, stg_btn_mg_minus, mg_m_st, 1)
+
+  val stg_disp_mg = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_disp_mg, stg_mg_row, tag_span(), 4)
+  val mg_d_st = let
+    val b = ward_text_build(1)
+    val b = ward_text_putc(b, 0, char2int1('2'))
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, stg_disp_mg, mg_d_st, 1)
+
+  val stg_btn_mg_plus = dom_next_id()
+  val s = ward_dom_stream_create_element(s, stg_btn_mg_plus, stg_mg_row, tag_button(), 6)
+  val mg_p_arr = ward_arr_alloc<byte>(1)
+  val () = ward_arr_set<byte>(mg_p_arr, 0, _byte(43))  (* + *)
+  val @(mg_p_f, mg_p_b) = ward_arr_freeze<byte>(mg_p_arr)
+  val s = ward_dom_stream_set_text(s, stg_btn_mg_plus, mg_p_b, 1)
+  val () = ward_arr_drop<byte>(mg_p_f, mg_p_b)
+  val mg_p_arr = ward_arr_thaw<byte>(mg_p_f)
+  val () = ward_arr_free<byte>(mg_p_arr)
 
   (* Selection toolbar — initially hidden, contains Highlight button *)
   val sel_toolbar_id = dom_next_id()
@@ -2777,6 +3019,20 @@ implement enter_reader(root_id, book_index) = let
   val () = reader_set_nav_back_btn_id(nav_back_btn_id)
   val st_store = app_state_load()
   val () = app_set_stg_overlay_id(st_store, stg_overlay_id)
+  val () = app_set_stg_btn_font_minus(st_store, stg_btn_fs_minus)
+  val () = app_set_stg_btn_font_plus(st_store, stg_btn_fs_plus)
+  val () = app_set_stg_btn_font_fam(st_store, stg_btn_ff)
+  val () = app_set_stg_btn_theme_l(st_store, stg_btn_th_l)
+  val () = app_set_stg_btn_theme_d(st_store, stg_btn_th_d)
+  val () = app_set_stg_btn_theme_s(st_store, stg_btn_th_s)
+  val () = app_set_stg_btn_lh_minus(st_store, stg_btn_lh_minus)
+  val () = app_set_stg_btn_lh_plus(st_store, stg_btn_lh_plus)
+  val () = app_set_stg_btn_mg_minus(st_store, stg_btn_mg_minus)
+  val () = app_set_stg_btn_mg_plus(st_store, stg_btn_mg_plus)
+  val () = app_set_stg_disp_fs(st_store, stg_disp_fs)
+  val () = app_set_stg_disp_ff(st_store, stg_disp_ff)
+  val () = app_set_stg_disp_lh(st_store, stg_disp_lh)
+  val () = app_set_stg_disp_mg(st_store, stg_disp_mg)
   val () = app_state_store(st_store)
 
   (* Register listeners — all reader registrations use reader_add_event_listener
@@ -2970,6 +3226,23 @@ implement enter_reader(root_id, book_index) = let
     lam (_pl: int): int => let
       val () = settings_toggle()
     in 0 end
+  )
+
+  (* Settings overlay click: route to settings_handle_click *)
+  val saved_stg_overlay = stg_overlay_id
+  val () = reader_add_event_listener(READER_LISTEN_STG_CLICK() |
+    stg_overlay_id, evt_click(), 5, 51,
+    lam (pl: int): int => let
+      val pl1 = g1ofg0(pl)
+    in
+      if gt1_int_int(pl1, 19) then let
+        val payload = ward_event_get_payload(pl1)
+        val target = read_payload_target_id(payload)
+        val () = ward_arr_free<byte>(payload)
+        val handled = settings_handle_click(target)
+      in 0 end
+      else 0
+    end
   )
 
   (* Search button: toggle search panel *)

@@ -224,6 +224,46 @@ implement cls_settings_btn() = let
   val b = ward_text_putc(b, 11, char2int1('n'))
 in ward_text_done(b) end
 
+(* "stg-overlay" = 11 chars *)
+implement cls_stg_overlay() = let
+  val b = ward_text_build(11)
+  val b = ward_text_putc(b, 0, char2int1('s'))
+  val b = ward_text_putc(b, 1, char2int1('t'))
+  val b = ward_text_putc(b, 2, char2int1('g'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('o'))
+  val b = ward_text_putc(b, 5, char2int1('v'))
+  val b = ward_text_putc(b, 6, char2int1('e'))
+  val b = ward_text_putc(b, 7, char2int1('r'))
+  val b = ward_text_putc(b, 8, char2int1('l'))
+  val b = ward_text_putc(b, 9, char2int1('a'))
+  val b = ward_text_putc(b, 10, char2int1('y'))
+in ward_text_done(b) end
+
+(* "stg-row" = 7 chars *)
+implement cls_stg_row() = let
+  val b = ward_text_build(7)
+  val b = ward_text_putc(b, 0, char2int1('s'))
+  val b = ward_text_putc(b, 1, char2int1('t'))
+  val b = ward_text_putc(b, 2, char2int1('g'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('r'))
+  val b = ward_text_putc(b, 5, char2int1('o'))
+  val b = ward_text_putc(b, 6, char2int1('w'))
+in ward_text_done(b) end
+
+(* "stg-lbl" = 7 chars *)
+implement cls_stg_lbl() = let
+  val b = ward_text_build(7)
+  val b = ward_text_putc(b, 0, char2int1('s'))
+  val b = ward_text_putc(b, 1, char2int1('t'))
+  val b = ward_text_putc(b, 2, char2int1('g'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('l'))
+  val b = ward_text_putc(b, 5, char2int1('b'))
+  val b = ward_text_putc(b, 6, char2int1('l'))
+in ward_text_done(b) end
+
 (* "sel-toolbar" = 11 chars *)
 implement cls_sel_toolbar() = let
   val b = ward_text_build(11)
