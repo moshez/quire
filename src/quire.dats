@@ -154,6 +154,7 @@ extern castfn _byte {c:int | 0 <= c; c <= 255} (c: int c): byte
 %{
 extern int quire_get_input_value(int nodeId, int destPtr, int destMaxLen);
 extern void quire_setup_link_handler(int containerNodeId);
+extern void quire_search_book(int queryPtr, int queryLen, int spineCount, int callbackId);
 %}
 
 (* Proof-requiring event listener registration wrapper.
