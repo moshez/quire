@@ -468,4 +468,227 @@ implement settings_get_overlay_id() = let
   val () = app_state_store(st)
 in v end
 
-implement settings_handle_click(node_id) = 0
+(* ========== Display update helpers ========== *)
+
+(* Set text on a DOM node to a 1-3 digit decimal number *)
+fn _set_num_text(node_id: int, v: int): void = let
+  val arr = ward_arr_alloc<byte>(12)
+in
+  if gt_int_int(v, 99) then let
+    (* 3 digits -- shouldn't happen for our ranges but safe *)
+    val d2 = div_int_int(v, 100)
+    val d1 = div_int_int(mod_int_int(v, 100), 10)
+    val d0 = mod_int_int(v, 10)
+    val () = ward_arr_set<byte>(arr, 0, ward_int2byte(_checked_byte(48 + d2)))
+    val () = ward_arr_set<byte>(arr, 1, ward_int2byte(_checked_byte(48 + d1)))
+    val () = ward_arr_set<byte>(arr, 2, ward_int2byte(_checked_byte(48 + d0)))
+    val @(used, rest) = ward_arr_split<byte>(arr, 3)
+    val () = ward_arr_free<byte>(rest)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_set_text(s, node_id, borrow, 3)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = ward_arr_drop<byte>(frozen, borrow)
+    val used = ward_arr_thaw<byte>(frozen)
+    val () = ward_arr_free<byte>(used)
+  in end
+  else if gt_int_int(v, 9) then let
+    (* 2 digits *)
+    val d1 = div_int_int(v, 10)
+    val d0 = mod_int_int(v, 10)
+    val () = ward_arr_set<byte>(arr, 0, ward_int2byte(_checked_byte(48 + d1)))
+    val () = ward_arr_set<byte>(arr, 1, ward_int2byte(_checked_byte(48 + d0)))
+    val @(used, rest) = ward_arr_split<byte>(arr, 2)
+    val () = ward_arr_free<byte>(rest)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_set_text(s, node_id, borrow, 2)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = ward_arr_drop<byte>(frozen, borrow)
+    val used = ward_arr_thaw<byte>(frozen)
+    val () = ward_arr_free<byte>(used)
+  in end
+  else let
+    (* 1 digit *)
+    val () = ward_arr_set<byte>(arr, 0, ward_int2byte(_checked_byte(48 + v)))
+    val @(used, rest) = ward_arr_split<byte>(arr, 1)
+    val () = ward_arr_free<byte>(rest)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_set_text(s, node_id, borrow, 1)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = ward_arr_drop<byte>(frozen, borrow)
+    val used = ward_arr_thaw<byte>(frozen)
+    val () = ward_arr_free<byte>(used)
+  in end
+end
+
+(* Set line height display: tenths like 16 -> "1.6" *)
+fn _set_lh_text(node_id: int, tenths: int): void = let
+  val whole = div_int_int(tenths, 10)
+  val frac = mod_int_int(tenths, 10)
+  val arr = ward_arr_alloc<byte>(12)
+  val () = ward_arr_set<byte>(arr, 0, ward_int2byte(_checked_byte(48 + whole)))
+  val () = ward_arr_set<byte>(arr, 1, _byte(46)) (* '.' *)
+  val () = ward_arr_set<byte>(arr, 2, ward_int2byte(_checked_byte(48 + frac)))
+  val @(used, rest) = ward_arr_split<byte>(arr, 3)
+  val () = ward_arr_free<byte>(rest)
+  val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+  val s = ward_dom_stream_set_text(s, node_id, borrow, 3)
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
+  val () = ward_arr_drop<byte>(frozen, borrow)
+  val used = ward_arr_thaw<byte>(frozen)
+  val () = ward_arr_free<byte>(used)
+in end
+
+(* Update all settings display nodes *)
+fn _update_all_displays(): void = let
+  val st = app_state_load()
+  val disp_fs = app_get_stg_disp_fs(st)
+  val disp_ff = app_get_stg_disp_ff(st)
+  val disp_lh = app_get_stg_disp_lh(st)
+  val disp_mg = app_get_stg_disp_mg(st)
+  val btn_ff = app_get_stg_btn_font_fam(st)
+  val () = app_state_store(st)
+  val fs = settings_get_font_size()
+  val ff = settings_get_font_family()
+  val lh = settings_get_line_height_tenths()
+  val mg = settings_get_margin()
+  val () = if gt_int_int(disp_fs, 0) then _set_num_text(disp_fs, fs) else ()
+  val () = if gt_int_int(disp_lh, 0) then _set_lh_text(disp_lh, lh) else ()
+  val () = if gt_int_int(disp_mg, 0) then _set_num_text(disp_mg, mg) else ()
+  (* Update font family button text *)
+  val () = if gt_int_int(btn_ff, 0) then let
+    val arr = ward_arr_alloc<byte>(12)
+  in
+    if eq_int_int(ff, 1) then let
+      (* "Sans" *)
+      val () = ward_arr_set<byte>(arr, 0, _byte(83))  (* S *)
+      val () = ward_arr_set<byte>(arr, 1, _byte(97))  (* a *)
+      val () = ward_arr_set<byte>(arr, 2, _byte(110)) (* n *)
+      val () = ward_arr_set<byte>(arr, 3, _byte(115)) (* s *)
+      val @(used, rest) = ward_arr_split<byte>(arr, 4)
+      val () = ward_arr_free<byte>(rest)
+      val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+      val dom = ward_dom_init()
+      val s = ward_dom_stream_begin(dom)
+      val s = ward_dom_stream_set_text(s, btn_ff, borrow, 4)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val used = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(used)
+    in end
+    else if eq_int_int(ff, 2) then let
+      (* "Pub" *)
+      val () = ward_arr_set<byte>(arr, 0, _byte(80))  (* P *)
+      val () = ward_arr_set<byte>(arr, 1, _byte(117)) (* u *)
+      val () = ward_arr_set<byte>(arr, 2, _byte(98))  (* b *)
+      val @(used, rest) = ward_arr_split<byte>(arr, 3)
+      val () = ward_arr_free<byte>(rest)
+      val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+      val dom = ward_dom_init()
+      val s = ward_dom_stream_begin(dom)
+      val s = ward_dom_stream_set_text(s, btn_ff, borrow, 3)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val used = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(used)
+    in end
+    else let
+      (* "Serif" *)
+      val () = ward_arr_set<byte>(arr, 0, _byte(83))  (* S *)
+      val () = ward_arr_set<byte>(arr, 1, _byte(101)) (* e *)
+      val () = ward_arr_set<byte>(arr, 2, _byte(114)) (* r *)
+      val () = ward_arr_set<byte>(arr, 3, _byte(105)) (* i *)
+      val () = ward_arr_set<byte>(arr, 4, _byte(102)) (* f *)
+      val @(used, rest) = ward_arr_split<byte>(arr, 5)
+      val () = ward_arr_free<byte>(rest)
+      val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+      val dom = ward_dom_init()
+      val s = ward_dom_stream_begin(dom)
+      val s = ward_dom_stream_set_text(s, btn_ff, borrow, 5)
+      val dom = ward_dom_stream_end(s)
+      val () = ward_dom_fini(dom)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val used = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(used)
+    in end
+  end
+  else ()
+in end
+
+(* ========== Click handler ========== *)
+
+implement settings_handle_click(node_id) = let
+  val st = app_state_load()
+  val btn_fs_m = app_get_stg_btn_font_minus(st)
+  val btn_fs_p = app_get_stg_btn_font_plus(st)
+  val btn_ff = app_get_stg_btn_font_fam(st)
+  val btn_th_l = app_get_stg_btn_theme_l(st)
+  val btn_th_d = app_get_stg_btn_theme_d(st)
+  val btn_th_s = app_get_stg_btn_theme_s(st)
+  val btn_lh_m = app_get_stg_btn_lh_minus(st)
+  val btn_lh_p = app_get_stg_btn_lh_plus(st)
+  val btn_mg_m = app_get_stg_btn_mg_minus(st)
+  val btn_mg_p = app_get_stg_btn_mg_plus(st)
+  val () = app_state_store(st)
+in
+  if eq_int_int(node_id, btn_fs_m) then let
+    val () = settings_decrease_font_size()
+    val () = _update_all_displays()
+  in 1 end
+  else if eq_int_int(node_id, btn_fs_p) then let
+    val () = settings_increase_font_size()
+    val () = _update_all_displays()
+  in 1 end
+  else if eq_int_int(node_id, btn_ff) then let
+    val () = settings_next_font_family()
+    val () = _update_all_displays()
+  in 1 end
+  else if eq_int_int(node_id, btn_th_l) then let
+    val () = settings_set_theme(THEME_LIGHT)
+    val (_pf | ()) = settings_apply()
+    val () = settings_save()
+    val () = _update_all_displays()
+  in 1 end
+  else if eq_int_int(node_id, btn_th_d) then let
+    val () = settings_set_theme(THEME_DARK)
+    val (_pf | ()) = settings_apply()
+    val () = settings_save()
+    val () = _update_all_displays()
+  in 1 end
+  else if eq_int_int(node_id, btn_th_s) then let
+    val () = settings_set_theme(THEME_SEPIA)
+    val (_pf | ()) = settings_apply()
+    val () = settings_save()
+    val () = _update_all_displays()
+  in 1 end
+  else if eq_int_int(node_id, btn_lh_m) then let
+    val () = settings_decrease_line_height()
+    val () = _update_all_displays()
+  in 1 end
+  else if eq_int_int(node_id, btn_lh_p) then let
+    val () = settings_increase_line_height()
+    val () = _update_all_displays()
+  in 1 end
+  else if eq_int_int(node_id, btn_mg_m) then let
+    val () = settings_decrease_margin()
+    val () = _update_all_displays()
+  in 1 end
+  else if eq_int_int(node_id, btn_mg_p) then let
+    val () = settings_increase_margin()
+    val () = _update_all_displays()
+  in 1 end
+  else 0
+end

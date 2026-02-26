@@ -13,6 +13,14 @@ staload "./dom.sats"
 
 staload "./arith.sats"
 staload "./drag_state.sats"
+staload "./settings.sats"
+staload "./../vendor/ward/lib/memory.sats"
+staload "./../vendor/ward/lib/dom.sats"
+staload _ = "./../vendor/ward/lib/memory.dats"
+staload _ = "./../vendor/ward/lib/dom.dats"
+
+extern castfn _rdr_byte {c:int | 0 <= c; c <= 255} (c: int c): byte
+extern castfn _idx64(x: int): [i:nat | i < 64] int i
 
 implement reader_init() = let
   val st = app_state_load()
@@ -192,7 +200,71 @@ implement reader_on_chapter_blob_loaded(handle, size) = ()
 implement reader_get_viewport_width() = 0
 implement reader_update_page_display() = ()
 implement reader_is_loading() = 0
-implement reader_remeasure_all() = ()
+(* reader_remeasure_all: apply font-size and line-height as inline style on
+ * the reader viewport. Font properties cascade to chapter-container content.
+ * Uses the viewport (not the container) to avoid conflicts with transform. *)
+implement reader_remeasure_all() = let
+  val vp_id = reader_get_viewport_id()
+in
+  if gt_int_int(vp_id, 0) then let
+    val fs = settings_get_font_size()  (* 14-32 *)
+    val lh = settings_get_line_height_tenths()  (* 14-24, i.e. 1.4-2.4 *)
+    (* Build: "font-size:NNpx;line-height:N.N" = 15 + 15 = 30 bytes max *)
+    val arr = ward_arr_alloc<byte>(48)
+    (* "font-size:" = 10 bytes *)
+    val () = ward_arr_set<byte>(arr, 0, _rdr_byte(102))   (* f *)
+    val () = ward_arr_set<byte>(arr, 1, _rdr_byte(111))   (* o *)
+    val () = ward_arr_set<byte>(arr, 2, _rdr_byte(110))   (* n *)
+    val () = ward_arr_set<byte>(arr, 3, _rdr_byte(116))   (* t *)
+    val () = ward_arr_set<byte>(arr, 4, _rdr_byte(45))    (* - *)
+    val () = ward_arr_set<byte>(arr, 5, _rdr_byte(115))   (* s *)
+    val () = ward_arr_set<byte>(arr, 6, _rdr_byte(105))   (* i *)
+    val () = ward_arr_set<byte>(arr, 7, _rdr_byte(122))   (* z *)
+    val () = ward_arr_set<byte>(arr, 8, _rdr_byte(101))   (* e *)
+    val () = ward_arr_set<byte>(arr, 9, _rdr_byte(58))    (* : *)
+    (* font size: 14-32, always 2 digits *)
+    val fs_d1 = div_int_int(fs, 10)
+    val fs_d0 = mod_int_int(fs, 10)
+    val () = ward_arr_set<byte>(arr, 10, ward_int2byte(_checked_byte(48 + fs_d1)))
+    val () = ward_arr_set<byte>(arr, 11, ward_int2byte(_checked_byte(48 + fs_d0)))
+    (* "px;" *)
+    val () = ward_arr_set<byte>(arr, 12, _rdr_byte(112))  (* p *)
+    val () = ward_arr_set<byte>(arr, 13, _rdr_byte(120))  (* x *)
+    val () = ward_arr_set<byte>(arr, 14, _rdr_byte(59))   (* ; *)
+    (* "line-height:" = 12 bytes *)
+    val () = ward_arr_set<byte>(arr, 15, _rdr_byte(108))  (* l *)
+    val () = ward_arr_set<byte>(arr, 16, _rdr_byte(105))  (* i *)
+    val () = ward_arr_set<byte>(arr, 17, _rdr_byte(110))  (* n *)
+    val () = ward_arr_set<byte>(arr, 18, _rdr_byte(101))  (* e *)
+    val () = ward_arr_set<byte>(arr, 19, _rdr_byte(45))   (* - *)
+    val () = ward_arr_set<byte>(arr, 20, _rdr_byte(104))  (* h *)
+    val () = ward_arr_set<byte>(arr, 21, _rdr_byte(101))  (* e *)
+    val () = ward_arr_set<byte>(arr, 22, _rdr_byte(105))  (* i *)
+    val () = ward_arr_set<byte>(arr, 23, _rdr_byte(103))  (* g *)
+    val () = ward_arr_set<byte>(arr, 24, _rdr_byte(104))  (* h *)
+    val () = ward_arr_set<byte>(arr, 25, _rdr_byte(116))  (* t *)
+    val () = ward_arr_set<byte>(arr, 26, _rdr_byte(58))   (* : *)
+    (* N.N from tenths *)
+    val lh_whole = div_int_int(lh, 10)
+    val lh_frac = mod_int_int(lh, 10)
+    val () = ward_arr_set<byte>(arr, 27, ward_int2byte(_checked_byte(48 + lh_whole)))
+    val () = ward_arr_set<byte>(arr, 28, _rdr_byte(46))   (* . *)
+    val () = ward_arr_set<byte>(arr, 29, ward_int2byte(_checked_byte(48 + lh_frac)))
+    (* total = 30 bytes *)
+    val @(used, rest) = ward_arr_split<byte>(arr, 30)
+    val () = ward_arr_free<byte>(rest)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_set_style(s, vp_id, borrow, 30)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = ward_arr_drop<byte>(frozen, borrow)
+    val used = ward_arr_thaw<byte>(frozen)
+    val () = ward_arr_free<byte>(used)
+  in end
+  else ()
+end
 implement reader_show_toc() = ()
 implement reader_hide_toc() = ()
 implement reader_toggle_toc() = ()
