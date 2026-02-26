@@ -2603,11 +2603,12 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     expect(errors).toEqual([]);
   });
 
-  test('search panel opens with input field', async ({ page }) => {
+  test('search panel finds chapters containing query', async ({ page }) => {
     const errors = [];
     page.on('pageerror', err => errors.push(err.message));
 
-    const epubBuffer = createEpub({ title: 'Search Test', chapters: 2, paragraphsPerChapter: 3 });
+    // Use 2 chapters — "mountain" appears in generated paragraph text
+    const epubBuffer = createEpub({ title: 'Search Test', chapters: 2, paragraphsPerChapter: 4 });
     await page.goto('/');
     await page.waitForSelector('.library-list', { timeout: 15000 });
 
@@ -2639,10 +2640,19 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     const searchInput = searchPanel.locator('input[type="text"]');
     await expect(searchInput).toBeAttached();
 
-    // Type a query — should not crash
+    // Type "mountain" — appears in generated EPUB paragraphs
     await searchInput.fill('mountain');
-    await page.waitForTimeout(500);
-    await screenshot(page, 'search-03-query-entered');
+    // Trigger change event (fill doesn't always fire change)
+    await searchInput.dispatchEvent('change');
+    // Wait for async IDB search to complete
+    await page.waitForTimeout(2000);
+    await screenshot(page, 'search-03-results');
+
+    // Results should appear — at least one "Ch NN" result
+    const resultDivs = searchPanel.locator('div div');
+    const resultCount = await resultDivs.count();
+    expect(resultCount).toBeGreaterThan(0);
+    await screenshot(page, 'search-04-with-results');
 
     expect(errors).toEqual([]);
   });

@@ -47,3 +47,10 @@ fun quire_get_input_value(
 fun quire_download_text(
   data_ptr: int, data_len: int,
   name_ptr: int, name_len: int): void = "mac#quire_download_text"
+
+(* Search book's IDB index for chapters containing query text.
+ * Async: calls ward_on_callback(callback_id, chapter_idx) for each match,
+ * then ward_on_callback(callback_id, -1) when done. *)
+fun quire_search_book(
+  query_ptr: int, query_len: int,
+  spine_count: int, callback_id: int): void = "mac#quire_search_book"
