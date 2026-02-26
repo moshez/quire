@@ -140,6 +140,7 @@ dataprop READER_LISTENER(id: int) =
   | READER_LISTEN_EXPORT_BTN(49)
   | READER_LISTEN_SEARCH_INPUT(50)
   | READER_LISTEN_STG_CLICK(51)
+  | READER_LISTEN_SEARCH_RESULTS(52)
 
 (* Selection toolbar visibility state machine.
  * Follows TOC_STATE pattern — prevents double-show/double-hide. *)

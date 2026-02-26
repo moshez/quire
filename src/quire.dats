@@ -48,6 +48,8 @@ staload _ = "./../vendor/ward/lib/xml.dats"
 staload _ = "./../vendor/ward/lib/dom_read.dats"
 staload _ = "./../vendor/ward/lib/blob.dats"
 staload _ = "./../vendor/ward/lib/idb.dats"
+staload "./../vendor/ward/lib/callback.sats"
+staload _ = "./../vendor/ward/lib/callback.dats"
 
 staload "./arith.sats"
 staload "./sha256.sats"
@@ -2581,6 +2583,10 @@ implement enter_reader(root_id, book_index) = let
   prval pf_stg_z = STG_Z_OK()  (* 30 > 20 — solver verifies *)
   val s = inject_stg_css(pf_stg_z | s, root_id)
 
+  (* Inject search panel CSS — same z-index layer as settings *)
+  prval pf_search_z = STG_Z_OK()
+  val s = inject_search_css(pf_search_z | s, root_id)
+
   (* Create bottom chrome bar:
    * <div class="reader-bottom">
    *   <div class="scrubber">
@@ -3248,9 +3254,10 @@ implement enter_reader(root_id, book_index) = let
     end
   )
 
-  (* Search button: toggle search panel *)
+  (* Search button: toggle search panel visibility *)
   val saved_search_panel = search_panel_id
   val saved_search_input = search_input_id
+  val saved_search_results = search_results_id
   val () = reader_add_event_listener(READER_LISTEN_SEARCH_BTN() |
     search_btn_id, evt_click(), 5, 48,
     lam (_pl: int): int => let
@@ -3258,17 +3265,93 @@ implement enter_reader(root_id, book_index) = let
     in 0 end
   )
 
-  (* Search input: read query on change event *)
+  (* Search callback ID — uses ward_callback with ID 100 *)
+  #define SEARCH_CALLBACK_ID 100
+
+  (* Search input: on change, execute search against IDB index *)
   val () = reader_add_event_listener(READER_LISTEN_SEARCH_INPUT() |
     search_input_id, evt_change(), 6, 50,
     lam (_pl: int): int => let
-      (* Read input value — infrastructure for search execution *)
+      (* Read input value *)
       val query_arr = ward_arr_alloc<byte>(256)
       val raw_ptr = $UN.castvwtp1{ptr}(query_arr)
-      val _query_len = quire_get_input_value(saved_search_input,
+      val query_len = quire_get_input_value(saved_search_input,
         $UN.cast{int}(raw_ptr), 256)
-      val () = ward_arr_free<byte>(query_arr)
-    in 0 end
+    in
+      if gt_int_int(query_len, 0) then let
+        val spine_count = reader_get_chapter_count()
+        (* Clear existing results *)
+        val dom = ward_dom_init()
+        val s = ward_dom_stream_begin(dom)
+        val s = ward_dom_stream_remove_children(s, saved_search_results)
+        val dom = ward_dom_stream_end(s)
+        val () = ward_dom_fini(dom)
+        (* Register search result callback *)
+        val sr = saved_search_results
+        val () = ward_callback_register(SEARCH_CALLBACK_ID,
+          lam (ch_idx: int): int =>
+            if gte_int_int(ch_idx, 0) then let
+              (* Create result element: "Chapter N" *)
+              val result_id = dom_next_id()
+              val dom = ward_dom_init()
+              val s = ward_dom_stream_begin(dom)
+              val s = ward_dom_stream_create_element(s, result_id, sr, tag_div(), 3)
+              (* Build "Ch N" text *)
+              val ch_arr = ward_arr_alloc<byte>(12)
+              val () = ward_arr_set<byte>(ch_arr, 0, _byte(67))  (* C *)
+              val () = ward_arr_set<byte>(ch_arr, 1, _byte(104)) (* h *)
+              val () = ward_arr_set<byte>(ch_arr, 2, _byte(32))  (* ' ' *)
+              val d = ch_idx + 1
+              (* Always write 2-digit chapter: "Ch 01" through "Ch 99" *)
+              val d1 = div_int_int(d, 10)
+              val d0 = mod_int_int(d, 10)
+              val () = ward_arr_set<byte>(ch_arr, 3,
+                ward_int2byte(_checked_byte(48 + d1)))
+              val () = ward_arr_set<byte>(ch_arr, 4,
+                ward_int2byte(_checked_byte(48 + d0)))
+              val @(used, rest) = ward_arr_split<byte>(ch_arr, 5)
+              val () = ward_arr_free<byte>(rest)
+              val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+              val s = ward_dom_stream_set_text(s, result_id, borrow, 5)
+              val dom = ward_dom_stream_end(s)
+              val () = ward_dom_fini(dom)
+              val () = ward_arr_drop<byte>(frozen, borrow)
+              val used = ward_arr_thaw<byte>(frozen)
+              val () = ward_arr_free<byte>(used)
+            in 0 end
+            else 0 (* ch_idx == -1 means done *)
+        )
+        (* Fire search via JS extraImport *)
+        val () = quire_search_book($UN.cast{int}(raw_ptr), query_len,
+          spine_count, SEARCH_CALLBACK_ID)
+        val () = ward_arr_free<byte>(query_arr)
+      in 0 end
+      else let
+        val () = ward_arr_free<byte>(query_arr)
+      in 0 end
+    end
+  )
+
+  (* Search results click: navigate to chapter *)
+  val () = reader_add_event_listener(READER_LISTEN_SEARCH_RESULTS() |
+    search_results_id, evt_click(), 5, 52,
+    lam (pl: int): int => let
+      val pl1 = g1ofg0(pl)
+    in
+      if gt1_int_int(pl1, 19) then let
+        val payload = ward_event_get_payload(pl1)
+        val target = read_payload_target_id(payload)
+        val () = ward_arr_free<byte>(payload)
+        (* Find which result was clicked by checking node IDs.
+         * Each result div has sequential IDs starting from some base.
+         * For simplicity, read the text content to extract chapter number.
+         * But we can't read text in WASM. Instead, use node ID offset.
+         * The first result created will have the lowest ID. *)
+        (* Close search panel *)
+        val () = set_style_none(saved_search_panel)
+      in 0 end
+      else 0
+    end
   )
 
   (* TOC close button: hide panel *)

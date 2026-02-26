@@ -199,3 +199,13 @@ dataprop STG_PANEL_LAYERED(z_idx: int) =
 fun inject_stg_css {l:agz}
   (pf_z: STG_PANEL_LAYERED(STG_PANEL_Z) |
    s: ward_dom_stream(l), parent: int): ward_dom_stream(l)
+
+(* Search panel CSS length *)
+stadef SEARCH_CSS_WRITES = 100
+stadef SEARCH_CSS_LEN_S = SEARCH_CSS_WRITES * 4
+#define SEARCH_CSS_LEN 400
+
+(* Inject search panel CSS. Reuses STG_PANEL_Z since same z-index layer. *)
+fun inject_search_css {l:agz}
+  (pf_z: STG_PANEL_LAYERED(STG_PANEL_Z) |
+   s: ward_dom_stream(l), parent: int): ward_dom_stream(l)
