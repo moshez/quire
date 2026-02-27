@@ -20,6 +20,11 @@ staload "./../vendor/ward/lib/blob.sats"
 staload _ = "./../vendor/ward/lib/blob.dats"
 staload UN = "prelude/SATS/unsafe.sats"
 
+(* C forward declaration — suppresses C99 implicit function error *)
+%{
+extern void quire_click_node(int nodeId);
+%}
+
 extern castfn _byte {c:int | 0 <= c; c <= 255} (c: int c): byte
 extern castfn _checked_pos(x: int): [n:pos] int n
 extern castfn _checked_url_len(x: int): [n:pos | n < 4096] int n

@@ -55,6 +55,10 @@ staload _ = "./../vendor/ward/lib/xml.dats"
 staload _ = "./../vendor/ward/lib/dom_read.dats"
 staload _ = "./../vendor/ward/lib/idb.dats"
 
+%{
+extern int quire_time_now(void);
+%}
+
 (* ========== Local castfn declarations ========== *)
 
 extern castfn _idx48(x: int): [i:nat | i < 48] int i
