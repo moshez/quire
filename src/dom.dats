@@ -813,6 +813,17 @@ implement attr_value() = let val b = ward_text_build(5)
   val b = ward_text_putc(b, 2, char2int1('l'))
   val b = ward_text_putc(b, 3, char2int1('u'))
   val b = ward_text_putc(b, 4, char2int1('e')) in ward_text_done(b) end
+implement attr_target() = let val b = ward_text_build(6)
+  val b = ward_text_putc(b, 0, char2int1('t'))
+  val b = ward_text_putc(b, 1, char2int1('a'))
+  val b = ward_text_putc(b, 2, char2int1('r'))
+  val b = ward_text_putc(b, 3, char2int1('g'))
+  val b = ward_text_putc(b, 4, char2int1('e'))
+  val b = ward_text_putc(b, 5, char2int1('t')) in ward_text_done(b) end
+implement attr_rel() = let val b = ward_text_build(3)
+  val b = ward_text_putc(b, 0, char2int1('r'))
+  val b = ward_text_putc(b, 1, char2int1('e'))
+  val b = ward_text_putc(b, 2, char2int1('l')) in ward_text_done(b) end
 
 (* ========== Tree binary byte readers ========== *)
 
@@ -1071,6 +1082,37 @@ in check(tree, start, start + text_len, tlen, _checked_nat(text_len)) end
 
 implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
 
+  (* Scan attribute bytes for href starting with "http" (external link).
+   * Returns 1 if found, 0 otherwise.
+   * Attribute binary format: [1:name_len][name bytes][2:val_len LE][val bytes] *)
+  fun scan_href_ext {lb:agz}{n:pos}{r:nat} .<r>.
+    (rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, count: int, tlen: int n)
+    : int =
+    if lte_g1(rem, 0) then 0
+    else if count <= 0 then 0
+    else let
+      val name_len = ward_arr_byte(tree, pos, tlen)
+      val attr_idx = lookup_attr(tree, tlen, pos + 1, name_len)
+      val val_off = pos + 1 + name_len
+      val val_len = rd_u16(tree, val_off, tlen)
+      val val_start = val_off + 2
+      val r1 = sub_g1(rem, 1)
+    in
+      if attr_idx = ATTR_IDX_HREF then
+        if val_len >= 4 then
+          (* Check for "http" = 0x68 0x74 0x74 0x70 *)
+          if ward_arr_byte(tree, val_start, tlen) = 104 then
+            if ward_arr_byte(tree, val_start + 1, tlen) = 116 then
+              if ward_arr_byte(tree, val_start + 2, tlen) = 116 then
+                if ward_arr_byte(tree, val_start + 3, tlen) = 112 then 1
+                else 0
+              else 0
+            else 0
+          else 0
+        else 0
+      else scan_href_ext(r1, tree, val_start + val_len, count - 1, tlen)
+    end
+
   fun loop {l:agz}{lb:agz}{n:pos}{r:nat} .<r>.
     (rem: int(r), st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n),
      pos: int, len: int, parent: int, tlen: int n,
@@ -1101,6 +1143,8 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
           val nid = dom_next_id()
           val st = ward_dom_stream_create_element(st, nid, parent, tag_st, tag_st_len)
           val st = emit_attrs(r1, st, nid, tree, attr_off + 1, attr_count, tlen)
+          (* External <a href="http..."> gets target="_blank" rel="noopener" *)
+          val st = add_link_attrs(r1, st, nid, tag_idx, tree, attr_off + 1, attr_count, tlen)
           val @(st, child_end, ec2) = loop(r1, st, tree, after_attrs, len, nid, tlen, 0, ecnt + 1)
         in
           if child_end < len then let
@@ -1213,6 +1257,44 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
       else
         emit_attrs(r1, st, nid, tree, val_start + val_len, count - 1, tlen)
     end
+  and add_link_attrs {l:agz}{lb:agz}{n:pos}{r:nat} .<r>.
+    (rem: int(r), st: ward_dom_stream(l), nid: int, tag_idx: int,
+     tree: !ward_arr(byte, lb, n), attr_pos: int, attr_count: int, tlen: int n)
+    : ward_dom_stream(l) =
+    if tag_idx = TAG_IDX_A then
+      if scan_href_ext(rem, tree, attr_pos, attr_count, tlen) > 0 then let
+        val _b = lam (v: int): byte => ward_int2byte(_checked_byte(v))
+        (* "_blank" = 6 bytes *)
+        val blank_arr = ward_arr_alloc<byte>(6)
+        val () = ward_arr_set<byte>(blank_arr, 0, _b(95))   (* _ *)
+        val () = ward_arr_set<byte>(blank_arr, 1, _b(98))   (* b *)
+        val () = ward_arr_set<byte>(blank_arr, 2, _b(108))  (* l *)
+        val () = ward_arr_set<byte>(blank_arr, 3, _b(97))   (* a *)
+        val () = ward_arr_set<byte>(blank_arr, 4, _b(110))  (* n *)
+        val () = ward_arr_set<byte>(blank_arr, 5, _b(107))  (* k *)
+        val @(bf, bb) = ward_arr_freeze<byte>(blank_arr)
+        val st = ward_dom_stream_set_attr(st, nid, attr_target(), 6, bb, 6)
+        val () = ward_arr_drop<byte>(bf, bb)
+        val blank_arr2 = ward_arr_thaw<byte>(bf)
+        val () = ward_arr_free<byte>(blank_arr2)
+        (* "noopener" = 8 bytes *)
+        val noop_arr = ward_arr_alloc<byte>(8)
+        val () = ward_arr_set<byte>(noop_arr, 0, _b(110))  (* n *)
+        val () = ward_arr_set<byte>(noop_arr, 1, _b(111))  (* o *)
+        val () = ward_arr_set<byte>(noop_arr, 2, _b(111))  (* o *)
+        val () = ward_arr_set<byte>(noop_arr, 3, _b(112))  (* p *)
+        val () = ward_arr_set<byte>(noop_arr, 4, _b(101))  (* e *)
+        val () = ward_arr_set<byte>(noop_arr, 5, _b(110))  (* n *)
+        val () = ward_arr_set<byte>(noop_arr, 6, _b(101))  (* e *)
+        val () = ward_arr_set<byte>(noop_arr, 7, _b(114))  (* r *)
+        val @(nf, nb) = ward_arr_freeze<byte>(noop_arr)
+        val st = ward_dom_stream_set_attr(st, nid, attr_rel(), 3, nb, 8)
+        val () = ward_arr_drop<byte>(nf, nb)
+        val noop_arr2 = ward_arr_thaw<byte>(nf)
+        val () = ward_arr_free<byte>(noop_arr2)
+      in st end
+      else st
+    else st
   and skip_element {lb:agz}{n:pos}{r:nat} .<r>.
     (rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, len: int, tlen: int n): int =
     if lte_g1(rem, 0) then pos

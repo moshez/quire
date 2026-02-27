@@ -153,7 +153,6 @@ extern castfn _byte {c:int | 0 <= c; c <= 255} (c: int c): byte
 
 %{
 extern int quire_get_input_value(int nodeId, int destPtr, int destMaxLen);
-extern void quire_setup_link_handler(int containerNodeId);
 extern void quire_search_book(int queryPtr, int queryLen, int spineCount, int callbackId);
 %}
 
@@ -882,7 +881,6 @@ fn finish_chapter_load(container_id: int)
   val (pf_bm | ()) = update_bookmark_btn()
   prval _ = pf_bm
   val (pf_hl | ()) = render_highlights(container_id)
-  val () = quire_setup_link_handler(container_id)
   prval pf = MEASURED_AND_TRANSFORMED(pf_title, pf_pg_info, pf_hl)
 in (pf | ()) end
 

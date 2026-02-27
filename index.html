@@ -37,26 +37,6 @@
         quire_get_dark_mode() {
           return matchMedia('(prefers-color-scheme: dark)').matches | 0;
         },
-        quire_setup_link_handler(containerNodeId) {
-          // Intercept link clicks: external links open in new tab,
-          // footnote links (epub:type=noteref) prevent default for popup.
-          if (!wardNodes) return;
-          const container = wardNodes.get(containerNodeId);
-          if (!container) return;
-          container.addEventListener('click', (e) => {
-            const link = e.target.closest('a[href]');
-            if (!link) return;
-            const href = link.getAttribute('href');
-            if (!href) return;
-            if (href.startsWith('http://') || href.startsWith('https://')) {
-              e.preventDefault();
-              window.open(href, '_blank', 'noopener');
-            }
-            if (link.getAttribute('epub:type') === 'noteref') {
-              e.preventDefault();
-            }
-          });
-        },
         quire_get_input_value(nodeId, destPtr, destMaxLen) {
           const bytes = new TextEncoder().encode(wardNodes.get(nodeId).value);
           const copyLen = Math.min(bytes.length, destMaxLen);

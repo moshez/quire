@@ -158,6 +158,8 @@ fun attr_aria_hidden(): ward_safe_text(11)
 fun attr_aria_live(): ward_safe_text(9)
 fun attr_name(): ward_safe_text(4)
 fun attr_value(): ward_safe_text(5)
+fun attr_target(): ward_safe_text(6)
+fun attr_rel(): ward_safe_text(3)
 
 (* ========== Skippable tag indices ========== *)
 
@@ -169,9 +171,11 @@ fun attr_value(): ward_safe_text(5)
 dataprop SKIPPABLE_TAG(idx: int) =
   | SKIP_IMG(13)
 
+#define TAG_IDX_A 12
 #define TAG_IDX_IMG 13
 
-(* Attribute index for src — matches _attr_names table *)
+(* Attribute indices — matches _attr_names table *)
+#define ATTR_IDX_HREF 5
 #define ATTR_IDX_SRC 6
 
 (* ========== Tag/Attribute lookup from raw bytes ========== *)

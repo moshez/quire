@@ -24,10 +24,6 @@ fun quire_factory_reset(): void = "mac#quire_factory_reset"
 (* Check system dark mode preference. Returns 1 if dark, 0 if light. *)
 fun quire_get_dark_mode(): int = "mac#quire_get_dark_mode"
 
-(* Setup link click handler on chapter container.
- * External links open in new tab, footnote links intercepted for popup. *)
-fun quire_setup_link_handler(container_node_id: int): void = "mac#quire_setup_link_handler"
-
 (* Read input element value as UTF-8. Writes to dest buffer, returns byte length. *)
 fun quire_get_input_value(
   node_id: int, dest_ptr: int, dest_max_len: int): int = "mac#quire_get_input_value"
