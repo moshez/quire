@@ -3288,44 +3288,132 @@ implement enter_reader(root_id, book_index) = let
         val s = ward_dom_stream_remove_children(s, saved_search_results)
         val dom = ward_dom_stream_end(s)
         val () = ward_dom_fini(dom)
-        (* Register search result callback *)
+        (* ATS2 search loop: sequential ward_idb_get per chapter.
+         * Query is passed as raw int pointer (lives in query_arr which
+         * is freed in the final promise callback). *)
         val sr = saved_search_results
-        val () = ward_callback_register(SEARCH_CALLBACK_ID,
-          lam (ch_idx: int): int =>
-            if gte_int_int(ch_idx, 0) then let
-              (* Create result element: "Chapter N" *)
-              val result_id = dom_next_id()
-              val dom = ward_dom_init()
-              val s = ward_dom_stream_begin(dom)
-              val s = ward_dom_stream_create_element(s, result_id, sr, tag_div(), 3)
-              (* Build "Ch N" text *)
-              val ch_arr = ward_arr_alloc<byte>(12)
-              val () = ward_arr_set<byte>(ch_arr, 0, _byte(67))  (* C *)
-              val () = ward_arr_set<byte>(ch_arr, 1, _byte(104)) (* h *)
-              val () = ward_arr_set<byte>(ch_arr, 2, _byte(32))  (* ' ' *)
-              val d = ch_idx + 1
-              (* Always write 2-digit chapter: "Ch 01" through "Ch 99" *)
-              val d1 = div_int_int(d, 10)
-              val d0 = mod_int_int(d, 10)
-              val () = ward_arr_set<byte>(ch_arr, 3,
-                ward_int2byte(_checked_byte(48 + d1)))
-              val () = ward_arr_set<byte>(ch_arr, 4,
-                ward_int2byte(_checked_byte(48 + d0)))
-              val @(used, rest) = ward_arr_split<byte>(ch_arr, 5)
-              val () = ward_arr_free<byte>(rest)
-              val @(frozen, borrow) = ward_arr_freeze<byte>(used)
-              val s = ward_dom_stream_set_text(s, result_id, borrow, 5)
-              val dom = ward_dom_stream_end(s)
-              val () = ward_dom_fini(dom)
-              val () = ward_arr_drop<byte>(frozen, borrow)
-              val used = ward_arr_thaw<byte>(frozen)
-              val () = ward_arr_free<byte>(used)
-            in 0 end
-            else 0 (* ch_idx == -1 means done *)
-        )
-        (* Fire search via JS extraImport *)
-        val () = quire_search_book($UN.cast{int}(raw_ptr), query_len,
-          spine_count, SEARCH_CALLBACK_ID)
+        val qp = $UN.cast{int}(raw_ptr)
+        val ql = query_len
+        val sc = spine_count
+
+        (* Add search result div for chapter ch_idx *)
+        fn add_result(ch_idx: int, results_id: int): void = let
+          val result_id = dom_next_id()
+          val dom = ward_dom_init()
+          val s = ward_dom_stream_begin(dom)
+          val s = ward_dom_stream_create_element(s, result_id, results_id, tag_div(), 3)
+          val d = ch_idx + 1
+          val d1 = div_int_int(d, 10)
+          val d0 = mod_int_int(d, 10)
+          val ch_arr = ward_arr_alloc<byte>(5)
+          val () = ward_arr_set<byte>(ch_arr, 0, _byte(67))  (* C *)
+          val () = ward_arr_set<byte>(ch_arr, 1, _byte(104)) (* h *)
+          val () = ward_arr_set<byte>(ch_arr, 2, _byte(32))  (* ' ' *)
+          val () = ward_arr_set<byte>(ch_arr, 3,
+            ward_int2byte(_checked_byte(48 + d1)))
+          val () = ward_arr_set<byte>(ch_arr, 4,
+            ward_int2byte(_checked_byte(48 + d0)))
+          val @(frozen, borrow) = ward_arr_freeze<byte>(ch_arr)
+          val s = ward_dom_stream_set_text(s, result_id, borrow, 5)
+          val dom = ward_dom_stream_end(s)
+          val () = ward_dom_fini(dom)
+          val () = ward_arr_drop<byte>(frozen, borrow)
+          val ch_arr = ward_arr_thaw<byte>(frozen)
+          val () = ward_arr_free<byte>(ch_arr)
+        in end
+
+        (* Check if data (raw ptr) contains query as substring.
+         * data is IDB search index binary:
+         *   bytes 0-3: i32le text_len
+         *   bytes 4-5: i16le run_count
+         *   bytes 6-7: reserved
+         *   bytes 8+run_count*4 onwards: text (text_len bytes)
+         * Query is at qptr (raw WASM memory address), qlen bytes.
+         * Both text and query are lowercased/folded.
+         * Uses raw ptr access since nested funs can't capture linear borrows. *)
+        fn check_match_raw
+          (dptr: int, dlen: int,
+           qptr: int, qlen: int): bool = let
+          val dmem = $UN.cast{ptr}(dptr)
+          val qmem = $UN.cast{ptr}(qptr)
+          fn rb(p: ptr, i: int): int =
+            byte2int0($UN.ptr0_get<byte>(ptr_add<byte>(p, i)))
+          val text_len = bor_int_int(rb(dmem, 0),
+            bor_int_int(bsl_int_int(rb(dmem, 1), 8),
+              bor_int_int(bsl_int_int(rb(dmem, 2), 16),
+                bsl_int_int(rb(dmem, 3), 24))))
+          val run_count = bor_int_int(rb(dmem, 4), bsl_int_int(rb(dmem, 5), 8))
+          val text_start = 8 + run_count * 4
+        in
+          if text_start + text_len > dlen then false
+          else if text_len < qlen then false
+          else let
+            val limit = text_len - qlen
+            val tbase = ptr_add<byte>(dmem, text_start)
+            fun scan {r:nat} .<r>.
+              (rem: int(r), pos: int, tbase: ptr, qmem: ptr, qlen: int, limit: int): bool =
+              if lte_g1(rem, 0) then false
+              else if pos > limit then false
+              else let
+                fun match_at {r2:nat} .<r2>.
+                  (rem2: int(r2), j: int, tbase: ptr, pos: int, qmem: ptr, qlen: int): bool =
+                  if lte_g1(rem2, 0) then true
+                  else if gte_int_int(j, qlen) then true
+                  else let
+                    val db = byte2int0($UN.ptr0_get<byte>(ptr_add<byte>(tbase, pos + j)))
+                    val qi = byte2int0($UN.ptr0_get<byte>(ptr_add<byte>(qmem, j)))
+                  in
+                    if db = qi then match_at(sub_g1(rem2, 1), j + 1, tbase, pos, qmem, qlen)
+                    else false
+                  end
+              in
+                if match_at(_checked_nat(qlen), 0, tbase, pos, qmem, qlen) then true
+                else scan(sub_g1(rem, 1), pos + 1, tbase, qmem, qlen, limit)
+              end
+          in scan(_checked_nat(text_len), 0, tbase, qmem, qlen, limit) end
+        end
+
+        (* Sequential search: issue idb_get per chapter, chain promises *)
+        fun search_loop {c:nat}{t:nat | c <= t; t <= 256}{k:nat} .<k>.
+          (rem: int(k), idx: int(c), total: int(t),
+           qptr: int, qlen: int, results_id: int): ward_promise_chained(int) =
+          if lte_g1(rem, 0) then ward_promise_return<int>(~1)
+          else if gte_g1(idx, total) then ward_promise_return<int>(~1)
+          else let
+            val saved_idx = add_g1(idx, 1)
+            val saved_total = total
+            val saved_rem = sub_g1(rem, 1)
+            val saved_qptr = qptr
+            val saved_qlen = qlen
+            val saved_results = results_id
+            val key = epub_build_search_key(SPINE_ENTRY() | idx, total)
+            val p = ward_idb_get(key, 20)
+          in
+            ward_promise_then<int><int>(p,
+              llam (data_len: int): ward_promise_chained(int) => let
+                val () = if gt_int_int(data_len, 8) then let
+                  val dl = _checked_pos(data_len)
+                  val data = ward_idb_get_result(dl)
+                  val dptr = $UN.cast{int}($UN.castvwtp1{ptr}(data))
+                  val found = check_match_raw(dptr, dl, saved_qptr, saved_qlen)
+                  val () = ward_arr_free<byte>(data)
+                in
+                  if found then
+                    add_result(saved_idx - 1, saved_results)
+                  else ()
+                end
+                else ()
+              in
+                search_loop(saved_rem, saved_idx, saved_total,
+                  saved_qptr, saved_qlen, saved_results)
+              end)
+          end
+
+        extern castfn _checked_spine(x: int): [n:nat | n <= 256] int n
+        val sc2 = _checked_spine(sc)
+        val p = search_loop(sc2, 0, sc2, qp, ql, sr)
+        (* Final cleanup: discard promise, free query_arr *)
+        val () = ward_promise_discard<int>(p)
         val () = ward_arr_free<byte>(query_arr)
       in 0 end
       else let
