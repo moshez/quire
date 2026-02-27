@@ -8,9 +8,6 @@ staload "./../vendor/ward/lib/memory.sats"
 fun read_payload_click_x {l:agz}{n:nat | n >= 8}
   (arr: !ward_arr(byte, l, n)): int
 
-(* Set document.title: 0="Quire", 1="Quire (importing)" *)
-fun quire_set_title(mode: int): void = "mac#quireSetTitle"
-
 (* Get current Unix timestamp in seconds *)
 fun quire_time_now(): int = "mac#quire_time_now"
 
@@ -26,15 +23,6 @@ fun quire_factory_reset(): void = "mac#quire_factory_reset"
 
 (* Check system dark mode preference. Returns 1 if dark, 0 if light. *)
 fun quire_get_dark_mode(): int = "mac#quire_get_dark_mode"
-
-(* Create blob URL from binary data in WASM memory.
- * data/mime are raw WASM memory offsets. dest is where the URL string is written.
- * Returns URL string byte length (0 on error).
- * Used for embedded font loading — font data from IDB → blob URL for @font-face. *)
-fun quire_create_blob_url(
-  data_ptr: int, data_len: int,
-  mime_ptr: int, mime_len: int,
-  dest_ptr: int, dest_max_len: int): int = "mac#quire_create_blob_url"
 
 (* Setup link click handler on chapter container.
  * External links open in new tab, footnote links intercepted for popup. *)

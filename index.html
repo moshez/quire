@@ -27,9 +27,6 @@
     let wardExports = null;
     const { exports, nodes } = await loadWard(bytes, root, {
       extraImports: {
-        quireSetTitle(mode) {
-          document.title = mode ? 'Quire (importing)' : 'Quire';
-        },
         quire_time_now() {
           return Math.floor(Date.now() / 1000);
         },
@@ -38,9 +35,7 @@
           location.reload();
         },
         quire_get_dark_mode() {
-          try {
-            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 1 : 0;
-          } catch(e) { return 0; }
+          return matchMedia('(prefers-color-scheme: dark)').matches | 0;
         },
         quire_setup_link_handler(containerNodeId) {
           // Intercept link clicks: external links open in new tab,
@@ -63,16 +58,10 @@
           });
         },
         quire_get_input_value(nodeId, destPtr, destMaxLen) {
-          // Read input element value, write UTF-8 to destPtr. Returns byte length.
-          if (!wardNodes || !wasmMem) return 0;
-          try {
-            const el = wardNodes.get(nodeId);
-            if (!el || !el.value) return 0;
-            const bytes = new TextEncoder().encode(el.value);
-            const copyLen = Math.min(bytes.length, destMaxLen);
-            new Uint8Array(wasmMem.buffer).set(bytes.subarray(0, copyLen), destPtr);
-            return copyLen;
-          } catch(e) { return 0; }
+          const bytes = new TextEncoder().encode(wardNodes.get(nodeId).value);
+          const copyLen = Math.min(bytes.length, destMaxLen);
+          new Uint8Array(wasmMem.buffer).set(bytes.subarray(0, copyLen), destPtr);
+          return copyLen;
         },
         quire_download_text(dataPtr, dataLen, namePtr, nameLen) {
           // Download text data as a file. Creates blob URL + <a download> click.
@@ -91,22 +80,6 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
           } catch(e) {}
-        },
-        quire_create_blob_url(dataPtr, dataLen, mimePtr, mimeLen, destPtr, destMaxLen) {
-          // Create blob URL from WASM memory data, write URL string to destPtr.
-          // Returns URL string byte length (0 on error).
-          if (!wasmMem) return 0;
-          try {
-            const mem = new Uint8Array(wasmMem.buffer);
-            const mime = new TextDecoder().decode(mem.slice(mimePtr, mimePtr + mimeLen));
-            const bytes = new Uint8Array(mem.slice(dataPtr, dataPtr + dataLen));
-            const blob = new Blob([bytes], { type: mime });
-            const url = URL.createObjectURL(blob);
-            const urlBytes = new TextEncoder().encode(url);
-            const copyLen = Math.min(urlBytes.length, destMaxLen);
-            new Uint8Array(wasmMem.buffer).set(urlBytes.subarray(0, copyLen), destPtr);
-            return copyLen;
-          } catch(e) { return 0; }
         },
         quire_search_book(queryPtr, queryLen, spineCount, callbackId) {
           // Async IDB search: find chapters containing query text.

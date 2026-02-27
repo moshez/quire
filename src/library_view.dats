@@ -56,7 +56,6 @@ staload _ = "./../vendor/ward/lib/dom_read.dats"
 staload _ = "./../vendor/ward/lib/idb.dats"
 
 %{
-extern void quireSetTitle(int mode);
 extern int quire_time_now(void);
 %}
 
@@ -1096,7 +1095,6 @@ implement render_library(root_id) = let
       (* Phase 0 — visual setup + render import progress card *)
       val () = dismiss_error_banner()
       val () = ward_log(1, log_import_start(), 12)
-      val () = quire_set_title(1)
       val () = update_import_label_class(saved_label_id, 1)
       val () = update_status_text(VT_4() | saved_span_id, 4, 9)
       val (pf0 | imp_card, imp_bar, imp_stat) =
