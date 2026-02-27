@@ -170,6 +170,6 @@ dist: build/quire.wasm
 	cp icon-512.png dist/ 2>/dev/null || true
 	sed -i "s|./vendor/ward/lib/ward_bridge.mjs|./ward_bridge.js|" dist/index.html
 	sed -i "s|>dev</div>|>$(COMMIT_SHA)</div>|" dist/index.html
-	sed -i "s|quire-v3|quire-$(COMMIT_SHA)|" dist/service-worker.js
+	sed -i "s|quire-v4|quire-$(COMMIT_SHA)|" dist/service-worker.js
 
 .PHONY: all clean install dist static-tests
