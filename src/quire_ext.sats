@@ -28,9 +28,8 @@ fun quire_get_dark_mode(): int = "mac#quire_get_dark_mode"
 fun quire_get_input_value(
   node_id: int, dest_ptr: int, dest_max_len: int): int = "mac#quire_get_input_value"
 
-fun quire_download_text(
-  data_ptr: int, data_len: int,
-  name_ptr: int, name_len: int): void = "mac#quire_download_text"
+(* Trigger .click() on a ward DOM node. Single browser API call. *)
+fun quire_click_node(node_id: int): void = "mac#quire_click_node"
 
 (* Search book's IDB index for chapters containing query text.
  * Async: calls ward_on_callback(callback_id, chapter_idx) for each match,

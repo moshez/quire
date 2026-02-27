@@ -824,6 +824,15 @@ implement attr_rel() = let val b = ward_text_build(3)
   val b = ward_text_putc(b, 0, char2int1('r'))
   val b = ward_text_putc(b, 1, char2int1('e'))
   val b = ward_text_putc(b, 2, char2int1('l')) in ward_text_done(b) end
+implement attr_download() = let val b = ward_text_build(8)
+  val b = ward_text_putc(b, 0, char2int1('d'))
+  val b = ward_text_putc(b, 1, char2int1('o'))
+  val b = ward_text_putc(b, 2, char2int1('w'))
+  val b = ward_text_putc(b, 3, char2int1('n'))
+  val b = ward_text_putc(b, 4, char2int1('l'))
+  val b = ward_text_putc(b, 5, char2int1('o'))
+  val b = ward_text_putc(b, 6, char2int1('a'))
+  val b = ward_text_putc(b, 7, char2int1('d')) in ward_text_done(b) end
 
 (* ========== Tree binary byte readers ========== *)
 

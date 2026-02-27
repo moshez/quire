@@ -43,23 +43,8 @@
           new Uint8Array(wasmMem.buffer).set(bytes.subarray(0, copyLen), destPtr);
           return copyLen;
         },
-        quire_download_text(dataPtr, dataLen, namePtr, nameLen) {
-          // Download text data as a file. Creates blob URL + <a download> click.
-          if (!wasmMem) return;
-          try {
-            const mem = new Uint8Array(wasmMem.buffer);
-            const text = new TextDecoder().decode(mem.slice(dataPtr, dataPtr + dataLen));
-            const name = new TextDecoder().decode(mem.slice(namePtr, namePtr + nameLen));
-            const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = name;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-          } catch(e) {}
+        quire_click_node(nodeId) {
+          wardNodes.get(nodeId).click();
         },
         quire_search_book(queryPtr, queryLen, spineCount, callbackId) {
           // Async IDB search: find chapters containing query text.

@@ -151,11 +151,6 @@ extern castfn _checked_spine_count(x: int): [n:nat | n <= 256] int n
  * For computed digits: 48 + (v % 10) is always 48-57 — in range. *)
 extern castfn _byte {c:int | 0 <= c; c <= 255} (c: int c): byte
 
-%{
-extern int quire_get_input_value(int nodeId, int destPtr, int destMaxLen);
-extern void quire_search_book(int queryPtr, int queryLen, int spineCount, int callbackId);
-%}
-
 (* Proof-requiring event listener registration wrapper.
  * Requires READER_LISTENER(id) proof — prevents arbitrary listener IDs.
  * All reader event listener registrations must use this wrapper.

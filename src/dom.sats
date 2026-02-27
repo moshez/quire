@@ -160,6 +160,7 @@ fun attr_name(): ward_safe_text(4)
 fun attr_value(): ward_safe_text(5)
 fun attr_target(): ward_safe_text(6)
 fun attr_rel(): ward_safe_text(3)
+fun attr_download(): ward_safe_text(8)
 
 (* ========== Skippable tag indices ========== *)
 
