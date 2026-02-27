@@ -261,6 +261,63 @@ in
   else ward_arr_free<byte>(arr)
 end
 
+(* Sepia mode CSS: warm paper background + dark brown text on chapter container.
+ * Uses exact colors from theme_lum.hats: SEPIA_BG=#f0e6d2, SEPIA_FG=#3a3020.
+ * "background:#f0e6d2;color:#3a3020" = 32 bytes *)
+#define SEPIA_CSS_LEN 32
+
+fn _inject_sepia_mode_css(container_id: int): void = let
+in
+  if gt_int_int(container_id, 0) then let
+    val style_arr = ward_arr_alloc<byte>(48)
+    (* "background:#f0e6d2;color:#3a3020" = 32 bytes *)
+    val () = ward_arr_set<byte>(style_arr, 0, _byte(98))    (* b *)
+    val () = ward_arr_set<byte>(style_arr, 1, _byte(97))    (* a *)
+    val () = ward_arr_set<byte>(style_arr, 2, _byte(99))    (* c *)
+    val () = ward_arr_set<byte>(style_arr, 3, _byte(107))   (* k *)
+    val () = ward_arr_set<byte>(style_arr, 4, _byte(103))   (* g *)
+    val () = ward_arr_set<byte>(style_arr, 5, _byte(114))   (* r *)
+    val () = ward_arr_set<byte>(style_arr, 6, _byte(111))   (* o *)
+    val () = ward_arr_set<byte>(style_arr, 7, _byte(117))   (* u *)
+    val () = ward_arr_set<byte>(style_arr, 8, _byte(110))   (* n *)
+    val () = ward_arr_set<byte>(style_arr, 9, _byte(100))   (* d *)
+    val () = ward_arr_set<byte>(style_arr, 10, _byte(58))   (* : *)
+    val () = ward_arr_set<byte>(style_arr, 11, _byte(35))   (* # *)
+    val () = ward_arr_set<byte>(style_arr, 12, _byte(102))  (* f *)
+    val () = ward_arr_set<byte>(style_arr, 13, _byte(48))   (* 0 *)
+    val () = ward_arr_set<byte>(style_arr, 14, _byte(101))  (* e *)
+    val () = ward_arr_set<byte>(style_arr, 15, _byte(54))   (* 6 *)
+    val () = ward_arr_set<byte>(style_arr, 16, _byte(100))  (* d *)
+    val () = ward_arr_set<byte>(style_arr, 17, _byte(50))   (* 2 *)
+    val () = ward_arr_set<byte>(style_arr, 18, _byte(59))   (* ; *)
+    val () = ward_arr_set<byte>(style_arr, 19, _byte(99))   (* c *)
+    val () = ward_arr_set<byte>(style_arr, 20, _byte(111))  (* o *)
+    val () = ward_arr_set<byte>(style_arr, 21, _byte(108))  (* l *)
+    val () = ward_arr_set<byte>(style_arr, 22, _byte(111))  (* o *)
+    val () = ward_arr_set<byte>(style_arr, 23, _byte(114))  (* r *)
+    val () = ward_arr_set<byte>(style_arr, 24, _byte(58))   (* : *)
+    val () = ward_arr_set<byte>(style_arr, 25, _byte(35))   (* # *)
+    val () = ward_arr_set<byte>(style_arr, 26, _byte(51))   (* 3 *)
+    val () = ward_arr_set<byte>(style_arr, 27, _byte(97))   (* a *)
+    val () = ward_arr_set<byte>(style_arr, 28, _byte(51))   (* 3 *)
+    val () = ward_arr_set<byte>(style_arr, 29, _byte(48))   (* 0 *)
+    val () = ward_arr_set<byte>(style_arr, 30, _byte(50))   (* 2 *)
+    val () = ward_arr_set<byte>(style_arr, 31, _byte(48))   (* 0 *)
+    val @(used, rest) = ward_arr_split<byte>(style_arr, SEPIA_CSS_LEN)
+    val () = ward_arr_free<byte>(rest)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_set_style(s, container_id, borrow, SEPIA_CSS_LEN)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = ward_arr_drop<byte>(frozen, borrow)
+    val used = ward_arr_thaw<byte>(frozen)
+    val () = ward_arr_free<byte>(used)
+  in end
+  else ()
+end
+
 fn _clear_dark_mode_css(container_id: int): void = let
 in
   if gt_int_int(container_id, 0) then let
@@ -301,6 +358,7 @@ implement settings_apply() = let
     val cid = reader_get_container_id()
   in
     if eq_int_int(resolved, 1) then _inject_dark_mode_css(cid)
+    else if eq_int_int(resolved, 2) then _inject_sepia_mode_css(cid)
     else _clear_dark_mode_css(cid)
   end
   else ()
