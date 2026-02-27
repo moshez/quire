@@ -261,6 +261,45 @@ in
   else ward_arr_free<byte>(arr)
 end
 
+(* Sepia mode CSS: warm paper tone on chapter container.
+ * "filter:sepia(0.3)" = 17 bytes *)
+fn _inject_sepia_mode_css(container_id: int): void = let
+in
+  if gt_int_int(container_id, 0) then let
+    val style_arr = ward_arr_alloc<byte>(20)
+    (* "filter:sepia(0.3)" = 17 bytes *)
+    val () = ward_arr_set<byte>(style_arr, 0, _byte(102))   (* f *)
+    val () = ward_arr_set<byte>(style_arr, 1, _byte(105))   (* i *)
+    val () = ward_arr_set<byte>(style_arr, 2, _byte(108))   (* l *)
+    val () = ward_arr_set<byte>(style_arr, 3, _byte(116))   (* t *)
+    val () = ward_arr_set<byte>(style_arr, 4, _byte(101))   (* e *)
+    val () = ward_arr_set<byte>(style_arr, 5, _byte(114))   (* r *)
+    val () = ward_arr_set<byte>(style_arr, 6, _byte(58))    (* : *)
+    val () = ward_arr_set<byte>(style_arr, 7, _byte(115))   (* s *)
+    val () = ward_arr_set<byte>(style_arr, 8, _byte(101))   (* e *)
+    val () = ward_arr_set<byte>(style_arr, 9, _byte(112))   (* p *)
+    val () = ward_arr_set<byte>(style_arr, 10, _byte(105))  (* i *)
+    val () = ward_arr_set<byte>(style_arr, 11, _byte(97))   (* a *)
+    val () = ward_arr_set<byte>(style_arr, 12, _byte(40))   (* ( *)
+    val () = ward_arr_set<byte>(style_arr, 13, _byte(48))   (* 0 *)
+    val () = ward_arr_set<byte>(style_arr, 14, _byte(46))   (* . *)
+    val () = ward_arr_set<byte>(style_arr, 15, _byte(51))   (* 3 *)
+    val () = ward_arr_set<byte>(style_arr, 16, _byte(41))   (* ) *)
+    val @(used, rest) = ward_arr_split<byte>(style_arr, 17)
+    val () = ward_arr_free<byte>(rest)
+    val @(frozen, borrow) = ward_arr_freeze<byte>(used)
+    val dom = ward_dom_init()
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_set_style(s, container_id, borrow, 17)
+    val dom = ward_dom_stream_end(s)
+    val () = ward_dom_fini(dom)
+    val () = ward_arr_drop<byte>(frozen, borrow)
+    val used = ward_arr_thaw<byte>(frozen)
+    val () = ward_arr_free<byte>(used)
+  in end
+  else ()
+end
+
 fn _clear_dark_mode_css(container_id: int): void = let
 in
   if gt_int_int(container_id, 0) then let
@@ -301,6 +340,7 @@ implement settings_apply() = let
     val cid = reader_get_container_id()
   in
     if eq_int_int(resolved, 1) then _inject_dark_mode_css(cid)
+    else if eq_int_int(resolved, 2) then _inject_sepia_mode_css(cid)
     else _clear_dark_mode_css(cid)
   end
   else ()
