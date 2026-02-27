@@ -42,6 +42,7 @@ build, tests, dataprop analysis per platform-usage rules), mark it done
 3. **All UI logic in WASM** — bridge forwards events and applies diffs
 4. **WASM owns node IDs** — assigned via CREATE_ELEMENT diffs
 5. **index.html and reader.css must never change** — except for adding extraImports in index.html. All app CSS is injected from WASM via `<style>` elements. reader.css is only for the loading screen and bundled font @font-face declarations.
+6. **extraImports are primitives, not logic** — Code in extraImports is a last resort. Only add primitives (single browser API calls), never logic (if/else, loops, string manipulation). If an extraImport needs an if statement, the logic belongs in WASM and the extraImport should be a thinner primitive. Every extraImport should be plausibly addable to ward as a generic API.
 
 ## ATS2 Notes
 

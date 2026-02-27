@@ -20,11 +20,6 @@ staload _ = "./../vendor/ward/lib/memory.dats"
 staload _ = "./../vendor/ward/lib/dom.dats"
 staload _ = "./../vendor/ward/lib/listener.dats"
 
-(* Forward declaration for JS import — suppresses C99 warning *)
-%{
-extern void quireSetTitle(int mode);
-%}
-
 (* ========== Linear import outcome ========== *)
 
 local
@@ -325,7 +320,6 @@ in end
 (* import_finish: consumes linear import_handled token, restores UI, logs "import-done".
  * Called from each branch of the import outcome — token never crosses if-then-else. *)
 implement import_finish(h, label_id, span_id, status_id) = let
-  val () = quire_set_title(0)
   val () = update_import_label_class(label_id, 0)
   (* Restore span text to "Import" *)
   val import_st2 = let

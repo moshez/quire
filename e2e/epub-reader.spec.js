@@ -150,7 +150,7 @@ test.describe('EPUB Reader E2E', () => {
 
     const backBtn = page.locator('.back-btn');
     await expect(backBtn).toBeVisible();
-    await expect(backBtn).toContainText('Back');
+    await expect(backBtn).toContainText('\u2190');
 
     // --- Verify chapter title in top chrome ---
     // Use toBeAttached instead of toBeVisible — on narrow viewports
@@ -165,9 +165,9 @@ test.describe('EPUB Reader E2E', () => {
     const prevBtn = page.locator('.prev-btn');
     const nextBtn = page.locator('.next-btn');
     await expect(prevBtn).toBeVisible();
-    await expect(prevBtn).toContainText('Prev');
+    await expect(prevBtn).toContainText('\u2039');
     await expect(nextBtn).toBeVisible();
-    await expect(nextBtn).toContainText('Next');
+    await expect(nextBtn).toContainText('\u203A');
 
     const pageInfo = page.locator('.page-info');
     await expect(pageInfo).toBeVisible();
@@ -2457,7 +2457,7 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     // Verify Aa button exists in reader chrome
     const aaBtn = page.locator('button.settings-btn');
     await expect(aaBtn).toBeAttached();
-    await expect(aaBtn).toContainText('Aa');
+    await expect(aaBtn).toContainText('A');
     await screenshot(page, 'settings-01-aa-button');
 
     // Click Aa button — settings overlay should appear with controls
