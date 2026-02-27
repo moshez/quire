@@ -2417,15 +2417,16 @@ implement enter_reader(root_id, book_index) = let
   val s = ward_dom_stream_create_element(s, back_btn_id, nav_id, tag_button(), 6)
   val s = ward_dom_stream_set_attr_safe(s, back_btn_id, attr_class(), 5,
     cls_back_btn(), 8)
-  (* "Back" = 4 chars *)
-  val back_st = let
-    val b = ward_text_build(4)
-    val b = ward_text_putc(b, 0, char2int1('B'))
-    val b = ward_text_putc(b, 1, char2int1('a'))
-    val b = ward_text_putc(b, 2, char2int1('c'))
-    val b = ward_text_putc(b, 3, char2int1('k'))
-  in ward_text_done(b) end
-  val s = ward_dom_stream_set_safe_text(s, back_btn_id, back_st, 4)
+  (* Back icon: ← (U+2190) = UTF-8 E2 86 90 *)
+  val back_arr = ward_arr_alloc<byte>(3)
+  val () = ward_arr_set<byte>(back_arr, 0, _byte(226))
+  val () = ward_arr_set<byte>(back_arr, 1, _byte(134))
+  val () = ward_arr_set<byte>(back_arr, 2, _byte(144))
+  val @(back_frozen, back_borrow) = ward_arr_freeze<byte>(back_arr)
+  val s = ward_dom_stream_set_text(s, back_btn_id, back_borrow, 3)
+  val () = ward_arr_drop<byte>(back_frozen, back_borrow)
+  val back_arr2 = ward_arr_thaw<byte>(back_frozen)
+  val () = ward_arr_free<byte>(back_arr2)
 
   (* Chapter title span *)
   val ch_title_id = dom_next_id()
@@ -2454,13 +2455,16 @@ implement enter_reader(root_id, book_index) = let
   val s = ward_dom_stream_create_element(s, toc_btn_id, nav_id, tag_button(), 6)
   val s = ward_dom_stream_set_attr_safe(s, toc_btn_id, attr_class(), 5,
     cls_toc_btn(), 7)
-  val toc_btn_st = let
-    val b = ward_text_build(3)
-    val b = ward_text_putc(b, 0, char2int1('T'))
-    val b = ward_text_putc(b, 1, char2int1('O'))
-    val b = ward_text_putc(b, 2, char2int1('C'))
-  in ward_text_done(b) end
-  val s = ward_dom_stream_set_safe_text(s, toc_btn_id, toc_btn_st, 3)
+  (* TOC icon: ≡ (U+2261) = UTF-8 E2 89 A1 *)
+  val toc_arr = ward_arr_alloc<byte>(3)
+  val () = ward_arr_set<byte>(toc_arr, 0, _byte(226))
+  val () = ward_arr_set<byte>(toc_arr, 1, _byte(137))
+  val () = ward_arr_set<byte>(toc_arr, 2, _byte(161))
+  val @(toc_frozen, toc_borrow) = ward_arr_freeze<byte>(toc_arr)
+  val s = ward_dom_stream_set_text(s, toc_btn_id, toc_borrow, 3)
+  val () = ward_arr_drop<byte>(toc_frozen, toc_borrow)
+  val toc_arr2 = ward_arr_thaw<byte>(toc_frozen)
+  val () = ward_arr_free<byte>(toc_arr2)
 
   (* Settings button (Aa) *)
   val settings_btn_id = dom_next_id()
@@ -2468,27 +2472,27 @@ implement enter_reader(root_id, book_index) = let
   val s = ward_dom_stream_set_attr_safe(s, settings_btn_id, attr_class(), 5,
     cls_settings_btn(), 12)
   val stg_st = let
-    val b = ward_text_build(2)
+    val b = ward_text_build(1)
     val b = ward_text_putc(b, 0, char2int1('A'))
-    val b = ward_text_putc(b, 1, char2int1('a'))
   in ward_text_done(b) end
-  val s = ward_dom_stream_set_safe_text(s, settings_btn_id, stg_st, 2)
+  val s = ward_dom_stream_set_safe_text(s, settings_btn_id, stg_st, 1)
 
   (* Search button *)
   val search_btn_id = dom_next_id()
   val s = ward_dom_stream_create_element(s, search_btn_id, nav_id, tag_button(), 6)
   val s = ward_dom_stream_set_attr_safe(s, search_btn_id, attr_class(), 5,
     cls_search_btn(), 10)
-  val srch_st = let
-    val b = ward_text_build(6)
-    val b = ward_text_putc(b, 0, char2int1('S'))
-    val b = ward_text_putc(b, 1, char2int1('e'))
-    val b = ward_text_putc(b, 2, char2int1('a'))
-    val b = ward_text_putc(b, 3, char2int1('r'))
-    val b = ward_text_putc(b, 4, char2int1('c'))
-    val b = ward_text_putc(b, 5, char2int1('h'))
-  in ward_text_done(b) end
-  val s = ward_dom_stream_set_safe_text(s, search_btn_id, srch_st, 6)
+  (* Search icon: 🔍 (U+1F50D) = UTF-8 F0 9F 94 8D *)
+  val srch_arr = ward_arr_alloc<byte>(4)
+  val () = ward_arr_set<byte>(srch_arr, 0, _byte(240))
+  val () = ward_arr_set<byte>(srch_arr, 1, _byte(159))
+  val () = ward_arr_set<byte>(srch_arr, 2, _byte(148))
+  val () = ward_arr_set<byte>(srch_arr, 3, _byte(141))
+  val @(srch_frozen, srch_borrow) = ward_arr_freeze<byte>(srch_arr)
+  val s = ward_dom_stream_set_text(s, search_btn_id, srch_borrow, 4)
+  val () = ward_arr_drop<byte>(srch_frozen, srch_borrow)
+  val srch_arr2 = ward_arr_thaw<byte>(srch_frozen)
+  val () = ward_arr_free<byte>(srch_arr2)
 
   (* Nav back button — hidden initially via CSS .nav-back-btn{display:none},
    * shown when position stack is non-empty *)
@@ -2516,14 +2520,16 @@ implement enter_reader(root_id, book_index) = let
   val s = ward_dom_stream_create_element(s, prev_btn_id, controls_id, tag_button(), 6)
   val s = ward_dom_stream_set_attr_safe(s, prev_btn_id, attr_class(), 5,
     cls_prev_btn(), 8)
-  val prev_st = let
-    val b = ward_text_build(4)
-    val b = ward_text_putc(b, 0, char2int1('P'))
-    val b = ward_text_putc(b, 1, char2int1('r'))
-    val b = ward_text_putc(b, 2, char2int1('e'))
-    val b = ward_text_putc(b, 3, char2int1('v'))
-  in ward_text_done(b) end
-  val s = ward_dom_stream_set_safe_text(s, prev_btn_id, prev_st, 4)
+  (* Prev icon: ‹ (U+2039) = UTF-8 E2 80 B9 *)
+  val prev_arr = ward_arr_alloc<byte>(3)
+  val () = ward_arr_set<byte>(prev_arr, 0, _byte(226))
+  val () = ward_arr_set<byte>(prev_arr, 1, _byte(128))
+  val () = ward_arr_set<byte>(prev_arr, 2, _byte(185))
+  val @(prev_frozen, prev_borrow) = ward_arr_freeze<byte>(prev_arr)
+  val s = ward_dom_stream_set_text(s, prev_btn_id, prev_borrow, 3)
+  val () = ward_arr_drop<byte>(prev_frozen, prev_borrow)
+  val prev_arr2 = ward_arr_thaw<byte>(prev_frozen)
+  val () = ward_arr_free<byte>(prev_arr2)
 
   (* Page info *)
   val page_info_id = dom_next_id()
@@ -2548,14 +2554,16 @@ implement enter_reader(root_id, book_index) = let
   val s = ward_dom_stream_create_element(s, next_btn_id, controls_id, tag_button(), 6)
   val s = ward_dom_stream_set_attr_safe(s, next_btn_id, attr_class(), 5,
     cls_next_btn(), 8)
-  val next_st = let
-    val b = ward_text_build(4)
-    val b = ward_text_putc(b, 0, char2int1('N'))
-    val b = ward_text_putc(b, 1, char2int1('e'))
-    val b = ward_text_putc(b, 2, char2int1('x'))
-    val b = ward_text_putc(b, 3, char2int1('t'))
-  in ward_text_done(b) end
-  val s = ward_dom_stream_set_safe_text(s, next_btn_id, next_st, 4)
+  (* Next icon: › (U+203A) = UTF-8 E2 80 BA *)
+  val next_arr = ward_arr_alloc<byte>(3)
+  val () = ward_arr_set<byte>(next_arr, 0, _byte(226))
+  val () = ward_arr_set<byte>(next_arr, 1, _byte(128))
+  val () = ward_arr_set<byte>(next_arr, 2, _byte(186))
+  val @(next_frozen, next_borrow) = ward_arr_freeze<byte>(next_arr)
+  val s = ward_dom_stream_set_text(s, next_btn_id, next_borrow, 3)
+  val () = ward_arr_drop<byte>(next_frozen, next_borrow)
+  val next_arr2 = ward_arr_thaw<byte>(next_frozen)
+  val () = ward_arr_free<byte>(next_arr2)
 
   (* Create .reader-viewport with tabindex="0" for keyboard focus *)
   val viewport_id = dom_next_id()
