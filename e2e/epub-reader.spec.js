@@ -2516,12 +2516,13 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     await page.waitForTimeout(300);
     await screenshot(page, 'settings-04b-sepia-theme');
 
-    // Verify sepia mode applies a distinct style on chapter container
+    // Verify sepia mode applies warm background on chapter container
     const sepiaStyle = await page.evaluate(() => {
       const cc = document.querySelector('.chapter-container');
       return cc ? cc.getAttribute('style') : null;
     });
-    expect(sepiaStyle).toContain('sepia');
+    expect(sepiaStyle).toContain('background');
+    expect(sepiaStyle).toContain('#f0e6d2');
 
     // Click Light theme button — should remove all filters
     const lightBtn = overlay.locator('button', { hasText: 'Light' });
