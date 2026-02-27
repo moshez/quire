@@ -2662,8 +2662,8 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     const searchInput = searchPanel.locator('input[type="text"]');
     await expect(searchInput).toBeAttached();
 
-    // Type "mountain" — appears in generated EPUB paragraphs
-    await searchInput.fill('mountain');
+    // Type "Mountain" (capital M) — tests case-insensitive search
+    await searchInput.fill('Mountain');
     // Trigger change event (fill doesn't always fire change)
     await searchInput.dispatchEvent('change');
     // Wait for async IDB search to complete

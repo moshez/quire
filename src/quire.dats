@@ -3284,6 +3284,24 @@ implement enter_reader(root_id, book_index) = let
       val raw_ptr = $UN.castvwtp1{ptr}(query_arr)
       val query_len = quire_get_input_value(saved_search_input,
         $UN.cast{int}(raw_ptr), 256)
+      (* Fold query to lowercase — search index text is lowercased during indexing.
+       * Without this, queries with uppercase letters find no matches. *)
+      val qmem = $UN.cast{ptr}(raw_ptr)
+      fun fold_query {k:nat} .<k>.
+        (rem: int(k), i: int, p: ptr): void =
+        if lte_g1(rem, 0) then ()
+        else let
+          val b = byte2int0($UN.ptr0_get<byte>(ptr_add<byte>(p, i)))
+        in
+          if gte_int_int(b, 65) then
+            if lte_int_int(b, 90) then let
+              val () = $UN.ptr0_set<byte>(ptr_add<byte>(p, i), ward_int2byte(_checked_byte(b + 32)))
+            in fold_query(sub_g1(rem, 1), i + 1, p) end
+            else fold_query(sub_g1(rem, 1), i + 1, p)
+          else fold_query(sub_g1(rem, 1), i + 1, p)
+        end
+      val () = if gt_int_int(query_len, 0) then
+        fold_query(_checked_nat(query_len), 0, qmem) else ()
     in
       if gt_int_int(query_len, 0) then let
         val spine_count = reader_get_chapter_count()
