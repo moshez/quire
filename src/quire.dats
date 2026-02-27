@@ -3417,9 +3417,18 @@ implement enter_reader(root_id, book_index) = let
         extern castfn _checked_spine(x: int): [n:nat | n <= 256] int n
         val sc2 = _checked_spine(sc)
         val p = search_loop(sc2, 0, sc2, qp, ql, sr)
-        (* Final cleanup: discard promise, free query_arr *)
-        val () = ward_promise_discard<int>(p)
-        val () = ward_arr_free<byte>(query_arr)
+        (* Chain final cleanup: free query_arr after all IDB reads complete.
+         * query_arr is reconstructed from the raw int pointer captured in closures. *)
+        val qp_saved = qp
+        val p2 = ward_promise_then<int><int>(p,
+          llam (_: int): ward_promise_chained(int) => let
+            val raw_p = $UN.cast{ptr}(qp_saved)
+            val arr = $UN.castvwtp0{[l:agz] ward_arr(byte, l, 256)}(raw_p)
+            val () = ward_arr_free<byte>(arr)
+          in ward_promise_return<int>(0) end)
+        val () = ward_promise_discard<int>(p2)
+        (* query_arr ownership transferred to promise chain above *)
+        prval () = $UN.castvwtp0{void}(query_arr)
       in 0 end
       else let
         val () = ward_arr_free<byte>(query_arr)
