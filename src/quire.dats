@@ -2594,6 +2594,13 @@ implement enter_reader(root_id, book_index) = let
   prval pf_search_z = STG_Z_OK()
   val s = inject_search_css(pf_search_z | s, root_id)
 
+  (* Theme style element — persists across page turns (outside chapter container).
+   * settings_apply writes CSS rules into this element's text content.
+   * Light mode: empty. Dark/sepia: CSS rules for html,body, viewport, etc. *)
+  val theme_style_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, theme_style_id, root_id, tag_style(), 5)
+  val () = reader_set_theme_style_id(theme_style_id)
+
   (* Create bottom chrome bar:
    * <div class="reader-bottom">
    *   <div class="scrubber">
@@ -3619,6 +3626,9 @@ implement enter_reader(root_id, book_index) = let
   (* Show chrome and start auto-hide timer on reader entry *)
   val () = show_chrome()
   val () = start_chrome_auto_hide()
+
+  (* Apply current theme to the theme style element *)
+  val (_pf_applied | ()) = settings_apply()
 
   (* Load manifest from IDB, then restore chapter/page position *)
   val saved_bi = book_index

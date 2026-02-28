@@ -166,6 +166,8 @@ fun app_get_rdr_page_turn_counter(st: !app_state): int
 fun app_set_rdr_page_turn_counter(st: !app_state, v: int): void
 fun app_get_rdr_char_offset(st: !app_state): int
 fun app_set_rdr_char_offset(st: !app_state, v: int): void
+fun app_get_rdr_theme_style_id(st: !app_state): int
+fun app_set_rdr_theme_style_id(st: !app_state, v: int): void
 
 (* TOC panel state *)
 fun app_get_rdr_toc_panel_id(st: !app_state): int

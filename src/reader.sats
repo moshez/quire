@@ -322,3 +322,8 @@ dataprop CARET_OFFSET_VALID(n: int) =
 fun reader_get_char_offset(): int
 fun reader_set_char_offset{n:nat}(pf: CARET_OFFSET_VALID(n) | v: int(n)): void
 fun reader_clear_char_offset(): void
+
+(* ========== Theme style element ========== *)
+
+fun reader_set_theme_style_id(id: int): void
+fun reader_get_theme_style_id(): int

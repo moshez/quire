@@ -54,6 +54,7 @@ implement reader_init() = let
   val () = app_set_rdr_bm_first_entry_id(st, 0)
   val () = app_set_rdr_page_turn_counter(st, 0)
   val () = app_set_rdr_char_offset(st, 0 - 1)
+  val () = app_set_rdr_theme_style_id(st, 0)
   val () = app_state_store(st)
 in end
 
@@ -97,6 +98,7 @@ implement reader_exit(pf) = let
   val () = app_set_rdr_bm_first_entry_id(st, 0)
   val () = app_set_rdr_nav_back_btn_id(st, 0)
   val () = app_set_rdr_pos_stack_count(st, 0)
+  val () = app_set_rdr_theme_style_id(st, 0)
   val () = app_state_store(st)
 in end
 
@@ -757,3 +759,15 @@ implement reader_clear_char_offset() = let
   val () = app_set_rdr_char_offset(st, 0 - 1)
   val () = app_state_store(st)
 in end
+
+implement reader_set_theme_style_id(id) = let
+  val st = app_state_load()
+  val () = app_set_rdr_theme_style_id(st, id)
+  val () = app_state_store(st)
+in end
+
+implement reader_get_theme_style_id() = let
+  val st = app_state_load()
+  val v = app_get_rdr_theme_style_id(st)
+  val () = app_state_store(st)
+in v end

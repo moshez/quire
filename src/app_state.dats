@@ -94,6 +94,7 @@ datavtype app_state_impl =
       rdr_pos_stack_count = int,
       rdr_page_turn_counter = int,
       rdr_char_offset = int,
+      rdr_theme_style_id = int,
       rdr_pos_stack = ptr,
       rdr_toc_panel_id = int,
       rdr_toc_list_id = int,
@@ -283,6 +284,7 @@ implement app_state_init() =
     rdr_pos_stack_count = 0,
     rdr_page_turn_counter = 0,
     rdr_char_offset = 0 - 1,
+    rdr_theme_style_id = 0,
     rdr_pos_stack = _alloc_buf(POS_STACK_BUF_SIZE),
     rdr_toc_panel_id = 0,
     rdr_toc_list_id = 0,
@@ -1087,6 +1089,12 @@ implement app_get_rdr_char_offset(st) = let
   prval () = fold@(st) in v end
 implement app_set_rdr_char_offset(st, v) = let
   val @APP_STATE(r) = st val () = r.rdr_char_offset := v
+  prval () = fold@(st) in end
+implement app_get_rdr_theme_style_id(st) = let
+  val @APP_STATE(r) = st val v = r.rdr_theme_style_id
+  prval () = fold@(st) in v end
+implement app_set_rdr_theme_style_id(st, v) = let
+  val @APP_STATE(r) = st val () = r.rdr_theme_style_id := v
   prval () = fold@(st) in end
 
 implement app_get_rdr_toc_panel_id(st) = let
