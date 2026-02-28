@@ -68,10 +68,33 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
-      - name: Fix Kotlin dependency conflict
+      - name: Decode signing keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/release.jks
+
+      - name: Fix Kotlin dependency conflict and add release signing config
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           # Force consistent Kotlin stdlib version to fix classpath duplicate
-          cat >> android/app/build.gradle << 'GRADLE'
+          # and add release signing config
+          cat >> android/app/build.gradle << GRADLE
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file("release.jks")
+                      storePassword "${KEYSTORE_PASSWORD}"
+                      keyAlias "${KEY_ALIAS}"
+                      keyPassword "${KEY_PASSWORD}"
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
           configurations.all {
               resolutionStrategy {
                   force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
@@ -84,18 +107,18 @@ jobs:
       - name: Sync web assets to Android
         run: npx cap sync android
 
-      - name: Build debug APK
+      - name: Build release AAB
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: ./gradlew bundleRelease
 
-      - name: Verify APK exists
+      - name: Verify AAB exists
         run: |
-          APK=$(find android -name "*.apk" | head -1)
-          test -n "$APK" && test -s "$APK"
-          echo "APK: $APK ($(stat -c%s "$APK") bytes)"
+          AAB=$(find android -name "*.aab" | head -1)
+          test -n "$AAB" && test -s "$AAB"
+          echo "AAB: $AAB ($(stat -c%s "$AAB") bytes)"
 
-      - name: Upload APK
+      - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
-          name: debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: release-aab
+          path: android/app/build/outputs/bundle/release/*.aab
