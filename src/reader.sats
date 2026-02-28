@@ -161,8 +161,9 @@ fun reader_init(): void
 (* Enter reader mode *)
 fun reader_enter(root_id: int, container_hide_id: int): void
 
-(* Exit reader mode — requires proof that position was saved. *)
-fun reader_exit(pf: POSITION_SAVED()): void
+(* Exit reader mode — requires proof that position was saved
+ * AND that active book was cleared and persisted to IDB. *)
+fun reader_exit(pf1: POSITION_SAVED(), pf2: ACTIVE_BOOK_CLEARED()): void
 
 (* Check if reader is active *)
 fun reader_is_active(): int

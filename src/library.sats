@@ -67,6 +67,7 @@ dataprop SER_FORMAT(version: int, fixed_bytes: int) =
   | SER_FMT_V2(2, 8)
   | SER_FMT_V3(3, 20)
   | SER_FMT_V4(4, 22)
+  | SER_FMT_V5(5, 22)
 
 (* Serialization variable field proof: index↔record offset agreement.
  * Ties field index to byte offset, max length, and length slot.
@@ -187,6 +188,7 @@ stadef SER_VERSION_MARKER = 65535
 stadef SER_VERSION_2 = 2
 stadef SER_VERSION_3 = 3
 stadef SER_VERSION_4 = 4
+stadef SER_VERSION_5 = 5
 
 dataprop SER_VERSION_DETECTED(marker: int, version: int) =
   | {m:int | m == 65535} IS_V2_OR_V3(m, 2)
@@ -232,6 +234,21 @@ dataprop DUP_CHOICE_VALID(c: int) =
 dataprop ADD_BOOK_RESULT(idx: int) =
   | {i:nat | i < 32} BOOK_ADDED(i)      (* success: book at index i *)
   | LIB_FULL(~1)                          (* library at 32-book capacity *)
+
+(* ACTIVE_BOOK: proves the active-book dispatch on startup is exhaustive.
+ * ACTIVE_NONE(~1): no book was active (show library).
+ * ACTIVE_AT(i): book i was active (resume reader).
+ * Returned by library_get_active_book — caller must handle both cases. *)
+dataprop ACTIVE_BOOK(idx: int) =
+  | ACTIVE_NONE(~1)
+  | {i:nat | i < 32} ACTIVE_AT(i)
+
+(* ACTIVE_BOOK_CLEARED(): proves library_clear_active_book_and_save was called.
+ * absprop: unforgeable outside library.dats local assume block.
+ * Required by reader_exit — compile-time guarantee that active book state
+ * is persisted before leaving the reader.
+ * BUG CLASS PREVENTED: reader exit without clearing active book from IDB. *)
+absprop ACTIVE_BOOK_CLEARED()
 
 (* POSITION_SAVED(): proves library_update_position was called before reader_exit.
  * absprop: unforgeable outside library.dats local assume block.
@@ -287,8 +304,13 @@ fun library_get_has_cover(index: int): [c:int | c == 0 || c == 1] int(c)
 fun library_set_last_opened {t:nat}
   (pf: TIMESTAMP_VALID(t) | index: int, ts: int(t)): void
 
+(* Active book tracking — persisted in serialization header *)
+fun library_get_active_book(): [i:int | i >= ~1; i < 32] (ACTIVE_BOOK(i) | int(i))
+fun library_set_active_book(index: int): void
+fun library_clear_active_book_and_save(): (ACTIVE_BOOK_CLEARED() | void)
+
 (* Serialization format helpers — single source of truth *)
-fun ser_fixed_bytes {v:int | v >= 1; v <= 4}
+fun ser_fixed_bytes {v:int | v >= 1; v <= 5}
   (version: int(v)): [fb:pos] (SER_FORMAT(v, fb) | int(fb))
 fun ser_var_field_spec {f:nat | f <= 2}
   (field: int(f)): [bo,ml,ls:nat]

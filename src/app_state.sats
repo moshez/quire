@@ -56,6 +56,8 @@ fun app_get_lib_view_mode(st: !app_state): int
 fun app_set_lib_view_mode(st: !app_state, v: int): void
 fun app_get_lib_sort_mode(st: !app_state): int
 fun app_set_lib_sort_mode(st: !app_state, v: int): void
+fun app_get_lib_active_book(st: !app_state): int
+fun app_set_lib_active_book(st: !app_state, v: int): void
 
 (* Settings values *)
 fun app_get_stg_font_size(st: !app_state): int
@@ -321,6 +323,8 @@ fun _app_lib_view_mode(): int
 fun _app_set_lib_view_mode(v: int): void
 fun _app_lib_sort_mode(): int
 fun _app_set_lib_sort_mode(v: int): void
+fun _app_lib_active_book(): int
+fun _app_set_lib_active_book(v: int): void
 
 (* Library books — per-byte/i32 accessors (bounds-checked via ward_arr) *)
 fun _app_lib_books_get_u8(off: int): int

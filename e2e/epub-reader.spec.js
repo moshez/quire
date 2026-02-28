@@ -3030,5 +3030,92 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     expect(errors).toEqual([]);
   });
 
+  test('resume active book on page reload', async ({ page }) => {
+    // Import a book, open it in the reader, reload the page, and verify
+    // the reader resumes instead of showing the library.
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+
+    const epubBuffer = createEpub({
+      title: 'Resume Test Book',
+      author: 'Resume Bot',
+      chapters: 3,
+      paragraphsPerChapter: 5,
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `resume-test-${vpTag}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open the book
+    const bookCard = page.locator('.book-card');
+    await bookCard.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    // Verify we're in the reader
+    const pageInfo = page.locator('.page-info');
+    const initialText = await pageInfo.textContent();
+    expect(initialText).toMatch(/^Ch 1 /);
+    await screenshot(page, 'resume-01-in-reader');
+
+    // Wait for library_save to complete (active_book persisted to IDB)
+    await page.waitForTimeout(3000);
+
+    // Reload the page — should resume into the reader, not the library
+    await page.reload();
+
+    // The app should go directly to the reader (not the library)
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await screenshot(page, 'resume-02-after-reload');
+
+    // Verify we're in the reader at chapter 1
+    const resumedText = await pageInfo.textContent();
+    expect(resumedText).toMatch(/^Ch 1 /);
+
+    // Verify reader nav bar is present
+    await expect(page.locator('.reader-nav')).toBeVisible();
+    await expect(page.locator('.back-btn')).toBeVisible();
+
+    // Exit to library — should clear active book
+    const backBtn = page.locator('.back-btn');
+    await backBtn.click();
+    await page.waitForSelector('.book-card', { timeout: 10000 });
+    await screenshot(page, 'resume-03-back-to-library');
+
+    // Wait for save
+    await page.waitForTimeout(2000);
+
+    // Reload again — should show library (not reader) since we exited
+    await page.reload();
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    await page.waitForSelector('.book-card', { timeout: 15000 });
+    await screenshot(page, 'resume-04-library-after-exit-reload');
+
+    // Verify we're in the library, NOT the reader
+    const readerViewport = page.locator('.reader-viewport');
+    await expect(readerViewport).toHaveCount(0);
+    await expect(page.locator('.book-title')).toContainText('Resume Test Book');
+
+    expect(errors).toEqual([]);
+  });
+
 
 });
