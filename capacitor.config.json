@@ -7,10 +7,5 @@
   },
   "android": {
     "adjustMarginsForEdgeToEdge": "auto"
-  },
-  "plugins": {
-    "StatusBar": {
-      "overlaysWebView": false
-    }
   }
 }
