@@ -3048,7 +3048,7 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     await fileInput.setInputFiles(epubPath);
     await page.waitForSelector('.book-card', { timeout: 30000 });
 
-    // Open the book
+    // Step 1: Open the book
     const bookCard = page.locator('.book-card');
     await bookCard.click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
@@ -3058,19 +3058,17 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     }, { timeout: 15000 });
     await page.waitForTimeout(1000);
 
-    // Verify we're in the reader
+    // Verify reader at chapter 1
     const pageInfo = page.locator('.page-info');
     const initialText = await pageInfo.textContent();
     expect(initialText).toMatch(/^Ch 1 /);
     await screenshot(page, 'resume-01-in-reader');
 
-    // Wait for library_save to complete (active_book persisted to IDB)
+    // Step 2: Wait for IDB save (active_book persisted)
     await page.waitForTimeout(3000);
 
-    // Reload the page — should resume into the reader, not the library
+    // Step 3: Reload — reader resumes at Ch 1
     await page.reload();
-
-    // The app should go directly to the reader (not the library)
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -3079,33 +3077,40 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     await page.waitForTimeout(1000);
     await screenshot(page, 'resume-02-after-reload');
 
-    // Verify we're in the reader at chapter 1
     const resumedText = await pageInfo.textContent();
     expect(resumedText).toMatch(/^Ch 1 /);
-
-    // Verify reader nav bar is present
     await expect(page.locator('.reader-nav')).toBeVisible();
-    await expect(page.locator('.back-btn')).toBeVisible();
 
-    // Exit to library — should clear active book
+    // Step 4: Exit via back button — library shows
     const backBtn = page.locator('.back-btn');
     await backBtn.click();
     await page.waitForSelector('.book-card', { timeout: 10000 });
     await screenshot(page, 'resume-03-back-to-library');
 
-    // Wait for save
+    // Wait for save (active_book cleared + position persisted)
     await page.waitForTimeout(2000);
 
-    // Reload again — should show library (not reader) since we exited
+    // Step 5: Reload — library shows (not reader)
     await page.reload();
     await page.waitForSelector('.library-list', { timeout: 15000 });
     await page.waitForSelector('.book-card', { timeout: 15000 });
     await screenshot(page, 'resume-04-library-after-exit-reload');
 
-    // Verify we're in the library, NOT the reader
-    const readerViewport = page.locator('.reader-viewport');
-    await expect(readerViewport).toHaveCount(0);
+    await expect(page.locator('.reader-viewport')).toHaveCount(0);
     await expect(page.locator('.book-title')).toContainText('Resume Test Book');
+
+    // Step 6: Open the book again — resumes at Ch 1 (position survived)
+    await page.locator('.book-card').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await screenshot(page, 'resume-05-reopen-book');
+
+    const reopenedText = await pageInfo.textContent();
+    expect(reopenedText).toMatch(/^Ch 1 /);
 
     expect(errors).toEqual([]);
   });
