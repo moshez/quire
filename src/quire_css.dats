@@ -459,7 +459,7 @@ fn fill_css_reader {l:agz}{n:int | n >= APP_CSS_LEN}
   val () = ward_arr_set_byte(arr, 1305, alen, 125)
 
   (* Construct proofs — solver verifies constraints *)
-  prval pf_col = COLUMNS_MATCH_VIEWPORT{CSS_COL_WIDTH_VW, CSS_CONTAINER_PAD_H}()
+  prval pf_col = COLUMNS_MATCH_VIEWPORT{CSS_COL_WIDTH_REM, CSS_CONTAINER_PAD_H}()
   prval pf_pad = CHILDREN_HAVE_PADDING{CSS_CHILD_PAD_L_10, CSS_CHILD_PAD_R_10}()
 
   (* Stamp: overwrite critical bytes from proven values AND produce the view.
@@ -467,7 +467,7 @@ fn fill_css_reader {l:agz}{n:int | n >= APP_CSS_LEN}
   val (pf_written | ()) = stamp_reader_css(
     pf_col, pf_pad |
     arr, alen,
-    CSS_COL_WIDTH_VW, CSS_CONTAINER_PAD_H,
+    CSS_COL_WIDTH_REM, CSS_CONTAINER_PAD_H,
     CSS_CHILD_PAD_L_10, CSS_CHILD_PAD_R_10)
 in (pf_written | ()) end
 

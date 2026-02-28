@@ -38,10 +38,10 @@ dataprop NAV_BTN_VISIBLE(font_size_10: int, padding_h_10: int) =
 
 (* ========== CSS property constants ========== *)
 (* #define is textual expansion — applies in BOTH dynamic and static contexts.
- * Dataprop constructors like COLUMNS_MATCH_VIEWPORT{CSS_COL_WIDTH_VW, ...}
+ * Dataprop constructors like COLUMNS_MATCH_VIEWPORT{CSS_COL_WIDTH_REM, ...}
  * see the #define value, so the proofs guard these values directly.
  * Changing any value triggers a compile-time constraint failure. *)
-#define CSS_COL_WIDTH_VW 100       (* column-width: 100vw *)
+#define CSS_COL_WIDTH_REM 38       (* column-width: 38rem — 2 columns on wide viewports *)
 #define CSS_CONTAINER_PAD_H 0      (* padding: 2rem 0 — zero horizontal *)
 #define CSS_CHILD_PAD_L_10 20      (* padding-left: 2.0rem = 20 tenths *)
 #define CSS_CHILD_PAD_R_10 20      (* padding-right: 2.0rem = 20 tenths *)
@@ -63,8 +63,8 @@ dataprop SCRUB_THEME_MATCHED(bg_matches_page: int) =
 
 (* ========== CSS length constants ========== *)
 (* #define: runtime values; stadef: type-level constraints *)
-#define APP_CSS_LEN 2505
-stadef APP_CSS_LEN = 2505
+#define APP_CSS_LEN 2512
+stadef APP_CSS_LEN = 2512
 (* NAV CSS alignment — distinct stadef/define names prevent #define override.
  * NAV_CSS_WRITES (type-level): number of _w4 calls.
  * NAV_CSS_LEN_S (type-level): NAV_CSS_WRITES * 4 = byte count.
