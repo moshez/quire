@@ -154,9 +154,9 @@ dataprop TOC_PANEL_LAYERED(z_idx: int) =
  * TOC_CSS_WRITES (type-level): number of _w4 calls.
  * TOC_CSS_LEN_S (type-level): TOC_CSS_WRITES * 4 = byte count.
  * TOC_CSS_LEN (dynamic-level): literal byte count for allocation. *)
-stadef TOC_CSS_WRITES = 246
+stadef TOC_CSS_WRITES = 263
 stadef TOC_CSS_LEN_S = TOC_CSS_WRITES * 4
-#define TOC_CSS_LEN 984
+#define TOC_CSS_LEN 1052
 
 (* ========== CSS injection functions ========== *)
 
