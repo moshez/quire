@@ -70,9 +70,9 @@ stadef APP_CSS_LEN = 2532
  * NAV_CSS_LEN_S (type-level): NAV_CSS_WRITES * 4 = byte count.
  * NAV_CSS_LEN (dynamic-level): literal byte count for allocation.
  * Solver unifies: if #define \!= stadef product, build fails. *)
-stadef NAV_CSS_WRITES = 207
+stadef NAV_CSS_WRITES = 218
 stadef NAV_CSS_LEN_S = NAV_CSS_WRITES * 4
-#define NAV_CSS_LEN 828
+#define NAV_CSS_LEN 872
 
 (* BUG CLASS PREVENTED: CSS_NULL_BYTE_CORRUPTION
  * The CSS fill writes 4 bytes per _w4 call. If MGMT_CSS_LEN is not
