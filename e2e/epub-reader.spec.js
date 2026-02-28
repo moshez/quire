@@ -2495,48 +2495,47 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     const newPx = parseInt(newFontSize, 10);
     expect(newPx).toBeGreaterThan(18);
 
-    // Click Dark theme button — should apply dark mode filter
+    // Click Dark theme button — should apply dark theme via <style> element
     const darkBtn = overlay.locator('button', { hasText: 'Dark' });
     await expect(darkBtn).toBeAttached();
     await darkBtn.click();
     await page.waitForTimeout(300);
     await screenshot(page, 'settings-04-dark-theme');
 
-    // Verify dark mode filter is applied on chapter container
-    const darkStyle = await page.evaluate(() => {
-      const cc = document.querySelector('.chapter-container');
-      return cc ? cc.getAttribute('style') : null;
+    // Verify dark mode applies dark background on body
+    const darkBg = await page.evaluate(() => {
+      return getComputedStyle(document.body).backgroundColor;
     });
-    expect(darkStyle).toContain('invert');
+    // #222 = rgb(34, 34, 34)
+    expect(darkBg).toBe('rgb(34, 34, 34)');
 
-    // Click Sepia theme button — should apply sepia filter
+    // Click Sepia theme button — should apply sepia theme
     const sepiaBtn = overlay.locator('button', { hasText: 'Sepia' });
     await expect(sepiaBtn).toBeAttached();
     await sepiaBtn.click();
     await page.waitForTimeout(300);
     await screenshot(page, 'settings-04b-sepia-theme');
 
-    // Verify sepia mode applies warm background on chapter container
-    const sepiaStyle = await page.evaluate(() => {
-      const cc = document.querySelector('.chapter-container');
-      return cc ? cc.getAttribute('style') : null;
+    // Verify sepia mode applies warm background on body
+    const sepiaBg = await page.evaluate(() => {
+      return getComputedStyle(document.body).backgroundColor;
     });
-    expect(sepiaStyle).toContain('background');
-    expect(sepiaStyle).toContain('#f0e6d2');
+    // #f0e6d2 = rgb(240, 230, 210)
+    expect(sepiaBg).toBe('rgb(240, 230, 210)');
 
-    // Click Light theme button — should remove all filters
+    // Click Light theme button — should restore default background
     const lightBtn = overlay.locator('button', { hasText: 'Light' });
     await expect(lightBtn).toBeAttached();
     await lightBtn.click();
     await page.waitForTimeout(300);
     await screenshot(page, 'settings-05-light-theme');
 
-    // Verify light mode clears filters
-    const lightStyle = await page.evaluate(() => {
-      const cc = document.querySelector('.chapter-container');
-      return cc ? cc.getAttribute('style') : null;
+    // Verify light mode restores default background (#fafaf8)
+    const lightBg = await page.evaluate(() => {
+      return getComputedStyle(document.body).backgroundColor;
     });
-    expect(lightStyle).toContain('none');
+    // #fafaf8 = rgb(250, 250, 248)
+    expect(lightBg).toBe('rgb(250, 250, 248)');
 
     // Click the overlay backdrop (not a button) to dismiss
     await overlay.click({ position: { x: 10, y: 10 } });

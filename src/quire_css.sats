@@ -63,16 +63,16 @@ dataprop SCRUB_THEME_MATCHED(bg_matches_page: int) =
 
 (* ========== CSS length constants ========== *)
 (* #define: runtime values; stadef: type-level constraints *)
-#define APP_CSS_LEN 2512
-stadef APP_CSS_LEN = 2512
+#define APP_CSS_LEN 2532
+stadef APP_CSS_LEN = 2532
 (* NAV CSS alignment — distinct stadef/define names prevent #define override.
  * NAV_CSS_WRITES (type-level): number of _w4 calls.
  * NAV_CSS_LEN_S (type-level): NAV_CSS_WRITES * 4 = byte count.
  * NAV_CSS_LEN (dynamic-level): literal byte count for allocation.
  * Solver unifies: if #define \!= stadef product, build fails. *)
-stadef NAV_CSS_WRITES = 204
+stadef NAV_CSS_WRITES = 207
 stadef NAV_CSS_LEN_S = NAV_CSS_WRITES * 4
-#define NAV_CSS_LEN 816
+#define NAV_CSS_LEN 828
 
 (* BUG CLASS PREVENTED: CSS_NULL_BYTE_CORRUPTION
  * The CSS fill writes 4 bytes per _w4 call. If MGMT_CSS_LEN is not
