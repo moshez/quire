@@ -42,6 +42,7 @@ datavtype app_state_impl =
       lib_meta_load_index = int,
       lib_view_mode = int,
       lib_sort_mode = int,
+      lib_active_book = int,
       library_books = ptr,
       string_buffer = ptr,
       fetch_buffer = ptr,
@@ -232,6 +233,7 @@ implement app_state_init() =
     lib_meta_load_index = 0 - 1,
     lib_view_mode = 0,
     lib_sort_mode = 2,
+    lib_active_book = 0 - 1,
     library_books = _alloc_buf(LIB_BOOKS_SIZE),
     string_buffer = _alloc_buf(STRING_BUFFER_SIZE),
     fetch_buffer = _alloc_buf(FETCH_BUFFER_SIZE),
@@ -590,6 +592,13 @@ implement app_set_lib_sort_mode(st, v) = let
   val @APP_STATE(r) = st val () = r.lib_sort_mode := v
   prval () = fold@(st) in end
 
+implement app_get_lib_active_book(st) = let
+  val @APP_STATE(r) = st val v = r.lib_active_book
+  prval () = fold@(st) in v end
+implement app_set_lib_active_book(st, v) = let
+  val @APP_STATE(r) = st val () = r.lib_active_book := v
+  prval () = fold@(st) in end
+
 (* ========== Duplicate detection state ========== *)
 
 implement app_get_dup_choice(st) = let
@@ -757,6 +766,10 @@ implement _app_lib_sort_mode() = let val st = app_state_load()
   val v = app_get_lib_sort_mode(st) val () = app_state_store(st) in v end
 implement _app_set_lib_sort_mode(v) = let val st = app_state_load()
   val () = app_set_lib_sort_mode(st, v) val () = app_state_store(st) in end
+implement _app_lib_active_book() = let val st = app_state_load()
+  val v = app_get_lib_active_book(st) val () = app_state_store(st) in v end
+implement _app_set_lib_active_book(v) = let val st = app_state_load()
+  val () = app_set_lib_active_book(st, v) val () = app_state_store(st) in end
 
 (* ========== Library books buffer accessors ========== *)
 

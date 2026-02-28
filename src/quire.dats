@@ -2302,7 +2302,8 @@ in
         reader_get_book_index(),
         reader_get_current_chapter(),
         reader_get_current_page())
-      val () = reader_exit(pf_saved)
+      val (pf_cleared | ()) = library_clear_active_book_and_save()
+      val () = reader_exit(pf_saved, pf_cleared)
       val () = render_library(root_id)
     in end
   end
@@ -2373,6 +2374,7 @@ fn push_back_button_state(): void =
 (* ========== Enter reader view ========== *)
 
 implement enter_reader(root_id, book_index) = let
+  val () = library_set_active_book(book_index)
   val () = reader_enter(root_id, 0)
   val () = push_back_button_state()
   val () = reader_set_book_index(book_index)
@@ -3078,7 +3080,8 @@ implement enter_reader(root_id, book_index) = let
         reader_get_book_index(),
         reader_get_current_chapter(),
         reader_get_current_page())
-      val () = reader_exit(pf_saved)
+      val (pf_cleared | ()) = library_clear_active_book_and_save()
+      val () = reader_exit(pf_saved, pf_cleared)
       val () = render_library(saved_root)
     in 0 end
   )
@@ -3688,8 +3691,17 @@ implement ward_node_init(root_id) = let
   val saved_root = root_id
   val p2 = ward_promise_then<int><int>(p,
     llam (_ok: int): ward_promise_chained(int) => let
-      val () = render_library(saved_root)
-    in ward_promise_return<int>(0) end)
+      val (pf_ab | ab) = library_get_active_book()
+    in
+      if gte_g1(ab, 0) then let
+        prval ACTIVE_AT() = pf_ab
+        val () = enter_reader(saved_root, ab)
+      in ward_promise_return<int>(0) end
+      else let
+        prval ACTIVE_NONE() = pf_ab
+        val () = render_library(saved_root)
+      in ward_promise_return<int>(0) end
+    end)
   val () = ward_promise_discard<int>(p2)
 in end
 

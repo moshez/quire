@@ -112,6 +112,12 @@ fun test_ser_v4(): bool(true) = let
   prval SER_FMT_V4() = pf
 in eq_g1(fb, 22) end
 
+(* v5 format = 22 fixed bytes per book (header grows from 8→10 bytes) *)
+fun test_ser_v5(): bool(true) = let
+  val (pf | fb) = ser_fixed_bytes(5)
+  prval SER_FMT_V5() = pf
+in eq_g1(fb, 22) end
+
 (* ================================================================
  * Test 3: ser_var_field_spec — field↔layout agreement
  *
@@ -136,6 +142,22 @@ fun test_field_author(): bool(true) = let
   val (pf | bo, ml, ls) = ser_var_field_spec(2)
   prval SFIELD_AUTHOR() = pf
 in eq_g1(bo, 260) end
+
+(* ================================================================
+ * Test 3b: ACTIVE_BOOK exhaustive dispatch
+ *
+ * Proves library_get_active_book return is exhaustively handled.
+ * ACTIVE_NONE(~1) and ACTIVE_AT(i) cover all cases for i >= ~1, i < 32.
+ * ================================================================ *)
+
+fun test_active_book_exhaustive {i:int | i >= ~1; i < 32}
+  (pf: ACTIVE_BOOK(i) | idx: int(i)): bool(true) =
+  if gte_g1(idx, 0) then let
+    prval ACTIVE_AT() = pf
+  in lt_g1(idx, 32) end
+  else let
+    prval ACTIVE_NONE() = pf
+  in eq_g1(idx, ~1) end
 
 (* ================================================================
  * Test 4: ADD_BOOK_RESULT exhaustive outcome handling

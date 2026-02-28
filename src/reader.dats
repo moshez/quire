@@ -65,8 +65,9 @@ implement reader_enter(root_id, container_hide_id) = let
   val () = app_state_store(st)
 in end
 
-implement reader_exit(pf) = let
-  prval _ = pf
+implement reader_exit(pf1, pf2) = let
+  prval _ = pf1
+  prval _ = pf2
   val st = app_state_load()
   val () = app_set_rdr_active(st, 0)
   val () = app_set_rdr_book_index(st, 0 - 1)
