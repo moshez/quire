@@ -44,11 +44,15 @@
         },
         quire_click_node(nodeId) {
           wardNodes.get(nodeId).click();
+        },
+        quire_push_history_state() {
+          history.pushState(null, '', location.href);
         }
       }
     });
     wardNodes = nodes;
     wasmMem = exports.memory;
+    window.addEventListener('popstate', () => exports.on_back_button());
   </script>
   <script>
     if ('serviceWorker' in navigator) {

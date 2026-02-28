@@ -31,3 +31,7 @@ fun quire_get_input_value(
 (* Trigger .click() on a ward DOM node. Single browser API call. *)
 fun quire_click_node(node_id: int): void = "mac#quire_click_node"
 
+(* Push a history state with the current URL. Single browser API call.
+ * Used for back button handling — each push gives one back button press. *)
+fun quire_push_history_state(): void = "mac#quire_push_history_state"
+

@@ -154,6 +154,7 @@ extern castfn _byte {c:int | 0 <= c; c <= 255} (c: int c): byte
 (* C forward declarations — suppress C99 implicit function errors *)
 %{
 extern int quire_get_input_value(int nodeId, int destPtr, int destMaxLen);
+extern void quire_push_history_state(void);
 %}
 
 (* Proof-requiring event listener registration wrapper.
@@ -2363,10 +2364,17 @@ in
   else ()
 end
 
+(* push_back_button_state: push a history entry so the next back button
+ * press fires popstate instead of navigating away from the app.
+ * Pushes current URL via quire_push_history_state extraImport. *)
+fn push_back_button_state(): void =
+  quire_push_history_state()
+
 (* ========== Enter reader view ========== *)
 
 implement enter_reader(root_id, book_index) = let
   val () = reader_enter(root_id, 0)
+  val () = push_back_button_state()
   val () = reader_set_book_index(book_index)
   val bi = g1ofg0(book_index)
   val cnt = library_get_count()
@@ -3684,6 +3692,30 @@ implement ward_node_init(root_id) = let
     in ward_promise_return<int>(0) end)
   val () = ward_promise_discard<int>(p2)
 in end
+
+(* on_back_button: browser/Android back button handler.
+ * Follows the same hierarchy as Escape:
+ *   1. TOC open → close TOC
+ *   2. Chrome visible → hide chrome
+ *   3. Neither → save position + exit to library
+ * Re-pushes a history entry if still in reader (so next back works).
+ * Does nothing if not in reader (lets browser default handle it). *)
+implement on_back_button() = let
+  val active = reader_is_active()
+in
+  if eq_int_int(active, 1) then let
+    val st = app_state_load()
+    val root_id = app_get_rdr_root_id(st)
+    val () = app_state_store(st)
+    val () = handle_escape(root_id)
+    (* If still in reader after escape, re-push state for next back press *)
+    val still_active = reader_is_active()
+  in
+    if eq_int_int(still_active, 1) then push_back_button_state()
+    else ()
+  end
+  else ()
+end
 
 (* Legacy callback stubs *)
 implement init() = ()

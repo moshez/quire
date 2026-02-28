@@ -42,6 +42,7 @@ WASM_EXPORTS := \
   --export=ward_bridge_stash_set_ptr \
   --export=ward_bridge_stash_set_int \
   --export=ward_on_callback \
+  --export=on_back_button \
   --export=memory
 
 # Ward library sources (order: dependencies first)
