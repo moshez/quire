@@ -2315,18 +2315,9 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     await page.waitForTimeout(2000);
 
     // Reload page WITHOUT pressing back button — tests that chapter
-    // transition itself persisted position to IDB
+    // transition itself persisted position to IDB.
+    // With active-book resume, reload goes straight to reader.
     await page.reload();
-    await page.waitForSelector('.library-list', { timeout: 15000 });
-    await page.waitForSelector('.book-card', { timeout: 15000 });
-    await screenshot(page, 'ch-persist-02-after-reload');
-
-    // Verify position was saved (should show progress %, not "New")
-    const posText = await page.locator('.book-position').textContent();
-    expect(posText).not.toBe('New');
-
-    // Re-enter the book — should restore at chapter 2
-    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
@@ -2334,9 +2325,18 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     }, { timeout: 15000 });
     await page.waitForTimeout(1000);
 
+    // Verify reader resumed at chapter 2 (position persisted by chapter transition)
     const restoredText = await pageInfo.textContent();
     expect(restoredText).toMatch(/^Ch 2 /);
-    await screenshot(page, 'ch-persist-03-restored');
+    await screenshot(page, 'ch-persist-02-resumed');
+
+    // Exit to library and verify saved position
+    await page.locator('.back-btn').click();
+    await page.waitForSelector('.book-card', { timeout: 15000 });
+    await screenshot(page, 'ch-persist-03-library');
+
+    const posText = await page.locator('.book-position').textContent();
+    expect(posText).not.toBe('New');
 
     expect(errors).toEqual([]);
   });
@@ -2408,25 +2408,18 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
       });
     });
 
-    // Reload page — position should be persisted from visibilitychange save
+    // Reload page — position should be persisted from visibilitychange save.
+    // With active-book resume, reload goes straight to reader.
     await page.reload();
-    await page.waitForSelector('.library-list', { timeout: 15000 });
-    await page.waitForSelector('.book-card', { timeout: 15000 });
-    await screenshot(page, 'vis-save-02-after-reload');
-
-    // Position should show progress (not "New")
-    const posText = await page.locator('.book-position').textContent();
-    expect(posText).not.toBe('New');
-
-    // Re-enter book — should resume at chapter 2
-    await page.locator('.book-card').click();
     await page.waitForSelector('.reader-viewport', { timeout: 15000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.chapter-container');
       return el && el.childElementCount > 0;
     }, { timeout: 15000 });
     await page.waitForTimeout(1000);
+    await screenshot(page, 'vis-save-02-resumed');
 
+    // Verify reader resumed at chapter 2 (position persisted by visibilitychange)
     const restoredText = await pageInfo.textContent();
     expect(restoredText).toMatch(/^Ch 2 /);
     await screenshot(page, 'vis-save-03-restored');
