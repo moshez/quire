@@ -1,0 +1,32 @@
+Privacy Policy
+
+Last updated: March 1, 2026
+
+---
+
+Overview
+
+This app is designed to respect your privacy. We collect no personal information and have no interest in knowing who you are or what you read.
+
+---
+
+Analytics
+
+We may collect anonymized usage analytics to understand how the app is used — for example, which features are used most, what screen sizes are common, and where people encounter errors. Analytics are collected without any account, name, email, or persistent identifier attached. IP addresses are not retained.
+
+---
+
+What we do not collect
+
+- Your identity — no name, email, or account
+- Your library — no titles, authors, or content
+- Your reading activity — no history, notes, highlights, or bookmarks
+- Your precise location
+
+What you read is your business.
+
+---
+
+Contact
+
+Questions or concerns? Reach out at: privacy@devskillup.com
