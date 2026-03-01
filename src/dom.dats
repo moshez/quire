@@ -1142,7 +1142,8 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
         val after_attrs = skip_attrs(r1, tree, attr_off + 1, attr_count, tlen)
       in
         if tag_idx >= 0 then
-          if tag_idx = TAG_IDX_IMG then let
+          if tag_idx = TAG_IDX_IMG
+             || tag_idx = TAG_IDX_STYLE then let
             val end_pos = skip_element(r1, tree, after_attrs, len, tlen)
           in
             loop(r1, st, tree, end_pos, len, parent, tlen, has_child, ecnt)
@@ -1523,7 +1524,12 @@ implement render_tree_with_images
         val after_attrs = skip_attrs_img(r1, tree, attr_off + 1, attr_count, tlen)
       in
         if tag_idx >= 0 then
-          if tag_idx = TAG_IDX_IMG then let
+          if tag_idx = TAG_IDX_STYLE then let
+            val end_pos = skip_element_img(r1, tree, after_attrs, len, tlen)
+          in
+            loop(r1, st, tree, end_pos, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
+          end
+          else if tag_idx = TAG_IDX_IMG then let
             val @(tag_st, tag_st_len) = get_tag_by_index(tag_idx)
             val nid = dom_next_id()
             val st = ward_dom_stream_create_element(st, nid, parent, tag_st, tag_st_len)

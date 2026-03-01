@@ -16,6 +16,7 @@ staload "./../vendor/ward/lib/memory.sats"
 staload "./drag_state.sats"
 staload "./reader.sats"
 staload "./quire_css.sats"
+staload "./dom.sats"
 
 (* Shared proof declarations — production types, not shadows.
  * Tests use these directly to verify proof structure. *)
@@ -997,3 +998,22 @@ fun test_gear_icon_valid(): bool(true) = let
   prval pf = GEAR_CP_OK()
   prval _ = pf : GEAR_ICON_VALID(0x2699)
 in true end
+
+(* ================================================================
+ * Test 36: SKIPPABLE_TAG — IMG and STYLE are skippable
+ *
+ * Verifies both SKIP_IMG(13) and SKIP_STYLE(3) constructors
+ * are satisfiable, and that the tag indices match their defines.
+ * ================================================================ *)
+
+(* UNIT TEST — SKIP_IMG is constructible at index 13 *)
+fun test_skip_img(): bool(true) = let
+  prval pf = SKIP_IMG()
+  prval _ = pf : SKIPPABLE_TAG(13)
+in eq_g1(TAG_IDX_IMG, 13) end
+
+(* UNIT TEST — SKIP_STYLE is constructible at index 3 *)
+fun test_skip_style(): bool(true) = let
+  prval pf = SKIP_STYLE()
+  prval _ = pf : SKIPPABLE_TAG(3)
+in eq_g1(TAG_IDX_STYLE, 3) end

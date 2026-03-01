@@ -170,8 +170,10 @@ fun attr_download(): ward_safe_text(8)
  * update these constants. Adding a new constructor is the ONLY
  * way to make a tag index skippable. *)
 dataprop SKIPPABLE_TAG(idx: int) =
+  | SKIP_STYLE(3)
   | SKIP_IMG(13)
 
+#define TAG_IDX_STYLE 3
 #define TAG_IDX_A 12
 #define TAG_IDX_IMG 13
 

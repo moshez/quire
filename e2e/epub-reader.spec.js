@@ -3201,4 +3201,54 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     expect(errors).toEqual([]);
   });
 
+  test('EPUB style elements are blocked from rendering', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+
+    // Create EPUB with a <style> element that would set green background
+    const epubBuffer = createEpub({
+      title: 'Style Block Test',
+      rawChapters: [{
+        body: '<style>body{background-color:green !important}div{background-color:green !important}</style><h1>Style Test</h1><p>This chapter contains a style element that should be blocked.</p>',
+      }],
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    const vp = page.viewportSize();
+    const epubPath = join(SCREENSHOT_DIR, `style-block-${vp.width}x${vp.height}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await page.locator('input[type="file"]').setInputFiles(epubPath);
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+    await page.locator('.book-card').click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(500);
+
+    // Verify no element has green background from the EPUB's <style>
+    const hasGreenBg = await page.evaluate(() => {
+      const allElements = document.querySelectorAll('*');
+      for (const el of allElements) {
+        const bg = getComputedStyle(el).backgroundColor;
+        // green = rgb(0, 128, 0) or rgb(0,128,0)
+        if (bg === 'rgb(0, 128, 0)') return true;
+      }
+      return false;
+    });
+    expect(hasGreenBg).toBe(false);
+
+    // Verify the chapter content rendered (style element was skipped, not the whole chapter)
+    const hasContent = await page.evaluate(() => {
+      const h1 = document.querySelector('.chapter-container h1');
+      return h1 && h1.textContent.includes('Style Test');
+    });
+    expect(hasContent).toBe(true);
+
+    await screenshot(page, 'style-block-01-no-green');
+    expect(errors).toEqual([]);
+  });
+
 });
