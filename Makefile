@@ -167,6 +167,7 @@ dist: build/quire.wasm
 	cp manifest.json dist/
 	cp service-worker.js dist/
 	cp build/quire.wasm dist/
+	cp privacy.txt dist/
 	cp icon-192.png dist/ 2>/dev/null || true
 	cp icon-512.png dist/ 2>/dev/null || true
 	sed -i "s|./vendor/ward/lib/ward_bridge.mjs|./ward_bridge.js|" dist/index.html
