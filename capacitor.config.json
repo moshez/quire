@@ -1,5 +1,5 @@
 {
-  "appId": "io.quire.app",
+  "appId": "dev.middlefield.quire",
   "appName": "Quire",
   "webDir": "dist",
   "server": {
