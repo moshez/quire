@@ -33,9 +33,9 @@ staload _ = "./../vendor/ward/lib/idb.dats"
  * Dataprop erased at runtime -- cast is identity on int. *)
 extern castfn _mk_book_access(x: int): [i:nat | i < 32] (BOOK_ACCESS_SAFE(i) | int(i))
 
-(* Clamp spine count to [0, 256] for epub_delete_book_data.
- * Caller MUST verify value <= 256 before calling. *)
-extern castfn _checked_spine_count(x: int): [n:nat | n <= 256] int n
+(* Clamp spine count to [0, 1024] for epub_delete_book_data.
+ * Caller MUST verify value <= 1024 before calling. *)
+extern castfn _checked_spine_count(x: int): [n:nat | n <= 1024] int n
 
 (* ========== Book info CSS class builders ========== *)
 

@@ -12,7 +12,7 @@
  *
  * SUPERSEDED (deleted):
  * - CHAPTER_KEY_CORRECT: replaced by resource-key architecture with SAFE_CHAR
- * - COUNT_BOUNDED: redundant with dependent return type n <= 256
+ * - COUNT_BOUNDED: redundant with dependent return type n <= 1024
  * - EPUB_STATE_TRANSITION: superseded by EPUB_STATE_VALID + promise chain
  * - ASYNC_PRECONDITION: superseded by promise chain structure
  * - RESOURCES_STORED: superseded by promise chain + IDB data dependency
@@ -122,8 +122,8 @@ fun epub_get_author(buf_offset: int): int
  * Returns ID into string buffer *)
 fun epub_get_book_id(buf_offset: int): int
 (* Get total number of chapters in spine
- * Returns count with dependent type: n <= 256 IS the bounds proof. *)
-fun epub_get_chapter_count(): [n:nat | n <= 256] int(n)
+ * Returns count with dependent type: n <= MAX_SPINE_ENTRIES IS the bounds proof. *)
+fun epub_get_chapter_count(): [n:nat | n <= 1024] int(n)
 (* Continue processing (called from async callbacks)
  * Called after file open, decompress, or IDB operations complete *)
 fun epub_continue(): void
@@ -302,5 +302,5 @@ fun epub_store_search_index(): ward_promise_chained(int)
  * spine_count determines how many search keys to delete.
  * Resource entries are NOT deleted (orphaned until factory reset).
  * Termination: loop bounded by spine_count via dependent int. *)
-fun epub_delete_book_data {sc:nat | sc <= 256}
+fun epub_delete_book_data {sc:nat | sc <= 1024}
   (spine_count: int(sc)): void

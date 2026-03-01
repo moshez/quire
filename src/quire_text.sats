@@ -109,6 +109,7 @@ dataprop VALID_TEXT(id: int, len: int) =
   | VT_46(46, 4)  (* "Back" *)
   | VT_47(47, 4)  (* " of " *)
   | VT_48(48, 19) (* "Permanently delete?" *)
+  | VT_49(49, 18) (* "Too many chapters." *)
 
 (* ========== Function declarations ========== *)
 

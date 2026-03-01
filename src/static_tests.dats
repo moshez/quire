@@ -371,7 +371,7 @@ fun test_stride_consistent(): bool(true) =
  * Test 12: epub_delete_book_data — spine count bounds
  *
  * Verifies epub_delete_book_data type-checks at boundary values.
- * The function signature requires {sc:nat | sc <= 256}. Compilation
+ * The function signature requires {sc:nat | sc <= 1024}. Compilation
  * success proves the constraint solver accepts both bounds.
  * The SPINE_ENTRY proofs and termination metric are verified by
  * epub.dats compilation itself (not duplicated here).
@@ -382,15 +382,35 @@ fun test_delete_zero_spine(): bool(true) = let
   val () = epub_delete_book_data(0)
 in true end
 
-(* UNIT TEST — delete with max chapters (256) is valid *)
+(* UNIT TEST — delete with max chapters (1024) is valid *)
 fun test_delete_max_spine(): bool(true) = let
-  val () = epub_delete_book_data(256)
+  val () = epub_delete_book_data(1024)
 in true end
 
 (* UNIT TEST — epub_get_chapter_count return type satisfies delete bounds *)
 fun test_chapter_count_satisfies_delete(): bool(true) = let
   val n = epub_get_chapter_count()
-in lte_g1(n, 256) end
+in lte_g1(n, 1024) end
+
+(* UNIT TEST — 1024 spine entries are importable (MAX_SPINE_ENTRIES).
+ * epub_get_chapter_count returns [n:nat | n <= 1024], proving
+ * spine_count = 1024 is within bounds for all spine operations.
+ * epub_delete_book_data accepts {sc:nat | sc <= 1024}, proving
+ * the full range is covered. Both type-check at 1024. *)
+fun test_1k_spine_entries_importable(): bool(true) = let
+  val () = epub_delete_book_data(1024)
+  val n = epub_get_chapter_count()
+in lte_g1(n, 1024) end
+
+(* UNIT TEST — spine path copy and search key work at 1024 boundary.
+ * Chapter 1023 (0-indexed) of a 1024-chapter book is a valid spine index.
+ * SPINE_ENTRY proof construction succeeds at these bounds. *)
+fun test_spine_ops_at_1024_boundary(): bool(true) = let
+  prval pf = SPINE_ENTRY(): SPINE_ORDERED(1023, 1024)
+  val len = epub_copy_spine_path(pf | 1023, 1024, 0)
+  prval pf2 = SPINE_ENTRY(): SPINE_ORDERED(0, 1024)
+  val _ = epub_build_search_key(pf2 | 0, 1024)
+in gt_g1(len, 0) end
 
 (* ================================================================
  * Test 13: Listener ID range — all IDs proven < 128
@@ -677,7 +697,7 @@ staload "./modals.sats"
 
 (* UNIT TEST — BOOK_DELETE_COMPLETE requires both sub-proofs *)
 fun test_delete_requires_both_proofs
-  {sc:nat | sc <= 256}{i:nat | i < 32}
+  {sc:nat | sc <= 1024}{i:nat | i < 32}
   (sc: int(sc), i: int(i)): bool(true) = let
   prval pf_idb: IDB_DATA_DELETED(sc) = IDB_DELETED()
   prval pf_rem: BOOK_REMOVED(i) = REMOVED_FROM_LIB()
@@ -687,7 +707,7 @@ in true end
 
 (* UNIT TEST — IDB deletion requires valid spine count bounds *)
 fun test_idb_delete_spine_bound(): bool(true) = let
-  prval pf: IDB_DATA_DELETED(256) = IDB_DELETED()
+  prval pf: IDB_DATA_DELETED(1024) = IDB_DELETED()
   prval IDB_DELETED() = pf
 in true end
 

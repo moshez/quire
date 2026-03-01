@@ -1108,3 +1108,23 @@ implement log_err_manifest() = let
   val b = ward_text_putc(b, 10, char2int1('s'))
   val b = ward_text_putc(b, 11, char2int1('t'))
 in ward_text_done(b) end
+
+(* "err-spine-limit" = 15 chars -- too many spine entries *)
+implement log_err_spine_limit() = let
+  val b = ward_text_build(15)
+  val b = ward_text_putc(b, 0, char2int1('e'))
+  val b = ward_text_putc(b, 1, char2int1('r'))
+  val b = ward_text_putc(b, 2, char2int1('r'))
+  val b = ward_text_putc(b, 3, 45) (* '-' *)
+  val b = ward_text_putc(b, 4, char2int1('s'))
+  val b = ward_text_putc(b, 5, char2int1('p'))
+  val b = ward_text_putc(b, 6, char2int1('i'))
+  val b = ward_text_putc(b, 7, char2int1('n'))
+  val b = ward_text_putc(b, 8, char2int1('e'))
+  val b = ward_text_putc(b, 9, 45) (* '-' *)
+  val b = ward_text_putc(b, 10, char2int1('l'))
+  val b = ward_text_putc(b, 11, char2int1('i'))
+  val b = ward_text_putc(b, 12, char2int1('m'))
+  val b = ward_text_putc(b, 13, char2int1('i'))
+  val b = ward_text_putc(b, 14, char2int1('t'))
+in ward_text_done(b) end

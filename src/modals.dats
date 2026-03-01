@@ -33,7 +33,7 @@ extern void quire_factory_reset(void);
 %}
 
 extern castfn _mk_book_access(x: int): [i:nat | i < 32] (BOOK_ACCESS_SAFE(i) | int(i))
-extern castfn _checked_spine_count(x: int): [n:nat | n <= 256] int n
+extern castfn _checked_spine_count(x: int): [n:nat | n <= 1024] int n
 
 (* ========== Duplicate modal CSS class builders ========== *)
 
@@ -827,6 +827,63 @@ in
       lam (_pl: int): int => let val () = dismiss_error_banner() in 0 end)
   in end
 end
+
+(* Render spine limit error banner.
+ * DOM structure:
+ *   <div class="err-banner">
+ *     <button class="err-close">X</button>
+ *     <div style="font-weight:bold">"Import failed"</div>
+ *     <div>"Too many chapters."</div>
+ *   </div> *)
+implement render_spine_limit_banner(root) = let
+  val () = dismiss_error_banner()
+  val () = inject_err_css(root)
+  val dom = ward_dom_init()
+  val s = ward_dom_stream_begin(dom)
+
+  val banner_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, banner_id, root, tag_div(), 3)
+  val s = ward_dom_stream_set_attr_safe(s, banner_id, attr_class(), 5,
+    cls_err_banner(), 10)
+  val () = _app_set_err_banner_id(banner_id)
+
+  (* Close button: "X" *)
+  val close_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, close_id, banner_id, tag_button(), 6)
+  val s = ward_dom_stream_set_attr_safe(s, close_id, attr_class(), 5,
+    cls_err_close(), 9)
+  val x_st = let
+    val b = ward_text_build(1)
+    val b = ward_text_putc(b, 0, 88) (* 'X' *)
+  in ward_text_done(b) end
+  val s = ward_dom_stream_set_safe_text(s, close_id, x_st, 1)
+
+  (* Line 1: "Import failed" (bold) *)
+  val line1_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, line1_id, banner_id, tag_div(), 3)
+  val fw_arr = ward_arr_alloc<byte>(16)
+  val () = _w4(fw_arr, 16, 0, 1953394534)   (* font *)
+  val () = _w4(fw_arr, 16, 4, 1768257325)   (* -wei *)
+  val () = _w4(fw_arr, 16, 8, 980707431)    (* ght: *)
+  val () = _w4(fw_arr, 16, 12, 1684828002)  (* bold *)
+  val @(fw_frozen, fw_borrow) = ward_arr_freeze<byte>(fw_arr)
+  val s = ward_dom_stream_set_style(s, line1_id, fw_borrow, 16)
+  val () = ward_arr_drop<byte>(fw_frozen, fw_borrow)
+  val fw_arr = ward_arr_thaw<byte>(fw_frozen)
+  val () = ward_arr_free<byte>(fw_arr)
+  val s = set_text_cstr(VT_29() | s, line1_id, 29, 13)
+
+  (* Line 2: "Too many chapters." *)
+  val line2_id = dom_next_id()
+  val s = ward_dom_stream_create_element(s, line2_id, banner_id, tag_div(), 3)
+  val s = set_text_cstr(VT_49() | s, line2_id, 49, 18)
+
+  val dom = ward_dom_stream_end(s)
+  val () = ward_dom_fini(dom)
+  val () = ward_add_event_listener(
+    close_id, evt_click(), 5, LISTENER_ERR_DISMISS,
+    lam (_pl: int): int => let val () = dismiss_error_banner() in 0 end)
+in end
 
 (* Clear text content of a node by removing its children *)
 implement clear_node(nid) = let

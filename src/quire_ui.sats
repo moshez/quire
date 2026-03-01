@@ -68,6 +68,9 @@ fun dismiss_error_banner(): void
 (* Render error banner — implemented in modals.dats *)
 fun render_error_banner(root: int): void
 
+(* Render spine limit error banner — implemented in modals.dats *)
+fun render_spine_limit_banner(root: int): void
+
 (* Dismiss reset modal — implemented in modals.dats *)
 fun dismiss_reset_modal(): void
 
