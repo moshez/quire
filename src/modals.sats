@@ -32,9 +32,9 @@ fun cls_err_close(): ward_safe_text(9)
 (* ========== Delete book proofs ========== *)
 
 (* IDB_DATA_DELETED(sc): proves IDB data for a book with sc spine entries
- * has been deleted. sc <= 256 bounds the spine count. *)
+ * has been deleted. sc <= 1024 bounds the spine count. *)
 dataprop IDB_DATA_DELETED(sc: int) =
-  | {sc:nat | sc <= 256} IDB_DELETED(sc)
+  | {sc:nat | sc <= 1024} IDB_DELETED(sc)
 
 (* BOOK_REMOVED(idx): proves the book at library index idx has been
  * removed from the library. idx < 32 bounds the library index. *)
@@ -45,7 +45,7 @@ dataprop BOOK_REMOVED(idx: int) =
  * removal have occurred in the correct order. Construction requires
  * both sub-proofs, enforcing the ordering at compile time. *)
 dataprop BOOK_DELETE_COMPLETE() =
-  | {sc:nat | sc <= 256}{i:nat | i < 32}
+  | {sc:nat | sc <= 1024}{i:nat | i < 32}
     BOOK_DELETED() of (IDB_DATA_DELETED(sc), BOOK_REMOVED(i))
 
 (* ========== Helper functions ========== *)

@@ -313,11 +313,11 @@ in blen end
 
 implement epub_get_chapter_count() = let
   val sc = _app_epub_spine_count()
-  extern castfn _clamp256(x: int): [n:nat | n <= 256] int n
+  extern castfn _clamp1024(x: int): [n:nat | n <= 1024] int n
 in
   if lt_int_int(sc, 0) then 0
-  else if gt_int_int(sc, 256) then 256
-  else _clamp256(sc)
+  else if gt_int_int(sc, MAX_SPINE_ENTRIES) then MAX_SPINE_ENTRIES
+  else _clamp1024(sc)
 end
 
 implement epub_continue() = ()
@@ -770,7 +770,7 @@ implement _opf_resolve_spine(buf, len, spine_count) = let
     in end
   in
     if gte_int_int(si, sc) then done(sp_count, sp_pos)
-    else if gte_int_int(si, 32) then done(sp_count, sp_pos)
+    else if gte_int_int(si, MAX_SPINE_ENTRIES) then done(sp_count, sp_pos)
     else let
       val ir_pos = _find_bytes(buf, hlen, cap, nir, 9, 9, pos)
     in
@@ -804,7 +804,7 @@ implement _opf_resolve_spine(buf, len, spine_count) = let
                 resolve_loop(buf, nir, nidr, nit, nmid, nhr, si + 1, ir_pos + 9, sp_count, sp_pos, cap, odir_len, sc, hlen)
               else if gt_int_int(full_len, 255) then
                 resolve_loop(buf, nir, nidr, nit, nmid, nhr, si + 1, ir_pos + 9, sp_count, sp_pos, cap, odir_len, sc, hlen)
-              else if gt_int_int(sp_pos + full_len, 4096) then
+              else if gt_int_int(sp_pos + full_len, EPUB_SPINE_BUF_SIZE) then
                 resolve_loop(buf, nir, nidr, nit, nmid, nhr, si + 1, ir_pos + 9, sp_count, sp_pos, cap, odir_len, sc, hlen)
               else let
                 val () = _app_copy_opf_path_to_epub_spine_buf(sp_pos, odir_len)
@@ -837,11 +837,17 @@ implement epub_parse_opf_bytes(arr, len) = let
   (* book_id is now set by sha256_file_hash in quire.dats import path,
    * not extracted from dc:identifier. See BOOK_IDENTITY_IS_CONTENT_HASH. *)
   val spine_count = _opf_count_spine(arr, len)
-  val () = _app_set_epub_spine_count(spine_count)
-  val () = _opf_resolve_spine(arr, len, spine_count)
 in
-  _app_set_epub_state(8); (* EPUB_STATE_DONE — set by OPF parse *)
-  spine_count
+  if gt_int_int(spine_count, MAX_SPINE_ENTRIES) then let
+    val () = _app_set_epub_state(99) (* EPUB_STATE_ERROR *)
+  in 0 - 2 end (* -2 signals too many chapters *)
+  else let
+    val () = _app_set_epub_spine_count(spine_count)
+    val () = _opf_resolve_spine(arr, len, spine_count)
+  in
+    _app_set_epub_state(8); (* EPUB_STATE_DONE — set by OPF parse *)
+    spine_count
+  end
 end
 
 (* ========== Path copy accessors ========== *)
@@ -1178,7 +1184,7 @@ implement epub_store_manifest(pf_zip | (* *)) = let
   val entry_count = zip_get_entry_count()
   val spine_count = _app_epub_spine_count()
   val ec = _g0(entry_count): int
-  val sc: int = if gt_int_int(spine_count, 32) then 32 else spine_count
+  val sc: int = if gt_int_int(spine_count, MAX_SPINE_ENTRIES) then MAX_SPINE_ENTRIES else spine_count
 
   (* Calculate total manifest size *)
   (* Header: 4 bytes (2 u16s) *)
@@ -1931,7 +1937,7 @@ end
 implement epub_store_search_index() = let
   val count0 = epub_get_chapter_count()
   val count = count0: int
-  fun loop {c:nat}{t:nat | c <= t; t <= 256}{k:nat} .<k>.
+  fun loop {c:nat}{t:nat | c <= t; t <= 1024}{k:nat} .<k>.
     (rem: int(k), idx: int(c), total: int(t)): ward_promise_chained(int) =
     if lte_g1(rem, 0) then ward_promise_return<int>(1)
     else if gte_g1(idx, total) then ward_promise_return<int>(1)
@@ -1951,7 +1957,7 @@ in loop(count0, 0, count0) end
  * Fire-and-forget: each ward_idb_delete returns a promise which we discard.
  * Termination: _delete_search_keys loop bounded by sc-idx via dependent int. *)
 implement epub_delete_book_data {sc} (spine_count) = let
-  (* sc <= 256 from signature, needed for epub_build_search_key's t <= 256 *)
+  (* sc <= 1024 from signature, needed for epub_build_search_key *)
   (* Delete manifest key *)
   val manifest_key = epub_build_manifest_key()
   val () = ward_promise_discard<int>(ward_idb_delete(manifest_key, 20))
@@ -1959,7 +1965,7 @@ implement epub_delete_book_data {sc} (spine_count) = let
   val cover_key = epub_build_cover_key()
   val () = ward_promise_discard<int>(ward_idb_delete(cover_key, 20))
   (* Delete search index keys for each spine entry *)
-  fun _delete_search_keys {idx:nat}{t:nat | idx <= t; t <= 256}{k:nat} .<k>.
+  fun _delete_search_keys {idx:nat}{t:nat | idx <= t; t <= 1024}{k:nat} .<k>.
     (rem: int(k), idx: int(idx), total: int(t)): void =
     if lte_g1(rem, 0) then ()
     else if gte_g1(idx, total) then ()

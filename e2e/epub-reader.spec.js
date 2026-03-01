@@ -3116,4 +3116,89 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
   });
 
 
+  test('book with 40 spine entries imports and all chapters accessible', async ({ page }) => {
+    // Regression test: books with >32 spine entries previously had chapters
+    // silently truncated to 32. After the fix, up to 1024 chapters are supported.
+    const errors = [];
+    const consoleMessages = [];
+    page.on('pageerror', err => errors.push(err.message));
+    page.on('console', msg => consoleMessages.push(`[${msg.type()}] ${msg.text()}`));
+    page.on('crash', () => {
+      console.error('PAGE CRASHED during 40-chapter test. Errors:', errors);
+      console.error('Console messages:', consoleMessages);
+    });
+
+    // Generate an EPUB with 40 chapters (exceeds old 32-chapter limit)
+    const epubBuffer = createEpub({
+      title: 'Forty Chapters',
+      author: 'Spine Bot',
+      chapters: 40,
+      paragraphsPerChapter: 2,  // Minimal content per chapter
+    });
+
+    await page.goto('/');
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+    await screenshot(page, 'spine40-00-library-empty');
+
+    // Import the 40-chapter EPUB
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `spine40-${vpTag}.epub`);
+    writeFileSync(epubPath, epubBuffer);
+    await fileInput.setInputFiles(epubPath);
+
+    // Wait for import to complete — book card should appear
+    await page.waitForSelector('.book-card', { timeout: 60000 });
+    await screenshot(page, 'spine40-01-imported');
+
+    // Verify no error banner appeared
+    const banner = page.locator('.err-banner');
+    await expect(banner).not.toBeVisible();
+
+    // Open the book
+    const bookCard = page.locator('.book-card');
+    await bookCard.click();
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await screenshot(page, 'spine40-02-reader-open');
+
+    // Verify starting at Ch 1
+    const pageInfo = page.locator('.page-info');
+    const initialText = await pageInfo.textContent();
+    expect(initialText).toMatch(/^Ch 1 /);
+
+    // Navigate to the last chapter (40) via the TOC
+    // Open TOC panel
+    const contentsBtn = page.locator('.contents-btn');
+    await contentsBtn.click();
+    await page.waitForSelector('.toc-panel', { timeout: 10000 });
+    await screenshot(page, 'spine40-03-toc-open');
+
+    // Look for Chapter 40 in the TOC and click it
+    const tocEntries = page.locator('.toc-entry');
+    const lastEntry = tocEntries.last();
+    await lastEntry.click();
+
+    // Wait for navigation to complete
+    await page.waitForTimeout(1000);
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(500);
+    await screenshot(page, 'spine40-04-chapter-40');
+
+    // Verify we're at Ch 40 (the last chapter)
+    const ch40Text = await pageInfo.textContent();
+    expect(ch40Text).toMatch(/^Ch 40 /);
+
+    // No crashes
+    expect(errors).toEqual([]);
+  });
+
 });

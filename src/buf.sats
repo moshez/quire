@@ -16,9 +16,10 @@ stadef EPUB_TITLE_CAP = 256
 stadef EPUB_AUTHOR_CAP = 256
 stadef EPUB_BOOKID_CAP = 64
 stadef EPUB_OPF_CAP = 256
-stadef EPUB_SPINE_BUF_CAP = 4096
-stadef EPUB_SPINE_OFF_CAP = 128   (* 32 entries x 4 bytes *)
-stadef EPUB_SPINE_LEN_CAP = 128   (* 32 entries x 4 bytes *)
+stadef MAX_SPINE_ENTRIES = 1024
+stadef EPUB_SPINE_BUF_CAP = 65536  (* concatenated spine paths *)
+stadef EPUB_SPINE_OFF_CAP = 4096   (* 1024 entries x 4 bytes *)
+stadef EPUB_SPINE_LEN_CAP = 4096   (* 1024 entries x 4 bytes *)
 
 (* Library storage *)
 stadef LIB_BOOKS_CAP = 19840      (* 32 books x 155 ints x 4 bytes *)
@@ -35,7 +36,7 @@ stadef RDR_BTNS_CAP = 384        (* 96 ints x 4 bytes *)
 stadef EPUB_MANIFEST_NAMES_CAP = 16384   (* concatenated entry names *)
 stadef EPUB_MANIFEST_OFF_CAP = 1024      (* 256 entries x 4 bytes *)
 stadef EPUB_MANIFEST_LEN_CAP = 1024      (* 256 entries x 4 bytes *)
-stadef EPUB_SPINE_ENTRY_IDX_CAP = 128    (* 32 entries x 4 bytes *)
+stadef EPUB_SPINE_ENTRY_IDX_CAP = 4096   (* 1024 entries x 4 bytes *)
 
 (* EPUB cover href buffer *)
 stadef EPUB_COVER_HREF_CAP = 256
@@ -56,9 +57,10 @@ stadef BOOKMARK_MAX_COUNT = 256
 #define EPUB_AUTHOR_SIZE 256
 #define EPUB_BOOKID_SIZE 64
 #define EPUB_OPF_SIZE 256
-#define EPUB_SPINE_BUF_SIZE 4096
-#define EPUB_SPINE_OFF_SIZE 128
-#define EPUB_SPINE_LEN_SIZE 128
+#define MAX_SPINE_ENTRIES 1024
+#define EPUB_SPINE_BUF_SIZE 65536
+#define EPUB_SPINE_OFF_SIZE 4096
+#define EPUB_SPINE_LEN_SIZE 4096
 #define LIB_BOOKS_SIZE 19840
 #define ZIP_ENTRIES_SIZE 7168
 #define ZIP_NAMEBUF_SIZE 8192
@@ -66,7 +68,7 @@ stadef BOOKMARK_MAX_COUNT = 256
 #define EPUB_MANIFEST_NAMES_SIZE 16384
 #define EPUB_MANIFEST_OFF_SIZE 1024
 #define EPUB_MANIFEST_LEN_SIZE 1024
-#define EPUB_SPINE_ENTRY_IDX_SIZE 128
+#define EPUB_SPINE_ENTRY_IDX_SIZE 4096
 #define EPUB_COVER_HREF_SIZE 256
 #define DEFERRED_IMG_NID_SIZE 256
 #define DEFERRED_IMG_EID_SIZE 256

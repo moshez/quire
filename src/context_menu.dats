@@ -231,7 +231,7 @@ end
 
 extern castfn _mk_book_access(x: int): [i:nat | i < 32] (BOOK_ACCESS_SAFE(i) | int(i))
 
-extern castfn _checked_spine_count(x: int): [n:nat | n <= 256] int n
+extern castfn _checked_spine_count(x: int): [n:nat | n <= 1024] int n
 
 fn _ctx_add_hide_item {l:agz}
   (s: ward_dom_stream(l), menu_id: int, btn_id: int, vm: int)

@@ -142,9 +142,9 @@ extern castfn _idx48(x: int): [i:nat | i < 48] int i
  * Dataprop erased at runtime — cast is identity on int. *)
 extern castfn _mk_book_access(x: int): [i:nat | i < 32] (BOOK_ACCESS_SAFE(i) | int(i))
 
-(* Clamp spine count to [0, 256] for epub_delete_book_data.
- * Caller MUST verify value <= 256 before calling. *)
-extern castfn _checked_spine_count(x: int): [n:nat | n <= 256] int n
+(* Clamp spine count to [0, 1024] for epub_delete_book_data.
+ * Caller MUST verify value <= 1024 before calling. *)
+extern castfn _checked_spine_count(x: int): [n:nat | n <= 1024] int n
 
 (* Safe byte conversion: value must be 0-255.
  * For static chars: use char2int1('x') which carries the static value.
@@ -3415,7 +3415,7 @@ implement enter_reader(root_id, book_index) = let
         end
 
         (* Sequential search: issue idb_get per chapter, chain promises *)
-        fun search_loop {c:nat}{t:nat | c <= t; t <= 256}{k:nat} .<k>.
+        fun search_loop {c:nat}{t:nat | c <= t; t <= 1024}{k:nat} .<k>.
           (rem: int(k), idx: int(c), total: int(t),
            qptr: int, qlen: int, results_id: int): ward_promise_chained(int) =
           if lte_g1(rem, 0) then ward_promise_return<int>(~1)
@@ -3450,7 +3450,7 @@ implement enter_reader(root_id, book_index) = let
               end)
           end
 
-        extern castfn _checked_spine(x: int): [n:nat | n <= 256] int n
+        extern castfn _checked_spine(x: int): [n:nat | n <= 1024] int n
         val sc2 = _checked_spine(sc)
         val p = search_loop(sc2, 0, sc2, qp, ql, sr)
         (* Chain final cleanup: free query_arr after all IDB reads complete.

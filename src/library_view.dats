@@ -64,7 +64,7 @@ extern int quire_time_now(void);
 extern castfn _idx48(x: int): [i:nat | i < 48] int i
 extern castfn _byte {c:int | 0 <= c; c <= 255} (c: int c): byte
 extern castfn _mk_book_access(x: int): [i:nat | i < 32] (BOOK_ACCESS_SAFE(i) | int(i))
-extern castfn _checked_spine_count(x: int): [n:nat | n <= 256] int n
+extern castfn _checked_spine_count(x: int): [n:nat | n <= 1024] int n
 
 (* ========== itoa_to_arr — integer to ASCII in ward_arr ========== *)
 
@@ -1177,7 +1177,16 @@ implement render_library(root_id) = let
                     val p_opf = epub_read_opf_async(pf_zip | ssh)
                   in ward_promise_then<int><int>(p_opf,
                     llam (ok2: int): ward_promise_chained(int) =>
-                      if lte_int_int(ok2, 0) then let
+                      if eq_int_int(ok2, 0 - 2) then let
+                        (* Too many chapters — show specific error *)
+                        prval pf_term = PTERMINAL_ERR(pf3)
+                        val () = render_spine_limit_banner(ssr)
+                        val () = import_finish_with_card(
+                          pf_term |
+                          import_mark_failed(log_err_spine_limit(), 15),
+                          sscard, sslbl, ssspn, sssts)
+                      in ward_promise_return<int>(0) end
+                      else if lte_int_int(ok2, 0) then let
                         prval pf_term = PTERMINAL_ERR(pf3)
                         val () = render_error_banner(ssr)
                         val () = import_finish_with_card(
