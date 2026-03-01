@@ -1,6 +1,7 @@
 const CACHE = 'quire-v4';
 const SHELL = [
   './', 'ward_bridge.js', 'quire.wasm', 'reader.css', 'manifest.json',
+  'privacy.txt',
   'assets/fonts/literata-latin.woff2',
   'assets/fonts/literata-italic-latin.woff2',
   'assets/fonts/inter-latin.woff2',
