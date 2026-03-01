@@ -1122,6 +1122,55 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
       else scan_href_ext(r1, tree, val_start + val_len, count - 1, tlen)
     end
 
+  (* Element/attribute skipping — extracted from mutual recursion with loop.
+   * skip_attrs and skip_element only call each other, not loop/emit_attrs.
+   * This allows skip_known_element to enforce SKIPPABLE_TAG proof. *)
+  fun skip_attrs {lb:agz}{n:pos}{r:nat} .<r>.
+    (rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, count: int, tlen: int n): int =
+    if lte_g1(rem, 0) then pos
+    else if count <= 0 then pos
+    else let
+      val name_len = ward_arr_byte(tree, pos, tlen)
+      val val_len = rd_u16(tree, pos + 1 + name_len, tlen)
+    in
+      skip_attrs(sub_g1(rem, 1), tree, pos + 1 + name_len + 2 + val_len, count - 1, tlen)
+    end
+  and skip_element {lb:agz}{n:pos}{r:nat} .<r>.
+    (rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, len: int, tlen: int n): int =
+    if lte_g1(rem, 0) then pos
+    else if pos >= len then pos
+    else let
+      val opc = ward_arr_byte(tree, pos, tlen)
+      val r1 = sub_g1(rem, 1)
+    in
+      if opc = 2 then pos + 1  (* ELEMENT_CLOSE *)
+      else if opc = 1 then let (* nested ELEMENT_OPEN *)
+        val tag_len = ward_arr_byte(tree, pos + 1, tlen)
+        val attr_off = pos + 2 + tag_len
+        val attr_count = ward_arr_byte(tree, attr_off, tlen)
+        val after_attrs = skip_attrs(r1, tree, attr_off + 1, attr_count, tlen)
+        val end_inner = skip_element(r1, tree, after_attrs, len, tlen)
+      in
+        skip_element(r1, tree, end_inner, len, tlen)
+      end
+      else if opc = 3 then let (* TEXT *)
+        val text_len = rd_u16(tree, pos + 1, tlen)
+      in
+        skip_element(r1, tree, pos + 3 + text_len, len, tlen)
+      end
+      else skip_element(r1, tree, pos + 1, len, tlen)
+    end
+
+  (* Proof-requiring wrapper: only callable with a SKIPPABLE_TAG proof.
+   * Enforces that known-tag skips are impossible without updating the dataprop. *)
+  fn skip_known_element {lb:agz}{n:pos}{r:nat}{idx:int}
+    (pf: SKIPPABLE_TAG(idx) |
+     rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, len: int, tlen: int n): int = let
+    prval _ = pf
+  in
+    skip_element(rem, tree, pos, len, tlen)
+  end
+
   fun loop {l:agz}{lb:agz}{n:pos}{r:nat} .<r>.
     (rem: int(r), st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n),
      pos: int, len: int, parent: int, tlen: int n,
@@ -1143,7 +1192,16 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
       in
         if tag_idx >= 0 then
           if tag_idx = TAG_IDX_IMG then let
-            val end_pos = skip_element(r1, tree, after_attrs, len, tlen)
+            val end_pos = skip_known_element(SKIP_IMG() | r1, tree, after_attrs, len, tlen)
+          in
+            loop(r1, st, tree, end_pos, len, parent, tlen, has_child, ecnt)
+          end
+          else if tag_idx = TAG_IDX_STYLE then let
+            (* EPUB <style> tags inject publisher CSS that overrides Quire typography.
+             * Skip the entire element + children so no <style> from EPUB content
+             * reaches the DOM. Quire's own <style> elements are created explicitly
+             * from ATS2 code, not from parsed EPUB HTML. *)
+            val end_pos = skip_known_element(SKIP_STYLE() | r1, tree, after_attrs, len, tlen)
           in
             loop(r1, st, tree, end_pos, len, parent, tlen, has_child, ecnt)
           end
@@ -1214,16 +1272,6 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
         @(st, pos, ecnt)
       else (* Unknown opcode — skip byte *)
         loop(r1, st, tree, pos + 1, len, parent, tlen, has_child, ecnt)
-    end
-  and skip_attrs {lb:agz}{n:pos}{r:nat} .<r>.
-    (rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, count: int, tlen: int n): int =
-    if lte_g1(rem, 0) then pos
-    else if count <= 0 then pos
-    else let
-      val name_len = ward_arr_byte(tree, pos, tlen)
-      val val_len = rd_u16(tree, pos + 1 + name_len, tlen)
-    in
-      skip_attrs(sub_g1(rem, 1), tree, pos + 1 + name_len + 2 + val_len, count - 1, tlen)
     end
   and emit_attrs {l:agz}{lb:agz}{n:pos}{r:nat} .<r>.
     (rem: int(r), st: ward_dom_stream(l), nid: int, tree: !ward_arr(byte, lb, n),
@@ -1304,31 +1352,6 @@ implement render_tree{l}{lb}{n}(stream, parent_id, tree, tree_len) = let
       in st end
       else st
     else st
-  and skip_element {lb:agz}{n:pos}{r:nat} .<r>.
-    (rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, len: int, tlen: int n): int =
-    if lte_g1(rem, 0) then pos
-    else if pos >= len then pos
-    else let
-      val opc = ward_arr_byte(tree, pos, tlen)
-      val r1 = sub_g1(rem, 1)
-    in
-      if opc = 2 then pos + 1  (* ELEMENT_CLOSE *)
-      else if opc = 1 then let (* nested ELEMENT_OPEN *)
-        val tag_len = ward_arr_byte(tree, pos + 1, tlen)
-        val attr_off = pos + 2 + tag_len
-        val attr_count = ward_arr_byte(tree, attr_off, tlen)
-        val after_attrs = skip_attrs(r1, tree, attr_off + 1, attr_count, tlen)
-        val end_inner = skip_element(r1, tree, after_attrs, len, tlen)
-      in
-        skip_element(r1, tree, end_inner, len, tlen)
-      end
-      else if opc = 3 then let (* TEXT *)
-        val text_len = rd_u16(tree, pos + 1, tlen)
-      in
-        skip_element(r1, tree, pos + 3 + text_len, len, tlen)
-      end
-      else skip_element(r1, tree, pos + 1, len, tlen) (* unknown — skip byte *)
-    end
 
   val tl_rem = _checked_nat(_g0(tree_len))
   val @(st, _, ecnt) = loop(tl_rem, stream, tree, 0, tree_len, parent_id, tree_len, 0, 0)
@@ -1502,6 +1525,54 @@ implement render_tree_with_images
   (* Reset deferred image queue before each render pass *)
   val () = deferred_image_queue_reset()
 
+  (* Element/attribute skipping — extracted from mutual recursion with loop.
+   * skip_attrs_img and skip_element_img only call each other, not loop/emit_attrs.
+   * This allows skip_known_element_img to enforce SKIPPABLE_TAG proof. *)
+  fun skip_attrs_img {lb:agz}{n:pos}{r:nat} .<r>.
+    (rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, count: int, tlen: int n): int =
+    if lte_g1(rem, 0) then pos
+    else if count <= 0 then pos
+    else let
+      val name_len = ward_arr_byte(tree, pos, tlen)
+      val val_len = rd_u16(tree, pos + 1 + name_len, tlen)
+    in
+      skip_attrs_img(sub_g1(rem, 1), tree, pos + 1 + name_len + 2 + val_len, count - 1, tlen)
+    end
+  and skip_element_img {lb:agz}{n:pos}{r:nat} .<r>.
+    (rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, len: int, tlen: int n): int =
+    if lte_g1(rem, 0) then pos
+    else if pos >= len then pos
+    else let
+      val opc = ward_arr_byte(tree, pos, tlen)
+      val r1 = sub_g1(rem, 1)
+    in
+      if opc = 2 then pos + 1
+      else if opc = 1 then let
+        val tag_len = ward_arr_byte(tree, pos + 1, tlen)
+        val attr_off = pos + 2 + tag_len
+        val attr_count = ward_arr_byte(tree, attr_off, tlen)
+        val after_attrs = skip_attrs_img(r1, tree, attr_off + 1, attr_count, tlen)
+        val end_inner = skip_element_img(r1, tree, after_attrs, len, tlen)
+      in
+        skip_element_img(r1, tree, end_inner, len, tlen)
+      end
+      else if opc = 3 then let
+        val text_len = rd_u16(tree, pos + 1, tlen)
+      in
+        skip_element_img(r1, tree, pos + 3 + text_len, len, tlen)
+      end
+      else skip_element_img(r1, tree, pos + 1, len, tlen)
+    end
+
+  (* Proof-requiring wrapper: only callable with a SKIPPABLE_TAG proof. *)
+  fn skip_known_element_img {lb:agz}{n:pos}{r:nat}{idx:int}
+    (pf: SKIPPABLE_TAG(idx) |
+     rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, len: int, tlen: int n): int = let
+    prval _ = pf
+  in
+    skip_element_img(rem, tree, pos, len, tlen)
+  end
+
   fun loop {l:agz}{lb:agz}{n:pos}{ld:agz}{nd:pos}{r:nat} .<r>.
     (rem: int(r), st: ward_dom_stream(l), tree: !ward_arr(byte, lb, n),
      pos: int, len: int, parent: int, tlen: int n,
@@ -1557,6 +1628,13 @@ implement render_tree_with_images
               end
               else @(st, end_pos, ecnt + 1)
             end
+          end
+          else if tag_idx = TAG_IDX_STYLE then let
+            (* EPUB <style> tags inject publisher CSS — skip entirely.
+             * See SKIP_STYLE(3) in dom.sats SKIPPABLE_TAG. *)
+            val end_pos = skip_known_element_img(SKIP_STYLE() | r1, tree, after_attrs, len, tlen)
+          in
+            loop(r1, st, tree, end_pos, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
           end
           else let
           val @(tag_st, tag_st_len) = get_tag_by_index(tag_idx)
@@ -1623,16 +1701,6 @@ implement render_tree_with_images
         @(st, pos, ecnt)
       else
         loop(r1, st, tree, pos + 1, len, parent, tlen, has_child, ecnt, fh, cdir, cdlen)
-    end
-  and skip_attrs_img {lb:agz}{n:pos}{r:nat} .<r>.
-    (rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, count: int, tlen: int n): int =
-    if lte_g1(rem, 0) then pos
-    else if count <= 0 then pos
-    else let
-      val name_len = ward_arr_byte(tree, pos, tlen)
-      val val_len = rd_u16(tree, pos + 1 + name_len, tlen)
-    in
-      skip_attrs_img(sub_g1(rem, 1), tree, pos + 1 + name_len + 2 + val_len, count - 1, tlen)
     end
   and emit_attrs_noimg {l:agz}{lb:agz}{n:pos}{r:nat} .<r>.
     (rem: int(r), st: ward_dom_stream(l), nid: int, tree: !ward_arr(byte, lb, n),
@@ -1716,31 +1784,6 @@ implement render_tree_with_images
       end
       else emit_attrs_img(r1, st, nid, tree, val_start + val_len, count - 1, tlen,
         found_src_off, found_src_len)
-    end
-  and skip_element_img {lb:agz}{n:pos}{r:nat} .<r>.
-    (rem: int(r), tree: !ward_arr(byte, lb, n), pos: int, len: int, tlen: int n): int =
-    if lte_g1(rem, 0) then pos
-    else if pos >= len then pos
-    else let
-      val opc = ward_arr_byte(tree, pos, tlen)
-      val r1 = sub_g1(rem, 1)
-    in
-      if opc = 2 then pos + 1
-      else if opc = 1 then let
-        val tag_len = ward_arr_byte(tree, pos + 1, tlen)
-        val attr_off = pos + 2 + tag_len
-        val attr_count = ward_arr_byte(tree, attr_off, tlen)
-        val after_attrs = skip_attrs_img(r1, tree, attr_off + 1, attr_count, tlen)
-        val end_inner = skip_element_img(r1, tree, after_attrs, len, tlen)
-      in
-        skip_element_img(r1, tree, end_inner, len, tlen)
-      end
-      else if opc = 3 then let
-        val text_len = rd_u16(tree, pos + 1, tlen)
-      in
-        skip_element_img(r1, tree, pos + 3 + text_len, len, tlen)
-      end
-      else skip_element_img(r1, tree, pos + 1, len, tlen)
     end
 
   val tl_rem = _checked_nat(_g0(tree_len))

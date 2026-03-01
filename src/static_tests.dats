@@ -488,6 +488,7 @@ fun test_lid_reader_above_info(): bool(true) = gt_g1(29, 28)
 staload "./quire.sats"
 staload "./../vendor/ward/lib/dom.sats"
 staload _ = "./../vendor/ward/lib/dom.dats"
+staload "./dom.sats"
 
 (* Bring in the dataprops from quire.dats via re-declaration.
  * These must match the definitions in quire.dats exactly. *)
@@ -808,10 +809,10 @@ in eq_g1(93, 93) end
  * SCRUBBER_FILL_CHECKED. Uses production types from quire_proofs.hats.
  * ================================================================ *)
 
-(* Structural check: CHAPTER_DISPLAY_READY decomposes into both sub-proofs *)
+(* Structural check: CHAPTER_DISPLAY_READY decomposes into all three sub-proofs *)
 prfn verify_chapter_display_structure
-  (pf: CHAPTER_DISPLAY_READY()): @(CHAPTER_TITLE_DISPLAYED(), PAGE_INFO_SHOWN()) =
-  let prval MEASURED_AND_TRANSFORMED(pf_t, pf_pi) = pf in @(pf_t, pf_pi) end
+  (pf: CHAPTER_DISPLAY_READY()): @(CHAPTER_TITLE_DISPLAYED(), PAGE_INFO_SHOWN(), HIGHLIGHTS_RENDERED()) =
+  let prval MEASURED_AND_TRANSFORMED(pf_t, pf_pi, pf_hl) = pf in @(pf_t, pf_pi, pf_hl) end
 
 (* Structural check: PAGE_DISPLAY_UPDATED decomposes into PAGE_INFO_SHOWN *)
 prfn verify_page_display_structure
@@ -871,7 +872,7 @@ in true end
  * ================================================================ *)
 
 fun test_pos_stack_max_valid(): bool(true) =
-  lt_int_int(POS_STACK_MAX, 128)
+  eq_g1(POS_STACK_MAX, 16)
 
 (* ================================================================
  * Test 26: DRAG_STATE_VALID dataprop
@@ -997,3 +998,27 @@ fun test_gear_icon_valid(): bool(true) = let
   prval pf = GEAR_CP_OK()
   prval _ = pf : GEAR_ICON_VALID(0x2699)
 in true end
+
+(* ================================================================
+ * Test 36: SKIPPABLE_TAG — style tag is skippable
+ *
+ * Verifies that TAG_IDX_STYLE (3) has a SKIPPABLE_TAG proof
+ * constructor. This guarantees at compile time that the style tag
+ * index is recognized as needing to be skipped during EPUB content
+ * rendering, preventing publisher CSS from overriding Quire styles.
+ *
+ * Bug class prevented: EPUB <style> tags injecting CSS that
+ * overrides Quire typography (e.g., green text, zero margins).
+ * ================================================================ *)
+
+(* UNIT TEST — SKIP_STYLE proof constructible for TAG_IDX_STYLE *)
+fun test_style_tag_skippable(): bool(true) = let
+  prval pf = SKIP_STYLE()
+  prval _ = pf : SKIPPABLE_TAG(3)
+in eq_g1(TAG_IDX_STYLE, 3) end
+
+(* UNIT TEST — SKIP_IMG proof still constructible (regression guard) *)
+fun test_img_tag_skippable(): bool(true) = let
+  prval pf = SKIP_IMG()
+  prval _ = pf : SKIPPABLE_TAG(13)
+in eq_g1(TAG_IDX_IMG, 13) end

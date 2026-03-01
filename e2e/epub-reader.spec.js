@@ -3201,4 +3201,108 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
     expect(errors).toEqual([]);
   });
 
+  test('epub style tags are stripped — no green text or margin overflow', async ({ page }) => {
+    // Regression test: EPUB <style> tags were being rendered into the DOM,
+    // causing publisher CSS (green text, zero margins) to override Quire styles.
+    //
+    // This test creates an EPUB with aggressive CSS overrides in <style> tags
+    // and verifies they do NOT affect rendered content.
+
+    const errors = [];
+    page.on('pageerror', err => errors.push(err.message));
+    page.on('crash', () => { console.error('PAGE CRASHED. Errors:', errors); });
+
+    // Create EPUB with <style> tag that sets green text and removes margins
+    const styledEpub = createEpub({
+      title: 'Styled Book',
+      author: 'Style Test',
+      rawChapters: [{
+        body: `<style>
+  p { color: #00ff00 !important; margin: 0 !important; padding: 0 !important; }
+  h1 { color: green !important; }
+  body { color: lime !important; margin: 0 !important; }
+  * { color: #00ff00 !important; }
+</style>
+<h1>Green Test</h1>
+<p>This paragraph must not be green. Quire strips EPUB style tags to enforce its own typography. If this text appears green, the style tag was not stripped.</p>
+<p>Second paragraph to verify margins are preserved between paragraphs.</p>`
+      }],
+      storeChapters: true,
+    });
+
+    // Navigate and wait for app
+    await page.goto('/');
+    await page.waitForSelector('label.import-btn', { timeout: 15000 });
+    await page.waitForSelector('.library-list', { timeout: 15000 });
+
+    // Import the EPUB
+    const fileInput = page.locator('input[type="file"]');
+    const vp = page.viewportSize();
+    const vpTag = `${vp.width}x${vp.height}`;
+    const epubPath = join(SCREENSHOT_DIR, `styled-book-${vpTag}.epub`);
+    writeFileSync(epubPath, styledEpub);
+    await fileInput.setInputFiles(epubPath);
+
+    // Wait for import and book card
+    await page.waitForSelector('.book-card', { timeout: 30000 });
+
+    // Open the book
+    const bookCard = page.locator('.book-card');
+    await bookCard.click();
+
+    // Wait for reader content
+    await page.waitForSelector('.reader-viewport', { timeout: 15000 });
+    await page.waitForSelector('.chapter-container', { timeout: 15000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.chapter-container');
+      return el && el.childElementCount > 0;
+    }, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await screenshot(page, 'style-strip-01-reader');
+
+    // --- Verify NO <style> elements inside chapter container ---
+    const styleCount = await page.evaluate(() => {
+      const container = document.querySelector('.chapter-container');
+      return container ? container.querySelectorAll('style').length : -1;
+    });
+    expect(styleCount).toBe(0);
+
+    // --- Verify text color is NOT green ---
+    // Get computed color of the first <p> inside .chapter-container
+    const textColor = await page.evaluate(() => {
+      const container = document.querySelector('.chapter-container');
+      if (!container) return null;
+      const p = container.querySelector('p');
+      if (!p) return null;
+      return window.getComputedStyle(p).color;
+    });
+
+    // textColor should NOT be any shade of green
+    // Green in RGB: rgb(0, 128, 0), rgb(0, 255, 0), rgb(0, 255, 0)
+    expect(textColor).not.toBeNull();
+    expect(textColor).not.toMatch(/rgb\(0,\s*128,\s*0\)/);  // green
+    expect(textColor).not.toMatch(/rgb\(0,\s*255,\s*0\)/);  // lime/#00ff00
+
+    // --- Verify content has horizontal padding (not flush to edge) ---
+    const padding = await page.evaluate(() => {
+      const container = document.querySelector('.chapter-container');
+      if (!container) return null;
+      // Check first direct child for padding
+      const firstChild = container.firstElementChild;
+      if (!firstChild) return null;
+      const style = window.getComputedStyle(firstChild);
+      return {
+        paddingLeft: parseFloat(style.paddingLeft),
+        paddingRight: parseFloat(style.paddingRight),
+      };
+    });
+    expect(padding).not.toBeNull();
+    // Content children should have >= 10px horizontal padding (Quire uses 2rem)
+    expect(padding.paddingLeft).toBeGreaterThanOrEqual(10);
+    expect(padding.paddingRight).toBeGreaterThanOrEqual(10);
+
+    // No crashes
+    expect(errors).toEqual([]);
+  });
+
 });
