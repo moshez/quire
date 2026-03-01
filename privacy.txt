@@ -12,7 +12,7 @@ This app is designed to respect your privacy. We collect no personal information
 
 Analytics
 
-We may collect anonymized usage analytics to understand how the app is used — for example, which features are used most, what screen sizes are common, and where people encounter errors. Analytics are collected without any account, name, email, or persistent identifier attached. IP addresses are not retained.
+We may collect anonymized usage analytics to understand how the app is used — for example, which features are used most, what screen sizes are common, and where people encounter errors. Analytics are collected without any account, name, or email attached. IP addresses are not retained.
 
 ---
 
