@@ -3174,8 +3174,8 @@ test('bookmark toggle via button click and B key', async ({ page }) => {
 
     // Navigate to the last chapter (40) via the TOC
     // Open TOC panel
-    const contentsBtn = page.locator('.contents-btn');
-    await contentsBtn.click();
+    const tocBtn = page.locator('.toc-btn');
+    await tocBtn.click();
     await page.waitForSelector('.toc-panel', { timeout: 10000 });
     await screenshot(page, 'spine40-03-toc-open');
 
