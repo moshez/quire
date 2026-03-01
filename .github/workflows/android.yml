@@ -107,9 +107,9 @@ jobs:
       - name: Sync web assets to Android
         run: npx cap sync android
 
-      - name: Build release AAB
+      - name: Build release AAB and APK
         working-directory: android
-        run: ./gradlew bundleRelease
+        run: ./gradlew bundleRelease assembleRelease
 
       - name: Verify AAB exists
         run: |
@@ -117,8 +117,20 @@ jobs:
           test -n "$AAB" && test -s "$AAB"
           echo "AAB: $AAB ($(stat -c%s "$AAB") bytes)"
 
+      - name: Verify APK exists
+        run: |
+          APK=$(find android -name "*.apk" -path "*/release/*" | head -1)
+          test -n "$APK" && test -s "$APK"
+          echo "APK: $APK ($(stat -c%s "$APK") bytes)"
+
       - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
           name: release-aab
           path: android/app/build/outputs/bundle/release/*.aab
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: android/app/build/outputs/apk/release/*.apk
